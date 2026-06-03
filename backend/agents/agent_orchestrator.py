@@ -1,0 +1,1129 @@
+"""
+亮点：多 Agent 路由与编排
+
+核心问题：多 Agent 情况下如何做 Routing？
+
+三个专家 Agent + 一个兜底 Agent：
+  - TechnicalAgent —— 故障排查、错误码、登录异常、部署配置
+  - BillingAgent   —— 扣款、退款、发票、订阅
+  - OrderAgent     —— 订单状态、物流配送、地址与签收
+  - GeneralAgent   —— 不属于任何专家域，或专家执行失败时的兜底
+
+路由策略：
+  1. 领域打分（_domain_scores）—— 意图、关键词、结构化实体各自贡献分数，
+     得分最高的专家做主 Agent（primary）。
+  2. 主 + 辅协作（_route_decision）—— 跨域问题里，分数达到门槛的其他专家
+     升为辅助 Agent（supporting），与主 Agent 并行执行后合并结果。
+  3. 低置信度澄清 —— 意图落到 OTHER 且置信度不足时先追问，不猜着路由。
+  4. 置信度转人工 —— 意图置信度、路由领域分、Agent 自评三者取最弱一环，
+     低于阈值直接转人工，不硬答。
+  5. 兜底降级 —— 专家 Agent 执行失败时自动降级到 GeneralAgent 重试。
+
+在线表现反馈：
+  Monitor 把各 Agent 的成功率/延迟写回 stats.monitor_penalty，
+  同类型有多个实例时 _best_agent() 会绕开表现差的实例。
+"""
+import asyncio
+import json
+import logging
+import time
+import uuid
+from collections.abc import AsyncIterator
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Any
+
+from anthropic import AsyncAnthropic
+
+from core.answer_policy import AnswerPolicy, PolicyStreamGuard, PolicyViolation
+from core.intent_recognizer import IntentCategory, IntentRecognizer, UrgencyLevel
+from core.llm_utils import extract_text_content
+
+logger = logging.getLogger(__name__)
+
+
+# ── 数据结构 ──────────────────────────────────────────────────────────────────
+
+class AgentType(Enum):
+    GENERAL   = "general"    # 通用客服（兜底）
+    TECHNICAL = "technical"  # 专家：技术支持
+    BILLING   = "billing"    # 专家：账单/退款
+    ORDER     = "order"      # 专家：订单/物流
+    HANDOFF   = "handoff"    # 转人工（不是 LLM Agent，由编排器直接产出）
+
+
+# 三个专家 Agent —— 领域打分只在这三者之间比较，GENERAL 只做兜底。
+SPECIALIST_AGENTS = (AgentType.TECHNICAL, AgentType.BILLING, AgentType.ORDER)
+
+# 对外展示的角色名。内部类名按技术职责命名，对外按业务职责命名，
+# 这样产品文档和 UI 里出现的是"收入与合规 Agent"而不是 BillingAgent。
+AGENT_DISPLAY_NAMES: dict[AgentType, str] = {
+    AgentType.GENERAL:   "运营协调 Agent",
+    AgentType.TECHNICAL: "技术可靠性 Agent",
+    AgentType.BILLING:   "收入与合规 Agent",
+    AgentType.ORDER:     "订单履约 Agent",
+    AgentType.HANDOFF:   "运营升级通道",
+}
+
+
+@dataclass
+class AgentStats:
+    """Agent 运行时统计，供 Monitor 和路由决策使用。"""
+    total:     int   = 0
+    success:   int   = 0
+    total_ms:  float = 0.0
+    monitor_penalty: float = 0.0
+
+    @property
+    def success_rate(self) -> float:
+        return self.success / self.total if self.total else 1.0
+
+    @property
+    def avg_ms(self) -> float:
+        return self.total_ms / self.total if self.total else 0.0
+
+    def routing_score(self) -> float:
+        """路由评分：成功率高、延迟低的 Agent 得分高。"""
+        latency_score = 1.0 / (1.0 + self.avg_ms / 1000)
+        base_score = self.success_rate * 0.7 + latency_score * 0.3
+        return base_score * max(0.0, 1.0 - self.monitor_penalty)
+
+
+@dataclass
+class AgentResponse:
+    agent_type:  AgentType
+    content:     str
+    success:     bool
+    confidence:  float = 1.0
+    latency_ms:  float = 0.0
+    escalate:    bool  = False   # 是否需要升级
+    policy_violations: list[PolicyViolation] = field(default_factory=list)
+
+
+@dataclass
+class Request:
+    message:     str
+    user_id:     str
+    conv_id:     str
+    context:     str = ""        # 来自 MemoryManager 的格式化上下文
+    history:     list[dict[str, str]] | None = None  # 对话历史，传给意图识别
+    entities:    dict[str, list[str]] = field(default_factory=dict)
+    intent:      IntentCategory | None = None
+    intent_group: str | None = None
+    urgency:     UrgencyLevel | None   = None
+    intent_confidence: float = 1.0
+    # 本轮回答允许引用的出处（RAG 检索结果等）。AnswerPolicy 用它判断
+    # 回复里的价格/时效是否"有依据"。
+    grounding_sources: list[str] = field(default_factory=list)
+    request_id:  str = field(default_factory=lambda: str(uuid.uuid4())[:8])
+
+
+@dataclass
+class OrchestratorResult:
+    request_id:  str
+    response:    str
+    agent_type:  AgentType
+    intent:      IntentCategory | None
+    escalated:   bool  = False
+    latency_ms:  float = 0.0
+    agent_types: list[AgentType] = field(default_factory=list)
+    primary_agent: AgentType | None = None
+    supporting_agents: list[AgentType] = field(default_factory=list)
+    routing_reason: str = ""
+    routing_confidence: float = 0.0
+    # 转人工：由置信度不足或明确的转人工意图触发
+    handoff:     bool = False
+    handoff_reason: str = ""
+    answer_confidence: float = 1.0
+    needs_clarification: bool = False
+    policy_violations: list[PolicyViolation] = field(default_factory=list)
+
+
+@dataclass
+class RoutingDecision:
+    """一次请求的结构化路由决策。"""
+    primary_agent: AgentType
+    supporting_agents: list[AgentType] = field(default_factory=list)
+    reason: str = ""
+    confidence: float = 0.0
+    domain_scores: dict[AgentType, float] = field(default_factory=dict)
+
+    @property
+    def agent_types(self) -> list[AgentType]:
+        return [self.primary_agent] + self.supporting_agents
+
+    @property
+    def multi_agent(self) -> bool:
+        return bool(self.supporting_agents)
+
+
+# ── 基础 Agent ────────────────────────────────────────────────────────────────
+
+class BaseAgent:
+    """所有 Agent 的基类，封装 LLM 调用、Skill 注入、出站策略校验和统计。"""
+
+    agent_type: AgentType
+    system_prompt: str
+
+    def __init__(
+        self,
+        client: AsyncAnthropic,
+        model: str,
+        skill_manager: Any | None = None,
+        policy: AnswerPolicy | None = None,
+        replica: int = 0,
+    ):
+        self._client = client
+        self._model  = model
+        self._skill_manager = skill_manager
+        self._policy = policy or AnswerPolicy()
+        self.replica = replica          # 同类型内的实例序号，对应 stats key 的后缀
+        self.stats   = AgentStats()
+
+    @property
+    def key(self) -> str:
+        """Monitor 用来回写路由惩罚的键，例如 technical_1。"""
+        return f"{self.agent_type.value}_{self.replica}"
+
+    @property
+    def model(self) -> str:
+        return self._model
+
+    async def handle(self, req: Request) -> AgentResponse:
+        t0 = time.monotonic()
+        self.stats.total += 1
+        # Skill SOP 既要注入 prompt，也要作为 AnswerPolicy 判断"有无出处"的依据，
+        # 所以这里取一次，两处复用。
+        skill_prompt = self._skill_prompt(req)
+        try:
+            content = await self._call_llm(req, skill_prompt)
+            ms = (time.monotonic() - t0) * 1000
+            self.stats.success += 1
+            self.stats.total_ms += ms
+
+            # 出站策略校验：拦截无依据的价格/时效承诺
+            sources = list(req.grounding_sources)
+            if skill_prompt:
+                sources.append(skill_prompt)
+            policy_result = self._policy.enforce(content, sources)
+            if policy_result.blocked:
+                logger.warning(
+                    "%s 回复触发答案策略拦截 %d 处: %s",
+                    self.agent_type.value,
+                    policy_result.blocked_count,
+                    "; ".join(v.evidence for v in policy_result.violations),
+                )
+
+            escalate = self._needs_escalation(policy_result.text)
+            return AgentResponse(
+                agent_type=self.agent_type,
+                content=policy_result.text,
+                success=True,
+                confidence=self._self_confidence(policy_result.violations, escalate),
+                latency_ms=ms,
+                escalate=escalate,
+                policy_violations=policy_result.violations,
+            )
+        except Exception as ex:
+            ms = (time.monotonic() - t0) * 1000
+            self.stats.total_ms += ms
+            logger.error(f"{self.agent_type.value} 处理失败: {ex}")
+            return AgentResponse(
+                agent_type=self.agent_type,
+                content="抱歉，处理您的请求时出现问题，请稍后重试。",
+                success=False,
+                confidence=0.0,
+                latency_ms=ms,
+            )
+
+    async def stream(self, req: Request) -> AsyncIterator[dict[str, Any]]:
+        """
+        流式生成。产出 {"type": "delta"|"end", ...} 事件。
+
+        与 handle() 走同一套策略守卫：文本按句缓冲，整句过一遍 AnswerPolicy
+        之后才发出去，保证流式和非流式的答案口径一致。
+        统计也和 handle() 同口径，这样 Monitor 看到的成功率不会因为
+        用户走了流式接口而失真。
+        """
+        t0 = time.monotonic()
+        self.stats.total += 1
+        skill_prompt = self._skill_prompt(req)
+
+        sources = list(req.grounding_sources)
+        if skill_prompt:
+            sources.append(skill_prompt)
+        guard = PolicyStreamGuard(self._policy, sources)
+
+        full: list[str] = []
+        try:
+            async for chunk in self._stream_llm(req, skill_prompt):
+                safe = guard.feed(chunk)
+                if safe:
+                    full.append(safe)
+                    yield {"type": "delta", "text": safe}
+
+            tail = guard.flush()
+            if tail:
+                full.append(tail)
+                yield {"type": "delta", "text": tail}
+
+            ms = (time.monotonic() - t0) * 1000
+            self.stats.success += 1
+            self.stats.total_ms += ms
+
+            content = "".join(full)
+            escalate = self._needs_escalation(content)
+            if guard.violations:
+                logger.warning(
+                    "%s 流式回复触发答案策略拦截 %d 处: %s",
+                    self.agent_type.value, len(guard.violations),
+                    "; ".join(v.evidence for v in guard.violations),
+                )
+            yield {
+                "type": "end",
+                "response": AgentResponse(
+                    agent_type=self.agent_type,
+                    content=content,
+                    success=True,
+                    confidence=self._self_confidence(guard.violations, escalate),
+                    latency_ms=ms,
+                    escalate=escalate,
+                    policy_violations=guard.violations,
+                ),
+            }
+        except Exception as ex:
+            ms = (time.monotonic() - t0) * 1000
+            self.stats.total_ms += ms
+            logger.error(f"{self.agent_type.value} 流式处理失败: {ex}")
+            yield {
+                "type": "end",
+                "response": AgentResponse(
+                    agent_type=self.agent_type,
+                    content="抱歉，处理您的请求时出现问题，请稍后重试。",
+                    success=False,
+                    confidence=0.0,
+                    latency_ms=ms,
+                ),
+            }
+
+    async def _stream_llm(self, req: Request, skill_prompt: str = "") -> AsyncIterator[str]:
+        """调用 LLM 的流式接口，逐段产出文本增量。"""
+        async with self._client.messages.stream(
+            model=self._model,
+            max_tokens=1024,
+            system=self._build_system_prompt(skill_prompt),
+            messages=self._build_messages(req),
+        ) as stream:
+            async for text in stream.text_stream:
+                yield text
+
+    async def _call_llm(self, req: Request, skill_prompt: str = "") -> str:
+        resp = await self._client.messages.create(
+            model=self._model,
+            max_tokens=1024,
+            system=self._build_system_prompt(skill_prompt),
+            messages=self._build_messages(req),
+        )
+        return extract_text_content(resp.content)
+
+    @staticmethod
+    def _build_messages(req: Request) -> list[dict[str, str]]:
+        """流式和非流式共用同一套消息构造，避免两条链路的上下文出现差异。"""
+        def _clean(s: str) -> str:
+            return s.encode("utf-8", errors="ignore").decode("utf-8")
+
+        messages = []
+        if req.context:
+            messages.append({"role": "user", "content": f"[背景信息]\n{_clean(req.context)}"})
+            messages.append({"role": "assistant", "content": "好的，我已了解背景信息。"})
+        if req.entities:
+            entities_text = json.dumps(req.entities, ensure_ascii=False)
+            messages.append({"role": "user", "content": f"[结构化实体]\n{_clean(entities_text)}"})
+            messages.append({"role": "assistant", "content": "好的，我会结合这些结构化实体处理。"})
+        messages.append({"role": "user", "content": _clean(req.message)})
+        return messages
+
+    def _skill_prompt(self, req: Request) -> str:
+        """按 Agent 类型取出本轮命中的 Skill SOP 正文（热加载后立即生效）。"""
+        if self._skill_manager is None:
+            return ""
+        return self._skill_manager.prompt_for(req.message, self.agent_type.value) or ""
+
+    def _build_system_prompt(self, skill_prompt: str = "") -> str:
+        """把动态加载的 Skills 拼入 system prompt，让业务规则随请求生效。"""
+        if not skill_prompt:
+            return self.system_prompt
+        return f"{self.system_prompt}\n\n[动态 Skills]\n{skill_prompt}"
+
+    @staticmethod
+    def _self_confidence(violations: list[PolicyViolation], escalate: bool) -> float:
+        """
+        Agent 对本次回答的自评置信度。
+
+        不问模型"你有多确信"（那是不可校准的自述），而是用可观测信号折算：
+        触发一次策略拦截说明回答里有编造成分，明说处理不了就是明确的低置信。
+        """
+        confidence = 1.0
+        confidence -= min(0.6, 0.25 * len(violations))
+        if escalate:
+            confidence -= 0.35
+        return round(max(0.0, confidence), 3)
+
+    def _needs_escalation(self, content: str) -> bool:
+        """检测 Agent 是否建议升级（简单关键词检测）。"""
+        keywords = ["转人工", "人工客服", "escalate", "specialist", "无法处理"]
+        return any(kw in content for kw in keywords)
+
+
+class GeneralAgent(BaseAgent):
+    agent_type    = AgentType.GENERAL
+    system_prompt = (
+        "你是 EchoMind 智能客服。友好、简洁地回答用户问题。"
+        "如果问题超出你的能力范围，明确说明并建议转接专业客服。"
+    )
+
+
+class TechnicalAgent(BaseAgent):
+    agent_type    = AgentType.TECHNICAL
+    system_prompt = (
+        "你是技术支持专家。专注于：故障排查、错误诊断、系统配置。"
+        "提供清晰的步骤化解决方案。遇到需要后台操作的问题，说明需要升级处理。"
+    )
+
+
+class BillingAgent(BaseAgent):
+    agent_type    = AgentType.BILLING
+    system_prompt = (
+        "你是账单服务专家。专注于：账单查询、退款申请、发票问题、订阅管理。"
+        "对财务问题保持准确和专业。涉及实际退款操作时，说明需要人工审核。"
+    )
+
+
+class OrderAgent(BaseAgent):
+    agent_type    = AgentType.ORDER
+    system_prompt = (
+        "你是订单与物流专家。专注于：订单状态、发货进度、物流轨迹、配送时效、"
+        "收货地址修改、签收异常。没有查到系统记录时，先说明需要订单号或运单号，"
+        "不要凭空描述订单状态。配送时效以承运商实际情况为准，不要给出确定的到达时间。"
+    )
+
+
+# ── 编排器 ────────────────────────────────────────────────────────────────────
+
+class AgentOrchestrator:
+    """
+    多 Agent 编排器。
+
+    一次请求的完整链路：
+      意图识别 → 低置信度澄清 → 领域打分选主/辅 Agent → 执行（失败降级）
+      → 出站策略校验 → 置信度转人工判定 → 返回结果
+    """
+
+    # 意图 → 领域的映射。领域打分以此为基础，再叠加关键词和实体信号。
+    _INTENT_DOMAIN: dict[IntentCategory, AgentType] = {
+        IntentCategory.TECHNICAL:        AgentType.TECHNICAL,
+        IntentCategory.TECHNICAL_LOGIN:  AgentType.TECHNICAL,
+        IntentCategory.TECHNICAL_CRASH:  AgentType.TECHNICAL,
+        IntentCategory.ACCOUNT_SECURITY: AgentType.TECHNICAL,
+        IntentCategory.BILLING:          AgentType.BILLING,
+        IntentCategory.REFUND:           AgentType.BILLING,
+        IntentCategory.INVOICE:          AgentType.BILLING,
+        IntentCategory.PAYMENT_ISSUE:    AgentType.BILLING,
+        IntentCategory.ORDER_STATUS:     AgentType.ORDER,
+        IntentCategory.LOGISTICS:        AgentType.ORDER,
+        IntentCategory.ESCALATION:       AgentType.HANDOFF,
+        IntentCategory.HUMAN_HANDOFF:    AgentType.HANDOFF,
+        # 其余意图（QUERY / REQUEST / COMPLAINT / GREETING / FEEDBACK /
+        # ACCOUNT / OTHER）没有专家域，落到 GENERAL。
+    }
+
+    # 领域锚点：单独出现就足以说明"这句话里有这个域的诉求"。
+    # 跨域工单（"登录不上而且被重复扣款"）靠它把第二个域顶到辅助 Agent 门槛之上。
+    _DOMAIN_ANCHORS: dict[AgentType, list[str]] = {
+        AgentType.TECHNICAL: [
+            "无法登录", "登录失败", "登录不上", "登不上", "一直崩溃", "闪退", "白屏",
+            "报401", "报403", "报500", "接口报错", "验证码收不到", "系统崩溃",
+        ],
+        AgentType.BILLING: [
+            "重复扣款", "多扣", "扣了两次", "申请退款", "我要退款", "退款进度",
+            "开发票", "发票抬头", "支付失败", "自动续费", "取消订阅",
+        ],
+        AgentType.ORDER: [
+            "订单状态", "发货了吗", "有没有发货", "物流", "快递", "运单",
+            "配送", "签收", "收货地址", "订单进度",
+        ],
+    }
+
+    # 领域弱关键词：单独出现证据不足，用来在锚点之上做微调。
+    _DOMAIN_KEYWORDS: dict[AgentType, list[str]] = {
+        AgentType.TECHNICAL: [
+            "崩溃", "报错", "error", "crash", "登录", "401", "403", "500",
+            "验证码", "接口", "api", "超时",
+        ],
+        AgentType.BILLING: [
+            "退款", "退货", "扣款", "发票", "账单", "支付", "订阅", "续费",
+            "优惠券", "refund", "invoice", "payment", "billing",
+        ],
+        AgentType.ORDER: [
+            "订单", "发货", "地址", "order", "shipping", "delivery", "tracking",
+        ],
+    }
+
+    # 打分权重
+    _ANCHOR_FIRST = 0.5      # 命中第一个领域锚点
+    _ANCHOR_EXTRA = 0.1      # 每多命中一个锚点
+    _ANCHOR_CAP   = 0.65
+    _KEYWORD_STEP = 0.12
+    _KEYWORD_CAP  = 0.3
+
+    # 转人工阈值。三路信号量纲不同，各自对齐自己的阈值分别判断：
+    #   - 意图置信度是三路加权投票的融合分，量纲被权重压缩，天然偏低；
+    #   - 路由领域分是 [0,1] 的领域打分，命中专家域时接近 1；
+    #   - Agent 自评从 1.0 起，按策略违规和"我处理不了"的自述扣分。
+    # 拿这三个数取 min 再跟同一个阈值比，会让正常流量被大量误转人工。
+    INTENT_MIN_CONFIDENCE  = 0.45
+    ROUTING_MIN_CONFIDENCE = 0.35
+    AGENT_MIN_CONFIDENCE   = 0.70
+    # 低于该值且意图落到 OTHER 时先澄清
+    CLARIFY_CONFIDENCE_THRESHOLD = 0.5
+    # 辅助 Agent 门槛：绝对分 + 相对主 Agent 的比例，两个条件都要满足
+    SUPPORTING_MIN_SCORE = 0.45
+    SUPPORTING_MIN_RATIO = 0.55
+
+    def __init__(
+        self,
+        api_key:  str,
+        base_url: str | None = None,
+        model:    str = "claude-3-5-sonnet-20241022",
+        skill_manager: Any | None = None,
+        policy: AnswerPolicy | None = None,
+        recognizer: IntentRecognizer | None = None,
+        replicas: int = 1,
+        replica_models: list[str] | None = None,
+    ):
+        kwargs: dict[str, Any] = {"api_key": api_key}
+        if base_url:
+            kwargs["base_url"] = base_url
+        client = AsyncAnthropic(**kwargs)
+        self._model = model
+
+        self._intent_recognizer = recognizer or IntentRecognizer(
+            api_key=api_key, base_url=base_url, model=model
+        )
+        self._skill_manager = skill_manager
+        self.policy = policy or AnswerPolicy()
+
+        # 每种类型的实例数。>1 时 _best_agent() 的性能路由才真正产生选择差异：
+        # Monitor 把某个实例的成功率/延迟写回 monitor_penalty 后，
+        # 路由会自动把流量倒给同类型里表现更好的实例。
+        self.replicas = max(1, int(replicas))
+        # 可选：给每个实例指定不同模型（例如 0 号用强模型、1 号用便宜模型），
+        # 让"按在线表现选实例"有真实的差异来源。长度不足时回落到主模型。
+        self._replica_models = list(replica_models or [])
+
+        # HANDOFF 不在池里——转人工由编排器直接产出，不消耗一次 LLM 调用。
+        agent_classes = {
+            AgentType.GENERAL:   GeneralAgent,
+            AgentType.TECHNICAL: TechnicalAgent,
+            AgentType.BILLING:   BillingAgent,
+            AgentType.ORDER:     OrderAgent,
+        }
+        self._pool: dict[AgentType, list[BaseAgent]] = {
+            agent_type: [
+                cls(client, self._model_for(i), skill_manager, self.policy, replica=i)
+                for i in range(self.replicas)
+            ]
+            for agent_type, cls in agent_classes.items()
+        }
+        # 同分实例之间轮询的游标，避免流量永远压在 0 号实例上
+        self._rr_cursor: dict[AgentType, int] = {t: 0 for t in self._pool}
+
+    def _model_for(self, replica: int) -> str:
+        if replica < len(self._replica_models) and self._replica_models[replica]:
+            return self._replica_models[replica]
+        return self._model
+
+    def set_skill_manager(self, skill_manager: Any | None) -> None:
+        """更新 SkillManager 引用，供运行时重载或测试替换使用。"""
+        self._skill_manager = skill_manager
+        for agents in self._pool.values():
+            for agent in agents:
+                agent._skill_manager = skill_manager
+
+    async def recognize_intent(
+        self,
+        message: str,
+        history: list[dict[str, str]] | None = None,
+    ):
+        """对外暴露意图识别，供 API 层先判断是否需要 RAG 等前置能力。"""
+        return await self._intent_recognizer.recognize(message, history=history)
+
+    # ── 主入口 ────────────────────────────────────────────────────────────────
+
+    async def run(self, req: Request) -> OrchestratorResult:
+        """
+        处理一次请求的完整流程：
+          意图识别 → 澄清判定 → 路由选 Agent → 执行 → 策略校验 → 转人工判定
+        """
+        t0 = time.monotonic()
+
+        # 1. 意图识别（如果调用方已识别则跳过）
+        if req.intent is None:
+            intent_result = await self._intent_recognizer.recognize(req.message, history=req.history)
+            req.intent  = intent_result.intent
+            req.intent_group = intent_result.intent_group
+            req.urgency = intent_result.urgency
+            req.intent_confidence = intent_result.confidence
+
+        # 2. 低置信度澄清：意图没定性时先追问，不猜着路由
+        if self._needs_clarification(req):
+            return self._clarification_result(req, t0)
+
+        decision = self._route_decision(req)
+
+        # 3. 明确要求转人工 / CRITICAL 紧急度：直接产出转人工结果，不走 LLM
+        if decision.primary_agent == AgentType.HANDOFF:
+            return self._handoff_result(req, decision, decision.reason, t0)
+
+        # 4. 跨域问题并行协作，例如同一句同时涉及登录故障和重复扣款
+        if decision.multi_agent:
+            return await self.run_parallel(req, decision)
+
+        # 5. 执行主 Agent（失败时降级到 GeneralAgent）
+        response = await self._execute(req, decision.primary_agent)
+
+        # 6. 置信度转人工：三路信号各自对齐阈值
+        answer_confidence = self._answer_confidence(req, decision, [response])
+        handoff_reasons = self._handoff_signals(req, decision, [response])
+        if handoff_reasons:
+            return self._handoff_result(
+                req, decision, "；".join(handoff_reasons), t0,
+                answer=response.content if response.success else "",
+                answer_confidence=answer_confidence,
+                policy_violations=response.policy_violations,
+                # 执行失败时文案完全由编排器产出，agent_type 就该是 handoff，
+                # 不能挂在那个没能给出回答的 Agent 头上。
+                executed_agent=response.agent_type if response.success else None,
+            )
+
+        return OrchestratorResult(
+            request_id=req.request_id,
+            response=response.content,
+            agent_type=response.agent_type,
+            intent=req.intent,
+            escalated=response.escalate,
+            latency_ms=(time.monotonic() - t0) * 1000,
+            agent_types=[response.agent_type],
+            primary_agent=decision.primary_agent,
+            supporting_agents=[],
+            routing_reason=decision.reason,
+            routing_confidence=decision.confidence,
+            answer_confidence=answer_confidence,
+            policy_violations=response.policy_violations,
+        )
+
+    async def run_parallel(self, req: Request, decision: RoutingDecision) -> OrchestratorResult:
+        """
+        并行派发给主 Agent 和辅助 Agent，合并结果。
+        适用于跨域问题（如同时涉及技术和账单）。
+        """
+        t0 = time.monotonic()
+        agent_types = decision.agent_types
+        tasks = [self._execute(req, at) for at in agent_types]
+        responses = await asyncio.gather(*tasks, return_exceptions=True)
+        ok = [r for r in responses if isinstance(r, AgentResponse) and r.success]
+
+        # 合并：主 Agent 在前，辅助 Agent 在后。
+        parts = []
+        for r in ok:
+            role = "主处理" if r.agent_type == decision.primary_agent else "辅助处理"
+            parts.append(f"[{r.agent_type.value} - {role}]\n{r.content}")
+
+        combined = "\n\n".join(parts) if parts else "抱歉，所有 Agent 均处理失败。"
+        escalated = any(r.escalate for r in ok)
+        violations = [v for r in ok for v in r.policy_violations]
+        answer_confidence = self._answer_confidence(req, decision, ok)
+
+        handoff_reasons = self._handoff_signals(req, decision, ok)
+        if handoff_reasons:
+            return self._handoff_result(
+                req, decision, "；".join(handoff_reasons), t0,
+                answer=combined if ok else "",
+                answer_confidence=answer_confidence,
+                policy_violations=violations,
+            )
+
+        return OrchestratorResult(
+            request_id=req.request_id,
+            response=combined,
+            agent_type=decision.primary_agent,
+            intent=req.intent,
+            escalated=escalated,
+            latency_ms=(time.monotonic() - t0) * 1000,
+            agent_types=[r.agent_type for r in ok] or agent_types,
+            primary_agent=decision.primary_agent,
+            supporting_agents=decision.supporting_agents,
+            routing_reason=decision.reason,
+            routing_confidence=decision.confidence,
+            answer_confidence=answer_confidence,
+            policy_violations=violations,
+        )
+
+    # ── 流式入口 ──────────────────────────────────────────────────────────────
+
+    async def run_stream(self, req: Request) -> AsyncIterator[dict[str, Any]]:
+        """
+        流式版 run()。事件序列：
+          {"type": "routing", ...}  路由决策，第一时间发出，前端可立刻画徽章
+          {"type": "delta", "text"} 逐句产出的回答（已过策略守卫）
+          {"type": "result", ...}   最终结构化结果，与 run() 的字段一致
+
+        澄清、转人工、跨域协作这三条路径不做逐字流式：它们的文本要么是固定文案，
+        要么需要合并多个 Agent 的结果，流式没有意义。这些情况直接把整段文本
+        作为一个 delta 发出，再发 result，前端不需要区分处理。
+        """
+        t0 = time.monotonic()
+
+        if req.intent is None:
+            intent_result = await self._intent_recognizer.recognize(req.message, history=req.history)
+            req.intent  = intent_result.intent
+            req.intent_group = intent_result.intent_group
+            req.urgency = intent_result.urgency
+            req.intent_confidence = intent_result.confidence
+
+        if self._needs_clarification(req):
+            result = self._clarification_result(req, t0)
+            yield {"type": "routing", "primary_agent": AgentType.GENERAL.value,
+                   "supporting_agents": [], "reason": result.routing_reason,
+                   "confidence": result.routing_confidence}
+            yield {"type": "delta", "text": result.response}
+            yield {"type": "result", "result": result}
+            return
+
+        decision = self._route_decision(req)
+        yield {
+            "type": "routing",
+            "primary_agent": decision.primary_agent.value,
+            "supporting_agents": [a.value for a in decision.supporting_agents],
+            "reason": decision.reason,
+            "confidence": decision.confidence,
+            "domain_scores": {a.value: v for a, v in decision.domain_scores.items()},
+        }
+
+        # 非逐字流式的三条路径
+        if decision.primary_agent == AgentType.HANDOFF:
+            result = self._handoff_result(req, decision, decision.reason, t0)
+            yield {"type": "delta", "text": result.response}
+            yield {"type": "result", "result": result}
+            return
+
+        if decision.multi_agent:
+            result = await self.run_parallel(req, decision)
+            yield {"type": "delta", "text": result.response}
+            yield {"type": "result", "result": result}
+            return
+
+        # 单 Agent：逐句流式
+        agent = self._best_agent(decision.primary_agent) or self._best_agent(AgentType.GENERAL)
+        if agent is None:
+            result = self._handoff_result(req, decision, "没有可用的 Agent 实例", t0)
+            yield {"type": "delta", "text": result.response}
+            yield {"type": "result", "result": result}
+            return
+
+        response: AgentResponse | None = None
+        async for event in agent.stream(req):
+            if event["type"] == "delta":
+                yield event
+            else:
+                response = event["response"]
+
+        # 流式失败无法重放已发出的内容，因此这里不做"降级到 General 重跑"，
+        # 而是直接转人工——重跑会让用户看到两段互相矛盾的回答。
+        if response is None or not response.success:
+            result = self._handoff_result(
+                req, decision, "Agent 流式执行失败", t0,
+                answer_confidence=0.0, executed_agent=decision.primary_agent,
+            )
+            yield {"type": "delta", "text": "\n\n" + result.response}
+            yield {"type": "result", "result": result}
+            return
+
+        # 与 run() 用同一套转人工判定，避免流式和非流式对同一次回答给出不同结论
+        answer_confidence = self._answer_confidence(req, decision, [response])
+        handoff_reasons = self._handoff_signals(req, decision, [response])
+        if handoff_reasons:
+            result = self._handoff_result(
+                req, decision, "；".join(handoff_reasons), t0,
+                answer=response.content,
+                answer_confidence=answer_confidence,
+                policy_violations=response.policy_violations,
+                executed_agent=response.agent_type,
+            )
+            # 回答本体已经流出去了，这里只补发转人工提示的增量部分
+            yield {"type": "delta", "text": result.response[len(response.content):]}
+            yield {"type": "result", "result": result}
+            return
+
+        yield {
+            "type": "result",
+            "result": OrchestratorResult(
+                request_id=req.request_id,
+                response=response.content,
+                agent_type=response.agent_type,
+                intent=req.intent,
+                escalated=response.escalate,
+                latency_ms=(time.monotonic() - t0) * 1000,
+                agent_types=[response.agent_type],
+                primary_agent=decision.primary_agent,
+                routing_reason=decision.reason,
+                routing_confidence=decision.confidence,
+                answer_confidence=answer_confidence,
+                policy_violations=response.policy_violations,
+            ),
+        }
+
+    # ── 转人工 ────────────────────────────────────────────────────────────────
+
+    def _clarification_result(self, req: Request, t0: float) -> OrchestratorResult:
+        """意图没定性时的澄清追问。run() 和 run_stream() 共用。"""
+        return OrchestratorResult(
+            request_id=req.request_id,
+            response=(
+                "我还不能确定您要处理的是哪类问题。请补充一下是订单物流、退款账单、"
+                "账户资料，还是技术故障？"
+            ),
+            agent_type=AgentType.GENERAL,
+            intent=req.intent,
+            latency_ms=(time.monotonic() - t0) * 1000,
+            agent_types=[AgentType.GENERAL],
+            primary_agent=AgentType.GENERAL,
+            routing_reason="低置信度 OTHER 意图，先澄清用户需求",
+            routing_confidence=req.intent_confidence,
+            answer_confidence=req.intent_confidence,
+            needs_clarification=True,
+        )
+
+    def _handoff_result(
+        self,
+        req: Request,
+        decision: "RoutingDecision",
+        reason: str,
+        t0: float,
+        answer: str = "",
+        answer_confidence: float = 0.0,
+        policy_violations: list[PolicyViolation] | None = None,
+        executed_agent: AgentType | None = None,
+    ) -> OrchestratorResult:
+        """
+        产出转人工结果。
+
+        转人工不是"再调一次 LLM"，而是编排器直接给出确定文案并打上标记，
+        由上层创建工单。已经生成的回答会保留在前面，避免用户白等一轮。
+        """
+        notice = (
+            "这个问题我已经转交人工客服跟进，稍后会有同事联系您。"
+            "为了加快处理，请准备好订单号、发生时间和相关截图。"
+        )
+        content = f"{answer.rstrip()}\n\n{notice}" if answer.strip() else notice
+
+        logger.warning("请求 %s 转人工: %s", req.request_id, reason)
+        # 生产环境：此处创建工单、通知人工客服坐席
+        return OrchestratorResult(
+            request_id=req.request_id,
+            response=content,
+            agent_type=executed_agent or AgentType.HANDOFF,
+            intent=req.intent,
+            escalated=True,
+            latency_ms=(time.monotonic() - t0) * 1000,
+            agent_types=[executed_agent] if executed_agent else [AgentType.HANDOFF],
+            primary_agent=decision.primary_agent,
+            supporting_agents=decision.supporting_agents,
+            routing_reason=decision.reason,
+            routing_confidence=decision.confidence,
+            handoff=True,
+            handoff_reason=reason,
+            answer_confidence=answer_confidence,
+            policy_violations=list(policy_violations or []),
+        )
+
+    def _answer_confidence(
+        self,
+        req: Request,
+        decision: "RoutingDecision",
+        responses: list[AgentResponse],
+    ) -> float:
+        """
+        对外展示的综合置信度 = 三路信号里最弱的一环。
+
+        注意这个数只用于展示和排障，**不直接拿去和阈值比较**——三路量纲不同，
+        真正的转人工判定在 _handoff_signals 里逐路对齐各自的阈值。
+        """
+        agent_confidence = min((r.confidence for r in responses), default=0.0)
+        return round(min(req.intent_confidence, decision.confidence, agent_confidence), 3)
+
+    def _handoff_signals(
+        self,
+        req: Request,
+        decision: "RoutingDecision",
+        responses: list[AgentResponse],
+    ) -> list[str]:
+        """逐路检查是否触发转人工，返回所有不达标的原因。"""
+        reasons: list[str] = []
+
+        if not responses or not all(r.success for r in responses):
+            reasons.append("专家 Agent 与通用 Agent 均执行失败")
+            return reasons  # 已经没有可用回答，其余信号无意义
+
+        if req.intent_confidence < self.INTENT_MIN_CONFIDENCE:
+            reasons.append(
+                f"意图置信度 {req.intent_confidence:.2f} 低于 {self.INTENT_MIN_CONFIDENCE}"
+            )
+        if decision.confidence < self.ROUTING_MIN_CONFIDENCE:
+            reasons.append(
+                f"路由领域分 {decision.confidence:.2f} 低于 {self.ROUTING_MIN_CONFIDENCE}"
+            )
+
+        agent_confidence = min(r.confidence for r in responses)
+        if agent_confidence < self.AGENT_MIN_CONFIDENCE:
+            violations = sum(len(r.policy_violations) for r in responses)
+            detail = (
+                f"，其中答案策略拦截 {violations} 处无依据承诺" if violations else ""
+            )
+            reasons.append(
+                f"Agent 自评置信度 {agent_confidence:.2f} 低于 "
+                f"{self.AGENT_MIN_CONFIDENCE}{detail}"
+            )
+        return reasons
+
+    # ── 路由逻辑 ──────────────────────────────────────────────────────────────
+
+    def _route_decision(self, req: Request) -> RoutingDecision:
+        """
+        结构化路由决策。
+
+        先处理紧急/转人工，再用领域分数在三个专家 Agent 之间决定主 Agent，
+        并把分数达到门槛的其他专家升为辅助 Agent。这样可以表达"主处理 + 辅助诊断"，
+        避免关键词命中后无主次地把答案拼在一起。
+        """
+        if req.urgency == UrgencyLevel.CRITICAL:
+            return RoutingDecision(
+                primary_agent=AgentType.HANDOFF,
+                reason="紧急度为 CRITICAL，直接转人工",
+                confidence=1.0,
+            )
+
+        if self._INTENT_DOMAIN.get(req.intent) == AgentType.HANDOFF:
+            return RoutingDecision(
+                primary_agent=AgentType.HANDOFF,
+                reason=f"意图为 {req.intent.value if req.intent else 'unknown'}，用户明确要求人工",
+                confidence=max(req.intent_confidence, 0.8),
+            )
+
+        scores = self._domain_scores(req)
+        available_scores = {
+            agent_type: score
+            for agent_type, score in scores.items()
+            if agent_type == AgentType.GENERAL or self._pool.get(agent_type)
+        }
+        if not available_scores:
+            return RoutingDecision(
+                primary_agent=AgentType.GENERAL,
+                reason="无可用专家 Agent，降级到 GeneralAgent",
+                confidence=0.1,
+            )
+
+        ordered = sorted(available_scores.items(), key=lambda item: item[1], reverse=True)
+        primary_agent, primary_score = ordered[0]
+        supporting_agents = [
+            agent_type
+            for agent_type, score in ordered[1:]
+            if agent_type in SPECIALIST_AGENTS
+            and score >= self.SUPPORTING_MIN_SCORE
+            and score >= primary_score * self.SUPPORTING_MIN_RATIO
+        ]
+
+        reason = self._routing_reason(req, available_scores, primary_agent, supporting_agents)
+        return RoutingDecision(
+            primary_agent=primary_agent,
+            supporting_agents=supporting_agents,
+            reason=reason,
+            confidence=round(min(primary_score, 1.0), 3),
+            domain_scores=available_scores,
+        )
+
+    def _domain_scores(self, req: Request) -> dict[AgentType, float]:
+        """
+        按意图、领域锚点/关键词和结构化实体给三个专家 Agent 打分。
+
+        GENERAL 只拿一个固定基准分，它不是专家域的竞争者——只有当三个专家
+        都没拿到足够分数时才会胜出，这正是"没有专家域就走兜底"的表达。
+
+        最终分数会截断到 [0, 1]。截断是必要的：辅助 Agent 的门槛之一是
+        "达到主 Agent 分数的一定比例"，如果主 Agent 的分数可以无限累加，
+        跨域工单里的第二个域永远够不到门槛，多 Agent 协作就成了死代码。
+        """
+        msg = (req.message or "").lower()
+        scores: dict[AgentType, float] = {AgentType.GENERAL: 0.1}
+        for agent_type in SPECIALIST_AGENTS:
+            scores[agent_type] = 0.0
+
+        # 信号 1：意图映射
+        domain = self._INTENT_DOMAIN.get(req.intent)
+        if domain in SPECIALIST_AGENTS:
+            scores[domain] += 0.75
+        elif req.intent is not None:
+            # 没有专家域的意图（咨询、投诉、问候、账户资料等）抬高兜底分
+            scores[AgentType.GENERAL] += 0.55
+
+        # 信号 2：领域锚点（强证据）+ 弱关键词（微调）
+        for agent_type in SPECIALIST_AGENTS:
+            anchor_hits = sum(1 for a in self._DOMAIN_ANCHORS[agent_type] if a in msg)
+            if anchor_hits:
+                scores[agent_type] += min(
+                    self._ANCHOR_CAP,
+                    self._ANCHOR_FIRST + self._ANCHOR_EXTRA * (anchor_hits - 1),
+                )
+            keyword_hits = sum(1 for kw in self._DOMAIN_KEYWORDS[agent_type] if kw in msg)
+            scores[agent_type] += min(self._KEYWORD_CAP, keyword_hits * self._KEYWORD_STEP)
+
+        # 信号 3：结构化实体
+        entities = req.entities or {}
+        if entities.get("error_code"):
+            scores[AgentType.TECHNICAL] += 0.2
+        if entities.get("amount"):
+            scores[AgentType.BILLING] += 0.15
+        if entities.get("order_id"):
+            scores[AgentType.ORDER] += 0.2
+
+        return {
+            agent_type: round(min(1.0, max(0.0, score)), 3)
+            for agent_type, score in scores.items()
+        }
+
+    @staticmethod
+    def _routing_reason(
+        req: Request,
+        scores: dict[AgentType, float],
+        primary_agent: AgentType,
+        supporting_agents: list[AgentType],
+    ) -> str:
+        score_text = ", ".join(
+            f"{agent_type.value}={score:.2f}"
+            for agent_type, score in sorted(scores.items(), key=lambda item: item[1], reverse=True)
+        )
+        support_text = ", ".join(agent.value for agent in supporting_agents) or "none"
+        intent = req.intent.value if req.intent else "unknown"
+        return (
+            f"intent={intent}, group={req.intent_group or 'unknown'}, "
+            f"primary={primary_agent.value}, supporting={support_text}, scores=[{score_text}]"
+        )
+
+    @classmethod
+    def _needs_clarification(cls, req: Request) -> bool:
+        """低置信度且无明确意图时，先追问，避免误路由。"""
+        if req.intent != IntentCategory.OTHER:
+            return False
+        text = (req.message or "").strip()
+        if len(text) <= 2:
+            return False  # "在？"这类超短消息追问反而啰嗦，直接让通用 Agent 接
+        return req.intent_confidence < cls.CLARIFY_CONFIDENCE_THRESHOLD
+
+    # 分数差在这个范围内视为"打平"，打平的实例之间轮询分流
+    _ROUTING_SCORE_EPSILON = 0.02
+
+    def _best_agent(self, agent_type: AgentType) -> BaseAgent | None:
+        """
+        性能路由：从同类型实例中选 routing_score() 最高的。
+
+        打平时轮询而不是固定取第一个——否则冷启动阶段所有实例分数都是 1.0，
+        流量会永远压在 0 号实例上，其他实例的统计永远是空的，
+        Monitor 的在线表现反馈也就永远不会产生任何路由差异。
+        """
+        agents = self._pool.get(agent_type, [])
+        if not agents:
+            return None
+        if len(agents) == 1:
+            return agents[0]
+
+        scores = [(a, a.stats.routing_score()) for a in agents]
+        best_score = max(score for _, score in scores)
+        top = [a for a, score in scores if best_score - score <= self._ROUTING_SCORE_EPSILON]
+        if len(top) == 1:
+            return top[0]
+
+        cursor = self._rr_cursor.get(agent_type, 0)
+        self._rr_cursor[agent_type] = (cursor + 1) % len(top)
+        return top[cursor % len(top)]
+
+    async def _execute(self, req: Request, agent_type: AgentType) -> AgentResponse:
+        """执行 Agent，专家失败时降级到 GeneralAgent 重试一次。"""
+        agent = self._best_agent(agent_type)
+        if agent is None:
+            agent = self._best_agent(AgentType.GENERAL)
+        if agent is None:
+            return AgentResponse(
+                agent_type=AgentType.GENERAL,
+                content="服务暂时不可用，请稍后重试。",
+                success=False,
+                confidence=0.0,
+            )
+
+        response = await agent.handle(req)
+
+        # 专家 Agent 失败时降级到 GeneralAgent
+        if not response.success and agent_type != AgentType.GENERAL:
+            logger.warning(f"{agent_type.value} 失败，降级到 GeneralAgent")
+            fallback = self._best_agent(AgentType.GENERAL)
+            if fallback:
+                response = await fallback.handle(req)
+
+        return response
+
+    # ── 统计（供 Monitor 读取）────────────────────────────────────────────────
+
+    def get_stats(self) -> dict[str, Any]:
+        result = {}
+        for agent_type, agents in self._pool.items():
+            for agent in agents:
+                result[agent.key] = {
+                    "total":        agent.stats.total,
+                    "success_rate": round(agent.stats.success_rate, 3),
+                    "avg_ms":       round(agent.stats.avg_ms, 1),
+                    "monitor_penalty": round(agent.stats.monitor_penalty, 3),
+                    "routing_score": round(agent.stats.routing_score(), 3),
+                    "specialist":   agent_type in SPECIALIST_AGENTS,
+                    "display_name": AGENT_DISPLAY_NAMES.get(agent_type, agent_type.value),
+                    "model":        agent.model,
+                }
+        return result
+
+    def routing_config(self) -> dict[str, Any]:
+        """路由配置快照，供 /health 展示当前专家阵容和各项阈值。"""
+        return {
+            "specialists": [a.value for a in SPECIALIST_AGENTS],
+            "fallback_agent": AgentType.GENERAL.value,
+            "display_names": {a.value: name for a, name in AGENT_DISPLAY_NAMES.items()},
+            "replicas_per_type": self.replicas,
+            "handoff_thresholds": {
+                "intent": self.INTENT_MIN_CONFIDENCE,
+                "routing": self.ROUTING_MIN_CONFIDENCE,
+                "agent": self.AGENT_MIN_CONFIDENCE,
+            },
+            "clarify_confidence_threshold": self.CLARIFY_CONFIDENCE_THRESHOLD,
+            "supporting_min_score": self.SUPPORTING_MIN_SCORE,
+            "supporting_min_ratio": self.SUPPORTING_MIN_RATIO,
+            "answer_policy": self.policy.stats(),
+            "intent": self._intent_recognizer.stats,
+        }
+
+    def update_routing_penalties(self, penalties: dict[str, float]) -> None:
+        """
+        接收 Monitor 的在线表现反馈，动态调整路由惩罚项。
+
+        penalties 的 key 使用 get_stats() 中的 agent key，例如 technical_0。
+        """
+        for agents in self._pool.values():
+            for agent in agents:
+                penalty = penalties.get(agent.key, 0.0)
+                agent.stats.monitor_penalty = min(max(penalty, 0.0), 0.9)
