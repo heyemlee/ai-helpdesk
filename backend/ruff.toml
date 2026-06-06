@@ -1,0 +1,26 @@
+# 只开明确有价值的规则，避免为了过 lint 去改写可读性更好的代码。
+line-length = 120
+# 本地 venv 是 3.11、CI 和镜像是 3.12，按最低的来
+target-version = "py311"
+
+exclude = [".venv", ".venv.arm64-broken", "data", "wiki"]
+
+[lint]
+select = [
+    "E",    # pycodestyle
+    "F",    # pyflakes：未使用的导入/变量、未定义名字
+    "I",    # isort：导入顺序
+    "B",    # flake8-bugbear：常见陷阱
+    "UP",   # pyupgrade
+]
+ignore = [
+    "E501",  # 行宽由 line-length 控制，这里不再重复报
+    "B008",  # FastAPI 的 Depends()/File() 就是要在默认值里调用
+    "B905",  # zip() 的 strict 参数：这些调用点长度天然一致，加上只是噪音
+]
+
+[lint.per-file-ignores]
+"tests/*" = ["B011"]
+# 这两个文件必须先把项目根塞进 sys.path 才能 import 业务模块
+"api/main.py" = ["E402"]
+"tests/conftest.py" = ["E402"]
