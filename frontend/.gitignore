@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.idea/
+.vscode/
+.DS_Store
+*.log
+.env
+
+# TypeScript 增量构建产物
+*.tsbuildinfo
