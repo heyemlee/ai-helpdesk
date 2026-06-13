@@ -1,11 +1,11 @@
 # 只跑前端（后端在宿主机上单独跑）时用这个文件。
-# 想一条命令起全栈，用 ../EchoMind/docker-compose.yml。
+# 想一条命令起全栈，用 ../docker-compose.yml。
 services:
-  echomind-frontend:
+  ai-helpdesk-frontend:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: echomind-frontend
+    container_name: ai-helpdesk-frontend
     ports:
       - "5174:80"
     environment:

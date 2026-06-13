@@ -55,9 +55,14 @@ frontend/   React 18 + TS 控制台 · 路由检查器 / 监控面板 / 评测�
 ## 快速开始
 
 ```bash
-cp backend/.env.example backend/.env   # 填入 ANTHROPIC_API_KEY
+cp .env.example .env                   # compose 变量替换：Redis 密码
+cp backend/.env.example backend/.env   # 应用运行时配置：填入 ANTHROPIC_API_KEY
 docker compose up -d --build
 ```
+
+两份 `.env` 用途不同，别混：仓库根这份只用于 `docker-compose.yml` 里的 `${VAR}` 替换
+（Compose 只认 compose 文件同目录的 `.env`）；`backend/.env` 通过 `env_file` 注入应用容器。
+两份都不入库，各自的 `.env.example` 是模板。
 
 | 地址 | 内容 |
 |------|------|

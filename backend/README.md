@@ -1,8 +1,8 @@
-# EchoMind 完整使用指南
+# ai-helpdesk 完整使用指南
 
-本文档说明 EchoMind 的部署、启动、API 调用、知识库使用、ChromaDB 数据查看、监控评测和常见排障。
+本文档说明 ai-helpdesk 的部署、启动、API 调用、知识库使用、ChromaDB 数据查看、监控评测和常见排障。
 
-EchoMind 是一个企业级智能客服系统，核心链路为：
+ai-helpdesk 是一个企业级智能客服系统，核心链路为：
 
 ```text
 用户请求
@@ -35,25 +35,59 @@ EchoMind 是一个企业级智能客服系统，核心链路为：
 ## 1. 项目结构
 
 ```text
-EchoMind/
-├── api/main.py                    # FastAPI 入口，/chat /search /knowledge /monitor /eval
-├── core/intent_recognizer.py      # 18 类意图：规则快通道 + 三路融合
-├── core/answer_policy.py          # 出站策略守卫：拦截无依据的价格/时效承诺
-├── core/skill_loader.py           # Markdown SOP 热加载，按 agent 类型注入
-├── agents/agent_orchestrator.py   # 三专家 + 兜底的领域分路由、主辅协作、转人工
-├── memory/conversation_memory.py  # Redis + ChromaDB 记忆管理
-├── mcp/tool_manager.py            # MCP 工具调用、查询改写、重排、熔断、缓存、降级
-├── mcp/knowledge_base.py          # ChromaDB RAG 知识库
-├── monitor/performance_monitor.py # Agent/工具在线监控
-├── evaluation/evaluator.py        # 四维 LLM-as-Judge + 相对存档基线的回归检测
-├── skills/                        # 四份 SOP，与四个 Agent 一一对应
-├── tests/                         # pytest 用例（不依赖网络和外部服务）
-├── data/demo_docs/                # 演示知识库文档
-├── docker-compose.yml             # Docker 全栈编排
-├── Dockerfile
-├── requirements.txt
-└── .env
+ai-helpdesk/                             # 仓库根
+├── docker-compose.yml                   # 全栈编排：backend / frontend / Redis / ChromaDB / Prometheus / Nginx
+├── .env.example                         # compose 变量替换的模板（只有 REDIS_PASSWORD）
+├── .env                                 # 由上一行复制而来，不入库
+├── dev.sh                               # 本地开发：一条命令同时起 uvicorn 和 vite
+├── .github/workflows/ci.yml             # 后端 pytest + ruff，前端 vitest + tsc，两个镜像构建
+│
+├── backend/                             # 本文档描述的部分
+│   ├── api/main.py                      # FastAPI 入口，/chat /search /knowledge /monitor /eval
+│   ├── core/intent_recognizer.py        # 18 类意图：规则快通道 + 三路融合
+│   ├── core/answer_policy.py            # 出站策略守卫：拦截无依据的价格/时效承诺
+│   ├── core/skill_loader.py             # Markdown SOP 热加载，按 agent 类型注入
+│   ├── core/llm_utils.py                # LLM 调用封装
+│   ├── agents/agent_orchestrator.py     # 三专家 + 兜底的领域分路由、主辅协作、转人工
+│   ├── memory/conversation_memory.py    # Redis + ChromaDB 记忆管理
+│   ├── mcp/tool_manager.py              # MCP 工具调用、查询改写、重排、熔断、缓存、降级
+│   ├── mcp/knowledge_base.py            # ChromaDB RAG 知识库
+│   ├── monitor/performance_monitor.py   # Agent/工具在线监控
+│   ├── evaluation/evaluator.py          # 四维 LLM-as-Judge + 相对存档基线的回归检测
+│   ├── skills/                          # 四份 SOP，与四个 Agent 一一对应
+│   ├── tests/                           # pytest 用例（不依赖网络和外部服务）
+│   ├── config/                          # nginx.conf + prometheus.yml
+│   ├── data/demo_docs/                  # 演示知识库文档
+│   ├── data/eval/baseline.json          # 评测存档基线，只在 /eval/promote 时更新
+│   ├── docker-deploy.sh                 # 部署封装脚本：compose 生命周期 + Redis/Chroma 备份恢复
+│   ├── Dockerfile
+│   ├── requirements.txt
+│   └── .env                             # 由 .env.example 复制而来
+│
+└── frontend/                            # React 18 + TypeScript 控制台
+    ├── src/components/RoutingInspector.tsx  # 把每一轮的路由决策过程摊开显示
+    ├── src/api/                         # client / hooks / types
+    ├── src/hooks/useChatStream.ts       # 按句流式接收
+    ├── Dockerfile
+    └── package.json
 ```
+
+### 命令在哪个目录执行
+
+重组成 `backend/` + `frontend/` 之后，本文档里的命令分三类，执行位置不同：
+
+| 命令 | 执行位置 | 例子 |
+|------|----------|------|
+| `docker compose *` | **仓库根** | `docker compose up -d --build` |
+| `./dev.sh` | **仓库根** | 同时起前后端 |
+| `pytest` / `ruff` / `python api/main.py` | `backend/` | `cd backend && pytest` |
+| `npm *` | `frontend/` | `cd frontend && npm run dev` |
+
+后文出现 `docker compose` 时若未特别说明，一律指在仓库根执行。
+
+`backend/docker-deploy.sh` 是例外：它从脚本自身位置推导仓库根，**在任何目录执行都成立**。
+内部所有 compose 调用都显式带 `-f <仓库根>/docker-compose.yml -p ai-helpdesk`，
+不依赖工作目录，也不受仓库目录改名影响。
 
 ## 1.1 跑测试
 
@@ -96,13 +130,25 @@ pip install -r requirements.txt && pytest
 
 ### 2.2 配置 `.env`
 
-复制示例文件：
+项目有**两份** `.env`，分工不同，配错地方会静默失效：
+
+| 文件 | 作用 | 谁在读 |
+|------|------|--------|
+| `<仓库根>/.env` | `docker-compose.yml` 里 `${VAR}` 的替换值 | Docker Compose 自己 |
+| `backend/.env` | 应用运行时配置（API Key、模型、Chroma 地址等） | 容器内的应用，经 `env_file` 注入 |
+
+Compose 做变量替换时**只读 compose 文件同目录的 `.env`**，也就是仓库根那份。
+把 `REDIS_PASSWORD` 写进 `backend/.env` 不会影响 Redis 容器的启动密码——
+它会安静地回退到 compose 里的内置默认值 `aihelpdesk123`。
+
+两份都复制一遍：
 
 ```bash
-cp .env.example .env
+cd <仓库根> && cp .env.example .env
+cd backend  && cp .env.example .env
 ```
 
-最少需要配置：
+`backend/.env` 最少需要配置：
 
 ```env
 ANTHROPIC_API_KEY=your_api_key
@@ -119,21 +165,21 @@ ANTHROPIC_API_KEY=your_deepseek_key
 Docker Compose 场景下，Redis 和 ChromaDB 的连接由 `docker-compose.yml` 覆盖为容器内地址。通常不需要手动改：
 
 ```env
-REDIS_PASSWORD=echomind123
+REDIS_PASSWORD=aihelpdesk123
 CHROMA_HOST=localhost
 CHROMA_PORT=8001
 ```
 
 ### 2.3 全栈部署和 run 开发模式的区别
 
-EchoMind 常用两种 Docker 启动方式：`docker compose up` 全栈部署，以及 `docker run` 开发模式。两者最大的区别是：**全栈部署会同时启动应用和依赖服务；run 开发模式通常只手动运行一个应用容器，依赖服务需要提前启动**。
+ai-helpdesk 常用两种 Docker 启动方式：`docker compose up` 全栈部署，以及 `docker run` 开发模式。两者最大的区别是：**全栈部署会同时启动应用和依赖服务；run 开发模式通常只手动运行一个应用容器，依赖服务需要提前启动**。
 
 | 对比项 | Docker Compose 全栈部署 | Docker run 开发模式 |
 |--------|--------------------------|----------------------|
-| 启动命令 | `docker compose up -d --build` | `docker run ... echomind ...` |
-| 启动内容 | EchoMind、Redis、ChromaDB、Prometheus、Nginx | 只启动你指定的单个容器 |
+| 启动命令 | `docker compose up -d --build` | `docker run ... ai-helpdesk ...` |
+| 启动内容 | ai-helpdesk、Redis、ChromaDB、Prometheus、Nginx | 只启动你指定的单个容器 |
 | Redis/ChromaDB | 自动启动并加入同一网络 | 必须先执行 `docker compose up -d redis chromadb` |
-| 容器网络 | Compose 自动创建并管理 | 需要手动指定 `--network echomind_echomind-network` |
+| 容器网络 | Compose 自动创建并管理 | 需要手动指定 `--network ai-helpdesk_ai-helpdesk-network` |
 | 服务名解析 | 应用可直接访问 `redis`、`chromadb` | 只有加入同一网络后才可访问 `redis`、`chromadb` |
 | 代码更新 | 通常需要 rebuild 或重启服务 | 挂载 `-v "$(pwd):/workspace"` 后，代码修改可直接生效，重启容器即可 |
 | 适合场景 | 演示、联调、完整部署、HTTP API 服务 | 本地开发、调试 CLI、临时覆盖环境变量 |
@@ -143,7 +189,7 @@ EchoMind 常用两种 Docker 启动方式：`docker compose up` 全栈部署，�
 
 - 想完整体验 HTTP API、Swagger、Nginx、Prometheus：用 **Docker Compose 全栈部署**。
 - 想调试源码或 CLI，并且希望本地改代码后快速重跑：用 **Docker run 开发模式**。
-- 如果只是跑 CLI，最省心的方式是 `docker compose run --rm echomind python api/main.py --cli`，它会自动使用 Compose 网络。
+- 如果只是跑 CLI，最省心的方式是 `docker compose run --rm ai-helpdesk python api/main.py --cli`，它会自动使用 Compose 网络。
 
 ## 2.5 前端和后端一起启动
 
@@ -165,7 +211,7 @@ docker compose up -d --build   # 在仓库根执行
 | http://localhost:80 | Nginx 反代的后端 API |
 | http://localhost:9090 | Prometheus |
 
-前端容器里的 Nginx 把 `/api/` 反代到 `echomind:8000`，走 Docker 内网，
+前端容器里的 Nginx 把 `/api/` 反代到 `ai-helpdesk:8000`，走 Docker 内网，
 不依赖 `host.docker.internal`，也不会因为宿主机端口占用而失效。
 后端地址由 `API_UPSTREAM` 环境变量注入，改 compose 就能指到别处。
 
@@ -194,7 +240,7 @@ cd ../backend && python -m uvicorn api.main:app --port 8000
 ```
 
 然后 http://localhost:8000 既是页面也是 API。查找顺序：
-`ECHOMIND_FRONTEND_DIST` 环境变量 → `backend/static/` → `../frontend/dist/`。
+`AI_HELPDESK_FRONTEND_DIST` 环境变量 → `backend/static/` → `../frontend/dist/`。
 三个都找不到就只提供 API，不影响纯后端部署。
 
 静态资源挂载在所有 API 路由注册**之后**，因此 `/chat`、`/search`、`/docs` 等接口
@@ -217,20 +263,20 @@ docker compose ps
 查看应用日志：
 
 ```bash
-docker compose logs -f echomind
+docker compose logs -f ai-helpdesk
 ```
 
-看到 EchoMind 启动日志并且健康检查通过后，服务可用。
+看到 ai-helpdesk 启动日志并且健康检查通过后，服务可用。
 
 启动后的端口：
 
 | 服务 | 容器名 | 宿主机端口 | 容器内端口 | 用途 |
 |------|--------|------------|------------|------|
-| EchoMind API | `echomind-app` | `8000` | `8000` | 主 API 服务 |
-| Nginx | `echomind-nginx` | `80` | `80` | 反向代理 |
-| ChromaDB | `echomind-chromadb` | `8001` | `8000` | 向量数据库 |
-| Redis | `echomind-redis` | `6379` | `6379` | 工作记忆 |
-| Prometheus | `echomind-prometheus` | `9090` | `9090` | 监控数据 |
+| ai-helpdesk API | `ai-helpdesk-app` | `8000` | `8000` | 主 API 服务 |
+| Nginx | `ai-helpdesk-nginx` | `80` | `80` | 反向代理 |
+| ChromaDB | `ai-helpdesk-chromadb` | `8001` | `8000` | 向量数据库 |
+| Redis | `ai-helpdesk-redis` | `6379` | `6379` | 工作记忆 |
+| Prometheus | `ai-helpdesk-prometheus` | `9090` | `9090` | 监控数据 |
 
 健康检查：
 
@@ -263,47 +309,47 @@ docker compose up -d redis chromadb
 构建镜像：
 
 ```bash
-docker compose build --no-cache echomind
+docker compose build --no-cache ai-helpdesk
 ```
 
 启动 HTTP 服务：
 
 ```bash
 docker run -it --rm \
-  --network echomind_echomind-network \
+  --network ai-helpdesk_ai-helpdesk-network \
   -p 8000:8000 \
   -e ANTHROPIC_BASE_URL="https://api.deepseek.com/anthropic" \
   -e ANTHROPIC_API_KEY="your_key" \
   -e ANTHROPIC_MODEL="deepseek-v4-pro" \
-  -e REDIS_URL="redis://:echomind123@redis:6379/0" \
+  -e REDIS_URL="redis://:aihelpdesk123@redis:6379/0" \
   -e CHROMA_HOST="chromadb" \
   -e CHROMA_PORT="8000" \
   -e CHROMA_PERSIST_DIRECTORY="/workspace/data/chroma" \
   -v "$(pwd):/workspace" \
   -w /workspace \
-  echomind
+  ai-helpdesk
 ```
 
 CLI 交互模式：
 
 ```bash
 docker run -it --rm \
-  --network echomind_echomind-network \
+  --network ai-helpdesk_ai-helpdesk-network \
   -e ANTHROPIC_BASE_URL="https://api.deepseek.com/anthropic" \
   -e ANTHROPIC_API_KEY="your_key" \
   -e ANTHROPIC_MODEL="deepseek-v4-pro" \
-  -e REDIS_URL="redis://:echomind123@redis:6379/0" \
+  -e REDIS_URL="redis://:aihelpdesk123@redis:6379/0" \
   -e CHROMA_HOST="chromadb" \
   -e CHROMA_PORT="8000" \
   -v "$(pwd):/workspace" \
   -w /workspace \
-  echomind \
+  ai-helpdesk \
   python api/main.py --cli
 ```
 
 ## 5. Swagger 和接口总览
 
-EchoMind 基于 FastAPI 构建，启动 HTTP 服务后可以直接在浏览器访问 Swagger UI 调用接口。
+ai-helpdesk 基于 FastAPI 构建，启动 HTTP 服务后可以直接在浏览器访问 Swagger UI 调用接口。
 
 本地 Swagger 地址：
 
@@ -351,13 +397,13 @@ http://localhost/docs
 
 ### 5.2 Skills 动态能力加载
 
-EchoMind 支持从目录加载 Skills，用来把业务流程、客服话术、排障 SOP 等规则动态注入 Agent。
+ai-helpdesk 支持从目录加载 Skills，用来把业务流程、客服话术、排障 SOP 等规则动态注入 Agent。
 
 默认配置：
 
 ```env
-ECHOMIND_SKILLS_DIR=./skills
-ECHOMIND_SKILLS_MAX_PROMPT_CHARS=5000
+AI_HELPDESK_SKILLS_DIR=./skills
+AI_HELPDESK_SKILLS_MAX_PROMPT_CHARS=5000
 ```
 
 推荐结构：
@@ -688,7 +734,7 @@ curl -X POST http://localhost:8000/chat \
 
 ## 7. 知识库使用
 
-EchoMind 的知识库由 `mcp/knowledge_base.py` 管理，底层使用 ChromaDB collection：
+ai-helpdesk 的知识库由 `mcp/knowledge_base.py` 管理，底层使用 ChromaDB collection：
 
 ```text
 knowledge_base
@@ -796,7 +842,7 @@ curl -X POST http://localhost:8000/search \
 
 ## 8. ChromaDB 在项目中的用途
 
-EchoMind 使用了三个 ChromaDB collection：
+ai-helpdesk 使用了三个 ChromaDB collection：
 
 | Collection | 模块 | 作用 |
 |------------|------|------|
@@ -817,7 +863,7 @@ EchoMind 使用了三个 ChromaDB collection：
 Compose 中 ChromaDB 容器名是：
 
 ```text
-echomind-chromadb
+ai-helpdesk-chromadb
 ```
 
 宿主机访问端口是：
@@ -843,7 +889,7 @@ curl http://localhost:8001/api/v1/heartbeat
 容器内执行：
 
 ```bash
-docker exec -it echomind-chromadb curl http://localhost:8000/api/v1/heartbeat
+docker exec -it ai-helpdesk-chromadb curl http://localhost:8000/api/v1/heartbeat
 ```
 
 ### 9.2 查看所有 collection
@@ -859,7 +905,7 @@ curl http://localhost:8001/api/v1/collections
 进入应用容器：
 
 ```bash
-docker exec -it echomind-app bash
+docker exec -it ai-helpdesk-app bash
 ```
 
 在容器里执行：
@@ -890,7 +936,7 @@ collections:
 ### 9.4 查看 `knowledge_base` 文档内容
 
 ```bash
-docker exec -it echomind-app bash
+docker exec -it ai-helpdesk-app bash
 ```
 
 执行：
@@ -914,7 +960,7 @@ PY
 ### 9.5 查询 `knowledge_base`
 
 ```bash
-docker exec -it echomind-app bash
+docker exec -it ai-helpdesk-app bash
 ```
 
 执行：
@@ -957,7 +1003,7 @@ curl -X POST http://localhost:8000/chat \
 等待几秒后查看：
 
 ```bash
-docker exec -it echomind-app bash
+docker exec -it ai-helpdesk-app bash
 ```
 
 ```bash
@@ -997,7 +1043,7 @@ done
 查看情景记忆：
 
 ```bash
-docker exec -it echomind-app bash
+docker exec -it ai-helpdesk-app bash
 ```
 
 ```bash
@@ -1032,13 +1078,13 @@ volumes:
 
 ```bash
 docker volume ls | grep chromadb
-docker volume inspect echomind_chromadb-data
+docker volume inspect ai-helpdesk_chromadb-data
 ```
 
 查看容器内数据目录：
 
 ```bash
-docker exec -it echomind-chromadb sh
+docker exec -it ai-helpdesk-chromadb sh
 ls -lah /chroma/chroma
 find /chroma/chroma -maxdepth 2 -type f | head
 ```
@@ -1051,14 +1097,14 @@ find /chroma/chroma -maxdepth 2 -type f | head
 
 ```bash
 docker compose down
-docker volume rm echomind_chromadb-data
+docker volume rm ai-helpdesk_chromadb-data
 docker compose up -d --build
 ```
 
 如果只想删除某个 collection，可以用 Python 客户端：
 
 ```bash
-docker exec -it echomind-app bash
+docker exec -it ai-helpdesk-app bash
 ```
 
 ```bash
@@ -1078,13 +1124,13 @@ PY
 Redis 容器名：
 
 ```text
-echomind-redis
+ai-helpdesk-redis
 ```
 
 进入 Redis：
 
 ```bash
-docker exec -it echomind-redis redis-cli -a echomind123
+docker exec -it ai-helpdesk-redis redis-cli -a aihelpdesk123
 ```
 
 查看 key：
@@ -1154,7 +1200,7 @@ conv_id = 5a076f2b-b607-4339-9e9f-f0399862d366
 进入 Redis：
 
 ```bash
-docker exec -it echomind-redis redis-cli -a echomind123
+docker exec -it ai-helpdesk-redis redis-cli -a aihelpdesk123
 ```
 
 查询摘要：
@@ -1166,7 +1212,7 @@ GET summary:cli_user:5a076f2b-b607-4339-9e9f-f0399862d366
 一条命令快速查看：
 
 ```bash
-docker exec -it echomind-redis redis-cli -a echomind123 \
+docker exec -it ai-helpdesk-redis redis-cli -a aihelpdesk123 \
   GET summary:cli_user:5a076f2b-b607-4339-9e9f-f0399862d366
 ```
 
@@ -1181,7 +1227,7 @@ LRANGE wm:cli_user:5a076f2b-b607-4339-9e9f-f0399862d366 0 -1
 一条命令快速查看：
 
 ```bash
-docker exec -it echomind-redis redis-cli -a echomind123 \
+docker exec -it ai-helpdesk-redis redis-cli -a aihelpdesk123 \
   LRANGE wm:cli_user:5a076f2b-b607-4339-9e9f-f0399862d366 0 -1
 ```
 
@@ -1196,13 +1242,13 @@ docker exec -it echomind-redis redis-cli -a echomind123 \
 如果是全栈部署，应用容器名通常是：
 
 ```text
-echomind-app
+ai-helpdesk-app
 ```
 
 进入应用容器：
 
 ```bash
-docker exec -it echomind-app bash
+docker exec -it ai-helpdesk-app bash
 ```
 
 如果你是用 `docker run --rm` 跑 CLI，容器名可能是随机的。先查看：
@@ -1257,7 +1303,7 @@ PY
 ### 11.4 如果只想看某个用户的所有情景记忆
 
 ```bash
-docker exec -it echomind-app bash
+docker exec -it ai-helpdesk-app bash
 ```
 
 ```bash
@@ -1389,7 +1435,7 @@ docker compose stop
 重启服务：
 
 ```bash
-docker compose restart echomind
+docker compose restart ai-helpdesk
 ```
 
 停止并删除容器，但保留数据卷：
@@ -1417,7 +1463,7 @@ docker compose up -d --build
 查看应用日志：
 
 ```bash
-docker compose logs -f echomind
+docker compose logs -f ai-helpdesk
 ```
 
 重点检查：
@@ -1440,7 +1486,7 @@ curl http://localhost:8001/api/v1/heartbeat
 应用容器内测试：
 
 ```bash
-docker exec -it echomind-app bash
+docker exec -it ai-helpdesk-app bash
 python - <<'PY'
 import chromadb
 client = chromadb.HttpClient(host="chromadb", port=8000)
@@ -1453,13 +1499,13 @@ PY
 确认 `.env` 和 `docker-compose.yml` 中使用的密码一致。默认密码是：
 
 ```text
-echomind123
+aihelpdesk123
 ```
 
 测试连接：
 
 ```bash
-docker exec -it echomind-redis redis-cli -a echomind123 ping
+docker exec -it ai-helpdesk-redis redis-cli -a aihelpdesk123 ping
 ```
 
 ### 15.4 `/search` 没有结果
@@ -1491,7 +1537,7 @@ curl -X POST http://localhost:8000/search \
 
 1. 先调用 `/chat`，使用固定 `user_id`
 2. 等待几秒
-3. 查看 `docker compose logs -f echomind` 是否出现 `用户画像已更新`
+3. 查看 `docker compose logs -f ai-helpdesk` 是否出现 `用户画像已更新`
 4. 使用第 8.6 节的 Python 脚本查询 `user_profile`
 
 ### 15.6 情景记忆查不到
@@ -1530,7 +1576,7 @@ curl -X POST http://localhost:8000/knowledge/upload \
 # 6. 检索
 curl -X POST http://localhost:8000/search \
   -H "Content-Type: application/json" \
-  -d '{"query": "EchoMind如何接入API", "top_k": 3}'
+  -d '{"query": "ai-helpdesk如何接入API", "top_k": 3}'
 
 # 7. 监控
 curl http://localhost:8000/monitor

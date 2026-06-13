@@ -1,6 +1,6 @@
-# EchoMind Skills 文档
+# ai-helpdesk Skills 文档
 
-EchoMind 启动时会从 `ECHOMIND_SKILLS_DIR` 读取 Skills，并在匹配用户请求时注入到对应 Agent 的 system prompt。Skills 适合维护业务处理规范、客服话术、技术排障 SOP、账单审核边界、升级规则和禁止事项。
+ai-helpdesk 启动时会从 `AI_HELPDESK_SKILLS_DIR` 读取 Skills，并在匹配用户请求时注入到对应 Agent 的 system prompt。Skills 适合维护业务处理规范、客服话术、技术排障 SOP、账单审核边界、升级规则和禁止事项。
 
 当前内置四类 Skills，与三个专家 Agent + 一个兜底 Agent 一一对应：
 

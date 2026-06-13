@@ -1,22 +1,22 @@
-# Prometheus 配置文件 — EchoMind 智能客服系统
+# Prometheus 配置文件 — ai-helpdesk 智能客服系统
 
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
   external_labels:
-    cluster: 'echomind'
+    cluster: 'ai-helpdesk'
     environment: 'production'
 
 rule_files:
   - "alerts/*.yml"
 
 scrape_configs:
-  # EchoMind 主应用指标
-  - job_name: 'echomind-app'
+  # ai-helpdesk 主应用指标
+  - job_name: 'ai-helpdesk-app'
     static_configs:
-      - targets: ['echomind:8000']
+      - targets: ['ai-helpdesk:8000']
         labels:
-          service: 'echomind'
+          service: 'ai-helpdesk'
     scrape_interval: 10s
     metrics_path: '/metrics'
 

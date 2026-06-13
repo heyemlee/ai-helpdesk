@@ -1,4 +1,4 @@
-# EchoMind 依赖清单
+# ai-helpdesk 依赖清单
 
 # ── AI / LLM ──────────────────────────────────────────────────────────────────
 anthropic==0.40.0          # LLM 调用（兼容 DeepSeek 等 Anthropic 协议网关）

@@ -71,7 +71,7 @@ jobs:
 
       # 只构建不推送：验证两个 Dockerfile 始终可构建
       - name: Build frontend image
-        run: docker build -t echomind-frontend:ci frontend
+        run: docker build -t ai-helpdesk-frontend:ci frontend
 
       - name: Build backend image
-        run: docker build -t echomind:ci --target production backend
+        run: docker build -t ai-helpdesk:ci --target production backend

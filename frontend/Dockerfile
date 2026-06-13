@@ -1,4 +1,4 @@
-# EchoMind 前端 — 多阶段构建
+# ai-helpdesk 前端 — 多阶段构建
 # 阶段 1 在镜像内完成 npm build，因此不需要先在本机跑 npm run build。
 FROM node:20-alpine AS build
 
@@ -15,7 +15,7 @@ RUN npm run build
 FROM nginx:1.27-alpine AS production
 
 # 用 template 而不是固定 conf：后端地址由 API_UPSTREAM 环境变量注入，
-# 单独跑前端时指向 host.docker.internal，整栈 compose 里指向 echomind 服务名。
+# 单独跑前端时指向 host.docker.internal，整栈 compose 里指向 ai-helpdesk 服务名。
 COPY docker/templates/default.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /app/dist /usr/share/nginx/html
 

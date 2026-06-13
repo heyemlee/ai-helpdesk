@@ -2,7 +2,7 @@
 # 本地开发：一条命令同时起后端（uvicorn :8000）和前端（vite :5173）。
 # Ctrl-C 会把两个进程一起收掉。
 #
-# 前端通过 vite.config.js 的 proxy 把 /api 转发到 :8000，
+# 前端通过 vite.config.ts 的 proxy 把 /api 转发到 :8000，
 # 浏览器只需要访问 http://localhost:5173。
 set -euo pipefail
 
