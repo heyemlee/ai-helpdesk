@@ -17,6 +17,10 @@ dist/
 # .env 有真实 API Key，绝不入库；.env.example 是模板，要入库
 .env
 .env.local
+
+# docker-deploy.sh backup 的产物：Redis dump、Chroma 向量库、config 副本。
+# 其中含真实对话数据，且每次备份约 2MB。
+backups/
 *.pem
 
 # ── 运行时数据 ────────────────────────────────────────────────────────────────
