@@ -1,3 +1,5 @@
+import Markdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { Badge } from './ui'
 import { agentLabel, confidenceTone, ms } from '@/lib/format'
 import type { ChatMessage } from '@/hooks/useChatStream'
@@ -48,13 +50,19 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
       </div>
 
       <div className="max-w-[92%] rounded-2xl rounded-bl-md bg-slate-800/60 px-3.5 py-2
-                      text-sm leading-relaxed whitespace-pre-wrap text-slate-100
+                      text-sm leading-relaxed text-slate-100
                       ring-1 ring-inset ring-slate-700/50">
         {message.error ? (
           <span className="text-rose-300">{message.error}</span>
         ) : (
           <>
-            {message.content}
+            {/* Agent 回复常带编号步骤和列表，按 Markdown 渲染而不是纯文本。
+                react-markdown 默认不解析原始 HTML，模型输出的标签不会被执行。
+                流式下每次增量都重渲染半截 Markdown——未闭合的语法先当普通文本，
+                补全后自然变成格式，不需要额外处理。 */}
+            <div className="prose-chat">
+              <Markdown remarkPlugins={[remarkGfm]}>{message.content}</Markdown>
+            </div>
             {message.streaming && (
               <span className="ml-0.5 inline-block h-4 w-[7px] translate-y-[2px]
                                animate-pulse bg-slate-300 align-baseline" />
