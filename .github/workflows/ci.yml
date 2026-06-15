@@ -12,6 +12,22 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    services:
+      # pgvector 容器：让 PgStore/PgTicketStore/PgConversationLog 的
+      # 合同测试在 CI 里真实跑（本地未配置 TEST_POSTGRES_DSN 时自动跳过）
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test -d test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -34,6 +50,7 @@ jobs:
         # 测试不发真实网络请求，这里给一个占位 key 满足启动期配置校验
         env:
           ANTHROPIC_API_KEY: test-key
+          TEST_POSTGRES_DSN: postgresql://test:test@localhost:5432/test
         run: pytest -q
 
   frontend:

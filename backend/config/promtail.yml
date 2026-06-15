@@ -1,0 +1,38 @@
+# Promtail：通过 docker_sd 发现本 compose 的容器，采集 stdout 日志推 Loki。
+# 后端容器输出 LOG_FORMAT=json 的单行 JSON，这里解析出 level/request_id/trace_id
+# 作为标签/字段，Grafana 里可按 trace_id 跳转 Tempo。
+server:
+  http_listen_port: 9080
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 15s
+    relabel_configs:
+      - source_labels: ["__meta_docker_container_name"]
+        regex: "/(ai-helpdesk-.*)"
+        target_label: container
+      # 只采集本项目的容器
+      - source_labels: ["__meta_docker_container_name"]
+        regex: "/ai-helpdesk-.*"
+        action: keep
+    pipeline_stages:
+      # 后端应用日志是单行 JSON：抽取字段，level 提升为标签
+      - match:
+          selector: '{container="ai-helpdesk-app"}'
+          stages:
+            - json:
+                expressions:
+                  level: level
+                  request_id: request_id
+                  trace_id: trace_id
+                  logger: logger
+            - labels:
+                level:

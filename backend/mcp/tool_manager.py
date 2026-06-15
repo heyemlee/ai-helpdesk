@@ -25,7 +25,7 @@ from typing import Any
 
 from anthropic import AsyncAnthropic
 
-from core.llm_utils import extract_text_content
+from core.llm_utils import anthropic_client_kwargs, extract_text_content
 
 logger = logging.getLogger(__name__)
 
@@ -135,20 +135,56 @@ class MCPToolManager:
       用户查询 → 查询改写（多角度子查询）→ 并行召回 → 结果重排 → 返回 Top-K
     """
 
-    def __init__(self, api_key: str, base_url: str | None = None, model: str = "claude-3-5-sonnet-20241022"):
-        kwargs: dict[str, Any] = {"api_key": api_key}
-        if base_url:
-            kwargs["base_url"] = base_url
+    def __init__(
+        self,
+        api_key: str,
+        base_url: str | None = None,
+        model: str = "claude-3-5-sonnet-20241022",
+        shared_state=None,
+    ):
+        kwargs = anthropic_client_kwargs(api_key, base_url)
         self._client = AsyncAnthropic(**kwargs)
         self._model  = model
         self._tools: dict[str, Tool] = {}
         self._cache: dict[str, tuple] = {}   # key → (result, expire_at, reranked)
+        # 多实例部署时传入 SharedState，熔断状态经 Redis 共享：实例 A 熔断后
+        # 实例 B 对同一工具的调用同样被拒绝。未传入时用进程内熔断器（单实例语义）。
+        self._shared_state = shared_state
+        self._dist_breakers: dict[str, Any] = {}
 
     # ── 注册 / 注销 ───────────────────────────────────────────────────────────
 
     def register(self, tool: Tool) -> None:
         self._tools[tool.name] = tool
+        if self._shared_state is not None:
+            from core.shared_state import DistributedCircuitBreaker
+            self._dist_breakers[tool.name] = DistributedCircuitBreaker(
+                self._shared_state,
+                tool.name,
+                failure_threshold=tool.breaker.threshold,
+                recovery_s=tool.breaker.recovery_s,
+            )
         logger.info(f"注册工具: {tool.name}")
+
+    # ── 熔断（进程内 / 分布式统一入口）────────────────────────────────────────
+
+    async def _breaker_allow(self, tool: Tool) -> bool:
+        dist = self._dist_breakers.get(tool.name)
+        if dist is not None:
+            return await dist.allow()
+        return tool.breaker.allow()
+
+    async def _breaker_success(self, tool: Tool) -> None:
+        dist = self._dist_breakers.get(tool.name)
+        if dist is not None:
+            await dist.record_success()
+        tool.breaker.record_success()  # 本地始终记录，get_stats 不依赖 Redis
+
+    async def _breaker_failure(self, tool: Tool) -> None:
+        dist = self._dist_breakers.get(tool.name)
+        if dist is not None:
+            await dist.record_failure()
+        tool.breaker.record_failure()
 
     def unregister(self, name: str) -> None:
         self._tools.pop(name, None)
@@ -190,7 +226,7 @@ class MCPToolManager:
                 )
 
         # 熔断检查
-        if not tool.breaker.allow():
+        if not await self._breaker_allow(tool):
             error = f"工具熔断中: {name}，请稍后重试"
             return await self._fallback_result(tool, params, context, error)
 
@@ -206,7 +242,7 @@ class MCPToolManager:
             tool.stats.success += 1
             tool.stats.consecutive_fails = 0
             tool.stats.total_latency_ms += latency
-            tool.breaker.record_success()
+            await self._breaker_success(tool)
 
             # 重排（针对返回列表的检索工具）
             reranked = False
@@ -224,14 +260,14 @@ class MCPToolManager:
         except TimeoutError:
             tool.stats.failed += 1
             tool.stats.consecutive_fails += 1
-            tool.breaker.record_failure()
+            await self._breaker_failure(tool)
             logger.error(f"工具超时: {name} ({tool.timeout_s}s)")
             return await self._fallback_result(tool, params, context, "执行超时")
 
         except Exception as ex:
             tool.stats.failed += 1
             tool.stats.consecutive_fails += 1
-            tool.breaker.record_failure()
+            await self._breaker_failure(tool)
             logger.error(f"工具异常: {name} — {ex}")
             return await self._fallback_result(tool, params, context, str(ex))
 

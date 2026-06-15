@@ -3,15 +3,18 @@
 
 三级记忆架构，模拟人类记忆机制：
   1. 工作记忆（Redis）—— 当前会话的最近 N 条消息，毫秒级读写
-  2. 情景记忆（ChromaDB）—— 跨会话的历史对话，按语义相似度检索
-  3. 用户画像（ChromaDB）—— 从对话中提炼的长期偏好和实体
+  2. 情景记忆（pgvector / SQLite）—— 跨会话的历史对话，按语义相似度检索
+  3. 用户画像（Postgres / SQLite）—— 从对话中提炼的长期偏好和实体
+
+情景记忆与画像面向 storage/vector_store.py 的存储接口：生产走
+Postgres + pgvector（`<=>` 余弦检索），未配置 POSTGRES_DSN 时用
+SQLite 兜底。向量由 core/embedder.py 统一生成。
 
 关键设计：
   - 上下文构建时三级记忆融合，按重要性 + 时效性排序
   - 工作记忆超过阈值时自动压缩（LLM 摘要），防止 context 爆炸
   - 所有 Embedding 通过 Anthropic API 生成，无本地模型
 """
-import asyncio
 import hashlib
 import json
 import logging
@@ -21,11 +24,11 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-import chromadb
 import redis.asyncio as redis
 from anthropic import AsyncAnthropic
 
-from core.llm_utils import extract_text_content
+from core.llm_utils import anthropic_client_kwargs, extract_text_content
+from core.telemetry import span
 
 logger = logging.getLogger(__name__)
 
@@ -86,43 +89,21 @@ class MemoryManager:
 
     def __init__(
         self,
+        store,
+        embedder,
         redis_url:    str = "redis://localhost:6379/0",
-        chroma_host:  str = "localhost",
-        chroma_port:  int = 8000,
-        chroma_path:  str = "./data/chroma",
         api_key:      str = "",
         base_url:     str | None = None,
         model:        str = "claude-3-5-sonnet-20241022",
     ):
-        kwargs: dict[str, Any] = {"api_key": api_key}
-        if base_url:
-            kwargs["base_url"] = base_url
+        kwargs = anthropic_client_kwargs(api_key, base_url)
         self._client = AsyncAnthropic(**kwargs)
         self._model  = model
 
         self._redis = redis.from_url(redis_url, decode_responses=True)
-
-        # ChromaDB：优先连接独立服务（docker compose 模式），连不上则降级为本地嵌入式
-        try:
-            # HttpClient 默认也会初始化 ChromaDB telemetry；显式关闭避免 posthog 兼容性错误日志。
-            chroma = chromadb.HttpClient(
-                host=chroma_host,
-                port=chroma_port,
-                settings=chromadb.Settings(anonymized_telemetry=False),
-            )
-            chroma.heartbeat()  # 测试连接
-            logger.info(f"ChromaDB 已连接: {chroma_host}:{chroma_port}")
-        except Exception:
-            logger.info(f"ChromaDB 服务不可用，使用本地嵌入式模式: {chroma_path}")
-            chroma = chromadb.PersistentClient(
-                path=chroma_path,
-                settings=chromadb.Settings(anonymized_telemetry=False),
-            )
-
-        # 情景记忆：存储历史对话片段
-        self._episodic = chroma.get_or_create_collection("episodic")
-        # 用户画像：存储提炼出的偏好和实体
-        self._profile  = chroma.get_or_create_collection("user_profile")
+        # 情景记忆 + 用户画像的存储后端（PgStore 或 LocalStore）与向量生成器
+        self._store = store
+        self._embedder = embedder
 
     # ── 写入 ──────────────────────────────────────────────────────────────────
 
@@ -185,26 +166,9 @@ class MemoryManager:
             s, e = raw.find("{"), raw.rfind("}") + 1
             profile_data = json.loads(raw[s:e])
 
-            # 每个用户只保留一条画像并整条覆盖。
-            # 之前按会话建 doc（{user}_profile_{conv}），而读取端是
-            # get(where={"user_id":...}, limit=1)——Chroma 不保证顺序，
-            # 取回的可能是几个月前那次会话的画像。
-            doc_id = self._profile_doc_id(user_id)
+            # 每个用户只保留一条画像，整条覆盖（存储层 ON CONFLICT/REPLACE 保证）。
             doc_text = self._safe_text(json.dumps(profile_data, ensure_ascii=False))
-
-            try:
-                await asyncio.to_thread(self._profile.delete, ids=[doc_id])
-            except Exception:
-                pass
-
-            # 直接传 documents，让 ChromaDB 内置模型生成 embedding（不依赖 Voyage API）
-            await asyncio.to_thread(
-                self._profile.add,
-                ids=[doc_id],
-                documents=[doc_text],
-                metadatas=[{"user_id": user_id, "conv_id": conv_id,
-                            "ts": datetime.now().isoformat()}],
-            )
+            await self._store.profile_set(user_id, conv_id, doc_text)
             logger.info(f"用户画像已更新: {user_id}")
         except Exception as ex:
             logger.warning(f"更新用户画像失败: {ex}")
@@ -222,6 +186,10 @@ class MemoryManager:
         conv_id = self._safe_text(conv_id)
         query = self._safe_text(query)
 
+        with span("memory.get_context"):
+            return await self._get_context_inner(user_id, conv_id, query)
+
+    async def _get_context_inner(self, user_id: str, conv_id: str, query: str) -> MemoryContext:
         recent = await self._get_working_memory(user_id, conv_id)
 
         # 2. 情景记忆（跨会话语义检索）
@@ -307,19 +275,15 @@ class MemoryManager:
         return msgs
 
     async def _search_episodic(self, user_id: str, query: str) -> list[str]:
-        """语义检索情景记忆。ChromaDB 内置 embedding，不依赖外部 API。"""
+        """语义检索情景记忆：向量由 Embedder 生成，检索按 user_id 过滤。"""
         query_text = self._safe_text(query).strip()
         if not query_text:
             return []
         try:
-            # 直接传 query_texts，ChromaDB 内置模型自动生成向量做匹配
-            results = await asyncio.to_thread(
-                self._episodic.query,
-                query_texts=[query_text],
-                n_results=self.HISTORY_TOP_K,
-                where={"user_id": self._safe_text(user_id)},
+            embedding = await self._embedder.embed(query_text)
+            docs = await self._store.episodic_search(
+                self._safe_text(user_id), embedding, self.HISTORY_TOP_K
             )
-            docs = results["documents"][0] if results["documents"] else []
             return [self._safe_text(doc) for doc in docs if isinstance(doc, str) and doc.strip()]
         except Exception as ex:
             logger.warning(f"情景记忆检索失败: {ex}")
@@ -333,34 +297,22 @@ class MemoryManager:
             text = self._safe_text(text)
             summary = self._safe_text(summary)
             doc_id = hashlib.md5(f"{user_id}{conv_id}{time.time()}".encode()).hexdigest()
-            # 直接传 documents，ChromaDB 内置模型自动生成 embedding
-            await asyncio.to_thread(
-                self._episodic.add,
-                ids=[doc_id],
-                documents=[summary],
-                metadatas=[{"user_id": user_id, "conv_id": conv_id,
-                            "ts": datetime.now().isoformat(), "full_text": self._safe_text(text[:500])}],
+            embedding = await self._embedder.embed(summary)
+            await self._store.episodic_add(
+                doc_id, user_id, conv_id, summary, text, embedding
             )
         except Exception as ex:
             logger.warning(f"存储情景记忆失败: {ex}")
 
     async def _get_profile(self, user_id: str) -> dict[str, Any]:
-        """获取用户画像。按确定的 doc id 直读，不依赖 Chroma 的返回顺序。"""
+        """获取用户画像：user_id 主键直读。"""
         try:
-            results = await asyncio.to_thread(
-                self._profile.get, ids=[self._profile_doc_id(self._safe_text(user_id))]
-            )
-            documents = results.get("documents") or []
-            if documents:
-                return json.loads(documents[0])
+            raw = await self._store.profile_get(self._safe_text(user_id))
+            if raw:
+                return json.loads(raw)
         except Exception as ex:
             logger.warning(f"读取用户画像失败: {ex}")
         return {}
-
-    @staticmethod
-    def _profile_doc_id(user_id: str) -> str:
-        """每个用户一条画像，更新即覆盖。"""
-        return f"{user_id}_profile"
 
     async def close(self) -> None:
         """关闭异步 Redis 连接。"""
@@ -376,7 +328,7 @@ class MemoryManager:
 
     @staticmethod
     def _safe_text(value: Any) -> str:
-        """转成 ChromaDB 可接受的普通 UTF-8 字符串。"""
+        """清洗为合法 UTF-8，避免 Redis/存储层读写遇到代理字符。"""
         if value is None:
             return ""
         if not isinstance(value, str):
@@ -385,7 +337,7 @@ class MemoryManager:
 
     @classmethod
     def _safe_metadata_value(cls, value: Any) -> Any:
-        """递归清洗 metadata，避免 Redis/ChromaDB 后续读写遇到非法 UTF-8。"""
+        """递归清洗 metadata，避免 Redis/存储层后续读写遇到非法 UTF-8。"""
         if isinstance(value, str):
             return cls._safe_text(value)
         if isinstance(value, dict):

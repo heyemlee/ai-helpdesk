@@ -13,10 +13,19 @@ python-multipart==0.0.12    # FastAPI 文件上传支持
 
 # ── 数据存储 ──────────────────────────────────────────────────────────────────
 redis==5.2.1
-chromadb==0.5.23           # 向量数据库（长期记忆）
+asyncpg==0.30.0            # Postgres：工单/审计/KB 向量/记忆统一落库
+                           # 向量检索走 pgvector（<=> 余弦距离），未配置
+                           # POSTGRES_DSN 时退化为 SQLite 本地兜底
 
-# ── 监控 ──────────────────────────────────────────────────────────────────────
+# ── 监控与追踪 ────────────────────────────────────────────────────────────────
 prometheus-client==0.21.1
+opentelemetry-api==1.29.0
+opentelemetry-sdk==1.29.0
+opentelemetry-exporter-otlp-proto-http==1.29.0
+opentelemetry-instrumentation-fastapi==0.50b0
+opentelemetry-instrumentation-httpx==0.50b0     # 覆盖 Anthropic SDK 的底层 HTTP 调用
+opentelemetry-instrumentation-redis==0.50b0
+opentelemetry-instrumentation-asyncpg==0.50b0
 
 # ── HTTP 客户端 ───────────────────────────────────────────────────────────────
 httpx==0.28.1              # monitor/performance_monitor.py webhook 告警

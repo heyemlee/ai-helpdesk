@@ -30,7 +30,8 @@ from typing import Any
 import httpx
 from anthropic import AsyncAnthropic
 
-from core.llm_utils import extract_text_content
+from core.llm_utils import anthropic_client_kwargs, extract_text_content
+from core.telemetry import span
 
 logger = logging.getLogger(__name__)
 
@@ -211,9 +212,7 @@ class IntentRecognizer:
         embedding_model: str = "text-embedding-3-small",
         enable_fast_path: bool = True,
     ):
-        kwargs: dict[str, Any] = {"api_key": api_key}
-        if base_url:
-            kwargs["base_url"] = base_url
+        kwargs = anthropic_client_kwargs(api_key, base_url)
         self.client    = AsyncAnthropic(**kwargs)
         self.model     = model
         self.threshold = confidence_threshold
@@ -253,6 +252,18 @@ class IntentRecognizer:
 
         history 格式：[{"role": "user"/"assistant", "content": "..."}]
         """
+        with span("intent.recognize") as sp:
+            result = await self._recognize_inner(message, history)
+            sp.set_attribute("intent", result.intent.value)
+            sp.set_attribute("strategy", result.strategy)
+            sp.set_attribute("confidence", result.confidence)
+            return result
+
+    async def _recognize_inner(
+        self,
+        message: str,
+        history: list[dict[str, str]] | None = None,
+    ) -> IntentResult:
         key = self._cache_key(message, history)
         if key in self._cache:
             self.cache_hits += 1

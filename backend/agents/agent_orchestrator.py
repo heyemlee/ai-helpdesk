@@ -37,7 +37,9 @@ from anthropic import AsyncAnthropic
 
 from core.answer_policy import AnswerPolicy, PolicyStreamGuard, PolicyViolation
 from core.intent_recognizer import IntentCategory, IntentRecognizer, UrgencyLevel
-from core.llm_utils import extract_text_content
+from core.llm_utils import anthropic_client_kwargs, extract_text_content
+from core.metrics import record_llm_tokens
+from core.telemetry import span
 
 logger = logging.getLogger(__name__)
 
@@ -190,6 +192,10 @@ class BaseAgent:
         return self._model
 
     async def handle(self, req: Request) -> AgentResponse:
+        with span("agent.handle", agent=self.agent_type.value):
+            return await self._handle_inner(req)
+
+    async def _handle_inner(self, req: Request) -> AgentResponse:
         t0 = time.monotonic()
         self.stats.total += 1
         # Skill SOP 既要注入 prompt，也要作为 AnswerPolicy 判断"有无出处"的依据，
@@ -316,14 +322,34 @@ class BaseAgent:
         ) as stream:
             async for text in stream.text_stream:
                 yield text
+            # 流结束后取最终消息的 usage 计量 token；失败不影响回复
+            try:
+                final = await stream.get_final_message()
+                usage = getattr(final, "usage", None)
+                if usage is not None:
+                    record_llm_tokens(
+                        self.agent_type.value,
+                        getattr(usage, "input_tokens", 0) or 0,
+                        getattr(usage, "output_tokens", 0) or 0,
+                    )
+            except Exception:
+                pass
 
     async def _call_llm(self, req: Request, skill_prompt: str = "") -> str:
-        resp = await self._client.messages.create(
-            model=self._model,
-            max_tokens=1024,
-            system=self._build_system_prompt(skill_prompt),
-            messages=self._build_messages(req),
-        )
+        with span("agent.llm_call", agent=self.agent_type.value, model=self._model):
+            resp = await self._client.messages.create(
+                model=self._model,
+                max_tokens=1024,
+                system=self._build_system_prompt(skill_prompt),
+                messages=self._build_messages(req),
+            )
+        usage = getattr(resp, "usage", None)
+        if usage is not None:
+            record_llm_tokens(
+                self.agent_type.value,
+                getattr(usage, "input_tokens", 0) or 0,
+                getattr(usage, "output_tokens", 0) or 0,
+            )
         return extract_text_content(resp.content)
 
     @staticmethod
@@ -501,9 +527,7 @@ class AgentOrchestrator:
         replicas: int = 1,
         replica_models: list[str] | None = None,
     ):
-        kwargs: dict[str, Any] = {"api_key": api_key}
-        if base_url:
-            kwargs["base_url"] = base_url
+        kwargs = anthropic_client_kwargs(api_key, base_url)
         client = AsyncAnthropic(**kwargs)
         self._model = model
 

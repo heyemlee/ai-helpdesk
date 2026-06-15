@@ -24,7 +24,7 @@ from typing import Any
 from anthropic import AsyncAnthropic
 
 from core.intent_recognizer import IntentRecognizer
-from core.llm_utils import extract_text_content
+from core.llm_utils import anthropic_client_kwargs, extract_text_content
 
 logger = logging.getLogger(__name__)
 
@@ -237,9 +237,7 @@ class EndToEndEvaluator:
         baseline_path: str | None = None,
         release:  str = "unknown",
     ):
-        kwargs: dict[str, Any] = {"api_key": api_key}
-        if base_url:
-            kwargs["base_url"] = base_url
+        kwargs = anthropic_client_kwargs(api_key, base_url)
         client = AsyncAnthropic(**kwargs)
 
         self._orchestrator     = orchestrator
