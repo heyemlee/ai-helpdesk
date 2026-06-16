@@ -76,5 +76,5 @@ docker compose up -d --build
 
 访问 http://localhost:5174 。
 
-想连同 Redis / ChromaDB / Prometheus / 后端一起起，用 仓库根的 `docker-compose.yml`
+想连同 Redis / Postgres / 观测栈 / 后端一起起，用仓库根的 `docker-compose.yml`
 里已经并入的 `frontend` 服务，详见后端 README 的「前端和后端一起启动」一节。

@@ -31,7 +31,7 @@ class TestApiKeyAuth:
     def test_rejects_without_key(self, monkeypatch, method, path, body):
         m = _load_app(monkeypatch, api_key="s3cret")
         # 刻意不进入 TestClient 的上下文管理器：一旦触发 lifespan 就会去连
-        # Redis/ChromaDB。这里只验证鉴权依赖在业务代码之前就把请求拦下了。
+        # Redis/Postgres。这里只验证鉴权依赖在业务代码之前就把请求拦下了。
         client = TestClient(m.app)
         resp = getattr(client, method)(path, json=body)
         assert resp.status_code == 401, f"{path} 未鉴权就放行了"
