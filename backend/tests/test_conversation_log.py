@@ -12,13 +12,13 @@ def log(tmp_path):
 
 
 async def test_append_and_read_back_in_order(log):
-    await log.append("c1", "alice", "user", "我要退款", request_id="req-1")
+    await log.append("c1", "alice", "user", "我要补件", request_id="req-1")
     await log.append("c1", "alice", "assistant", "好的，正在处理", request_id="req-1", agent_type="billing")
     await log.append("c1", "alice", "user", "多久到账？", request_id="req-2")
 
     entries = await log.get_conversation("c1")
     assert [e.role for e in entries] == ["user", "assistant", "user"]
-    assert entries[0].content == "我要退款"
+    assert entries[0].content == "我要补件"
     assert entries[1].agent_type == "billing"
     assert entries[2].request_id == "req-2"
 
