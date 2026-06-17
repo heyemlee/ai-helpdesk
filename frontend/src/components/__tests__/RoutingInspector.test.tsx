@@ -16,7 +16,7 @@ describe('RoutingInspector', () => {
       <RoutingInspector
         message={{
           ...base,
-          meta: { intent: 'refund', intent_strategy: 'fast_path', intent_latency_ms: 1.4 } as never,
+          meta: { intent: 'quote_pricing', intent_strategy: 'fast_path', intent_latency_ms: 1.4 } as never,
           routing: { primary_agent: 'billing', supporting_agents: [], reason: 'r', confidence: 1 },
         }}
       />,

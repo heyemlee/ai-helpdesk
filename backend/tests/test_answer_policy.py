@@ -5,9 +5,9 @@ from core.answer_policy import AnswerPolicy
 
 KB = (
     "[知识库检索结果]\n"
-    "1. 标题: 配送说明\n   内容: 标准配送 3-5 个工作日送达。\n"
-    "2. 标题: 退款政策\n   内容: 退款审核通过后 7 个工作日内原路退回。\n"
-    "3. 标题: 会员价格\n   内容: 会员年费 199 元。\n"
+    "1. 标题: 交期说明\n   内容: 标准交期 4-6 周，以工厂排产确认为准。\n"
+    "2. 标题: 补件流程\n   内容: 补件确认后 7 个工作日内从工厂发出。\n"
+    "3. 标题: 五金升级\n   内容: 阻尼铰链升级单价 199 元。\n"
 )
 
 
@@ -19,10 +19,10 @@ def policy() -> AnswerPolicy:
 # ── 应当拦截 ──────────────────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("answer,rule", [
-    ("退款会在 3 个工作日内到账。", "lead_time_commitment"),
-    ("我保证 24 小时内一定解决。", "lead_time_commitment"),
-    ("这笔订单的手续费是 25 元，马上就能退给你。", "price_commitment"),
-    ("升级套餐只要 88 元。", "price_commitment"),
+    ("补件会在 3 个工作日内送到。", "lead_time_commitment"),
+    ("我保证 24 小时内一定安排好。", "lead_time_commitment"),
+    ("这单的运费是 25 元，马上就能退给你。", "price_commitment"),
+    ("加一个抽屉只要 88 元。", "price_commitment"),
 ])
 def test_blocks_unsourced_commitments(policy, answer, rule):
     result = policy.enforce(answer, sources=[KB])
@@ -34,32 +34,32 @@ def test_blocks_unsourced_commitments(policy, answer, rule):
 
 def test_blocks_when_no_sources_at_all(policy):
     """没有任何检索结果时，一切具体数字都是无依据的。"""
-    result = policy.enforce("退款会在 3 个工作日内到账。", sources=[])
+    result = policy.enforce("补件会在 3 个工作日内送到。", sources=[])
     assert result.blocked
 
 
 def test_number_borrowed_from_a_different_topic_is_still_unsourced(policy):
     """
-    知识库写的是"配送 3-5 个工作日"，模型说成"退款 3 个工作日到账"，
+    知识库写的是"补件 7 个工作日发出"，模型说成"4 个工作日就能送到"，
     数字被跨条目张冠李戴——这正是这类承诺出事的主要方式，必须拦下。
     """
-    result = policy.enforce("退款 3 个工作日到账。", sources=[KB])
+    result = policy.enforce("补件 4 个工作日就能送到。", sources=[KB])
     assert result.blocked
 
 
 def test_absolute_wording_overrides_hedging(policy):
     """加了"通常"但同时说"保证"，仍然是承诺。"""
-    result = policy.enforce("通常我保证 2 小时内一定处理完。", sources=[KB])
+    result = policy.enforce("通常我保证 2 小时内一定安排好。", sources=[KB])
     assert result.blocked
 
 
 # ── 应当放行 ──────────────────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("answer", [
-    "退款审核通过后 7 个工作日内原路退回。",
-    "标准配送 3-5 个工作日送达。",
-    "标准配送 3~5 个工作日送达。",
-    "会员年费是 199 元。",
+    "补件确认后 7 个工作日内从工厂发出。",
+    "标准交期 4-6 周。",
+    "标准交期 4~6 周。",
+    "阻尼铰链升级单价是 199 元。",
 ])
 def test_allows_commitments_backed_by_sources(policy, answer):
     result = policy.enforce(answer, sources=[KB])
@@ -68,7 +68,7 @@ def test_allows_commitments_backed_by_sources(policy, answer):
 
 
 @pytest.mark.parametrize("answer", [
-    "退款通常在一周左右到账，具体以支付渠道实际处理为准。",
+    "补件通常在一周左右发出，具体以工厂排产实际情况为准。",
     "预计 3 个工作日左右，具体需要核实订单状态后确认。",
 ])
 def test_allows_hedged_statements(policy, answer):

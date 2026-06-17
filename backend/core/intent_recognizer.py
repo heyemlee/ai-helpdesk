@@ -30,31 +30,42 @@ from typing import Any
 import httpx
 from anthropic import AsyncAnthropic
 
-from core.llm_utils import anthropic_client_kwargs, extract_text_content
+from core.llm_utils import (
+    STRUCTURED_MAX_TOKENS,
+    anthropic_client_kwargs,
+    extract_structured_text,
+)
 from core.telemetry import span
 
 logger = logging.getLogger(__name__)
 
 
 class IntentCategory(Enum):
+    """
+    橱柜工厂 + 销售展厅的客服意图。
+
+    5 个宽泛大类（QUERY / BILLING / TECHNICAL / ORDER / ESCALATION）对应"看得出
+    是哪个域、但还不知道具体诉求"；9 个细粒度意图挂在大类下面，是真正驱动路由和
+    SOP 的那一层；剩下 4 个是会话类意图（问候/投诉/请求/反馈）。
+    """
     QUERY      = "query"       # 查询信息
     COMPLAINT  = "complaint"   # 投诉不满
     REQUEST    = "request"     # 请求操作
     GREETING   = "greeting"    # 问候
     ESCALATION = "escalation"  # 要求升级/转人工
-    TECHNICAL  = "technical"   # 技术问题
-    BILLING    = "billing"     # 账单/退款
-    ACCOUNT    = "account"     # 账户管理
+    TECHNICAL  = "technical"   # 产品与安装技术
+    BILLING    = "billing"     # 报价与账款
+    ORDER      = "order"       # 订单与交付
     FEEDBACK   = "feedback"    # 正面反馈
-    ORDER_STATUS = "order_status"        # 订单状态
-    LOGISTICS = "logistics"              # 物流配送
-    REFUND = "refund"                    # 退款/退货
-    INVOICE = "invoice"                  # 发票
-    PAYMENT_ISSUE = "payment_issue"      # 支付/扣款异常
-    ACCOUNT_SECURITY = "account_security" # 账户安全
-    TECHNICAL_LOGIN = "technical_login"  # 登录认证故障
-    TECHNICAL_CRASH = "technical_crash"  # 崩溃/错误码
-    HUMAN_HANDOFF = "human_handoff"      # 转人工
+    ORDER_STATUS  = "order_status"   # 订单/生产进度与交期
+    DELIVERY      = "delivery"       # 送货、运输、到场排期
+    ORDER_CHANGE  = "order_change"   # 改单：改尺寸/配置/饰面/取消
+    MISSING_PART  = "missing_part"   # 补件：缺件、漏发、错发
+    QUOTE_PRICING = "quote_pricing"  # 报价与价格咨询
+    PAYMENT_ISSUE = "payment_issue"  # 定金/尾款/账款异常
+    INSTALLATION  = "installation"   # 现场安装与五金调整
+    DAMAGE_DEFECT = "damage_defect"  # 破损、瑕疵、返工
+    HUMAN_HANDOFF = "human_handoff"  # 转人工
     OTHER      = "other"
 
 
@@ -91,36 +102,41 @@ class IntentResult:
 
 
 # ── Few-shot 模板（同时用于 LLM 示例和 Embedding 匹配）────────────────────────
+#
+# 宽泛大类（QUERY / REQUEST / TECHNICAL / BILLING / ORDER）的示例**必须避开细粒度
+# 意图的典型说法**，否则会直接抵消 prompt 里"优先返回细粒度意图"那条指令——
+# 模型看到的示例在教它反着做。这里给大类挑的都是"看得出是哪个域、但还判断不出
+# 具体诉求"的句子，细粒度的典型说法留给对应的细粒度意图。
 _TEMPLATES: dict[IntentCategory, list[str]] = {
-    IntentCategory.QUERY:      ["我的订单状态是什么？", "如何重置密码？", "快递什么时候到？"],
-    IntentCategory.COMPLAINT:  ["等了好几个小时！", "服务太差了！", "一直没人处理！"],
-    IntentCategory.REQUEST:    ["帮我取消订单", "我需要修改地址", "请协助退款"],
+    IntentCategory.QUERY:      ["这款门板有哪些颜色？", "展厅几点开门？", "你们做不做整装？"],
+    IntentCategory.COMPLAINT:  ["等了好几个星期！", "服务太差了！", "一直没人处理！"],
+    IntentCategory.REQUEST:    ["帮我预约量尺", "请把图纸发我一份", "帮我转给负责的销售"],
     IntentCategory.GREETING:   ["你好", "嗨，有人吗", "早上好"],
     IntentCategory.ESCALATION: ["我要投诉！", "转人工客服", "找你们经理"],
-    IntentCategory.TECHNICAL:  ["应用一直崩溃", "无法登录", "出现500错误"],
-    IntentCategory.BILLING:    ["为什么扣了两次款？", "申请退款", "发票问题"],
-    IntentCategory.ACCOUNT:    ["修改邮箱", "注销账户", "更新个人信息"],
-    IntentCategory.FEEDBACK:   ["服务很棒！", "非常满意", "给个好评"],
-    IntentCategory.ORDER_STATUS: ["我的订单现在是什么状态？", "订单有没有发货？", "订单处理到哪一步了？"],
-    IntentCategory.LOGISTICS: ["快递什么时候到？", "物流一直不更新", "配送要多久？"],
-    IntentCategory.REFUND: ["我要申请退款", "退货退款怎么处理？", "退款多久到账？"],
-    IntentCategory.INVOICE: ["帮我开发票", "发票抬头怎么改？", "电子发票在哪里？"],
-    IntentCategory.PAYMENT_ISSUE: ["为什么重复扣款？", "支付失败怎么办？", "这个月多扣了钱"],
-    IntentCategory.ACCOUNT_SECURITY: ["账户被盗了", "发现异常登录", "我要重置密码"],
-    IntentCategory.TECHNICAL_LOGIN: ["登录一直报401", "验证码收不到", "无法登录账号"],
-    IntentCategory.TECHNICAL_CRASH: ["应用一直崩溃", "页面报500错误", "系统闪退"],
+    IntentCategory.TECHNICAL:  ["柜子这里做得不太对", "产品有点问题想问一下", "现场这块不太对劲"],
+    IntentCategory.BILLING:    ["费用方面有个问题", "账目上想核对一下", "钱的事想问问"],
+    IntentCategory.ORDER:      ["我这单有点问题", "关于订单的事想问一下", "这单想处理一下"],
+    IntentCategory.FEEDBACK:   ["安装师傅很专业！", "非常满意", "给个好评"],
+    IntentCategory.ORDER_STATUS: ["我的柜子生产到哪一步了？", "这批订单排产了吗？", "什么时候能做好？"],
+    IntentCategory.DELIVERY: ["什么时候送货？", "能不能改送货日期？", "货车几点到工地？"],
+    IntentCategory.ORDER_CHANGE: ["我想把柜体尺寸改一下", "能不能换个门板颜色？", "这单还能取消吗？"],
+    IntentCategory.MISSING_PART: ["少发了一块门板", "缺一根抽屉滑轨", "补件什么时候到？"],
+    IntentCategory.QUOTE_PRICING: ["这套橱柜报价多少？", "加一个岛台要加多少钱？", "能不能给个报价单？"],
+    IntentCategory.PAYMENT_ISSUE: ["定金付了怎么还显示未付？", "尾款金额对不上", "多收了一笔费用"],
+    IntentCategory.INSTALLATION: ["柜门关不严怎么调？", "铰链松了", "台面和墙之间有缝"],
+    IntentCategory.DAMAGE_DEFECT: ["送来的门板有划痕", "台面裂了", "饰面起泡了"],
     IntentCategory.HUMAN_HANDOFF: ["转人工客服", "我要找人工", "请升级处理"],
 }
 
 _SPECIFIC_INTENTS = {
     IntentCategory.ORDER_STATUS,
-    IntentCategory.LOGISTICS,
-    IntentCategory.REFUND,
-    IntentCategory.INVOICE,
+    IntentCategory.DELIVERY,
+    IntentCategory.ORDER_CHANGE,
+    IntentCategory.MISSING_PART,
+    IntentCategory.QUOTE_PRICING,
     IntentCategory.PAYMENT_ISSUE,
-    IntentCategory.ACCOUNT_SECURITY,
-    IntentCategory.TECHNICAL_LOGIN,
-    IntentCategory.TECHNICAL_CRASH,
+    IntentCategory.INSTALLATION,
+    IntentCategory.DAMAGE_DEFECT,
     IntentCategory.HUMAN_HANDOFF,
 }
 
@@ -129,14 +145,14 @@ _SPECIFIC_INTENTS = {
 # 不需要再花一次 LLM 往返去确认。命中即直接返回，不做任何网络调用。
 _FAST_PATH_RULES: dict[IntentCategory, list[str]] = {
     IntentCategory.HUMAN_HANDOFF: ["转人工", "人工客服", "找人工", "转接人工", "要人工"],
-    IntentCategory.ORDER_STATUS: ["订单状态", "发货了吗", "有没有发货", "订单进度", "order status"],
-    IntentCategory.LOGISTICS: ["物流信息", "快递到哪", "物流不更新", "运单号", "配送进度", "tracking number"],
-    IntentCategory.REFUND: ["申请退款", "我要退款", "退款进度", "退款多久", "退货退款", "request a refund"],
-    IntentCategory.INVOICE: ["开发票", "开具发票", "发票抬头", "电子发票", "增值税发票", "发票重开"],
-    IntentCategory.PAYMENT_ISSUE: ["重复扣款", "重复支付", "多扣了", "扣了两次", "支付失败", "duplicate charge"],
-    IntentCategory.ACCOUNT_SECURITY: ["账号被盗", "账户被盗", "异常登录", "重置密码", "两步验证", "account compromised"],
-    IntentCategory.TECHNICAL_LOGIN: ["无法登录", "登录失败", "登不上", "验证码收不到", "报401", "401 错误"],
-    IntentCategory.TECHNICAL_CRASH: ["一直崩溃", "闪退", "白屏", "报500", "500 错误", "系统崩溃"],
+    IntentCategory.ORDER_STATUS: ["订单状态", "生产进度", "排产了吗", "订单进度", "order status"],
+    IntentCategory.DELIVERY: ["什么时候送货", "送货日期", "送货时间", "改送货", "安排送货", "delivery date"],
+    IntentCategory.ORDER_CHANGE: ["改尺寸", "改颜色", "改一下订单", "修改订单", "取消订单", "change my order"],
+    IntentCategory.MISSING_PART: ["少发了", "漏发", "缺一块", "缺件", "补件", "missing part"],
+    IntentCategory.QUOTE_PRICING: ["报价单", "报价多少", "价格是多少", "要加多少钱", "能便宜点", "how much"],
+    IntentCategory.PAYMENT_ISSUE: ["定金", "尾款", "多收了", "重复扣款", "付款失败", "duplicate charge"],
+    IntentCategory.INSTALLATION: ["关不严", "铰链", "对不齐", "有条缝", "装不上", "adjust the hinge"],
+    IntentCategory.DAMAGE_DEFECT: ["有划痕", "破损", "开裂", "起泡", "色差", "damaged panel"],
 }
 
 # 命中锚点后的置信度：单条 0.82，每多命中一条 +0.05，上限 0.95。
@@ -148,33 +164,34 @@ _GENERIC_INTENTS = {
     IntentCategory.QUERY,
     IntentCategory.BILLING,
     IntentCategory.TECHNICAL,
-    IntentCategory.ACCOUNT,
+    IntentCategory.ORDER,
     IntentCategory.ESCALATION,
 }
 
 _INTENT_GROUPS: dict[IntentCategory, IntentCategory] = {
     IntentCategory.ORDER_STATUS: IntentCategory.QUERY,
-    IntentCategory.LOGISTICS: IntentCategory.QUERY,
-    IntentCategory.REFUND: IntentCategory.BILLING,
-    IntentCategory.INVOICE: IntentCategory.BILLING,
+    IntentCategory.DELIVERY: IntentCategory.QUERY,
+    IntentCategory.ORDER_CHANGE: IntentCategory.ORDER,
+    IntentCategory.MISSING_PART: IntentCategory.ORDER,
+    IntentCategory.QUOTE_PRICING: IntentCategory.BILLING,
     IntentCategory.PAYMENT_ISSUE: IntentCategory.BILLING,
-    IntentCategory.ACCOUNT_SECURITY: IntentCategory.ACCOUNT,
-    IntentCategory.TECHNICAL_LOGIN: IntentCategory.TECHNICAL,
-    IntentCategory.TECHNICAL_CRASH: IntentCategory.TECHNICAL,
+    IntentCategory.INSTALLATION: IntentCategory.TECHNICAL,
+    IntentCategory.DAMAGE_DEFECT: IntentCategory.TECHNICAL,
     IntentCategory.HUMAN_HANDOFF: IntentCategory.ESCALATION,
 }
 
-# 错误码识别：必须是 HTTP 4xx/5xx，或带明确前缀的错误码（ERR-1024 / E1001 /
-# ERR_CONNECTION_RESET）。早期版本用 [A-Z][A-Z0-9_-]{2,16} 会把任意大写单词
-# 当成错误码——"I NEED HELP" 会命中 NEED/HELP，进而给技术域错误加分导致误路由。
-_ERROR_CODE_RE = re.compile(
+# 柜体/工单编号识别：橱柜行业的柜型号是"字母+尺寸数字"（B24 底柜、W3012 吊柜、
+# SB36 水槽柜、DB24-3 三抽柜），另外还有 SKU/PO/JOB 前缀的工单号。
+# 关键约束是必须带数字：早期版本用 [A-Z][A-Z0-9_-]{2,16} 会把任意大写单词当成
+# 编号——"I NEED HELP" 会命中 NEED/HELP，进而给产品域错误加分导致误路由。
+# 柜型号这一支刻意不开 re.I：行业写法一律大写，放开大小写会把 "and24" 这类
+# 普通词当成柜号。
+_ITEM_CODE_RE = re.compile(
     r"(?<![0-9A-Za-z¥￥$])("
-    r"[45]\d{2}"
-    r"|(?:ERR|ERROR|ERRNO|CODE|HTTP|SQLSTATE|E)[-_]?\d{3,6}"
-    r"|ERR_[A-Z][A-Z0-9_]{2,24}"
+    r"[A-Z]{1,3}\d{2,4}(?:-[A-Z0-9]{1,3})?"
+    r"|(?i:SKU|PO|JOB|LOT|ITEM)[-_# ]?\d{3,8}"
     r")(?![0-9A-Za-z])"
-    r"(?!\s*(?:元|块钱|块|美元|美金|usd|cny|rmb|dollar))",
-    re.I,
+    r"(?!\s*(?:元|块钱|块|美元|美金|usd|cny|rmb|dollar))"
 )
 
 # 紧急关键词
@@ -398,9 +415,10 @@ class IntentRecognizer:
                 for m in history[-3:]
             )
 
-        prompt = f"""你是客服意图分析专家。根据示例判断用户意图，返回 JSON。
+        prompt = f"""你是橱柜工厂与销售展厅的客服意图分析专家。根据示例判断用户意图，返回 JSON。
 如果用户问题能匹配细粒度业务意图，请优先返回细粒度意图，而不是宽泛大类。
-例如退款优先返回 refund，发票优先返回 invoice，登录故障优先返回 technical_login。
+例如缺件漏发优先返回 missing_part，问价优先返回 quote_pricing，
+改尺寸改配置优先返回 order_change，柜门/铰链调整优先返回 installation。
 
 示例:
 {examples}
@@ -417,11 +435,11 @@ class IntentRecognizer:
         try:
             resp = await self.client.messages.create(
                 model=self.model,
-                max_tokens=256,
+                max_tokens=STRUCTURED_MAX_TOKENS,
                 temperature=0.1,
                 messages=[{"role": "user", "content": prompt}],
             )
-            raw = extract_text_content(resp.content)
+            raw = extract_structured_text(resp)
             s, e = raw.find("{"), raw.rfind("}") + 1
             data = json.loads(raw[s:e])
             try:
@@ -455,14 +473,14 @@ class IntentRecognizer:
         msg = message.lower()
         specific_patterns = {
             IntentCategory.HUMAN_HANDOFF: ["转人工", "人工客服", "找人工"],
-            IntentCategory.ORDER_STATUS: ["订单状态", "发货了吗", "处理到哪", "order status"],
-            IntentCategory.LOGISTICS: ["物流", "快递", "配送", "运单", "delivery", "shipping"],
-            IntentCategory.REFUND: ["退款", "退货", "refund", "return"],
-            IntentCategory.INVOICE: ["发票", "抬头", "税号", "invoice"],
-            IntentCategory.PAYMENT_ISSUE: ["重复扣款", "多扣", "支付失败", "扣费", "payment failed"],
-            IntentCategory.ACCOUNT_SECURITY: ["被盗", "异常登录", "重置密码", "两步验证", "安全"],
-            IntentCategory.TECHNICAL_LOGIN: ["无法登录", "登录失败", "401", "验证码"],
-            IntentCategory.TECHNICAL_CRASH: ["崩溃", "闪退", "500", "报错", "crash"],
+            IntentCategory.ORDER_STATUS: ["订单状态", "生产进度", "排产", "做好", "order status"],
+            IntentCategory.DELIVERY: ["送货", "运输", "到场", "卸货", "delivery", "shipping"],
+            IntentCategory.ORDER_CHANGE: ["改单", "改尺寸", "改颜色", "改一下", "换成", "取消", "change order"],
+            IntentCategory.MISSING_PART: ["少发", "漏发", "缺件", "补件", "missing", "short shipped"],
+            IntentCategory.QUOTE_PRICING: ["报价", "多少钱", "价格", "quote", "how much"],
+            IntentCategory.PAYMENT_ISSUE: ["定金", "尾款", "多收", "重复扣款", "付款失败", "payment failed"],
+            IntentCategory.INSTALLATION: ["安装", "铰链", "关不严", "对不齐", "装不上", "install"],
+            IntentCategory.DAMAGE_DEFECT: ["划痕", "破损", "开裂", "色差", "起泡", "damaged"],
         }
         generic_patterns = {
             IntentCategory.ESCALATION: ["投诉", "经理", "supervisor"],
@@ -470,9 +488,9 @@ class IntentRecognizer:
             IntentCategory.QUERY:      ["?", "？", "怎么", "什么", "status"],
             IntentCategory.REQUEST:    ["帮我", "需要", "please", "help"],
             IntentCategory.GREETING:   ["你好", "嗨", "hello", "hi"],
-            IntentCategory.BILLING:    ["退款", "扣款", "发票", "refund"],
-            IntentCategory.TECHNICAL:  ["崩溃", "报错", "error", "crash"],
-            IntentCategory.ACCOUNT:    ["密码", "邮箱", "账户", "password"],
+            IntentCategory.BILLING:    ["报价", "账单", "发票", "quote"],
+            IntentCategory.TECHNICAL:  ["台面", "门板", "五金", "工艺"],
+            IntentCategory.ORDER:      ["订单", "这单", "工单", "order"],
         }
 
         best_cat, best_score = self._best_pattern_match(msg, specific_patterns)
@@ -533,8 +551,8 @@ class IntentRecognizer:
             "order_id": self._unique(re.findall(r"(?:订单号?|order(?:_id)?|#)\s*[:：#]?\s*([A-Za-z0-9_-]{4,32})", message, re.I)),
             "product": [],
             "date": self._unique(re.findall(r"(今天|明天|昨天|本周|这周|下周|\d{4}[-/.年]\d{1,2}[-/.月]\d{1,2}日?)", message)),
-            "amount": self._unique(re.findall(r"((?:¥|￥)\s*\d+(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?\s*(?:元|块|rmb|cny|usd|美元))", message, re.I)),
-            "error_code": self._unique(_ERROR_CODE_RE.findall(message)),
+            "amount": self._unique(re.findall(r"((?:[¥￥$])\s*\d[\d,]*(?:\.\d{1,2})?|\d[\d,]*(?:\.\d{1,2})?\s*(?:元|块|rmb|cny|usd|美元))", message, re.I)),
+            "item_code": self._unique(_ITEM_CODE_RE.findall(message)),
         }
 
     # ── 辅助 ──────────────────────────────────────────────────────────────────

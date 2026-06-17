@@ -6,7 +6,7 @@ from agents.agent_orchestrator import AgentOrchestrator, AgentType
 from core.answer_policy import AnswerPolicy, PolicyStreamGuard
 from core.intent_recognizer import IntentCategory
 
-KB = "标准配送 3-5 个工作日送达。退款审核通过后 7 个工作日内原路退回。"
+KB = "标准交期以工厂排产为准。补件确认后 7 个工作日内从工厂发出。"
 
 
 def stub_stream(orch: AgentOrchestrator, chunks, fail: bool = False):
@@ -30,15 +30,15 @@ class TestPolicyStreamGuard:
 
     def test_blocks_unsourced_promise_mid_stream(self):
         guard = PolicyStreamGuard(AnswerPolicy(), [KB])
-        out = guard.feed("退款会在3个工作日") + guard.feed("内到账。")
+        out = guard.feed("补件会在3个工作日") + guard.feed("内送到。")
         assert "3个工作日" not in out
-        assert "不能在未核验前承诺" in out
+        assert "不能在未确认前承诺" in out
         assert [v.rule for v in guard.violations] == ["lead_time_commitment"]
 
     def test_allows_sourced_statement(self):
         guard = PolicyStreamGuard(AnswerPolicy(), [KB])
-        out = guard.feed("标准配送 3-5 个工作日送达。")
-        assert "3-5 个工作日" in out
+        out = guard.feed("补件确认后 7 个工作日内从工厂发出。")
+        assert "7 个工作日" in out
         assert guard.violations == []
 
     def test_flush_checks_trailing_fragment(self):
@@ -65,7 +65,7 @@ class TestRunStream:
 
     async def test_routing_event_comes_before_any_text(self):
         orch = stub_stream(AgentOrchestrator(api_key="k"), ["订单", "已发货。"])
-        events = await self._collect(orch, make_request("订单状态", IntentCategory.ORDER_STATUS))
+        events = await self._collect(orch, make_request("订单进度", IntentCategory.ORDER_STATUS))
         kinds = [e["type"] for e in events]
         assert kinds[0] == "routing"
         assert kinds[-1] == "result"
@@ -73,14 +73,14 @@ class TestRunStream:
 
     async def test_deltas_concatenate_to_final_response(self):
         orch = stub_stream(AgentOrchestrator(api_key="k"), ["您好，", "已收到。"])
-        events = await self._collect(orch, make_request("订单状态", IntentCategory.ORDER_STATUS))
+        events = await self._collect(orch, make_request("订单进度", IntentCategory.ORDER_STATUS))
         deltas = "".join(e["text"] for e in events if e["type"] == "delta")
         result = events[-1]["result"]
         assert deltas == result.response
 
     async def test_policy_violation_recorded_in_result(self):
-        orch = stub_stream(AgentOrchestrator(api_key="k"), ["退款会在3个工作日内到账。"])
-        req = make_request("退款进度", IntentCategory.REFUND)
+        orch = stub_stream(AgentOrchestrator(api_key="k"), ["补件会在3个工作日内送到。"])
+        req = make_request("补件进度", IntentCategory.MISSING_PART)
         req.grounding_sources = [KB]
         events = await self._collect(orch, req)
         result = events[-1]["result"]
@@ -91,7 +91,7 @@ class TestRunStream:
     async def test_stream_failure_falls_back_to_handoff(self):
         """流式已经吐出去的内容无法撤回，失败时应转人工而不是重跑出第二个答案。"""
         orch = stub_stream(AgentOrchestrator(api_key="k"), [], fail=True)
-        events = await self._collect(orch, make_request("订单状态", IntentCategory.ORDER_STATUS))
+        events = await self._collect(orch, make_request("订单进度", IntentCategory.ORDER_STATUS))
         result = events[-1]["result"]
         assert result.handoff is True
         assert result.escalated is True

@@ -17,6 +17,7 @@ import json
 import logging
 import pathlib
 import statistics
+from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import Any
@@ -24,7 +25,11 @@ from typing import Any
 from anthropic import AsyncAnthropic
 
 from core.intent_recognizer import IntentRecognizer
-from core.llm_utils import anthropic_client_kwargs, extract_text_content
+from core.llm_utils import (
+    STRUCTURED_MAX_TOKENS,
+    anthropic_client_kwargs,
+    extract_structured_text,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -126,10 +131,10 @@ Agent 响应: {response}
         prompt = self._clean_text(prompt)
         try:
             resp = await self._client.messages.create(
-                model=self._model, max_tokens=256, temperature=0.0,
+                model=self._model, max_tokens=STRUCTURED_MAX_TOKENS, temperature=0.0,
                 messages=[{"role": "user", "content": prompt}],
             )
-            raw = extract_text_content(resp.content)
+            raw = extract_structured_text(resp)
             s, e = raw.find("{"), raw.rfind("}") + 1
             data = json.loads(raw[s:e])
             return QualityScores(
@@ -236,12 +241,25 @@ class EndToEndEvaluator:
         model:    str = "claude-3-5-sonnet-20241022",
         baseline_path: str | None = None,
         release:  str = "unknown",
+        grounding_provider: Callable[[str, Any], Awaitable[str]] | None = None,
     ):
+        """
+        grounding_provider: `async (message, intent_result) -> knowledge_text`。
+
+        传入时，评测会在调编排器之前先做一次意图识别、再按意图检索知识库，
+        把检索结果作为出处挂到 Request 上——和 /chat 主链路完全一致。
+
+        不传时评测跳过检索，Agent 手里没有任何出处，答案策略会把所有带
+        价格/时效的具体表述判为"无依据"并改写成保守话术。那样测出来的
+        completeness 天然偏低，而且和线上不是一回事——所以这个参数该传就传。
+        """
         kwargs = anthropic_client_kwargs(api_key, base_url)
         client = AsyncAnthropic(**kwargs)
 
         self._orchestrator     = orchestrator
         self._judge            = LLMJudge(client, model)
+        self._recognizer       = recognizer
+        self._grounding        = grounding_provider
         self._intent_evaluator = IntentEvaluator(recognizer)
         self._history:         list[EvalReport] = []
         self._release = release
@@ -364,13 +382,31 @@ class EndToEndEvaluator:
 
         for turn_idx, question in enumerate(questions):
             context = self._history_context(history)
+            turn_history = history[-6:] if history else None
             orch_req = OrcReq(
                 message=question,
                 user_id=user_id,
                 conv_id=conv_id,
                 context=context,
-                history=history[-6:] if history else None,
+                history=turn_history,
             )
+
+            # 配了 grounding_provider 就复刻 /chat 的前置步骤：先识别意图，
+            # 再按意图检索知识库，把检索结果挂成出处。没有这一步，答案策略
+            # 会把每一处价格/时效都判为无依据。
+            if self._grounding is not None:
+                intent_result = await self._recognizer.recognize(question, turn_history)
+                knowledge = await self._grounding(question, intent_result)
+                orch_req.entities = intent_result.entities
+                orch_req.intent = intent_result.intent
+                orch_req.intent_group = intent_result.intent_group
+                orch_req.urgency = intent_result.urgency
+                orch_req.intent_confidence = intent_result.confidence
+                # 只有检索到的知识才算出处，历史和记忆不能作为价格/时效的依据
+                orch_req.grounding_sources = [knowledge] if knowledge else []
+                if knowledge:
+                    orch_req.context = f"{context}\n\n{knowledge}".strip()
+
             orch_result = await self._orchestrator.run(orch_req)
             actual_answer = orch_result.response
 
@@ -526,23 +562,23 @@ class EndToEndEvaluator:
 # ── 内置测试用例（开箱即用）──────────────────────────────────────────────────
 
 DEFAULT_INTENT_CASES: list[IntentTestCase] = [
-    IntentTestCase("我的订单什么时候到？",       "logistics"),
-    IntentTestCase("帮我取消订单",               "request"),
-    IntentTestCase("你们服务太差了！",            "complaint"),
-    IntentTestCase("应用一直报500错误",           "technical_crash"),
-    IntentTestCase("为什么扣了两次款？",          "payment_issue"),
-    IntentTestCase("我要投诉，转人工！",          "human_handoff"),
-    IntentTestCase("你好",                        "greeting"),
-    IntentTestCase("修改我的邮箱地址",            "account"),
-    IntentTestCase("帮我开发票",                  "invoice"),
-    IntentTestCase("退款多久到账？",              "refund"),
-    IntentTestCase("登录一直报401",               "technical_login"),
+    IntentTestCase("这批柜子什么时候能做好？",     "order_status"),
+    IntentTestCase("帮我把这单取消掉",             "order_change"),
+    IntentTestCase("你们服务太差了！",             "complaint"),
+    IntentTestCase("送来的门板有划痕",             "damage_defect"),
+    IntentTestCase("定金付了怎么还显示未付？",     "payment_issue"),
+    IntentTestCase("我要投诉，转人工！",           "human_handoff"),
+    IntentTestCase("你好",                         "greeting"),
+    IntentTestCase("这套橱柜报价多少？",           "quote_pricing"),
+    IntentTestCase("少发了一块门板，补件怎么走？", "missing_part"),
+    IntentTestCase("柜门关不严，铰链怎么调？",     "installation"),
+    IntentTestCase("能不能改一下送货日期？",       "delivery"),
 ]
 
 DEFAULT_DIALOG_CASES: list[dict[str, Any]] = [
-    {"question": "我的订单 #12345 还没到，已经超时了"},
-    {"question": "应用登录一直报错 401"},
-    {"question": "为什么这个月多扣了 50 块钱？"},
-    {"question": "帮我把收货地址改成北京市朝阳区"},
-    {"turns": ["你好，我想退款", "订单号是 #12345", "退款多久能到账？"]},
+    {"question": "我这单 #12345 说好上周做完，到现在还没消息"},
+    {"question": "W3012 这块门板送来就是裂的"},
+    {"question": "这套厨房加个岛台大概要加多少钱？"},
+    {"question": "帮我把送货地址改成圣何塞的工地"},
+    {"turns": ["你好，我这单少了一块门板", "订单号是 #12345", "补件大概多久能到？"]},
 ]
