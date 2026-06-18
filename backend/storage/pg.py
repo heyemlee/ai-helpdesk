@@ -5,6 +5,11 @@ Postgres 连接与 schema 管理（asyncpg）。
 Postgres 库（pgvector 扩展做向量检索），替换掉 chromadb 容器和
 两个 SQLite 文件。Redis 保持不动（工作记忆 / 限流 / 熔断共享）。
 
+知识库片段同时建两套索引：稠密的 pgvector 列走语义匹配，稀疏的 tsvector
+列（GIN 索引）走关键词字面匹配，两路在 KnowledgeBase 层用 RRF 融合。
+tsvector 用 'simple' 配置——中文分词由 core/lexical.py 在写入前完成
+（字符二元组），不依赖 zhparser/pg_bigm 这类需要单独编译的扩展。
+
 维度契约：向量列的维度在建表时由当前 Embedder 决定。启动时校验现有
 表的维度与配置一致，不一致直接抛错——静默把 256 维向量塞进 1536 维列
 （或反过来）产生的是无意义的检索结果，宁可 fail fast 逼运维重建向量表。
@@ -59,8 +64,13 @@ CREATE TABLE IF NOT EXISTS kb_chunks (
     chunk_index  INTEGER NOT NULL DEFAULT 0,
     total_chunks INTEGER NOT NULL DEFAULT 1,
     ingested_at  DOUBLE PRECISION NOT NULL,
-    embedding    vector({dim}) NOT NULL
+    embedding    vector({dim}) NOT NULL,
+    tokens       tsvector
 );
+-- 稀疏检索列。对已存在的老表补列（CREATE TABLE IF NOT EXISTS 不会改已有表），
+-- 老数据的 tokens 为 NULL，由 KnowledgeBase.backfill_lexical 在启动时回填。
+ALTER TABLE kb_chunks ADD COLUMN IF NOT EXISTS tokens tsvector;
+CREATE INDEX IF NOT EXISTS idx_kb_tokens ON kb_chunks USING GIN (tokens);
 
 CREATE TABLE IF NOT EXISTS memory_episodic (
     id        TEXT PRIMARY KEY,
