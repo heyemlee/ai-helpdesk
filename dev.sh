@@ -10,7 +10,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND="$ROOT/backend"
 FRONTEND="$ROOT/frontend"
 
-REQUIRED_MODULES="anthropic chromadb redis fastapi uvicorn prometheus_client dotenv httpx"
+REQUIRED_MODULES="anthropic openai redis fastapi uvicorn prometheus_client dotenv httpx"
 
 # 找一个真的能 import 全部依赖的解释器：优先项目 .venv，其次 $PYTHON_BIN，最后 python3
 pick_python() {

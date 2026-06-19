@@ -26,9 +26,8 @@ from enum import Enum
 from typing import Any
 
 import redis.asyncio as redis
-from anthropic import AsyncAnthropic
 
-from core.llm_utils import anthropic_client_kwargs, extract_text_content
+from core.llm_utils import create_llm_client, extract_text_content
 from core.telemetry import span
 
 logger = logging.getLogger(__name__)
@@ -97,8 +96,7 @@ class MemoryManager:
         base_url:     str | None = None,
         model:        str = "claude-3-5-sonnet-20241022",
     ):
-        kwargs = anthropic_client_kwargs(api_key, base_url)
-        self._client = AsyncAnthropic(**kwargs)
+        self._client = create_llm_client(api_key, base_url)
         self._model  = model
 
         self._redis = redis.from_url(redis_url, decode_responses=True)

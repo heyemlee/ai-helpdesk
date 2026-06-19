@@ -1,11 +1,20 @@
-"""LLM response helpers shared by Anthropic-compatible providers."""
+"""LLM 客户端工厂与响应解析，供 Anthropic 协议与 OpenAI 兼容协议共用。"""
 import os
 from collections.abc import Iterable
 from typing import Any
 
+from anthropic import AsyncAnthropic
+
+# 全项目按 Anthropic 的 messages 形状调 LLM；OpenAI 兼容端点由
+# core/openai_compat.py 翻译成同一套接口，所以调用点只认这个别名。
+LLMClient = Any
+
+DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-5-20250929"
+DEFAULT_OPENAI_MODEL = "gpt-4o"
+
 # 结构化调用（意图识别、LLM Judge、查询改写、重排）的 token 预算。
 #
-# 为什么不是 256：推理模型（deepseek-v4-pro、claude 的 thinking 模式等）会先输出
+# 为什么不是 256：推理模型（claude 的 thinking 模式、OpenAI 的 reasoning 系列等）会先输出
 # 一整个 thinking 块再输出正文。256 的预算会在 thinking 阶段就耗尽，stop_reason
 # 变成 max_tokens，正文块根本不存在——调用方拿到空字符串，JSON 解析失败，然后
 # 静默降级。这类失败最阴险的地方是它不报错：意图识别退化成两路投票、Judge 全给
@@ -58,6 +67,65 @@ def anthropic_client_kwargs(api_key: str, base_url: str | None = None) -> dict[s
     if base_url:
         kwargs["base_url"] = base_url
     return kwargs
+
+
+def llm_provider() -> str:
+    """
+    当前使用哪套协议：anthropic（默认）或 openai。
+
+    只影响"用哪个 SDK、读哪组环境变量"，不影响调用形状——两边都暴露
+    client.messages.create/stream，见 core/openai_compat.py。
+    """
+    provider = os.getenv("LLM_PROVIDER", "anthropic").strip().lower() or "anthropic"
+    if provider not in ("anthropic", "openai"):
+        raise RuntimeError(f"LLM_PROVIDER 只支持 anthropic / openai，收到: {provider}")
+    return provider
+
+
+def create_llm_client(api_key: str, base_url: str | None = None) -> LLMClient:
+    """
+    按 LLM_PROVIDER 造客户端。所有创建客户端的模块（编排器、意图识别、
+    工具管理、记忆、评测）都走这一个入口，换供应商不需要改调用点。
+    """
+    kwargs = anthropic_client_kwargs(api_key, base_url)
+    if llm_provider() == "openai":
+        from core.openai_compat import AsyncOpenAICompat
+
+        return AsyncOpenAICompat(**kwargs)
+    return AsyncAnthropic(**kwargs)
+
+
+def resolve_llm_config() -> dict[str, Any]:
+    """
+    从环境变量解析出 api_key / model / base_url 三件套。
+
+    两组变量各管各的，互不覆盖：切换 LLM_PROVIDER 时另一组原样留在 .env 里，
+    随时切回去，不用重填 key。
+    """
+    provider = llm_provider()
+    if provider == "openai":
+        key = os.getenv("OPENAI_API_KEY", "").strip()
+        if not key:
+            raise RuntimeError("LLM_PROVIDER=openai 但未设置 OPENAI_API_KEY")
+        cfg: dict[str, Any] = {
+            "provider": provider,
+            "api_key": key,
+            "model": os.getenv("OPENAI_MODEL", DEFAULT_OPENAI_MODEL).strip(),
+        }
+        base_url = os.getenv("OPENAI_BASE_URL", "").strip()
+    else:
+        key = os.getenv("ANTHROPIC_API_KEY", "").strip()
+        if not key:
+            raise RuntimeError("未设置 ANTHROPIC_API_KEY")
+        cfg = {
+            "provider": provider,
+            "api_key": key,
+            "model": os.getenv("ANTHROPIC_MODEL", DEFAULT_ANTHROPIC_MODEL).strip(),
+        }
+        base_url = os.getenv("ANTHROPIC_BASE_URL", "").strip()
+    if base_url:
+        cfg["base_url"] = base_url
+    return cfg
 
 
 def extract_text_content(content: Iterable[Any]) -> str:

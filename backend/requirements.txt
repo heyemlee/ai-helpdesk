@@ -1,8 +1,13 @@
 # ai-helpdesk 依赖清单
 
 # ── AI / LLM ──────────────────────────────────────────────────────────────────
-anthropic==0.40.0          # LLM 调用（兼容 DeepSeek 等 Anthropic 协议网关）
-                           # 意图识别的 Embedding 一路走 OpenAI 兼容端点（httpx 直连），
+# 两个 SDK 按 .env 里的 LLM_PROVIDER 二选一使用，core/openai_compat.py 把 OpenAI
+# 那条路翻译成同一套 messages 接口，业务代码只写一份调用。
+anthropic==0.40.0          # LLM_PROVIDER=anthropic（含兼容该协议的第三方网关）
+openai==1.109.1            # LLM_PROVIDER=openai（含兼容 /chat/completions 的第三方网关）
+                           # 注意 <1.55.3 的版本会给 httpx 传已被移除的 proxies 参数，
+                           # 和这里锁的 httpx 0.28 撞车，建单条请求时就 TypeError
+                           # 意图识别的 Embedding 一路始终走 OpenAI 兼容端点（httpx 直连），
                            # 未配置时退化为本地 n-gram 向量，三路融合链路不中断
 
 # ── Web 框架 ──────────────────────────────────────────────────────────────────

@@ -154,13 +154,33 @@ cd backend  && cp .env.example .env
 ANTHROPIC_API_KEY=your_api_key
 ```
 
-如果使用 DeepSeek 这类 Anthropic 兼容接口，可以配置：
+#### 选用哪个模型
+
+`LLM_PROVIDER` 决定走哪套协议，两组配置可以同时留在 `.env` 里，切换只改这一行：
 
 ```env
-ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
-ANTHROPIC_MODEL=deepseek-v4-pro
-ANTHROPIC_API_KEY=your_deepseek_key
+# 走 Anthropic 协议（默认）
+LLM_PROVIDER=anthropic
+ANTHROPIC_API_KEY=sk-ant-xxxxxxxx
+ANTHROPIC_BASE_URL=https://api.kabi.pro          # 留空则走 Anthropic 官方端点
+ANTHROPIC_MODEL=claude-sonnet-4-5-20250929
 ```
+
+```env
+# 走 OpenAI 兼容协议（/chat/completions）
+LLM_PROVIDER=openai
+OPENAI_API_KEY=sk-xxxxxxxx
+OPENAI_BASE_URL=https://api.kabi.pro/v1          # 注意这组路径带 /v1
+OPENAI_MODEL=gpt-4o
+```
+
+模型名以网关支持的清单为准（`GET $OPENAI_BASE_URL/models` 可查）。
+
+业务代码只写了一套 Anthropic 形状的调用（`client.messages.create/stream`），
+OpenAI 那条路由 `core/openai_compat.py` 翻译成 `/chat/completions`，system 位置、
+`max_tokens`、`stop_reason`、`usage` 计量和流式增量逐项对齐。所以换供应商是改
+一行环境变量的事，五处调用点（编排器 / 意图识别 / 工具管理 / 记忆 / 评测）
+一行都不用动，两条链路也不会因为改一处漏一处而产生行为差异。
 
 Docker Compose 场景下，Redis 和 Postgres(pgvector) 的连接由 `docker-compose.yml` 覆盖为容器内地址。通常不需要手动改：
 
@@ -318,9 +338,10 @@ docker compose build --no-cache ai-helpdesk
 docker run -it --rm \
   --network ai-helpdesk_ai-helpdesk-network \
   -p 8000:8000 \
-  -e ANTHROPIC_BASE_URL="https://api.deepseek.com/anthropic" \
+  -e LLM_PROVIDER="anthropic" \
+  -e ANTHROPIC_BASE_URL="https://api.kabi.pro" \
   -e ANTHROPIC_API_KEY="your_key" \
-  -e ANTHROPIC_MODEL="deepseek-v4-pro" \
+  -e ANTHROPIC_MODEL="claude-sonnet-4-5-20250929" \
   -e REDIS_URL="redis://:aihelpdesk123@redis:6379/0" \
   -e CHROMA_HOST="postgres" \
   -e CHROMA_PORT="8000" \
@@ -335,9 +356,10 @@ CLI 交互模式：
 ```bash
 docker run -it --rm \
   --network ai-helpdesk_ai-helpdesk-network \
-  -e ANTHROPIC_BASE_URL="https://api.deepseek.com/anthropic" \
+  -e LLM_PROVIDER="anthropic" \
+  -e ANTHROPIC_BASE_URL="https://api.kabi.pro" \
   -e ANTHROPIC_API_KEY="your_key" \
-  -e ANTHROPIC_MODEL="deepseek-v4-pro" \
+  -e ANTHROPIC_MODEL="claude-sonnet-4-5-20250929" \
   -e REDIS_URL="redis://:aihelpdesk123@redis:6379/0" \
   -e CHROMA_HOST="postgres" \
   -e CHROMA_PORT="8000" \

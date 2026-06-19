@@ -33,13 +33,12 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-from anthropic import AsyncAnthropic
-
 from core.answer_policy import AnswerPolicy, PolicyStreamGuard, PolicyViolation
 from core.intent_recognizer import IntentCategory, IntentRecognizer, UrgencyLevel
 from core.llm_utils import (
     ANSWER_MAX_TOKENS,
-    anthropic_client_kwargs,
+    LLMClient,
+    create_llm_client,
     extract_structured_text,
 )
 from core.metrics import record_llm_tokens
@@ -173,7 +172,7 @@ class BaseAgent:
 
     def __init__(
         self,
-        client: AsyncAnthropic,
+        client: LLMClient,
         model: str,
         skill_manager: Any | None = None,
         policy: AnswerPolicy | None = None,
@@ -536,8 +535,7 @@ class AgentOrchestrator:
         replicas: int = 1,
         replica_models: list[str] | None = None,
     ):
-        kwargs = anthropic_client_kwargs(api_key, base_url)
-        client = AsyncAnthropic(**kwargs)
+        client = create_llm_client(api_key, base_url)
         self._model = model
 
         self._intent_recognizer = recognizer or IntentRecognizer(

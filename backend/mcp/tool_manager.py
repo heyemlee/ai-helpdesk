@@ -33,11 +33,9 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-from anthropic import AsyncAnthropic
-
 from core.llm_utils import (
     STRUCTURED_MAX_TOKENS,
-    anthropic_client_kwargs,
+    create_llm_client,
     extract_structured_text,
 )
 
@@ -180,8 +178,7 @@ class MCPToolManager:
         shared_state=None,
         reranker=None,
     ):
-        kwargs = anthropic_client_kwargs(api_key, base_url)
-        self._client = AsyncAnthropic(**kwargs)
+        self._client = create_llm_client(api_key, base_url)
         self._model  = model
         self._tools: dict[str, Tool] = {}
         self._cache: dict[str, tuple] = {}   # key → (result, expire_at, reranked)
