@@ -28,11 +28,10 @@ from enum import Enum
 from typing import Any
 
 import httpx
-from anthropic import AsyncAnthropic
 
 from core.llm_utils import (
     STRUCTURED_MAX_TOKENS,
-    anthropic_client_kwargs,
+    create_llm_client,
     extract_structured_text,
 )
 from core.telemetry import span
@@ -148,7 +147,10 @@ _FAST_PATH_RULES: dict[IntentCategory, list[str]] = {
     IntentCategory.ORDER_STATUS: ["订单状态", "生产进度", "排产了吗", "订单进度", "order status"],
     IntentCategory.DELIVERY: ["什么时候送货", "送货日期", "送货时间", "改送货", "安排送货", "delivery date"],
     IntentCategory.ORDER_CHANGE: ["改尺寸", "改颜色", "改一下订单", "修改订单", "取消订单", "change my order"],
-    IntentCategory.MISSING_PART: ["少发了", "漏发", "缺一块", "缺件", "补件", "missing part"],
+    # "少了" 与 "少发了" 并存：前者覆盖"拆箱发现少了两个铰链"这类只说"少了"的表述。
+    # 它比其他锚点宽，但宽在安全的方向——一旦同时命中别的意图锚点（如"铰链"），
+    # 跨意图冲突会让快通道整体让位给三路融合，而不是抢答。
+    IntentCategory.MISSING_PART: ["少发了", "少了", "漏发", "缺一块", "缺件", "补件", "missing part"],
     IntentCategory.QUOTE_PRICING: ["报价单", "报价多少", "价格是多少", "要加多少钱", "能便宜点", "how much"],
     IntentCategory.PAYMENT_ISSUE: ["定金", "尾款", "多收了", "重复扣款", "付款失败", "duplicate charge"],
     IntentCategory.INSTALLATION: ["关不严", "铰链", "对不齐", "有条缝", "装不上", "adjust the hinge"],
@@ -214,7 +216,8 @@ class IntentRecognizer:
     """
     端到端意图识别器。
 
-    初始化时不加载任何本地模型，所有 AI 能力通过 Anthropic API 调用。
+    初始化时不加载任何本地模型，所有 AI 能力通过远端 LLM 调用
+    （Anthropic 或 OpenAI 兼容协议，见 core/llm_utils.create_llm_client）。
     模板 Embedding 在首次请求时懒加载并缓存，后续复用。
     """
 
@@ -229,15 +232,14 @@ class IntentRecognizer:
         embedding_model: str = "text-embedding-3-small",
         enable_fast_path: bool = True,
     ):
-        kwargs = anthropic_client_kwargs(api_key, base_url)
-        self.client    = AsyncAnthropic(**kwargs)
+        self.client    = create_llm_client(api_key, base_url)
         self.model     = model
         self.threshold = confidence_threshold
         self.enable_fast_path = enable_fast_path
 
         # Embedding 这一路始终参与投票。配置了 OpenAI 兼容的 embeddings 端点时
-        # 走远端真向量；没配置（例如当前用 DeepSeek 的 Anthropic 兼容协议，该协议
-        # 不提供 embeddings 资源）时退化为本地字符 n-gram 哈希向量。
+        # 走远端真向量；没配置（例如走 Anthropic 协议，它不提供 embeddings 资源）
+        # 时退化为本地字符 n-gram 哈希向量。
         # 换供应商是改环境变量的事，不需要改代码，三路融合链路始终成立。
         self._embedding_base_url = (embedding_base_url or "").rstrip("/") or None
         self._embedding_api_key  = embedding_api_key or None

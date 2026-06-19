@@ -22,12 +22,11 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import Any
 
-from anthropic import AsyncAnthropic
-
 from core.intent_recognizer import IntentRecognizer
 from core.llm_utils import (
     STRUCTURED_MAX_TOKENS,
-    anthropic_client_kwargs,
+    LLMClient,
+    create_llm_client,
     extract_structured_text,
 )
 
@@ -112,7 +111,7 @@ Agent 响应: {response}
 
 只返回 JSON，例如: {{"relevance": 0.9, "accuracy": 0.8, "completeness": 0.7, "helpfulness": 0.85}}"""
 
-    def __init__(self, client: AsyncAnthropic, model: str):
+    def __init__(self, client: LLMClient, model: str):
         self._client = client
         self._model  = model
 
@@ -253,8 +252,7 @@ class EndToEndEvaluator:
         价格/时效的具体表述判为"无依据"并改写成保守话术。那样测出来的
         completeness 天然偏低，而且和线上不是一回事——所以这个参数该传就传。
         """
-        kwargs = anthropic_client_kwargs(api_key, base_url)
-        client = AsyncAnthropic(**kwargs)
+        client = create_llm_client(api_key, base_url)
 
         self._orchestrator     = orchestrator
         self._judge            = LLMJudge(client, model)
@@ -560,25 +558,163 @@ class EndToEndEvaluator:
 
 
 # ── 内置测试用例（开箱即用）──────────────────────────────────────────────────
+#
+# 标注边界规则（扩集时必须遵守，否则标签会互相打架、准确率数字失去意义）：
+#
+#   1. **细粒度优先**：能看出具体诉求的，一律标细粒度意图（9 个），不标宽泛大类。
+#      "什么时候做好" → order_status，不是 order。
+#   2. **宽泛大类只用于诉求不明确**：看得出是哪个域、但还不知道要干什么，才标
+#      query / technical / billing / order / request。
+#      "我想问一下我这个订单的事" → order（还不知道是问进度、改单还是补件）。
+#   3. **escalation vs human_handoff**：要求升级到主管/经理/负责人 → escalation；
+#      明确要求转人工/真人客服 → human_handoff。
+#   4. **complaint vs feedback**：负面情绪且无具体诉求 → complaint；正面评价 → feedback。
+#      带具体诉求的不满要标到诉求上（"门板裂了太差劲" → damage_defect）。
+#
+# 覆盖度：18 个细粒度意图 × 5 条 = 90 条。扩集前只有 11 条、覆盖 11 个意图，
+# query / request / escalation / technical / billing / order / feedback 这 7 个是零覆盖——
+# 也就是说旧的 "100% intent accuracy" 是在 61% 的意图上测出来的。
 
 DEFAULT_INTENT_CASES: list[IntentTestCase] = [
-    IntentTestCase("这批柜子什么时候能做好？",     "order_status"),
-    IntentTestCase("帮我把这单取消掉",             "order_change"),
-    IntentTestCase("你们服务太差了！",             "complaint"),
-    IntentTestCase("送来的门板有划痕",             "damage_defect"),
-    IntentTestCase("定金付了怎么还显示未付？",     "payment_issue"),
-    IntentTestCase("我要投诉，转人工！",           "human_handoff"),
-    IntentTestCase("你好",                         "greeting"),
-    IntentTestCase("这套橱柜报价多少？",           "quote_pricing"),
-    IntentTestCase("少发了一块门板，补件怎么走？", "missing_part"),
-    IntentTestCase("柜门关不严，铰链怎么调？",     "installation"),
-    IntentTestCase("能不能改一下送货日期？",       "delivery"),
+    # ── 会话类（4）────────────────────────────────────────────────────────────
+    IntentTestCase("你好",                                 "greeting"),
+    IntentTestCase("在吗？",                               "greeting"),
+    IntentTestCase("早上好",                               "greeting"),
+    IntentTestCase("哈喽，有人吗",                         "greeting"),
+    IntentTestCase("您好，打扰了",                         "greeting"),
+
+    IntentTestCase("你们服务太差了！",                     "complaint"),
+    IntentTestCase("这已经是第三次出问题了，太让人失望",   "complaint"),
+    IntentTestCase("跟你们合作这么久，从来没这么糟心过",   "complaint"),
+    IntentTestCase("我真的受够了",                         "complaint"),
+    IntentTestCase("你们这个态度我很不满意",               "complaint"),
+
+    IntentTestCase("师傅装得很好，谢谢",                   "feedback"),
+    IntentTestCase("这次做得不错，很满意",                 "feedback"),
+    IntentTestCase("柜子质量比我想的好",                   "feedback"),
+    IntentTestCase("服务态度挺好的，点个赞",               "feedback"),
+    IntentTestCase("谢谢你们，处理得很及时",               "feedback"),
+
+    IntentTestCase("帮我处理一下这个事",                   "request"),
+    IntentTestCase("麻烦你帮我登记一下",                   "request"),
+    IntentTestCase("能帮我安排一下吗？",                   "request"),
+    IntentTestCase("帮我跟进一下这件事",                   "request"),
+    IntentTestCase("麻烦帮我记录到系统里",                 "request"),
+
+    # ── 宽泛大类（5）──────────────────────────────────────────────────────────
+    IntentTestCase("想问一下你们这边的流程是怎么走的",     "query"),
+    IntentTestCase("你们营业时间是几点到几点？",           "query"),
+    IntentTestCase("能不能介绍一下你们的服务范围？",       "query"),
+    IntentTestCase("有没有什么需要我先准备的资料？",       "query"),
+    IntentTestCase("我想了解一下大概情况",                 "query"),
+
+    IntentTestCase("我要找你们主管",                       "escalation"),
+    IntentTestCase("让你们经理来跟我说",                   "escalation"),
+    IntentTestCase("这个事你做不了主，找能拍板的人",       "escalation"),
+    IntentTestCase("我要投诉到你们领导那里",               "escalation"),
+    IntentTestCase("叫你们负责人给我回电话",               "escalation"),
+
+    IntentTestCase("这个板材是什么材质的？",               "technical"),
+    IntentTestCase("你们的柜体用的什么五金？",             "technical"),
+    IntentTestCase("台面能不能做无缝拼接？",               "technical"),
+    IntentTestCase("这种饰面耐不耐刮？",                   "technical"),
+    IntentTestCase("吊柜承重大概多少？",                   "technical"),
+
+    IntentTestCase("付款方式都有哪些？",                   "billing"),
+    IntentTestCase("你们开发票吗？",                       "billing"),
+    IntentTestCase("账期一般怎么算？",                     "billing"),
+    IntentTestCase("能不能走对公转账？",                   "billing"),
+    IntentTestCase("结算流程是怎样的？",                   "billing"),
+
+    IntentTestCase("我想问一下我这个订单的事",             "order"),
+    IntentTestCase("关于我那单，有点情况想说",             "order"),
+    IntentTestCase("我这单能不能再确认一下",               "order"),
+    IntentTestCase("订单方面有个问题想咨询",               "order"),
+    IntentTestCase("我这批货想跟你核对一下",               "order"),
+
+    # ── 细粒度业务意图（9）────────────────────────────────────────────────────
+    IntentTestCase("这批柜子什么时候能做好？",             "order_status"),
+    IntentTestCase("我这单现在做到哪一步了？",             "order_status"),
+    IntentTestCase("生产进度能查一下吗？",                 "order_status"),
+    IntentTestCase("排产排到我了吗？",                     "order_status"),
+    IntentTestCase("订单 #12345 现在什么状态",             "order_status"),
+
+    IntentTestCase("能不能改一下送货日期？",               "delivery"),
+    IntentTestCase("什么时候能送到工地？",                 "delivery"),
+    IntentTestCase("送货是你们自己的车吗？",               "delivery"),
+    IntentTestCase("这周五能安排送货吗？",                 "delivery"),
+    IntentTestCase("货到了没人签收怎么办？",               "delivery"),
+
+    IntentTestCase("帮我把这单取消掉",                     "order_change"),
+    IntentTestCase("我想把门板颜色换一下",                 "order_change"),
+    IntentTestCase("尺寸能不能再改一次？",                 "order_change"),
+    IntentTestCase("这单加两个吊柜可以吗？",               "order_change"),
+    IntentTestCase("把送货地址改成圣何塞的工地",           "order_change"),
+
+    IntentTestCase("少发了一块门板，补件怎么走？",         "missing_part"),
+    # 这条曾被规则通道误判为 installation（扩集时发现）：
+    # 当时 MISSING_PART 只有 "少发了" 没有 "少了"，于是全句只有 "铰链" 一个锚点命中，
+    # 构不成跨意图冲突，快通道就抢答了。修法是补上 "少了"（锚点 52→53），
+    # 让它与 "铰链" 同时命中、触发既有的跨意图冲突逻辑，整体让位给三路融合。
+    # 保留这条用例作为该修复的回归哨兵。
+    IntentTestCase("拆箱发现少了两个铰链",                 "missing_part"),
+    IntentTestCase("装箱单上有的东西没找到",               "missing_part"),
+    IntentTestCase("你们漏发了一个抽屉面板",               "missing_part"),
+    IntentTestCase("发错货了，型号跟单子上对不上",         "missing_part"),
+
+    IntentTestCase("这套橱柜报价多少？",                   "quote_pricing"),
+    IntentTestCase("加个岛台大概要加多少钱？",             "quote_pricing"),
+    IntentTestCase("能不能给个大概预算？",                 "quote_pricing"),
+    IntentTestCase("这个配置的价格怎么算",                 "quote_pricing"),
+    IntentTestCase("报价单什么时候能出来？",               "quote_pricing"),
+
+    IntentTestCase("定金付了怎么还显示未付？",             "payment_issue"),
+    IntentTestCase("尾款被重复扣款了",                     "payment_issue"),
+    IntentTestCase("这笔钱怎么对不上账",                   "payment_issue"),
+    IntentTestCase("我转账了但你们说没收到",               "payment_issue"),
+    IntentTestCase("退款什么时候能到账？",                 "payment_issue"),
+
+    IntentTestCase("柜门关不严，铰链怎么调？",             "installation"),
+    IntentTestCase("抽屉推进去有异响",                     "installation"),
+    IntentTestCase("吊柜装歪了怎么办",                     "installation"),
+    IntentTestCase("安装师傅什么时候到？",                 "installation"),
+    IntentTestCase("台面和墙之间有缝要怎么处理",           "installation"),
+
+    IntentTestCase("送来的门板有划痕",                     "damage_defect"),
+    IntentTestCase("W3012 这块门板送来就是裂的",           "damage_defect"),
+    IntentTestCase("台面边角磕掉了一块",                   "damage_defect"),
+    IntentTestCase("柜体侧板有个鼓包",                     "damage_defect"),
+    IntentTestCase("饰面起泡了，能返工吗",                 "damage_defect"),
+
+    IntentTestCase("我要投诉，转人工！",                   "human_handoff"),
+    IntentTestCase("转人工客服",                           "human_handoff"),
+    IntentTestCase("能不能让真人跟我说",                   "human_handoff"),
+    IntentTestCase("我不想跟机器人聊了",                   "human_handoff"),
+    IntentTestCase("接个人工过来",                         "human_handoff"),
 ]
 
+# 对话用例：覆盖每个专家域、两类答案策略拦截（价格 / 时效）、转人工、正面反馈，
+# 外加两组多轮。扩集前 5 组，其中 order 域占 3 组，technical / billing 各 1 组，
+# 安装、付款、送货、转人工、反馈全部无覆盖。
 DEFAULT_DIALOG_CASES: list[dict[str, Any]] = [
+    # ── order 域 ──────────────────────────────────────────────────────────────
     {"question": "我这单 #12345 说好上周做完，到现在还没消息"},
-    {"question": "W3012 这块门板送来就是裂的"},
-    {"question": "这套厨房加个岛台大概要加多少钱？"},
     {"question": "帮我把送货地址改成圣何塞的工地"},
+    # ── technical 域 ──────────────────────────────────────────────────────────
+    {"question": "W3012 这块门板送来就是裂的"},
+    {"question": "柜门关不严，铰链我自己能调吗？"},
+    {"question": "你们台面能做无缝拼接吗？用的什么材质"},
+    # ── billing 域 ────────────────────────────────────────────────────────────
+    {"question": "这套厨房加个岛台大概要加多少钱？"},
+    {"question": "尾款被扣了两次，能帮我查一下吗？"},
+    # ── 答案策略：时效承诺必须被拦 ────────────────────────────────────────────
+    {"question": "这周五能安排送到圣何塞工地吗？"},
+    # ── 转人工路径 ────────────────────────────────────────────────────────────
+    {"question": "别跟我扯了，直接转人工"},
+    # ── 正面反馈：不该触发检索，也不该长篇大论 ────────────────────────────────
+    {"question": "师傅装得很好，谢谢你们"},
+    # ── 多轮：补件（原有）─────────────────────────────────────────────────────
     {"turns": ["你好，我这单少了一块门板", "订单号是 #12345", "补件大概多久能到？"]},
+    # ── 多轮：改单 → 末轮触发报价策略 ─────────────────────────────────────────
+    {"turns": ["我想把门板颜色换成白的", "订单号 #67890", "换色要加钱吗？"]},
 ]

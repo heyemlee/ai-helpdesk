@@ -30,7 +30,9 @@ services:
     image: pgvector/pgvector:pg16
     container_name: ai-helpdesk-postgres
     ports:
-      - "5432:5432"
+      # 宿主机侧用 5433：5432 被另一个 compose 项目（askdata_agent 的 pgvector）占用。
+      # app 走内网 postgres:5432，不受这里影响；这个映射只给本机 psql/GUI 用。
+      - "5433:5432"
     environment:
       - POSTGRES_USER=${POSTGRES_USER:-aihelpdesk}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-aihelpdesk123}
@@ -162,7 +164,9 @@ services:
 
   # ── OTel Collector（trace 汇聚，转发 Tempo）─────────────────────────────────
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.116.0
+    # 0.116.0 的镜像在部分主机上 exec 失败（exec /otelcol-contrib: no such file or
+    # directory，镜像本身完好、重拉无效、直接 docker run 同样失败）。0.127.0 正常。
+    image: otel/opentelemetry-collector-contrib:0.127.0
     container_name: ai-helpdesk-otel
     command: ["--config=/etc/otelcol/config.yml"]
     volumes:

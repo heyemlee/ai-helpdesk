@@ -4,13 +4,22 @@
 用途：给"首响应秒级"的声明补实测数据。跑一次，把结果写进 README，
 比"设计目标"硬气得多。
 
+**要对外引用的数字，必须带 --unique-messages。** 消息池只有 10 条，不加这个开关时
+脚本是循环发的，第 11 次起 `core/intent_recognizer.py` 的进程内意图缓存全命中，
+后续请求直接跳过意图识别的 LLM 调用——测出来的是"热缓存重复流量"的延迟，
+p95 会比真实首次工单低一成左右。`--unique-messages` 给每条消息拼一个唯一柜号，
+保证 0 缓存命中，测的是冷路径。
+
 用法（服务需已启动，会产生真实 LLM 调用费用——先算一下 requests 的量）：
 
-    python scripts/load_test.py --base-url http://localhost:8000 \\
-        --concurrency 10 --requests 100
+    # 对外引用的数字用这个：
+    python scripts/load_test.py --unique-messages --concurrency 10 --requests 100
+
+    # 不加开关＝热缓存口径，只适合和冷路径做对照，看缓存到底省了多少：
+    python scripts/load_test.py --concurrency 10 --requests 100
 
     # 只测规则通道（意图零 LLM，只有 Agent 作答一次 LLM 调用）：
-    python scripts/load_test.py --fast-path-only --requests 50
+    python scripts/load_test.py --unique-messages --fast-path-only --requests 50
 
     # 带鉴权与限流的环境：
     python scripts/load_test.py --api-key admin-key --user-token <token>
@@ -43,6 +52,15 @@ ENSEMBLE_MESSAGES = [
     "麻烦看看我这单最近的情况",
     "之前反馈的事情后来怎么样了",
 ]
+
+
+def uniquify(message: str, idx: int) -> str:
+    """拼一个唯一柜号，绕开按「消息+历史」做 key 的进程内意图缓存。
+
+    刻意用真实业务里的柜号格式（W3012-1），而不是随机串：
+    既保证 cache miss，又不改变这条消息应该命中的意图。
+    """
+    return f"{message}，柜号 W{3000 + idx}-{idx % 7 + 1}"
 
 
 async def worker(
@@ -90,6 +108,8 @@ async def main() -> int:
     parser.add_argument("--requests", type=int, default=100)
     parser.add_argument("--fast-path-only", action="store_true",
                         help="只发规则通道消息（LLM 调用最少，成本可控）")
+    parser.add_argument("--unique-messages", action="store_true",
+                        help="每条消息拼唯一柜号，绕开意图缓存，测冷路径（对外引用用这个）")
     parser.add_argument("--api-key", default=None, help="X-API-Key（PROTECT_CHAT 开启时）")
     parser.add_argument("--user-token", default=None, help="X-User-Token（令牌鉴权开启时）")
     parser.add_argument("--timeout", type=float, default=120.0)
@@ -104,10 +124,21 @@ async def main() -> int:
 
     queue: asyncio.Queue = asyncio.Queue()
     for i in range(args.requests):
-        queue.put_nowait((i, messages[i % len(messages)]))
+        msg = messages[i % len(messages)]
+        queue.put_nowait((i, uniquify(msg, i) if args.unique_messages else msg))
+
+    if not args.unique_messages and args.requests > len(messages):
+        print(
+            f"⚠️  未加 --unique-messages：消息池只有 {len(messages)} 条，"
+            f"第 {len(messages) + 1} 个请求起意图缓存全命中，"
+            f"测出来的是热缓存口径，p95 会偏低。对外引用请加 --unique-messages。",
+            file=sys.stderr,
+        )
 
     results: list[dict] = []
-    print(f"压测 {args.base_url}/chat: {args.requests} 请求 × {args.concurrency} 并发 …")
+    mode_label = "冷路径，消息唯一" if args.unique_messages else "热缓存口径，消息循环"
+    print(f"压测 {args.base_url}/chat: {args.requests} 请求 × {args.concurrency} 并发"
+          f"（{mode_label}）…")
     t0 = time.monotonic()
     async with httpx.AsyncClient(base_url=args.base_url, timeout=args.timeout) as client:
         await asyncio.gather(*[
@@ -122,6 +153,8 @@ async def main() -> int:
     intent_fast = [r["intent_ms"] for r in fast if r.get("intent_ms") is not None]
 
     report = {
+        "mode": "cold (unique messages)" if args.unique_messages
+                else "warm (intent cache hits after first pass)",
         "requests": len(results),
         "success": len(ok),
         "errors": len(errors),
