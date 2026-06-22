@@ -1,109 +1,172 @@
 # AI Helpdesk
 
-一个面向企业场景的智能客服系统。它能识别用户问题、检索知识库、分配给合适的客服 Agent，并在答案不够可靠时自动转人工。
+**English** · [简体中文](README.zh-CN.md)
 
-后端使用 FastAPI，前端是 React + TypeScript 控制台；内置工单、知识库、监控、追踪和回归评测能力。
+A multi-agent customer support and ticket orchestration system. It classifies the
+incoming question, retrieves supporting knowledge, routes to the right specialist
+agent, and hands off to a human whenever the answer is not trustworthy enough.
 
-## 项目介绍
+FastAPI backend, React + TypeScript console. Tickets, knowledge base, monitoring,
+tracing and regression evaluation are part of the system, not bolted on afterwards.
 
-这是一个面向生产环境设计的多 Agent 智能客服与工单编排系统。它把一条客服请求拆成“识别问题、补充上下文、检索知识、专家协作、安全校验、人工接手、质量回归”七个可独立治理的环节，并提供可视化控制台与完整的可观测性能力。
+## What it is
 
-- **高可靠意图识别与低延迟路径**：将客服请求细分为 18 类意图，融合 LLM（70%）、向量（20%）和规则（10%）三路信号，输出意图、置信度、来源分数、紧急度及订单号、金额、物料编号等结构化实体。针对 9 类高频确定性问题，内置 53 个高精度锚点短语；命中后无需网络调用，并将单次工单的 LLM 往返从 4 次降至 1 次。
-- **按需触发的混合检索 RAG**：仅在业务类意图下检索知识库。检索为双路并行——pgvector 余弦向量负责语义相近，tsvector 关键词（中文按字符二元组建索引，不依赖外部分词扩展）负责字面命中，再用 RRF 按名次融合。这一路补的正是稠密向量的系统性盲区：领域专名和订单号这类精确串。在内置语料的检索评测上，hit@3 从纯向量的 6/8 提升到 8/8（`scripts/eval_retrieval.py` 可复现）。融合发生在存储层、不花 LLM 调用，因此规则快通道也能享受到，零网络往返的承诺不受影响。完整链路在此之上再做查询改写 3 子查询并行召回、内容哈希去重、重排取 top-3；重排优先走 cross-encoder，未配置时回落 LLM。未配置 Postgres 时可回退 SQLite（稀疏侧为纯 Python BM25），便于零依赖本地开发。知识导入使用内容哈希去重，重复上传不会生成重复文档。
-- **有反馈的检索回路**：重排之后不直接交付，先判定证据是否足以回答问题，不足则围绕缺口补检一轮（硬性上限一轮，仍不足则交给置信度闸门转人工）。充分性判定与 LLM 重排合并在同一次调用里返回，额外 LLM 往返数为零。
-- **多 Agent 编排与人工兜底**：编排产品与安装、报价与账款、订单履约 3 个专家 Agent 和 1 个通用兜底 Agent。路由会综合意图、40 余个关键词锚点和实体信息选择主 Agent；跨领域问题满足阈值时由辅助 Agent 并行参与。意图不清先追问，任一置信度信号偏低则创建工单转人工。
-- **把回答安全做成硬约束**：出站答案经过零 LLM 的规则守卫逐句检查。对没有知识库或 SOP 依据的价格、时效承诺进行拦截并改写为保守表述，同时记录结构化违规信息；流式 SSE 输出也使用同一套句级校验，避免流式与非流式结果标准不一致。
-- **面向多租户的安全与记忆**：通过 HMAC 签名令牌在服务端推导用户身份，避免客户端伪造 `user_id` 读取他人记忆；Redis 提供按用户限流和 24 小时工作记忆，pgvector 保存情景记忆与用户画像，工单和对话审计日志可持久化回查。
-- **完整工程化闭环**：Monitor 每 10 秒根据 Agent 成功率和延迟调整路由惩罚，并通过 Redis 在多实例间共享；LLM-as-Judge 从相关性、准确性、完整性、帮助性四个维度回放评测，并基于人工提升的基线识别回归。项目包含 216 个后端测试、13 个前端测试、11 服务 Docker Compose 环境，以及 Prometheus、Grafana、Tempo、Loki 和 OpenTelemetry 组成的指标、日志、链路追踪体系。
+One support request is split into seven independently governed stages — classify,
+enrich with context, retrieve knowledge, collaborate across specialists, enforce
+safety, escalate to a human, and regress on quality — each one observable and each
+one able to degrade on its own.
 
-## 一次请求如何流转
+- **Fine-grained intent recognition with a zero-latency path.** Requests are split
+  into 18 intents, fused from three signals: LLM (70%), embeddings (20%) and rules
+  (10%). The recognizer emits an intent, a confidence, per-source scores, an urgency
+  level, and structured entities such as order numbers, amounts and part numbers.
+  For 9 high-frequency deterministic classes, 53 high-precision anchor phrases
+  short-circuit the whole thing: on a hit there is no network call at all, and the
+  LLM round trips for one ticket drop from four to one.
+- **Hybrid retrieval, gated by intent.** The knowledge base is only queried for
+  business intents. Retrieval runs two ways in parallel — pgvector cosine similarity
+  for semantic neighbours, and a tsvector keyword index for literal hits (Chinese is
+  indexed as character bigrams, so no external tokenizer extension is required) —
+  then fuses the two by rank with RRF. The lexical side covers exactly what dense
+  vectors are systematically blind to: domain proper nouns and exact strings like
+  order numbers. On the built-in corpus, hit@3 goes from 6/8 with vectors alone to
+  8/8 (reproducible via `scripts/eval_retrieval.py`). Fusion happens in the storage
+  layer and costs no LLM call, so the rule fast path benefits from it too and the
+  zero-round-trip promise still holds. On top of that the full path rewrites the
+  query into 3 parallel subqueries, deduplicates by content hash, and reranks to the
+  top 3 — cross-encoder when configured, LLM otherwise. Without Postgres it falls
+  back to SQLite with a pure-Python BM25 sparse side, which keeps local development
+  dependency-free. Ingestion deduplicates by content hash, so re-uploading a
+  document does not create a duplicate.
+- **A retrieval loop with feedback.** Reranked passages are not handed straight to
+  the agent. The system first decides whether the evidence actually answers the
+  question; if it does not, it runs one more retrieval round aimed at the gap (hard
+  cap of one — still insufficient, and the confidence gate escalates to a human).
+  The sufficiency verdict comes back in the same call as the LLM rerank, so the
+  extra LLM round trips are zero.
+- **Multi-agent orchestration with a human backstop.** Three specialists — product
+  and installation, quoting and billing, order fulfillment — plus a general showroom
+  agent as fallback. Routing picks the primary agent from the intent, 40-odd keyword
+  anchors and the extracted entities; cross-domain questions that clear the
+  threshold get a supporting agent working in parallel. Unclear intent triggers a
+  follow-up question, and any weak confidence signal opens a ticket and escalates.
+- **Answer safety as a hard constraint, not a prompt.** Outbound answers pass
+  through a zero-LLM rule guard, sentence by sentence. Price and turnaround
+  commitments with no basis in the retrieved knowledge or the injected SOP are
+  blocked and rewritten into something conservative, with the violation recorded in
+  structured form. The streaming SSE path runs the same sentence-level check, so
+  streaming and non-streaming answers cannot diverge on what they are allowed to say.
+- **Multi-tenant safety and memory.** User identity is derived server-side from an
+  HMAC-signed token, so a client cannot forge a `user_id` and read someone else's
+  memory. Redis holds per-user rate limits and 24-hour working memory; pgvector
+  holds episodic memory and user profiles; tickets and conversation audit logs are
+  persisted and replayable.
+- **A closed engineering loop.** Monitor adjusts the routing penalty every 10
+  seconds from agent success rate and latency, shared across instances through
+  Redis. LLM-as-Judge replays evaluations on four dimensions — relevance, accuracy,
+  completeness, helpfulness — and detects regressions against a baseline that is
+  only updated on an explicit promote. 216 backend tests, 13 frontend tests, an
+  11-service Docker Compose environment, and metrics, logs and traces via
+  Prometheus, Grafana, Tempo, Loki and OpenTelemetry.
 
-![AI Helpdesk 完整请求链路](docs/diagrams/request-flow.svg)
+## How one request flows
 
-## 技术架构
+![AI Helpdesk request lifecycle](docs/diagrams/request-flow.svg)
 
-![AI Helpdesk 技术架构](docs/diagrams/tech-stack.svg)
+## Architecture
 
-## 快速开始
+![AI Helpdesk technical architecture](docs/diagrams/tech-stack.svg)
 
-### 用 Docker 运行完整系统
+## Quick start
 
-准备 Docker 和 Docker Compose，然后在项目根目录执行：
+### Run the whole stack with Docker
+
+With Docker and Docker Compose installed, from the project root:
 
 ```bash
 cp .env.example .env
 cp backend/.env.example backend/.env
-# 编辑 backend/.env，填入 ANTHROPIC_API_KEY
+# edit backend/.env and fill in ANTHROPIC_API_KEY
 docker compose up -d --build
 ```
 
-启动后可访问：
+Once it is up:
 
-| 地址 | 用途 |
+| URL | What it is |
 | --- | --- |
-| http://localhost:5174 | 客服控制台 |
-| http://localhost:8000/docs | API 文档 |
-| http://localhost:3000 | Grafana 监控、日志与链路追踪 |
-| http://localhost:9090 | Prometheus 指标 |
+| http://localhost:5174 | Support console |
+| http://localhost:8000/docs | API docs |
+| http://localhost:3000 | Grafana — metrics, logs and traces |
+| http://localhost:9090 | Prometheus metrics |
 
-### 本地开发
+### Local development
 
-先按 `backend/.env.example` 创建并填写 `backend/.env`，再执行：
+Create `backend/.env` from `backend/.env.example`, fill it in, then:
 
 ```bash
 ./dev.sh
 ```
 
-这会同时启动后端和前端。浏览器打开 http://localhost:5173 即可。
+That starts the backend and the frontend together. Open http://localhost:5173.
 
-## 常用能力入口
+## Where things live
 
-| 需求 | 入口 |
+| Task | Entry point |
 | --- | --- |
-| 与客服对话 | 控制台，或 `POST /chat` |
-| 流式对话 | `POST /chat/stream` |
-| 查看知识库 | 控制台，或 `GET /knowledge/stats` |
-| 导入知识 | `POST /knowledge/add`、`POST /knowledge/upload` |
-| 查看人工工单 | `GET /tickets` |
-| 查看服务状态 | `GET /health`、`GET /monitor` |
-| 运行评测 | `POST /eval/run` |
+| Talk to support | The console, or `POST /chat` |
+| Streaming conversation | `POST /chat/stream` |
+| Inspect the knowledge base | The console, or `GET /knowledge/stats` |
+| Ingest knowledge | `POST /knowledge/add`, `POST /knowledge/upload` |
+| List human tickets | `GET /tickets` |
+| Service health | `GET /health`, `GET /monitor` |
+| Run an evaluation | `POST /eval/run` |
 
-完整接口说明可在启动后打开 http://localhost:8000/docs 查看。
+Full API reference is at http://localhost:8000/docs once the service is running.
 
-## 核心组件
+## Layout
 
 ```text
-backend/         FastAPI 服务、Agent 编排、知识库、记忆、工单与监控
-frontend/        React 管理控制台
-backend/skills/  不同客服 Agent 使用的服务规范（SOP）
+backend/         FastAPI service, agent orchestration, KB, memory, tickets, monitoring
+frontend/        React admin console
+backend/skills/  Per-agent SOPs, hot-reloadable
 ```
 
-系统使用 Redis 保存短期状态，如限流和近期对话；使用 PostgreSQL + pgvector 保存知识库、工单、审计记录和长期记忆。没有配置 Postgres 时，后端可退回 SQLite，方便本地体验。
+Redis holds short-lived state — rate limits, recent conversation. PostgreSQL +
+pgvector holds the knowledge base, tickets, audit records and long-term memory.
+Without Postgres configured the backend falls back to SQLite, which is enough to
+try the system locally.
 
-## 测试
+## Tests
 
 ```bash
 cd backend && pytest && ruff check .
 cd frontend && npm test && npm run typecheck
 ```
 
-当前：后端 **216 passed / 2 skipped**，前端 **13 passed**。
-CI 分 3 阶段，其中一阶段带 pgvector service container，跑真实 Postgres 路径而不是 SQLite 兜底。
+Currently **216 passed / 2 skipped** on the backend and **13 passed** on the
+frontend. CI runs in 3 stages; one of them brings up a pgvector service container
+so the Postgres path is exercised for real rather than falling back to SQLite.
 
-## 性能
+## Performance
 
-压测脚本 `backend/scripts/load_test.py`，运行后输出含 p50 / p95 / RPS 的 JSON 报告。
-数字均为单实例冷路径实测，未做容量规划，也没有真实线上流量验证。
+`backend/scripts/load_test.py` writes a JSON report with p50 / p95 / RPS.
 
 ```bash
 cd backend && ./.venv/bin/python scripts/load_test.py --unique-messages --requests 100 --concurrency 10
 ```
 
-**`--unique-messages` 不是可选项**：消息池只有 10 条，不加这个开关时脚本循环发送，
-第 11 个请求起 `core/intent_recognizer.py` 的进程内意图缓存全命中，
-后续请求直接跳过意图识别的 LLM 调用，p95 会比真实首次工单低约 11%。
-缺开关时脚本会打印警告，报告里也会记 `mode` 字段。
+**`--unique-messages` is not optional.** The message pool only holds 10 entries;
+without the flag the script cycles through them, and from request 11 onward the
+in-process intent cache in `core/intent_recognizer.py` hits every time. Those
+requests skip the intent LLM call entirely and p95 comes out roughly 11% below a
+genuine first-time ticket. The script warns when the flag is missing and records a
+`mode` field in the report.
 
-## 技术栈
+These are single-instance cold-path numbers. No capacity planning has been done and
+nothing here has been validated against real production traffic — this is
+engineering built to production standards, not a production-proven system.
 
-FastAPI · React · TypeScript · PostgreSQL + pgvector · Redis · Anthropic 兼容 API · OpenTelemetry · Prometheus · Grafana · Docker Compose
+## Stack
+
+FastAPI · React · TypeScript · PostgreSQL + pgvector · Redis · Anthropic-compatible
+API · OpenTelemetry · Prometheus · Grafana · Docker Compose

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
-  <title id="title">AI Helpdesk 完整请求链路</title>
-  <desc id="desc">从请求入口、意图识别、RAG 检索、Agent 编排、安全校验到人工转接和质量闭环的六阶段流程。</desc>
+  <title id="title">AI Helpdesk request lifecycle</title>
+  <desc id="desc">Six stages from request entry, intent recognition and RAG retrieval through agent orchestration, safety checks, human handoff and the quality loop.</desc>
   <defs>
     <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
       <path d="M 0 0 L 12 6 L 0 12 z" fill="#475569"/>
@@ -9,10 +9,10 @@
       <feDropShadow dx="0" dy="5" stdDeviation="8" flood-color="#0f172a" flood-opacity="0.08"/>
     </filter>
     <style>
-      .title { font: 700 46px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif; fill: #0f172a; }
-      .subtitle { font: 400 22px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif; fill: #64748b; }
-      .step-title { font: 700 27px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif; fill: #0f172a; }
-      .body { font: 500 21px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif; fill: #334155; }
+      .title { font: 700 46px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #0f172a; }
+      .subtitle { font: 400 22px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #64748b; }
+      .step-title { font: 700 27px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #0f172a; }
+      .body { font: 500 20px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #334155; }
       .number { font: 700 22px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: white; text-anchor: middle; dominant-baseline: middle; }
       .flow { fill: none; stroke: #475569; stroke-width: 4; marker-end: url(#arrow); }
       .card { stroke-width: 2.5; filter: url(#shadow); }
@@ -20,8 +20,8 @@
   </defs>
 
   <rect width="1600" height="900" rx="28" fill="#f8fafc"/>
-  <text x="60" y="68" class="title">AI Helpdesk 完整请求链路</text>
-  <text x="60" y="105" class="subtitle">从用户请求到安全回复、人工接手与质量回归，每个环节都可追踪、可降级、可治理</text>
+  <text x="60" y="68" class="title">AI Helpdesk — request lifecycle</text>
+  <text x="60" y="105" class="subtitle">Every hop from request to safe reply, human handoff and quality regression is traceable, degradable and governed</text>
 
   <!-- flow arrows -->
   <line x1="510" y1="282" x2="565" y2="282" class="flow"/>
@@ -34,68 +34,68 @@
   <rect x="60" y="150" width="450" height="260" rx="24" fill="#eff6ff" stroke="#60a5fa" class="card"/>
   <circle cx="102" cy="192" r="25" fill="#2563eb"/>
   <text x="102" y="193" class="number">1</text>
-  <text x="140" y="201" class="step-title">请求入口</text>
+  <text x="140" y="201" class="step-title">Request entry</text>
   <line x1="95" y1="226" x2="475" y2="226" stroke="#bfdbfe" stroke-width="2"/>
   <text x="95" y="267" class="body">• Frontend / POST /chat</text>
-  <text x="95" y="305" class="body">• HMAC 令牌推导 user_id</text>
-  <text x="95" y="343" class="body">• Redis 按用户限流</text>
-  <text x="95" y="381" class="body">• X-Request-ID + OTel Trace</text>
+  <text x="95" y="305" class="body">• HMAC token derives user_id</text>
+  <text x="95" y="343" class="body">• Per-user rate limit in Redis</text>
+  <text x="95" y="381" class="body">• X-Request-ID + OTel trace</text>
 
   <!-- step 2 -->
   <rect x="575" y="150" width="450" height="260" rx="24" fill="#f5f3ff" stroke="#a78bfa" class="card"/>
   <circle cx="617" cy="192" r="25" fill="#7c3aed"/>
   <text x="617" y="193" class="number">2</text>
-  <text x="655" y="201" class="step-title">意图识别与上下文</text>
+  <text x="655" y="201" class="step-title">Intent and context</text>
   <line x1="610" y1="226" x2="990" y2="226" stroke="#ddd6fe" stroke-width="2"/>
-  <text x="610" y="267" class="body">• 18 类意图 + 实体 + 紧急度</text>
-  <text x="610" y="305" class="body">• 快路径：52 个锚点 / 零网络调用</text>
-  <text x="610" y="343" class="body">• 融合：LLM 70% / 向量 20% / 规则 10%</text>
-  <text x="610" y="381" class="body">• 读取工作记忆、情景记忆与画像</text>
+  <text x="610" y="267" class="body">• 18 intents + entities + urgency</text>
+  <text x="610" y="305" class="body">• Fast path: 53 anchors, 0 network</text>
+  <text x="610" y="343" class="body">• Fusion: LLM 70% / vec 20% / rule 10%</text>
+  <text x="610" y="381" class="body">• Reads working + episodic memory</text>
 
   <!-- step 3 -->
   <rect x="1090" y="150" width="450" height="260" rx="24" fill="#ecfeff" stroke="#22d3ee" class="card"/>
   <circle cx="1132" cy="192" r="25" fill="#0891b2"/>
   <text x="1132" y="193" class="number">3</text>
-  <text x="1170" y="201" class="step-title">按意图门控 RAG</text>
+  <text x="1170" y="201" class="step-title">Intent-gated RAG</text>
   <line x1="1125" y1="226" x2="1505" y2="226" stroke="#a5f3fc" stroke-width="2"/>
-  <text x="1125" y="267" class="body">• 仅业务类问题触发检索</text>
-  <text x="1125" y="305" class="body">• 查询改写为 3 路并行召回</text>
-  <text x="1125" y="343" class="body">• pgvector 余弦检索 + 内容去重</text>
-  <text x="1125" y="381" class="body">• LLM 重排，保留 Top-3 片段</text>
+  <text x="1125" y="267" class="body">• Retrieval only on business intents</text>
+  <text x="1125" y="305" class="body">• Query rewritten into 3 subqueries</text>
+  <text x="1125" y="343" class="body">• pgvector + lexical, RRF fused</text>
+  <text x="1125" y="381" class="body">• Rerank to top-3, one refetch max</text>
 
   <!-- step 4 -->
   <rect x="1090" y="500" width="450" height="265" rx="24" fill="#ecfdf5" stroke="#34d399" class="card"/>
   <circle cx="1132" cy="542" r="25" fill="#059669"/>
   <text x="1132" y="543" class="number">4</text>
-  <text x="1170" y="551" class="step-title">多 Agent 编排</text>
+  <text x="1170" y="551" class="step-title">Agent orchestration</text>
   <line x1="1125" y1="576" x2="1505" y2="576" stroke="#a7f3d0" stroke-width="2"/>
-  <text x="1125" y="617" class="body">• Technical / Billing / Order 专家</text>
-  <text x="1125" y="655" class="body">• 主 Agent + 辅助 Agent 并行协作</text>
-  <text x="1125" y="693" class="body">• 失败降级到 General Agent</text>
-  <text x="1125" y="731" class="body">• 意图不清时先追问补充信息</text>
+  <text x="1125" y="617" class="body">• Product / Billing / Order experts</text>
+  <text x="1125" y="655" class="body">• Primary + backup agent in parallel</text>
+  <text x="1125" y="693" class="body">• Degrades to the showroom agent</text>
+  <text x="1125" y="731" class="body">• Asks a follow-up when intent is thin</text>
 
   <!-- step 5 -->
   <rect x="575" y="500" width="450" height="265" rx="24" fill="#fffbeb" stroke="#fbbf24" class="card"/>
   <circle cx="617" cy="542" r="25" fill="#d97706"/>
   <text x="617" y="543" class="number">5</text>
-  <text x="655" y="551" class="step-title">安全校验与决策</text>
+  <text x="655" y="551" class="step-title">Safety gate and decision</text>
   <line x1="610" y1="576" x2="990" y2="576" stroke="#fde68a" stroke-width="2"/>
-  <text x="610" y="617" class="body">• 句级 Answer Policy 硬约束</text>
-  <text x="610" y="655" class="body">• 拦截无依据的价格 / 时效承诺</text>
-  <text x="610" y="693" class="body">• 意图 / 路由 / Agent 三路置信度门控</text>
-  <text x="610" y="731" class="body">• 可靠则回复；低置信度转人工</text>
+  <text x="610" y="617" class="body">• Sentence-level answer policy</text>
+  <text x="610" y="655" class="body">• Blocks unsourced price / ETA claims</text>
+  <text x="610" y="693" class="body">• 3 gates: intent, routing, agent</text>
+  <text x="610" y="731" class="body">• Reply if solid, else hand off</text>
 
   <!-- step 6 -->
   <rect x="60" y="500" width="450" height="265" rx="24" fill="#fff1f2" stroke="#fb7185" class="card"/>
   <circle cx="102" cy="542" r="25" fill="#e11d48"/>
   <text x="102" y="543" class="number">6</text>
-  <text x="140" y="551" class="step-title">持久化与质量闭环</text>
+  <text x="140" y="551" class="step-title">Persistence and quality loop</text>
   <line x1="95" y1="576" x2="475" y2="576" stroke="#fecdd3" stroke-width="2"/>
   <text x="95" y="617" class="body">• Redis + PostgreSQL + pgvector</text>
-  <text x="95" y="655" class="body">• 工单状态机、Webhook、审计日志</text>
-  <text x="95" y="693" class="body">• Monitor 反馈动态调整路由</text>
-  <text x="95" y="731" class="body">• LLM-as-Judge + 指标 / 日志 / Trace</text>
+  <text x="95" y="655" class="body">• Ticket FSM, webhook, audit log</text>
+  <text x="95" y="693" class="body">• Monitor feedback retunes routing</text>
+  <text x="95" y="731" class="body">• LLM-as-Judge + metrics/logs/traces</text>
 
   <rect x="60" y="812" width="1480" height="42" rx="21" fill="#e2e8f0"/>
-  <text x="800" y="840" text-anchor="middle" class="body">异常可降级 · 低置信度可转人工 · 所有决策均可审计</text>
+  <text x="800" y="840" text-anchor="middle" class="body">Degrades on failure · hands off on low confidence · every decision auditable</text>
 </svg>

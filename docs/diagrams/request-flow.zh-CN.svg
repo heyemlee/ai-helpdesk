@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">AI Helpdesk 完整请求链路</title>
+  <desc id="desc">从请求入口、意图识别、RAG 检索、Agent 编排、安全校验到人工转接和质量闭环的六阶段流程。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M 0 0 L 12 6 L 0 12 z" fill="#475569"/>
+    </marker>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="5" stdDeviation="8" flood-color="#0f172a" flood-opacity="0.08"/>
+    </filter>
+    <style>
+      .title { font: 700 46px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif; fill: #0f172a; }
+      .subtitle { font: 400 22px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif; fill: #64748b; }
+      .step-title { font: 700 27px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif; fill: #0f172a; }
+      .body { font: 500 21px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif; fill: #334155; }
+      .number { font: 700 22px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: white; text-anchor: middle; dominant-baseline: middle; }
+      .flow { fill: none; stroke: #475569; stroke-width: 4; marker-end: url(#arrow); }
+      .card { stroke-width: 2.5; filter: url(#shadow); }
+    </style>
+  </defs>
+
+  <rect width="1600" height="900" rx="28" fill="#f8fafc"/>
+  <text x="60" y="68" class="title">AI Helpdesk 完整请求链路</text>
+  <text x="60" y="105" class="subtitle">从用户请求到安全回复、人工接手与质量回归，每个环节都可追踪、可降级、可治理</text>
+
+  <!-- flow arrows -->
+  <line x1="510" y1="282" x2="565" y2="282" class="flow"/>
+  <line x1="1025" y1="282" x2="1080" y2="282" class="flow"/>
+  <line x1="1315" y1="410" x2="1315" y2="490" class="flow"/>
+  <line x1="1090" y1="632" x2="1035" y2="632" class="flow"/>
+  <line x1="575" y1="632" x2="520" y2="632" class="flow"/>
+
+  <!-- step 1 -->
+  <rect x="60" y="150" width="450" height="260" rx="24" fill="#eff6ff" stroke="#60a5fa" class="card"/>
+  <circle cx="102" cy="192" r="25" fill="#2563eb"/>
+  <text x="102" y="193" class="number">1</text>
+  <text x="140" y="201" class="step-title">请求入口</text>
+  <line x1="95" y1="226" x2="475" y2="226" stroke="#bfdbfe" stroke-width="2"/>
+  <text x="95" y="267" class="body">• Frontend / POST /chat</text>
+  <text x="95" y="305" class="body">• HMAC 令牌推导 user_id</text>
+  <text x="95" y="343" class="body">• Redis 按用户限流</text>
+  <text x="95" y="381" class="body">• X-Request-ID + OTel Trace</text>
+
+  <!-- step 2 -->
+  <rect x="575" y="150" width="450" height="260" rx="24" fill="#f5f3ff" stroke="#a78bfa" class="card"/>
+  <circle cx="617" cy="192" r="25" fill="#7c3aed"/>
+  <text x="617" y="193" class="number">2</text>
+  <text x="655" y="201" class="step-title">意图识别与上下文</text>
+  <line x1="610" y1="226" x2="990" y2="226" stroke="#ddd6fe" stroke-width="2"/>
+  <text x="610" y="267" class="body">• 18 类意图 + 实体 + 紧急度</text>
+  <text x="610" y="305" class="body">• 快路径：53 个锚点 / 零网络调用</text>
+  <text x="610" y="343" class="body">• 融合：LLM 70% / 向量 20% / 规则 10%</text>
+  <text x="610" y="381" class="body">• 读取工作记忆、情景记忆与画像</text>
+
+  <!-- step 3 -->
+  <rect x="1090" y="150" width="450" height="260" rx="24" fill="#ecfeff" stroke="#22d3ee" class="card"/>
+  <circle cx="1132" cy="192" r="25" fill="#0891b2"/>
+  <text x="1132" y="193" class="number">3</text>
+  <text x="1170" y="201" class="step-title">按意图门控 RAG</text>
+  <line x1="1125" y1="226" x2="1505" y2="226" stroke="#a5f3fc" stroke-width="2"/>
+  <text x="1125" y="267" class="body">• 仅业务类问题触发检索</text>
+  <text x="1125" y="305" class="body">• 查询改写为 3 路并行召回</text>
+  <text x="1125" y="343" class="body">• pgvector 向量 + BM25，RRF 融合</text>
+  <text x="1125" y="381" class="body">• 重排取 Top-3，不足则补检一轮</text>
+
+  <!-- step 4 -->
+  <rect x="1090" y="500" width="450" height="265" rx="24" fill="#ecfdf5" stroke="#34d399" class="card"/>
+  <circle cx="1132" cy="542" r="25" fill="#059669"/>
+  <text x="1132" y="543" class="number">4</text>
+  <text x="1170" y="551" class="step-title">多 Agent 编排</text>
+  <line x1="1125" y1="576" x2="1505" y2="576" stroke="#a7f3d0" stroke-width="2"/>
+  <text x="1125" y="617" class="body">• 产品与安装 / 报价与账款 / 订单履约</text>
+  <text x="1125" y="655" class="body">• 主 Agent + 辅助 Agent 并行协作</text>
+  <text x="1125" y="693" class="body">• 失败降级到展厅接待 Agent</text>
+  <text x="1125" y="731" class="body">• 意图不清时先追问补充信息</text>
+
+  <!-- step 5 -->
+  <rect x="575" y="500" width="450" height="265" rx="24" fill="#fffbeb" stroke="#fbbf24" class="card"/>
+  <circle cx="617" cy="542" r="25" fill="#d97706"/>
+  <text x="617" y="543" class="number">5</text>
+  <text x="655" y="551" class="step-title">安全校验与决策</text>
+  <line x1="610" y1="576" x2="990" y2="576" stroke="#fde68a" stroke-width="2"/>
+  <text x="610" y="617" class="body">• 句级 Answer Policy 硬约束</text>
+  <text x="610" y="655" class="body">• 拦截无依据的价格 / 时效承诺</text>
+  <text x="610" y="693" class="body">• 意图 / 路由 / Agent 三路置信度门控</text>
+  <text x="610" y="731" class="body">• 可靠则回复；低置信度转人工</text>
+
+  <!-- step 6 -->
+  <rect x="60" y="500" width="450" height="265" rx="24" fill="#fff1f2" stroke="#fb7185" class="card"/>
+  <circle cx="102" cy="542" r="25" fill="#e11d48"/>
+  <text x="102" y="543" class="number">6</text>
+  <text x="140" y="551" class="step-title">持久化与质量闭环</text>
+  <line x1="95" y1="576" x2="475" y2="576" stroke="#fecdd3" stroke-width="2"/>
+  <text x="95" y="617" class="body">• Redis + PostgreSQL + pgvector</text>
+  <text x="95" y="655" class="body">• 工单状态机、Webhook、审计日志</text>
+  <text x="95" y="693" class="body">• Monitor 反馈动态调整路由</text>
+  <text x="95" y="731" class="body">• LLM-as-Judge + 指标 / 日志 / Trace</text>
+
+  <rect x="60" y="812" width="1480" height="42" rx="21" fill="#e2e8f0"/>
+  <text x="800" y="840" text-anchor="middle" class="body">异常可降级 · 低置信度可转人工 · 所有决策均可审计</text>
+</svg>
