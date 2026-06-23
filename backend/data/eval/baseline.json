@@ -1,87 +1,453 @@
 {
-  "timestamp": "2026-08-18T17:28:49.901590",
-  "total": 8,
-  "passed": 7,
-  "pass_rate": 0.875,
+  "timestamp": "2026-09-01T23:28:31.413713",
+  "total": 17,
+  "passed": 17,
+  "pass_rate": 1.0,
   "avg_scores": {
-    "relevance": 0.9429,
-    "accuracy": 0.9357,
-    "completeness": 0.6214,
-    "helpfulness": 0.7857,
-    "intent_accuracy": 1.0
+    "relevance": 1.0,
+    "accuracy": 1.0,
+    "completeness": 0.9719,
+    "helpfulness": 0.9469,
+    "intent_accuracy": 0.8111
   },
-  "regressions": [],
+  "regressions": [
+    "intent_accuracy: 1.000 → 0.811 (相对基线 cabinet-domain 退化 18.9%)"
+  ],
   "recommendations": [
-    "完整性偏低：Agent 可能过早结束回答，考虑在 prompt 中要求提供完整解决方案"
+    "意图识别准确率 < 90%：增加 Few-shot 示例，或对低 F1 的意图类别补充训练数据"
   ],
   "results": [
     {
       "test_id": "intent_recognition",
       "passed": true,
       "scores": {
-        "accuracy": 1.0,
-        "macro_f1": 1.0
+        "accuracy": 0.8111,
+        "macro_f1": 0.7747
       },
-      "detail": "准确率 100.0%，Macro-F1 1.000",
+      "detail": "准确率 81.1%，Macro-F1 0.775",
       "metadata": {
-        "total": 11,
-        "correct": 11,
+        "total": 90,
+        "correct": 73,
         "cases": [
           {
-            "message": "这批柜子什么时候能做好？",
-            "expected": "order_status",
-            "predicted": "order_status",
-            "confidence": 0.8798171286860659,
-            "reasoning": "用户询问柜子生产完成时间，属于订单生产进度查询。"
+            "message": "你好",
+            "expected": "greeting",
+            "predicted": "greeting",
+            "confidence": 0.936,
+            "reasoning": "用户仅发送问候语，无具体业务诉求"
           },
           {
-            "message": "帮我把这单取消掉",
-            "expected": "order_change",
-            "predicted": "order_change",
-            "confidence": 0.715,
-            "reasoning": "用户要求取消订单，属于订单变更类请求"
+            "message": "在吗？",
+            "expected": "greeting",
+            "predicted": "greeting",
+            "confidence": 0.63,
+            "reasoning": "用户仅发送打招呼式询问，无具体业务诉求"
+          },
+          {
+            "message": "早上好",
+            "expected": "greeting",
+            "predicted": "greeting",
+            "confidence": 0.886,
+            "reasoning": "用户发送的是日常问候语，无具体业务诉求"
+          },
+          {
+            "message": "哈喽，有人吗",
+            "expected": "greeting",
+            "predicted": "greeting",
+            "confidence": 0.7991640786499873,
+            "reasoning": "用户发送打招呼用语，询问是否有人在线，属于问候意图"
+          },
+          {
+            "message": "您好，打扰了",
+            "expected": "greeting",
+            "predicted": "greeting",
+            "confidence": 0.6649999999999999,
+            "reasoning": "用户仅发送礼貌性问候语，未涉及具体业务诉求"
           },
           {
             "message": "你们服务太差了！",
             "expected": "complaint",
             "predicted": "complaint",
-            "confidence": 0.8840308509457033,
-            "reasoning": "用户表达对服务质量的强烈不满"
+            "confidence": 0.8490308509457034,
+            "reasoning": "用户表达对服务质量的不满，属于抱怨而非明确升级投诉请求"
           },
           {
-            "message": "送来的门板有划痕",
-            "expected": "damage_defect",
-            "predicted": "damage_defect",
-            "confidence": 0.82,
-            "reasoning": "规则通道命中锚点短语: 有划痕"
+            "message": "这已经是第三次出问题了，太让人失望",
+            "expected": "complaint",
+            "predicted": "escalation",
+            "confidence": 0.595,
+            "reasoning": "用户强调多次出问题并表达强烈失望情绪，属于升级投诉而非普通抱怨"
           },
           {
-            "message": "定金付了怎么还显示未付？",
-            "expected": "payment_issue",
-            "predicted": "payment_issue",
-            "confidence": 0.82,
-            "reasoning": "规则通道命中锚点短语: 定金"
+            "message": "跟你们合作这么久，从来没这么糟心过",
+            "expected": "complaint",
+            "predicted": "complaint",
+            "confidence": 0.595,
+            "reasoning": "用户表达长期合作后对本次体验强烈不满，属于情绪化抱怨而非具体问题描述"
           },
           {
-            "message": "我要投诉，转人工！",
-            "expected": "human_handoff",
+            "message": "我真的受够了",
+            "expected": "complaint",
+            "predicted": "complaint",
+            "confidence": 0.595,
+            "reasoning": "用户表达强烈不满情绪，属于抱怨投诉类表达"
+          },
+          {
+            "message": "你们这个态度我很不满意",
+            "expected": "complaint",
+            "predicted": "complaint",
+            "confidence": 0.63,
+            "reasoning": "用户表达对服务态度的不满，属于抱怨情绪表达，未明确要求升级处理"
+          },
+          {
+            "message": "师傅装得很好，谢谢",
+            "expected": "feedback",
+            "predicted": "feedback",
+            "confidence": 0.7105015755193289,
+            "reasoning": "用户对安装师傅的服务表示满意和感谢，属于正向反馈"
+          },
+          {
+            "message": "这次做得不错，很满意",
+            "expected": "feedback",
+            "predicted": "feedback",
+            "confidence": 0.6649999999999999,
+            "reasoning": "用户表达对服务或产品满意的正面评价，属于反馈类意图"
+          },
+          {
+            "message": "柜子质量比我想的好",
+            "expected": "feedback",
+            "predicted": "feedback",
+            "confidence": 0.644,
+            "reasoning": "用户对柜子质量表达正面评价，属于反馈意见"
+          },
+          {
+            "message": "服务态度挺好的，点个赞",
+            "expected": "feedback",
+            "predicted": "feedback",
+            "confidence": 0.6649999999999999,
+            "reasoning": "用户对服务态度表示肯定和赞扬，属于正面反馈"
+          },
+          {
+            "message": "谢谢你们，处理得很及时",
+            "expected": "feedback",
+            "predicted": "feedback",
+            "confidence": 0.6649999999999999,
+            "reasoning": "用户表达对处理速度的满意和感谢，属于正面反馈"
+          },
+          {
+            "message": "帮我处理一下这个事",
+            "expected": "request",
+            "predicted": "other",
+            "confidence": 0.435,
+            "reasoning": "用户表达了需要帮助处理某事的请求，但未说明具体内容，属于泛化的请求意图"
+          },
+          {
+            "message": "麻烦你帮我登记一下",
+            "expected": "request",
+            "predicted": "request",
+            "confidence": 0.575,
+            "reasoning": "用户请求客服帮忙登记信息，属于一般请求类意图，未提供具体业务细节。"
+          },
+          {
+            "message": "能帮我安排一下吗？",
+            "expected": "request",
+            "predicted": "other",
+            "confidence": 0.42,
+            "reasoning": "用户请求安排某项服务，但未说明具体事项，属于一般请求类意图"
+          },
+          {
+            "message": "帮我跟进一下这件事",
+            "expected": "request",
+            "predicted": "other",
+            "confidence": 0.47,
+            "reasoning": "用户请求对某事进行跟进处理，属于一般请求类意图，未提供具体业务细节"
+          },
+          {
+            "message": "麻烦帮我记录到系统里",
+            "expected": "request",
+            "predicted": "request",
+            "confidence": 0.5852910813657838,
+            "reasoning": "用户要求将信息记录到系统中，属于一般性请求，未涉及具体细粒度业务场景"
+          },
+          {
+            "message": "想问一下你们这边的流程是怎么走的",
+            "expected": "query",
+            "predicted": "query",
+            "confidence": 0.575,
+            "reasoning": "用户在询问整体业务流程信息，属于一般性咨询，未涉及具体订单、价格或售后问题"
+          },
+          {
+            "message": "你们营业时间是几点到几点？",
+            "expected": "query",
+            "predicted": "query",
+            "confidence": 0.72819315973415,
+            "reasoning": "用户询问营业时间，属于一般信息查询"
+          },
+          {
+            "message": "能不能介绍一下你们的服务范围？",
+            "expected": "query",
+            "predicted": "query",
+            "confidence": 0.645,
+            "reasoning": "用户询问服务范围信息，属于一般性信息咨询"
+          },
+          {
+            "message": "有没有什么需要我先准备的资料？",
+            "expected": "query",
+            "predicted": "query",
+            "confidence": 0.5999999999999999,
+            "reasoning": "用户在询问需要准备的资料信息，属于一般性咨询问题"
+          },
+          {
+            "message": "我想了解一下大概情况",
+            "expected": "query",
+            "predicted": "other",
+            "confidence": 0.385,
+            "reasoning": "用户想了解产品或服务的大概情况，属于一般性咨询，未涉及具体细分业务"
+          },
+          {
+            "message": "我要找你们主管",
+            "expected": "escalation",
+            "predicted": "escalation",
+            "confidence": 0.690257934441568,
+            "reasoning": "用户要求找主管，属于要求升级处理而非普通转人工客服"
+          },
+          {
+            "message": "让你们经理来跟我说",
+            "expected": "escalation",
+            "predicted": "escalation",
+            "confidence": 0.7434731927834662,
+            "reasoning": "用户要求经理介入处理，属于问题升级诉求"
+          },
+          {
+            "message": "这个事你做不了主，找能拍板的人",
+            "expected": "escalation",
             "predicted": "human_handoff",
-            "confidence": 0.82,
-            "reasoning": "规则通道命中锚点短语: 转人工"
+            "confidence": 0.63,
+            "reasoning": "用户明确要求找有决策权的人处理，属于转人工客服诉求"
           },
           {
-            "message": "你好",
-            "expected": "greeting",
-            "predicted": "greeting",
-            "confidence": 0.9430000000000001,
-            "reasoning": "用户主动问好，属于问候语。"
+            "message": "我要投诉到你们领导那里",
+            "expected": "escalation",
+            "predicted": "escalation",
+            "confidence": 0.8098683298050513,
+            "reasoning": "用户明确要求投诉到领导，表达升级处理诉求"
           },
           {
-            "message": "这套橱柜报价多少？",
-            "expected": "quote_pricing",
-            "predicted": "quote_pricing",
+            "message": "叫你们负责人给我回电话",
+            "expected": "escalation",
+            "predicted": "human_handoff",
+            "confidence": 0.595,
+            "reasoning": "用户要求负责人回电，属于要求转接人工/上级处理的诉求"
+          },
+          {
+            "message": "这个板材是什么材质的？",
+            "expected": "technical",
+            "predicted": "query",
+            "confidence": 0.74,
+            "reasoning": "用户询问板材材质，属于产品信息咨询"
+          },
+          {
+            "message": "你们的柜体用的什么五金？",
+            "expected": "technical",
+            "predicted": "query",
+            "confidence": 0.7539897948556635,
+            "reasoning": "用户在询问柜体所用五金配件的产品信息，属于产品咨询类问题"
+          },
+          {
+            "message": "台面能不能做无缝拼接？",
+            "expected": "technical",
+            "predicted": "query",
+            "confidence": 0.645,
+            "reasoning": "用户在询问台面无缝拼接的工艺可行性，属于产品咨询类问题"
+          },
+          {
+            "message": "这种饰面耐不耐刮？",
+            "expected": "technical",
+            "predicted": "query",
+            "confidence": 0.645,
+            "reasoning": "用户在询问饰面材质的耐刮性能，属于产品咨询类问题"
+          },
+          {
+            "message": "吊柜承重大概多少？",
+            "expected": "technical",
+            "predicted": "query",
+            "confidence": 0.645,
+            "reasoning": "用户在询问吊柜承重规格信息，属于产品信息咨询类问题"
+          },
+          {
+            "message": "付款方式都有哪些？",
+            "expected": "billing",
+            "predicted": "billing",
+            "confidence": 0.595,
+            "reasoning": "用户询问付款方式相关信息，属于费用/账单类问题"
+          },
+          {
+            "message": "你们开发票吗？",
+            "expected": "billing",
+            "predicted": "billing",
+            "confidence": 0.63,
+            "reasoning": "用户询问是否可以开具发票，属于费用/票据相关问题"
+          },
+          {
+            "message": "账期一般怎么算？",
+            "expected": "billing",
+            "predicted": "billing",
+            "confidence": 0.595,
+            "reasoning": "用户询问账期计算方式，属于费用相关问题"
+          },
+          {
+            "message": "能不能走对公转账？",
+            "expected": "billing",
+            "predicted": "billing",
+            "confidence": 0.595,
+            "reasoning": "用户询问付款方式是否支持对公转账，属于费用/支付方式相关问题"
+          },
+          {
+            "message": "结算流程是怎样的？",
+            "expected": "billing",
+            "predicted": "billing",
+            "confidence": 0.5249999999999999,
+            "reasoning": "用户询问结算流程，属于费用结算相关问题"
+          },
+          {
+            "message": "我想问一下我这个订单的事",
+            "expected": "order",
+            "predicted": "order",
+            "confidence": 0.6061765813298381,
+            "reasoning": "用户提到想咨询订单相关事宜，但未说明具体细节，属于宽泛的订单类问题"
+          },
+          {
+            "message": "关于我那单，有点情况想说",
+            "expected": "order",
+            "predicted": "other",
+            "confidence": 0.4538667005333841,
+            "reasoning": "用户提及自己的订单有情况，但未说明具体细节，属于宽泛的订单相关意图"
+          },
+          {
+            "message": "我这单能不能再确认一下",
+            "expected": "order",
+            "predicted": "other",
+            "confidence": 0.48999999999999994,
+            "reasoning": "用户希望确认订单信息，属于订单状态查询类意图"
+          },
+          {
+            "message": "订单方面有个问题想咨询",
+            "expected": "order",
+            "predicted": "order",
+            "confidence": 0.5399999999999999,
+            "reasoning": "用户提到订单方面有问题咨询，但未具体说明是状态、变更、缺件等细分问题，属于宽泛的订单类咨询"
+          },
+          {
+            "message": "我这批货想跟你核对一下",
+            "expected": "order",
+            "predicted": "other",
+            "confidence": 0.42,
+            "reasoning": "用户想核对货物信息，属于订单/发货情况确认，未涉及具体缺件、价格或安装问题"
+          },
+          {
+            "message": "这批柜子什么时候能做好？",
+            "expected": "order_status",
+            "predicted": "order_status",
+            "confidence": 0.8098171286860658,
+            "reasoning": "用户询问柜子的生产完成时间，属于订单生产进度查询"
+          },
+          {
+            "message": "我这单现在做到哪一步了？",
+            "expected": "order_status",
+            "predicted": "order_status",
+            "confidence": 0.7490460638985806,
+            "reasoning": "用户询问订单当前所处的生产进度，属于订单状态查询"
+          },
+          {
+            "message": "生产进度能查一下吗？",
+            "expected": "order_status",
+            "predicted": "order_status",
             "confidence": 0.82,
-            "reasoning": "规则通道命中锚点短语: 报价多少"
+            "reasoning": "规则通道命中锚点短语: 生产进度"
+          },
+          {
+            "message": "排产排到我了吗？",
+            "expected": "order_status",
+            "predicted": "order_status",
+            "confidence": 0.7652802865422442,
+            "reasoning": "用户询问排产进度，属于订单生产状态查询"
+          },
+          {
+            "message": "订单 #12345 现在什么状态",
+            "expected": "order_status",
+            "predicted": "order_status",
+            "confidence": 0.7128255045745868,
+            "reasoning": "用户询问具体订单编号的当前进度状态"
+          },
+          {
+            "message": "能不能改一下送货日期？",
+            "expected": "delivery",
+            "predicted": "delivery",
+            "confidence": 0.82,
+            "reasoning": "规则通道命中锚点短语: 送货日期"
+          },
+          {
+            "message": "什么时候能送到工地？",
+            "expected": "delivery",
+            "predicted": "delivery",
+            "confidence": 0.6649999999999999,
+            "reasoning": "用户询问送货到工地的时间，属于配送相关意图"
+          },
+          {
+            "message": "送货是你们自己的车吗？",
+            "expected": "delivery",
+            "predicted": "delivery",
+            "confidence": 0.645,
+            "reasoning": "用户询问送货方式相关信息，属于配送范畴的细粒度意图"
+          },
+          {
+            "message": "这周五能安排送货吗？",
+            "expected": "delivery",
+            "predicted": "delivery",
+            "confidence": 0.82,
+            "reasoning": "规则通道命中锚点短语: 安排送货"
+          },
+          {
+            "message": "货到了没人签收怎么办？",
+            "expected": "delivery",
+            "predicted": "delivery",
+            "confidence": 0.595,
+            "reasoning": "用户询问货物送达后无人签收的处理方式，属于配送相关问题"
+          },
+          {
+            "message": "帮我把这单取消掉",
+            "expected": "order_change",
+            "predicted": "order_change",
+            "confidence": 0.645,
+            "reasoning": "用户要求取消订单，属于对订单内容的变更请求"
+          },
+          {
+            "message": "我想把门板颜色换一下",
+            "expected": "order_change",
+            "predicted": "order_change",
+            "confidence": 0.7073001205818937,
+            "reasoning": "用户要求更改已定门板配置（颜色），属于订单配置变更请求"
+          },
+          {
+            "message": "尺寸能不能再改一次？",
+            "expected": "order_change",
+            "predicted": "order_change",
+            "confidence": 0.644,
+            "reasoning": "用户询问是否可以再次修改尺寸，属于订单变更请求"
+          },
+          {
+            "message": "这单加两个吊柜可以吗？",
+            "expected": "order_change",
+            "predicted": "order_change",
+            "confidence": 0.6852393049421162,
+            "reasoning": "用户希望在现有订单中增加吊柜数量，属于订单配置变更请求"
+          },
+          {
+            "message": "把送货地址改成圣何塞的工地",
+            "expected": "order_change",
+            "predicted": "order_change",
+            "confidence": 0.63,
+            "reasoning": "用户要求修改订单的送货地址信息，属于订单变更类细粒度意图"
           },
           {
             "message": "少发了一块门板，补件怎么走？",
@@ -91,6 +457,104 @@
             "reasoning": "规则通道命中锚点短语: 少发了, 补件"
           },
           {
+            "message": "拆箱发现少了两个铰链",
+            "expected": "missing_part",
+            "predicted": "missing_part",
+            "confidence": 0.7227350269189625,
+            "reasoning": "用户表示拆箱后发现铰链数量不足，属于缺件漏发问题"
+          },
+          {
+            "message": "装箱单上有的东西没找到",
+            "expected": "missing_part",
+            "predicted": "missing_part",
+            "confidence": 0.63,
+            "reasoning": "用户表示装箱单列出的物品未收到，属于缺件漏发问题"
+          },
+          {
+            "message": "你们漏发了一个抽屉面板",
+            "expected": "missing_part",
+            "predicted": "missing_part",
+            "confidence": 0.82,
+            "reasoning": "规则通道命中锚点短语: 漏发"
+          },
+          {
+            "message": "发错货了，型号跟单子上对不上",
+            "expected": "missing_part",
+            "predicted": "order",
+            "confidence": 0.595,
+            "reasoning": "用户反映发货型号与订单不符，属于订单发货错误问题"
+          },
+          {
+            "message": "这套橱柜报价多少？",
+            "expected": "quote_pricing",
+            "predicted": "quote_pricing",
+            "confidence": 0.82,
+            "reasoning": "规则通道命中锚点短语: 报价多少"
+          },
+          {
+            "message": "加个岛台大概要加多少钱？",
+            "expected": "quote_pricing",
+            "predicted": "quote_pricing",
+            "confidence": 0.82,
+            "reasoning": "规则通道命中锚点短语: 要加多少钱"
+          },
+          {
+            "message": "能不能给个大概预算？",
+            "expected": "quote_pricing",
+            "predicted": "quote_pricing",
+            "confidence": 0.736321906614239,
+            "reasoning": "用户询问预算即询问报价，属于问价意图"
+          },
+          {
+            "message": "这个配置的价格怎么算",
+            "expected": "quote_pricing",
+            "predicted": "quote_pricing",
+            "confidence": 0.68,
+            "reasoning": "用户询问特定配置的价格计算方式，属于报价问价意图"
+          },
+          {
+            "message": "报价单什么时候能出来？",
+            "expected": "quote_pricing",
+            "predicted": "quote_pricing",
+            "confidence": 0.82,
+            "reasoning": "规则通道命中锚点短语: 报价单"
+          },
+          {
+            "message": "定金付了怎么还显示未付？",
+            "expected": "payment_issue",
+            "predicted": "payment_issue",
+            "confidence": 0.82,
+            "reasoning": "规则通道命中锚点短语: 定金"
+          },
+          {
+            "message": "尾款被重复扣款了",
+            "expected": "payment_issue",
+            "predicted": "payment_issue",
+            "confidence": 0.87,
+            "reasoning": "规则通道命中锚点短语: 尾款, 重复扣款"
+          },
+          {
+            "message": "这笔钱怎么对不上账",
+            "expected": "payment_issue",
+            "predicted": "payment_issue",
+            "confidence": 0.6422455591261533,
+            "reasoning": "用户反映付款金额与账目不符，属于支付相关问题"
+          },
+          {
+            "message": "我转账了但你们说没收到",
+            "expected": "payment_issue",
+            "predicted": "payment_issue",
+            "confidence": 0.6649999999999999,
+            "reasoning": "用户反映转账后系统未显示收款，属于支付状态异常问题"
+          },
+          {
+            "message": "退款什么时候能到账？",
+            "expected": "payment_issue",
+            "predicted": "payment_issue",
+            "confidence": 0.595,
+            "reasoning": "用户询问退款到账时间，属于支付/退款相关问题"
+          },
+          {
             "message": "柜门关不严，铰链怎么调？",
             "expected": "installation",
             "predicted": "installation",
@@ -98,29 +562,120 @@
             "reasoning": "规则通道命中锚点短语: 关不严, 铰链"
           },
           {
-            "message": "能不能改一下送货日期？",
-            "expected": "delivery",
+            "message": "抽屉推进去有异响",
+            "expected": "installation",
+            "predicted": "installation",
+            "confidence": 0.595,
+            "reasoning": "抽屉推进异响属于安装调整类问题，需要师傅上门调试滑轨"
+          },
+          {
+            "message": "吊柜装歪了怎么办",
+            "expected": "installation",
+            "predicted": "installation",
+            "confidence": 0.63,
+            "reasoning": "用户反映吊柜安装不平/装歪，属于安装调整问题"
+          },
+          {
+            "message": "安装师傅什么时候到？",
+            "expected": "installation",
             "predicted": "delivery",
+            "confidence": 0.595,
+            "reasoning": "用户询问安装师傅到达时间，属于配送/上门服务时间安排问题"
+          },
+          {
+            "message": "台面和墙之间有缝要怎么处理",
+            "expected": "installation",
+            "predicted": "installation",
+            "confidence": 0.7436783883350057,
+            "reasoning": "用户询问台面与墙面缝隙的处理方式，属于安装调整类问题"
+          },
+          {
+            "message": "送来的门板有划痕",
+            "expected": "damage_defect",
+            "predicted": "damage_defect",
             "confidence": 0.82,
-            "reasoning": "规则通道命中锚点短语: 送货日期"
+            "reasoning": "规则通道命中锚点短语: 有划痕"
+          },
+          {
+            "message": "W3012 这块门板送来就是裂的",
+            "expected": "damage_defect",
+            "predicted": "damage_defect",
+            "confidence": 0.6649999999999999,
+            "reasoning": "用户反映收到的门板存在破损（裂纹），属于货物损坏/缺陷问题"
+          },
+          {
+            "message": "台面边角磕掉了一块",
+            "expected": "damage_defect",
+            "predicted": "damage_defect",
+            "confidence": 0.6649999999999999,
+            "reasoning": "用户描述台面出现磕损，属于产品破损/缺陷问题"
+          },
+          {
+            "message": "柜体侧板有个鼓包",
+            "expected": "damage_defect",
+            "predicted": "damage_defect",
+            "confidence": 0.6677964473009227,
+            "reasoning": "用户描述柜体侧板出现鼓包，属于产品质量瑕疵问题"
+          },
+          {
+            "message": "饰面起泡了，能返工吗",
+            "expected": "damage_defect",
+            "predicted": "damage_defect",
+            "confidence": 0.82,
+            "reasoning": "规则通道命中锚点短语: 起泡"
+          },
+          {
+            "message": "我要投诉，转人工！",
+            "expected": "human_handoff",
+            "predicted": "human_handoff",
+            "confidence": 0.82,
+            "reasoning": "规则通道命中锚点短语: 转人工"
+          },
+          {
+            "message": "转人工客服",
+            "expected": "human_handoff",
+            "predicted": "human_handoff",
+            "confidence": 0.87,
+            "reasoning": "规则通道命中锚点短语: 转人工, 人工客服"
+          },
+          {
+            "message": "能不能让真人跟我说",
+            "expected": "human_handoff",
+            "predicted": "human_handoff",
+            "confidence": 0.6649999999999999,
+            "reasoning": "用户明确要求转接真人客服"
+          },
+          {
+            "message": "我不想跟机器人聊了",
+            "expected": "human_handoff",
+            "predicted": "human_handoff",
+            "confidence": 0.6649999999999999,
+            "reasoning": "用户明确表示不想与机器人交流，希望转接人工客服"
+          },
+          {
+            "message": "接个人工过来",
+            "expected": "human_handoff",
+            "predicted": "human_handoff",
+            "confidence": 0.6859999999999999,
+            "reasoning": "用户明确要求转接人工客服"
           }
         ]
       }
     },
     {
       "test_id": "dialog_0",
-      "passed": false,
+      "passed": true,
       "scores": {
-        "relevance": 0.85,
-        "accuracy": 0.9,
-        "completeness": 0.3,
-        "helpfulness": 0.5,
-        "overall": 0.6375
+        "relevance": 1.0,
+        "accuracy": 1.0,
+        "completeness": 0.95,
+        "helpfulness": 0.95,
+        "overall": 0.975
       },
-      "detail": "Q: 我这单 #12345 说好上周做完，到现在还没消息... → 综合评分 0.637",
+      "detail": "Q: 我这单 #12345 说好上周做完，到现在还没消息... → 综合评分 0.975",
       "metadata": {
         "question": "我这单 #12345 说好上周做完，到现在还没消息",
-        "response": "我这边暂时没有查到订单 #12345 的实时生产进度记录，无法确认目前是否已完工或具体到了哪道工序。\n\n另外需要说明：交期是以工厂排产确认的实际进度为准，我这边不能凭空给出完工或到货日期。为了帮你进一步核实，你可以补充一下：\n\n- 柜号或具体产品/物料编码\n- 当初确认的图纸日期和定金到账时间\n- 是否有排产确认单或跟单人员给过预计完工时间\n\n有了这些信息，我可以帮你按流程反馈给工厂或跟单核实当前进度。",
+        "response": "您好，关于订单 **#12345**：\n\n首先说明一点：我们的交期政策是——具体的完工日期需要以**工厂排产确认**为准，销售/客服不会也不应该自行承诺一个确定的\"完工日期\"。如果之前有人跟您说\"上周能做完\"，这个具体日期本身并未经过工厂排产确认，可能是估算参考，并非最终承诺。\n\n**标准交期规则供您参考：**\n- 图纸确认 + 定金到账后起算\n- 标准线约4周 / 进阶线约5周 / 定制线约6周\n- 从\"图纸确认日\"起算，不是从下单日起算\n\n**以下情况会延长交期：**\n- 特殊饰面/颜色需单独调色\n- 有外购件\n- 异形柜或到顶柜（额外工序）\n- 旺季排产队列较长\n- 排产后又提出变更\n\n**关于您这单的实际进度**，我这边目前没有查到 #12345 的具体生产排期记录，无法直接告诉您当前进度到哪一步了。为了帮您核实，能否提供以下信息：\n\n1. 图纸确认的具体日期（交期是从这天起算的）\n2. 是否有柜号可以核对\n3. 产品线类型（标准/进阶/定制），如您清楚的话\n\n拿到这些信息后，我可以帮您对照工厂实际排产情况来核实进度，并说明是否存在延误及原因。",
         "agent_type": "order",
         "primary_agent": "order",
         "supporting_agents": [],
@@ -130,7 +685,7 @@
         "judge_failed": false,
         "judge_error": null,
         "handoff": false,
-        "answer_confidence": 0.644,
+        "answer_confidence": 0.595,
         "policy_violations": []
       }
     },
@@ -138,26 +693,26 @@
       "test_id": "dialog_1",
       "passed": true,
       "scores": {
-        "relevance": 0.95,
+        "relevance": 1.0,
         "accuracy": 1.0,
-        "completeness": 0.7,
-        "helpfulness": 0.85,
-        "overall": 0.875
+        "completeness": 0.95,
+        "helpfulness": 0.95,
+        "overall": 0.975
       },
-      "detail": "Q: W3012 这块门板送来就是裂的... → 综合评分 0.875",
+      "detail": "Q: 帮我把送货地址改成圣何塞的工地... → 综合评分 0.975",
       "metadata": {
-        "question": "W3012 这块门板送来就是裂的",
-        "response": "您反馈 **W3012 这块门板送到时就有开裂**，我这边先按“疑似运输损或出厂瑕疵”登记，但在工厂质检确认前，不能直接定性为哪一方责任。\n\n需要您补充以下信息，我才能准确提交：\n\n1. **订单号**；\n2. **发现时间**：是签收当场发现，还是在安装过程中才看到；\n3. **是否已经安装**：有没有上墙、装铰链或开孔改动过；\n4. **现场照片**：门板整体一张 + 开裂处特写一张，能看清裂纹走向和位置；\n5. **门板颜色/饰面编号**，方便核对补件信息。\n\n后续流程是：按破损补件登记 → 转工厂质检判定 → 属于运输损或出厂问题的，走补件/重做流程。**具体的补件时间要等工厂排产确认，我不能先给您一个日期。**\n\n另外先提醒：在质检结论出来前，**不要自行拆改或开孔**，否则会影响责任判定和保修。如果您已安装，请一并说明。",
-        "agent_type": "technical",
-        "primary_agent": "technical",
+        "question": "帮我把送货地址改成圣何塞的工地",
+        "response": "好的，改送货地址属于送货排期调整，我这边可以帮你登记，但需要先确认订单信息。\n\n**需要你提供：**\n- 订单号（用于定位这单当前的送货安排）\n- 新地址的完整信息：圣何塞工地的详细地址\n- 现场收货条件：是否有电梯、楼层情况、是否需要人力搬运、可接收的时段\n\n**后续怎么走：**\n提供订单号后，我会先确认这单当前处于哪个阶段（是否已安排车次、是否临近原定送货日期），改地址是否来得及要看物流排班的实际情况，具体能否按新地址、新时间送达由物流那边确认后回复你，我这边不能直接给你确定的送货日期。\n\n如果这个地址变更是临时的（比如原地址收货有问题、需要紧急改道），麻烦说明一下，我可以标记优先处理。",
+        "agent_type": "order",
+        "primary_agent": "order",
         "supporting_agents": [],
-        "intent": "damage_defect",
+        "intent": "order_change",
         "turn": 0,
         "conv_id": "eval_1",
         "judge_failed": false,
         "judge_error": null,
         "handoff": false,
-        "answer_confidence": 0.686,
+        "answer_confidence": 0.63,
         "policy_violations": []
       }
     },
@@ -165,26 +720,26 @@
       "test_id": "dialog_2",
       "passed": true,
       "scores": {
-        "relevance": 0.95,
-        "accuracy": 0.95,
-        "completeness": 0.7,
+        "relevance": 1.0,
+        "accuracy": 1.0,
+        "completeness": 0.95,
         "helpfulness": 0.9,
-        "overall": 0.875
+        "overall": 0.9625
       },
-      "detail": "Q: 这套厨房加个岛台大概要加多少钱？... → 综合评分 0.875",
+      "detail": "Q: W3012 这块门板送来就是裂的... → 综合评分 0.963",
       "metadata": {
-        "question": "这套厨房加个岛台大概要加多少钱？",
-        "response": "加岛台我这边不能给你一个口头数字或大概区间，因为价格不是按“个”算的，会受这几项影响：岛台尺寸、柜体结构、门板饰面、台面材质与加工（比如是否要做水槽或插座开孔）、五金配置，以及是否涉及水电点位调整。\n\n正式报价单会按这些分项拆开列清楚，一般包含：柜体、门板饰面、台面、五金、送货费、安装费；不包含拆旧、水电改造、瓦工泥工和垃圾清运。如果岛台涉及水电，那部分也需要另外确认。\n\n下一步建议这样处理：我帮你转销售，按你这套厨房的实际尺寸和配置出一版正式报价单，把岛台相关项目单独列出来。你这边有订单号或之前的设计图纸吗？有的话我一起备注给销售，报价会更准。",
-        "agent_type": "billing",
-        "primary_agent": "billing",
+        "question": "W3012 这块门板送来就是裂的",
+        "response": "明白，W3012 这块门板签收就发现裂了——这个我先记录下来，东西不对肯定影响使用，我们按破损情况优先处理。\n\n**先说明判定方向**\n签收当场就发现开裂，通常指向\"运输损\"或\"生产本身材料缺陷\"这两类，不属于现场安装能调整的问题，需要工厂质检看照片和实物核实后才能定性，我这边不能先下结论说是哪一方的责任。\n\n**接下来的流程**\n材料齐了之后，我会按破损/开裂登记转给工厂质检确认责任方向（运输损还是生产缺陷），质检结论出来之前不会承诺具体的换新或返工时间，这个需要工厂排产确认。这单我这边先转人工跟进，麻烦您把上面几张照片和信息发一下。\n\n这个问题我已经转交人工客服跟进，稍后会有同事联系您。为了加快处理，请准备好订单号或柜号、以及现场照片等相关资料。",
+        "agent_type": "technical",
+        "primary_agent": "technical",
         "supporting_agents": [],
-        "intent": "quote_pricing",
+        "intent": "damage_defect",
         "turn": 0,
         "conv_id": "eval_2",
         "judge_failed": false,
         "judge_error": null,
-        "handoff": false,
-        "answer_confidence": 0.82,
+        "handoff": true,
+        "answer_confidence": 0.65,
         "policy_violations": []
       }
     },
@@ -193,21 +748,245 @@
       "passed": true,
       "scores": {
         "relevance": 1.0,
-        "accuracy": 0.95,
-        "completeness": 0.7,
-        "helpfulness": 0.85,
-        "overall": 0.875
+        "accuracy": 1.0,
+        "completeness": 1.0,
+        "helpfulness": 1.0,
+        "overall": 1.0
       },
-      "detail": "Q: 帮我把送货地址改成圣何塞的工地... → 综合评分 0.875",
+      "detail": "Q: 柜门关不严，铰链我自己能调吗？... → 综合评分 1.000",
       "metadata": {
-        "question": "帮我把送货地址改成圣何塞的工地",
-        "response": "我理解你想把送货地址改成圣何塞的工地。为了处理，我需要先确认是哪一单，请提供订单号。\n\n另外，改地址要看这单是否已经发货：如果还没发货，可以在物流排班前尝试调整；如果已经发货或在途，不一定能改，需要物流确认。请把新工地的详细地址、可接收时段、现场是否有卸货条件（电梯/楼层）一并告诉我，我登记后帮你转物流确认。",
+        "question": "柜门关不严，铰链我自己能调吗？",
+        "response": "可以自己调，铰链调整不需要专业工具，一把十字螺丝刀就能完成。请先确认三点，再动手调整：\n\n**先确认三点**\n1. 是单扇门关不严，还是多扇门都有问题——单扇通常是铰链问题，多扇同时出问题才需要考虑柜体或安装偏差。\n2. 关不严的具体表现：是门与柜体之间缝隙不均匀（偏一边），还是门整体没关到位、有缝隙。\n3. 正常门缝标准是 2-3mm，且上下应保持一致，方便调完后对比判断。\n\n**调整步骤**（十字螺丝刀）\n1. 打开柜门，找到铰链底座上的调节螺丝，通常有三个方向：\n   - **左右**（进出偏移）：调整门与相邻门/侧板的左右间距\n   - **上下**（高低）：调整门的垂直位置\n   - **前后**（间隙）：调整门与柜体的贴合松紧\n2. 先目测判断问题主要出在哪个方向，只调那一个方向，其余先不动。\n3. 每次只拧**半圈**，拧完关门看一次效果，不要一次性拧到底。\n4. 反复微调，直到门缝均匀。\n\n**调完怎么验证**\n关闭柜门，从正面看四周缝隙是否宽窄一致（2-3mm），开合几次确认没有卡顿或反弹。\n\n**升级提醒**\n如果三个方向都调到极限，门缝依然不均匀或关不严，这种情况大概率不是铰链问题，而是柜体本身或安装有偏差，需要转到现场服务复核，不建议继续硬调铰链。到时候麻烦提供一下柜号和整体+缝隙特写照片，方便判断。",
+        "agent_type": "technical",
+        "primary_agent": "technical",
+        "supporting_agents": [],
+        "intent": "installation",
+        "turn": 0,
+        "conv_id": "eval_3",
+        "judge_failed": false,
+        "judge_error": null,
+        "handoff": false,
+        "answer_confidence": 0.87,
+        "policy_violations": []
+      }
+    },
+    {
+      "test_id": "dialog_4",
+      "passed": true,
+      "scores": {
+        "relevance": 1.0,
+        "accuracy": 1.0,
+        "completeness": 0.95,
+        "helpfulness": 0.95,
+        "overall": 0.975
+      },
+      "detail": "Q: 你们台面能做无缝拼接吗？用的什么材质... → 综合评分 0.975",
+      "metadata": {
+        "question": "你们台面能做无缝拼接吗？用的什么材质",
+        "response": "您好！台面常用石英石材质，拼接缝一般在1-2mm左右，属于视觉上接近无缝的标准工艺（并非绝对零缝隙）。具体效果建议您到展厅现场看样品实物。\n\n请问您是想做整套厨房还是局部改造呢？我好帮您安排对应的同事进一步跟进设计和选材。",
+        "agent_type": "general",
+        "primary_agent": "general",
+        "supporting_agents": [],
+        "intent": "query",
+        "turn": 0,
+        "conv_id": "eval_4",
+        "judge_failed": false,
+        "judge_error": null,
+        "handoff": false,
+        "answer_confidence": 0.65,
+        "policy_violations": []
+      }
+    },
+    {
+      "test_id": "dialog_5",
+      "passed": true,
+      "scores": {
+        "relevance": 1.0,
+        "accuracy": 1.0,
+        "completeness": 1.0,
+        "helpfulness": 0.95,
+        "overall": 0.9875
+      },
+      "detail": "Q: 这套厨房加个岛台大概要加多少钱？... → 综合评分 0.988",
+      "metadata": {
+        "question": "这套厨房加个岛台大概要加多少钱？",
+        "response": "加岛台涉及的具体金额我这边不能给你估，哪怕是大概区间也不行——因为岛台的报价会拆成好几项，每一项都要看实际配置才能定：\n\n- **柜体**：岛台尺寸、柜体结构（是否需要独立支撑）\n- **台面**：岛台台面材质、面积，是否要开孔（比如嵌水槽、灶台）\n- **五金**：是否加抽屉、拉篮等配置\n- **水电**：如果岛台要走水电（比如加水槽或电磁炉），这部分不在橱柜报价里，需要单独找瓦工/电工\n- **送货、安装费**：可能因新增件而调整\n\n这几项分开算，任何一项变了总价都会变，所以不能按\"加个岛台大概多少钱\"这种方式给数字。\n\n**下一步：**\n1. 需要先确认岛台的尺寸、想要的台面材质、是否要开孔走水电这些细节；\n2. 由销售根据这些信息出一版正式报价单，上面会把每一项拆开列清楚。\n\n如果你已经有初步想法（比如岛台大概多大、要不要嵌水槽），可以先告诉我，我帮你理一下需要销售确认哪些点，加快出报价单的效率。",
+        "agent_type": "billing",
+        "primary_agent": "billing",
+        "supporting_agents": [],
+        "intent": "quote_pricing",
+        "turn": 0,
+        "conv_id": "eval_5",
+        "judge_failed": false,
+        "judge_error": null,
+        "handoff": false,
+        "answer_confidence": 0.82,
+        "policy_violations": []
+      }
+    },
+    {
+      "test_id": "dialog_6",
+      "passed": true,
+      "scores": {
+        "relevance": 1.0,
+        "accuracy": 1.0,
+        "completeness": 0.95,
+        "helpfulness": 0.9,
+        "overall": 0.9625
+      },
+      "detail": "Q: 尾款被扣了两次，能帮我查一下吗？... → 综合评分 0.963",
+      "metadata": {
+        "question": "尾款被扣了两次，能帮我查一下吗？",
+        "response": "**特别说明**：如果核对后确认是重复扣款，退款需要转人工财务审核处理，我这边不能直接操作退款，也不能承诺退款到账时间。\n\n这个问题我已经转交人工客服跟进，稍后会有同事联系您。为了加快处理，请准备好订单号或柜号、以及现场照片等相关资料。",
+        "agent_type": "billing",
+        "primary_agent": "billing",
+        "supporting_agents": [],
+        "intent": "payment_issue",
+        "turn": 0,
+        "conv_id": "eval_6",
+        "judge_failed": false,
+        "judge_error": null,
+        "handoff": true,
+        "answer_confidence": 0.65,
+        "policy_violations": []
+      }
+    },
+    {
+      "test_id": "dialog_7",
+      "passed": true,
+      "scores": {
+        "relevance": 1.0,
+        "accuracy": 1.0,
+        "completeness": 1.0,
+        "helpfulness": 0.95,
+        "overall": 0.9875
+      },
+      "detail": "Q: 这周五能安排送到圣何塞工地吗？... → 综合评分 0.988",
+      "metadata": {
+        "question": "这周五能安排送到圣何塞工地吗？",
+        "response": "暂时没有关联到具体的订单号或柜号，我这边无法查到您的排产/送货记录，所以不能确认周五是否能送到圣何塞工地。\n\n麻烦您提供以下信息，我帮您核实：\n\n1. **订单号**或**柜号**\n2. 收货地址是否就是圣何塞工地（确认送货地址一致）\n\n补充说明一下交期的基本情况供您参考：\n- 交期从**图纸确认日**起算（不是下单日）\n- 标准线约4周、进阶线约5周、定制线约6周，具体以工厂排产确认为准\n- 如果订单涉及特殊饰面/颜色调色、外购件、异形柜/到顶柜、旺季排产较满，或排产后有过改单，都可能影响完工和送货时间\n\n具体时间需要以工厂排产和物流排班的实际情况为准，我不能在未确认前承诺具体日期。",
         "agent_type": "order",
         "primary_agent": "order",
         "supporting_agents": [],
-        "intent": "order_change",
+        "intent": "delivery",
         "turn": 0,
-        "conv_id": "eval_3",
+        "conv_id": "eval_7",
+        "judge_failed": false,
+        "judge_error": null,
+        "handoff": false,
+        "answer_confidence": 0.685,
+        "policy_violations": [
+          {
+            "rule": "lead_time_commitment",
+            "label": "无依据的时效承诺",
+            "evidence": "立即",
+            "sentence": "**具体能否周五送达，需要工厂排产和物流那边确认后才能给您准确答复**，请提供订单号/柜号后我立即帮您查询进度。",
+            "reason": "无依据的时效承诺：'立即' 未出现在本轮知识库检索结果或 Skill SOP 中，且句子使用了承诺性表述。"
+          }
+        ]
+      }
+    },
+    {
+      "test_id": "dialog_8",
+      "passed": true,
+      "scores": {
+        "relevance": 1.0,
+        "accuracy": 1.0,
+        "completeness": 0.95,
+        "helpfulness": 0.95,
+        "overall": 0.975
+      },
+      "detail": "Q: 别跟我扯了，直接转人工... → 综合评分 0.975",
+      "metadata": {
+        "question": "别跟我扯了，直接转人工",
+        "response": "这个问题我已经转交人工客服跟进，稍后会有同事联系您。为了加快处理，请准备好订单号或柜号、以及现场照片等相关资料。",
+        "agent_type": "handoff",
+        "primary_agent": "handoff",
+        "supporting_agents": [],
+        "intent": "human_handoff",
+        "turn": 0,
+        "conv_id": "eval_8",
+        "judge_failed": false,
+        "judge_error": null,
+        "handoff": true,
+        "answer_confidence": 0.0,
+        "policy_violations": []
+      }
+    },
+    {
+      "test_id": "dialog_9",
+      "passed": true,
+      "scores": {
+        "relevance": 1.0,
+        "accuracy": 1.0,
+        "completeness": 0.95,
+        "helpfulness": 0.95,
+        "overall": 0.975
+      },
+      "detail": "Q: 师傅装得很好，谢谢你们... → 综合评分 0.975",
+      "metadata": {
+        "question": "师傅装得很好，谢谢你们",
+        "response": "不客气！很高兴听到您对安装师傅的服务满意😊 如果后续使用橱柜过程中有任何问题，比如台面保养、五金调试或其他售后需求，随时联系我们，我们都会尽力协助您！也欢迎您对本次服务打个分或留言，感谢您的支持~",
+        "agent_type": "general",
+        "primary_agent": "general",
+        "supporting_agents": [],
+        "intent": "feedback",
+        "turn": 0,
+        "conv_id": "eval_9",
+        "judge_failed": false,
+        "judge_error": null,
+        "handoff": false,
+        "answer_confidence": 0.65,
+        "policy_violations": []
+      }
+    },
+    {
+      "test_id": "dialog_10_turn_0",
+      "passed": true,
+      "scores": {
+        "relevance": 1.0,
+        "accuracy": 1.0,
+        "completeness": 0.95,
+        "helpfulness": 0.95,
+        "overall": 0.975
+      },
+      "detail": "Q: 你好，我这单少了一块门板... → 综合评分 0.975",
+      "metadata": {
+        "question": "你好，我这单少了一块门板",
+        "response": "您好，遇到少发门板的情况，我们可以帮您登记补件流程，但需要先核实您的具体订单信息。\n\n请提供以下信息：\n\n1. **订单号**\n2. **柜号**\n3. 缺失的门板具体信息（尺寸/位置/编号，如有装箱单可提供装箱单编号）\n4. 收货验收单上是否已经注明缺件情况\n5. 现场清点照片（如方便的话）\n\n补充说明：\n- 门板属于**定制件**，如需补发，必须走**重新排产**流程，不能直接从库存调配\n- 具体到货时间需要工厂排产确认后才能告知，现在暂时无法给您确定日期\n- 如果因为少门板导致安装队在现场无法继续施工，请告诉我，我们会**标记为高优先级**，直接转运营对接工厂加急处理\n\n请提供订单号和柜号，我这边帮您核实登记。",
+        "agent_type": "order",
+        "primary_agent": "order",
+        "supporting_agents": [],
+        "intent": "missing_part",
+        "turn": 0,
+        "conv_id": "eval_10",
+        "judge_failed": false,
+        "judge_error": null,
+        "handoff": false,
+        "answer_confidence": 0.82,
+        "policy_violations": []
+      }
+    },
+    {
+      "test_id": "dialog_10_turn_1",
+      "passed": true,
+      "scores": {
+        "relevance": 1.0,
+        "accuracy": 1.0,
+        "completeness": 1.0,
+        "helpfulness": 0.95,
+        "overall": 0.9875
+      },
+      "detail": "Q: 订单号是 #12345... → 综合评分 0.988",
+      "metadata": {
+        "question": "订单号是 #12345",
+        "response": "收到，订单号 #12345 我先记录下来。不过缺件登记还需要更具体的信息才能准确核实和处理，麻烦您补充一下：\n\n**需要确认什么**\n- 这块少发的门板属于哪个柜号（如 W3012、B24 等）\n- 是否为分批发货、后续还有一批未到，还是核实后确实没有发这块\n\n**需要您提供**\n1. **柜号**（缺件对应的具体柜子编号）\n2. 门板的具体信息（位置/尺寸/编号），装箱单上如有编号请一并提供\n3. 收货验收单上是否已经注明这处缺件\n4. 现场清点照片（方便的话拍一下当前柜体和缺口位置）\n\n**后续怎么走**\n门板属于定制件，一旦确认确实缺发，会走**重新排产补件**流程，不能直接库存调配。补件的具体到货日期需要工厂排产确认后才能答复，我这边现在不能给您一个日期。\n\n另外想确认一下：现场安装队是不是因为这块门板缺失已经无法继续往下装了？如果是导致停工的情况，我会立即标记为高优先级，直接转运营对接工厂加急处理。",
+        "agent_type": "order",
+        "primary_agent": "order",
+        "supporting_agents": [],
+        "intent": "missing_part",
+        "turn": 1,
+        "conv_id": "eval_10",
         "judge_failed": false,
         "judge_error": null,
         "handoff": false,
@@ -216,89 +995,116 @@
       }
     },
     {
-      "test_id": "dialog_4_turn_0",
+      "test_id": "dialog_10_turn_2",
       "passed": true,
       "scores": {
-        "relevance": 0.95,
-        "accuracy": 0.9,
-        "completeness": 0.7,
-        "helpfulness": 0.9,
-        "overall": 0.8625
+        "relevance": 1.0,
+        "accuracy": 1.0,
+        "completeness": 1.0,
+        "helpfulness": 0.95,
+        "overall": 0.9875
       },
-      "detail": "Q: 你好，我这单少了一块门板... → 综合评分 0.863",
-      "metadata": {
-        "question": "你好，我这单少了一块门板",
-        "response": "您好，缺件补件需要先查询您的订单信息。请提供**订单号**和**柜号**，以及缺失门板的**具体位置/名称**、**装箱单编号**和**现场清点照片**（如有）。\n\n收到后我会为您登记并查询补件流程。需要提前说明：门板属于定制件，若工厂库存无货，需要重新排产，具体到货日期以工厂排产确认为准，登记时无法承诺日期。",
-        "agent_type": "order",
-        "primary_agent": "order",
-        "supporting_agents": [],
-        "intent": "missing_part",
-        "turn": 0,
-        "conv_id": "eval_4",
-        "judge_failed": false,
-        "judge_error": null,
-        "handoff": false,
-        "answer_confidence": 0.774,
-        "policy_violations": []
-      }
-    },
-    {
-      "test_id": "dialog_4_turn_1",
-      "passed": true,
-      "scores": {
-        "relevance": 0.95,
-        "accuracy": 0.95,
-        "completeness": 0.7,
-        "helpfulness": 0.85,
-        "overall": 0.8624999999999999
-      },
-      "detail": "Q: 订单号是 #12345... → 综合评分 0.862",
-      "metadata": {
-        "question": "订单号是 #12345",
-        "response": "已收到订单号 **#12345**。\n\n为了帮您登记缺件补件，还需要补充以下信息：\n\n1. **柜号**：缺失门板对应的柜体编号（如 W3012、B24）。\n2. **缺失门板的具体位置/名称**：例如地柜门、吊柜门、抽屉面板，以及大概尺寸或位置描述。\n3. **装箱单编号**：如果手边有装箱单，请提供对应箱号。\n4. **现场清点照片**：缺失位置和现有门板的照片，方便核对。\n\n我需要先确认是“真的没发”还是“分批发货还没到齐”，再走补件流程。补件如果工厂没有库存，需要重新排产，具体到货日期以工厂排产确认为准，我不会给您一个不准的日期。您先提供以上信息，我这边帮您登记。",
-        "agent_type": "order",
-        "primary_agent": "order",
-        "supporting_agents": [],
-        "intent": "missing_part",
-        "turn": 1,
-        "conv_id": "eval_4",
-        "judge_failed": false,
-        "judge_error": null,
-        "handoff": false,
-        "answer_confidence": 0.679,
-        "policy_violations": []
-      }
-    },
-    {
-      "test_id": "dialog_4_turn_2",
-      "passed": true,
-      "scores": {
-        "relevance": 0.95,
-        "accuracy": 0.9,
-        "completeness": 0.55,
-        "helpfulness": 0.65,
-        "overall": 0.7625
-      },
-      "detail": "Q: 补件大概多久能到？... → 综合评分 0.762",
+      "detail": "Q: 补件大概多久能到？... → 综合评分 0.988",
       "metadata": {
         "question": "补件大概多久能到？",
-        "response": "理解您着急，但补件的具体到货日期我这边**无法给您一个确定时间**。门板属于定制件，如果工厂没有库存，需要重新排产，排产周期取决于工厂当前产能和排产计划，不是固定天数。\n\n要推进补件，还需要您补充之前提到的信息，否则我无法为您登记：\n\n- **柜号**\n- **缺失门板的具体位置/名称**（如地柜门、吊柜门、抽屉面板）\n- **装箱单编号**（如有）\n- **现场清点照片**（缺失位置和现有门板）\n\n登记后，我们会按流程先核实是分批发货未到、还是库存可调配；如果确实需要重新排产，具体到货日期会由人工在确认排产后专门回复您。我不会先给一个不准的时间，以免耽误您安排。",
+        "response": "补件到货时间这块，我现在没办法给您一个确定的日期，原因说明一下：\n\n**取决于什么**\n- 五金件、标准配件类：如果工厂**库存有货**，可以直接调配补发，相对快。\n- 门板、柜体、台面等**定制件**：必须重新排产生产，需要排进工厂当前的生产队列。\n\n由于目前还不清楚具体缺失部件是标准件还是定制件（门板通常属定制件，需重新排产的可能性较大），具体到货日期要等**工厂排产确认后**才能答复，我这边不能替工厂承诺一个时间——给早了不准，反而耽误您安排现场。\n\n**下一步**\n- 麻烦您先补充上一轮提到的信息：**柜号**、门板具体位置/尺寸、装箱单编号、现场清点照片。\n- 我这边登记完整后转给运营对接工厂确认排产，**确认后会由人工直接回复您具体的补件排期**。\n\n另外再确认一下：现场安装是不是已经因为这块门板卡住没法继续了？如果是，我立刻标记高优先级加急处理。",
         "agent_type": "order",
         "primary_agent": "order",
         "supporting_agents": [],
         "intent": "missing_part",
         "turn": 2,
-        "conv_id": "eval_4",
+        "conv_id": "eval_10",
         "judge_failed": false,
         "judge_error": null,
         "handoff": false,
         "answer_confidence": 0.82,
         "policy_violations": []
       }
+    },
+    {
+      "test_id": "dialog_11_turn_0",
+      "passed": true,
+      "scores": {
+        "relevance": 1.0,
+        "accuracy": 1.0,
+        "completeness": 0.95,
+        "helpfulness": 0.95,
+        "overall": 0.975
+      },
+      "detail": "Q: 我想把门板颜色换成白的... → 综合评分 0.975",
+      "metadata": {
+        "question": "我想把门板颜色换成白的",
+        "response": "您好，改门板颜色属于配置/饰面变更，我需要先查一下您订单当前所处的生产节点，才能确认是否还能更改：\n\n1. **如果尚未排产开料** → 可以按变更单流程更改饰面颜色。\n2. **如果已经开料** → 根据流程规定，柜体尺寸和饰面一旦开料后不可更改，如需变更需按\"变更单\"处理，并可能产生材料损失及补差价。\n\n麻烦您提供一下 **订单号或柜号**，我帮您查询当前排产进度，确认是否还能变更以及具体的变更流程和费用。",
+        "agent_type": "order",
+        "primary_agent": "order",
+        "supporting_agents": [],
+        "intent": "order_change",
+        "turn": 0,
+        "conv_id": "eval_11",
+        "judge_failed": false,
+        "judge_error": null,
+        "handoff": false,
+        "answer_confidence": 0.75,
+        "policy_violations": []
+      }
+    },
+    {
+      "test_id": "dialog_11_turn_1",
+      "passed": true,
+      "scores": {
+        "relevance": 1.0,
+        "accuracy": 1.0,
+        "completeness": 1.0,
+        "helpfulness": 0.95,
+        "overall": 0.9875
+      },
+      "detail": "Q: 订单号 #67890... → 综合评分 0.988",
+      "metadata": {
+        "question": "订单号 #67890",
+        "response": "收到，订单号 #67890，为您核实\"门板颜色改白色\"这项变更是否可行。\n\n**当前状态**\n这单具体处于待排产 / 已排产未开料 / 已开料 / 生产中 哪一个节点，需要我这边核实系统记录后才能确认，目前不能凭印象告诉您具体进度。\n\n**能改什么（取决于核实结果）**\n- 若尚未排产：可按变更单直接改饰面颜色，需要重新确认图纸。\n- 若已排产但未开料：需要先确认工厂能否撤回排产，撤回后才能改。\n- 若已开料或生产中：门板属于定制件，一旦开料通常无法更改颜色，涉及材料损失，需工厂评估，大概率产生费用。\n\n**下一步**\n我这边去核实订单 #67890 当前的生产节点。麻烦您确认一下：\n1. 是要更改**所有柜子**的门板颜色，还是**部分柜号**？\n2. 之前的图纸是否已经确认/签字？\n\n核实进度后我会告诉您具体能不能改、需要走什么流程；如果涉及已开料的材料损失评估或加价，会转报价与账款/工厂那边给您正式答复，我这边不会替您估算费用或承诺时间。",
+        "agent_type": "order",
+        "primary_agent": "order",
+        "supporting_agents": [],
+        "intent": "order_change",
+        "turn": 1,
+        "conv_id": "eval_11",
+        "judge_failed": false,
+        "judge_error": null,
+        "handoff": false,
+        "answer_confidence": 0.63,
+        "policy_violations": []
+      }
+    },
+    {
+      "test_id": "dialog_11_turn_2",
+      "passed": true,
+      "scores": {
+        "relevance": 1.0,
+        "accuracy": 1.0,
+        "completeness": 1.0,
+        "helpfulness": 0.95,
+        "overall": 0.9875
+      },
+      "detail": "Q: 换色要加钱吗？... → 综合评分 0.988",
+      "metadata": {
+        "question": "换色要加钱吗？",
+        "response": "换颜色是否加钱，取决于订单 #67890 当前所处的生产节点，具体规则如下：\n\n- **尚未排产**：只收**材料差价**（白色饰面与原饰面的差价），不额外收其他费用。\n- **已排产但未开料**：先由工厂确认能否撤回排产；如可撤回，需收**材料差价 + 排产调整费**。\n- **已开料**：按**已投入材料损失 + 重新加工费**计算，具体金额需工厂核算后出具。\n- **已完工**：按**新增订单**处理，相当于重新下单产生的费用。\n\n不过目前 #67890 具体处于哪个节点，我这边还没有核实到系统记录，所以现在还不能告诉您确切属于哪一档、要收多少钱。等我核实到实际生产节点后，会同步给报价与账款那边，由他们出具正式的**变更单**和金额，口头报价一律不作数，还请您以变更单确认的金额为准。\n\n我这边继续帮您核实订单状态，麻烦您稍等。",
+        "agent_type": "order",
+        "primary_agent": "order",
+        "supporting_agents": [],
+        "intent": "order_change",
+        "turn": 2,
+        "conv_id": "eval_11",
+        "judge_failed": false,
+        "judge_error": null,
+        "handoff": false,
+        "answer_confidence": 0.595,
+        "policy_violations": []
+      }
     }
   ],
   "release": "cabinet-domain",
-  "baseline_release": "",
-  "baseline_timestamp": "",
+  "baseline_release": "cabinet-domain",
+  "baseline_timestamp": "2026-08-18T17:28:49.901590",
   "promoted": true
 }

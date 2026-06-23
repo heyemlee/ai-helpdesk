@@ -59,6 +59,22 @@ def test_judge_prompt_names_all_four_dimensions():
         assert dimension in LLMJudge.JUDGE_PROMPT
 
 
+def test_judge_prompt_states_the_business_boundaries():
+    """
+    判分标准必须和 SOP 对齐，否则评测会惩罚正确的行为。
+
+    "加个岛台多少钱" 这类问题，SOP 明令不许给口头报价，Agent 照做了，
+    judge 却按"没解决用户需求"扣分——错的是判分标准，不是 Agent。
+    """
+    prompt = LLMJudge.JUDGE_PROMPT
+    for boundary in ("报价单", "交期", "退款", "系统记录"):
+        assert boundary in prompt, f"judge 不知道这条业务边界: {boundary}"
+    assert "拒答" in prompt, "judge 不知道正确拒答也算完整回答"
+    # 反向约束：不能变成"只要拒答就给高分"
+    assert "编造" in prompt
+    assert "却推给人工" in prompt
+
+
 async def test_judge_failure_is_recorded_not_silently_averaged():
     class Boom:
         class messages:

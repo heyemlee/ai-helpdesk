@@ -461,32 +461,70 @@ _HANDOFF_NOTICE = (
 _HANDOFF_NOTICE_AFTER_ASK = "上面需要您补充的信息就不用回复我了——" + _HANDOFF_NOTICE
 
 # "向用户要东西"的表述：疑问句，或让用户提供/告知/补充信息的祈使句。
-# 动词前允许插一个副词——"请**先**提供订单号"漏网过一次，就是因为只匹配了"请提供"。
+# 动词前允许插一个副词——"请**先**提供订单号""烦请**先**补一下照片"都漏网过。
 _ASK_RE = re.compile(
     r"[？?]"
-    r"|(?:请|麻烦|烦请|还请)(?:您)?(?:先|再|帮我|把|尽快)?(?:提供|告知|发|回复|补充|说明|确认)"
+    r"|(?:请|麻烦|烦请|还请)(?:您)?(?:先|再|帮我|把|尽快)?(?:提供|告知|发|回复|补充|补|传|说明|确认)"
     r"|方便(?:的话)?(?:再|先)?(?:提供|告知|发)"
     r"|需要(?:您)?(?:先|再)?(?:提供|补充|告知|确认)"
     r"|告诉我"
     r"|发(?:我|给我)"
-    r"|(?:提供|补充|确认)一下"
+    r"|(?:提供|补充|确认|补)一下"
 )
 
 # 列表项。`-`/`*` 必须带空格才算——行首的 `**加粗**` 会撞上 `*`，
-# 把"**如果核实确实是重复扣款**，……必须转人工财务审核"这种有信息量的整句误删。
+# 把"**如果核实确实是重复扣款**，……必须转人工财务审核"这种整句误删。
 _LIST_ITEM_RE = re.compile(r"^\s*(?:[-*]\s+|[•·]\s*|\d+[.、)]\s*|[（(]\d+[）)]\s*)")
-# 以冒号收尾的引导句。它引导的清单被丢掉后，自己也不能留——否则是个没有下文的冒号。
+
+# 资料名词。清单里出现这些，说明它是"要你交上来的东西"，不是解释。
+# 刻意不收"时间/金额/尺寸"这类两边都会出现的词——宁可漏判，不可错杀说明性内容。
+_DOC_NOUN_RE = re.compile(
+    r"订单号|合同号|柜号|单号|编号|截图|照片|图片|凭证|发票|验收单|签收单"
+    r"|流水|账号|后四位|联系方式|收货地址"
+)
+
+# 冒号引导句 / 小标题。清单被摘掉后它就成了没有下文的标题，要跟着走。
 _LEAD_IN_RE = re.compile(r"[：:]\s*$")
+_HEADING_RE = re.compile(r"^\s*(?:\*\*[^*]{1,24}\*\*|#{1,6}\s+.{1,24}|.{1,24}[：:])\s*$")
 
 # 行内断句，用于只摘掉一行里索取信息的那半句，保住同一行里有信息量的部分。
 _LINE_SENTENCE_RE = re.compile(r"(?<=[。！？!?；;])")
 
 
+def _last_content_line(lines: list[str]) -> str:
+    for line in reversed(lines):
+        if line.strip():
+            return line.strip()
+    return ""
+
+
+def _is_request_list(block: list[str], kept_lines: list[str]) -> bool:
+    """
+    判断一个清单是"待补资料"还是"说明内容"。
+
+    两条证据任取其一即可判为待补资料：
+      1. 条目里出现资料名词——真实回复里有过完全没有索取动词的
+         "- **订单号或合同号**（必须，用来定位账目）"，只看动词一定漏；
+      2. 引导句本身就在要东西——"**需要您补充的材料**"、"欢迎告诉我："。
+
+    两条都不成立就当说明内容留下。破损判定那种
+    "- 出厂前已存在裂纹 / - 运输途中磕碰"是回答的主体，删了会让后面
+    "这三种情况责任方不同"变成没有指代的悬空句。
+    """
+    if any(_DOC_NOUN_RE.search(item) for item in block):
+        return True
+    lead_in = _last_content_line(kept_lines)
+    return bool(lead_in and _ASK_RE.search(lead_in))
+
+
 def _drop_dangling_lead_in(kept_lines: list[str], dropped: list[str]) -> None:
-    """清单被丢掉后，回收它的冒号引导句（"……欢迎告诉我："），不留没有下文的冒号。"""
+    """清单被丢掉后，回收它的引导句，不留没有下文的标题。"""
     while kept_lines and not kept_lines[-1].strip():
         kept_lines.pop()
-    if kept_lines and _LEAD_IN_RE.search(kept_lines[-1]):
+    if not kept_lines:
+        return
+    tail = kept_lines[-1]
+    if _LEAD_IN_RE.search(tail.rstrip("*　 ")) or _ASK_RE.search(tail) or _HEADING_RE.match(tail):
         dropped.append(kept_lines.pop().strip())
 
 
@@ -497,26 +535,31 @@ def _strip_customer_asks(text: str) -> tuple[str, list[str]]:
     返回（清理后的正文, 被摘掉的句子）。被摘掉的部分不是丢弃——它正是
     人工同事接手时还缺的资料，调用方会记进日志随工单一起留痕。
     """
+    lines = text.splitlines()
     kept_lines: list[str] = []
     dropped: list[str] = []
 
-    for line in text.splitlines():
-        stripped = line.strip()
-        if not stripped:
-            kept_lines.append(line)
-            continue
+    i = 0
+    while i < len(lines):
+        line = lines[i]
 
-        # 清单一律带走，不看条目内容。转人工后草稿里的清单只有两种：
-        # 待补资料（有害——就是那条自相矛盾的追问）或"我能帮您做什么"的能力清单
-        # （无意义——接手的是同事）。逐条判断"这个条目像不像在要资料"注定漏网：
-        # 真实回复里出现过没有任何引导句、直接甩出来的
-        # "- **订单号或合同号**（必须，用来定位账目）"。
+        # 清单整块判定：整块留或整块走，不逐条挑——挑剩半截清单比全留还难读
         if _LIST_ITEM_RE.match(line):
-            dropped.append(stripped)
-            _drop_dangling_lead_in(kept_lines, dropped)
+            j = i
+            while j < len(lines) and _LIST_ITEM_RE.match(lines[j]):
+                j += 1
+            block = lines[i:j]
+            if _is_request_list([b.strip() for b in block], kept_lines):
+                dropped.extend(b.strip() for b in block)
+                _drop_dangling_lead_in(kept_lines, dropped)
+            else:
+                kept_lines.extend(block)
+            i = j
             continue
 
-        if not _ASK_RE.search(stripped):
+        i += 1
+        stripped = line.strip()
+        if not stripped or not _ASK_RE.search(stripped):
             kept_lines.append(line)
             continue
 
@@ -530,12 +573,11 @@ def _strip_customer_asks(text: str) -> tuple[str, list[str]]:
         if remainder.strip():
             kept_lines.append(remainder)
 
-    # 收尾：末尾如果剩下"**下一步说明：**"这种冒号标题，它引导的内容已经被摘掉了，
-    # 留着就是个没有下文的标题。
+    # 收尾：末尾剩下的"**后续流程**"这种小标题，下面已经空了，一并回收
     while True:
         while kept_lines and not kept_lines[-1].strip():
             kept_lines.pop()
-        if not (kept_lines and _LEAD_IN_RE.search(kept_lines[-1].rstrip("*　 "))):
+        if not (kept_lines and _HEADING_RE.match(kept_lines[-1])):
             break
         dropped.append(kept_lines.pop().strip())
 
