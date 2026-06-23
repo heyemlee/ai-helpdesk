@@ -27,7 +27,7 @@ from typing import Any
 
 import redis.asyncio as redis
 
-from core.llm_utils import create_llm_client, extract_text_content
+from core.llm_utils import create_llm_client, extract_text_content, structured_create
 from core.telemetry import span
 
 logger = logging.getLogger(__name__)
@@ -158,7 +158,8 @@ class MemoryManager:
         prompt = self._safe_text(prompt)
 
         try:
-            resp = await self._client.messages.create(
+            resp = await structured_create(
+                self._client,
                 model=self._model, max_tokens=512, temperature=0.0,
                 messages=[{"role": "user", "content": prompt}],
             )
@@ -229,7 +230,8 @@ class MemoryManager:
         text = self._safe_text("\n".join(f"{m.role.value}: {m.content}" for m in to_compress))
         prompt = self._safe_text(f"用 2-3 句话总结以下对话的关键信息：\n{text}")
         try:
-            resp = await self._client.messages.create(
+            resp = await structured_create(
+                self._client,
                 model=self._model, max_tokens=256, temperature=0.0,
                 messages=[{"role": "user", "content": prompt}],
             )

@@ -3,6 +3,7 @@ import pytest
 from conftest import make_request, stub_agents
 
 from agents.agent_orchestrator import (
+    _HANDOFF_NOTICE,
     SPECIALIST_AGENTS,
     AgentOrchestrator,
     AgentType,
@@ -190,6 +191,44 @@ async def test_answer_confidence_reports_the_weakest_signal(orchestrator):
     result = await orchestrator.run(req)
 
     assert result.answer_confidence == pytest.approx(0.62, abs=1e-6)
+
+
+async def test_handoff_drops_the_draft_follow_up_questions(orchestrator):
+    """
+    已经建单转人工，就不该再让用户补资料。
+
+    低置信度那一轮的草稿常常正好是一句追问（"具体想咨询什么内容呢？"），
+    直接拼上转人工文案就是一条自相矛盾的回复：前半段让用户补充信息，
+    后半段说已经转交人工——用户照着回复也没人接。
+    """
+    stub_agents(orchestrator, reply=(
+        "我这边负责订单与交付。\n"
+        "如果您已经下单，欢迎告诉我：\n"
+        "- 订单号或柜号\n"
+        "- 具体想咨询的内容\n"
+        "需要我协助什么呢？"
+    ))
+    req = make_request("报价的事", IntentCategory.QUOTE_PRICING, confidence=0.3)
+
+    result = await orchestrator.run(req)
+
+    assert result.handoff is True
+    assert _HANDOFF_NOTICE in result.response
+
+    body = result.response.split(_HANDOFF_NOTICE)[0]
+    assert "我这边负责订单与交付。" in body                  # 有信息量的部分保留
+    for ask in ("欢迎告诉我", "订单号或柜号", "具体想咨询的内容", "需要我协助什么呢"):
+        assert ask not in body, f"转人工后仍在向用户索取信息: {ask}"
+
+
+async def test_handoff_sends_only_the_notice_when_the_draft_was_all_questions(orchestrator):
+    """整段草稿都是追问时，转人工文案是唯一该发出去的内容。"""
+    stub_agents(orchestrator, reply="请问您具体想咨询什么内容呢？")
+    req = make_request("报价的事", IntentCategory.QUOTE_PRICING, confidence=0.3)
+
+    result = await orchestrator.run(req)
+
+    assert result.response == _HANDOFF_NOTICE
 
 
 async def test_handoff_keeps_the_answer_already_produced(orchestrator):
