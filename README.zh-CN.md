@@ -44,7 +44,7 @@ docker compose up -d --build
 | 地址 | 用途 |
 | --- | --- |
 | http://localhost:5174 | 客服控制台 |
-| http://localhost:8000/docs | API 文档 |
+| http://localhost:8080/docs | API 文档 |
 | http://localhost:3000 | Grafana 监控、日志与链路追踪 |
 | http://localhost:9090 | Prometheus 指标 |
 
@@ -70,7 +70,7 @@ docker compose up -d --build
 | 查看服务状态 | `GET /health`、`GET /monitor` |
 | 运行评测 | `POST /eval/run` |
 
-完整接口说明可在启动后打开 http://localhost:8000/docs 查看。
+完整接口说明可在启动后打开 http://localhost:8080/docs 查看。
 
 ## 核心组件
 
