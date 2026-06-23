@@ -221,6 +221,56 @@ async def test_handoff_drops_the_draft_follow_up_questions(orchestrator):
         assert ask not in body, f"转人工后仍在向用户索取信息: {ask}"
 
 
+async def test_handoff_drops_a_bare_checklist_of_requested_documents(orchestrator):
+    """
+    没有引导句、直接甩出来的待补资料清单也要带走。
+
+    评测里 dialog_6（"尾款被扣了两次"）的真实回复就是这个形状：解释完直接跟
+    三条 markdown 清单，最后一句"请先提供订单号"。第一版过滤只认
+    "……欢迎告诉我："这种冒号引导的清单和"请提供"的原型说法，两处都漏了。
+
+    同时守住反向的边界：行首的 `**加粗**` 不是列表项，那一行的内容要保留。
+    """
+    stub_agents(orchestrator, reply=(
+        "这种情况我需要先核对系统账目，不能凭描述直接判断。\n"
+        "\n"
+        "- **订单号或合同号**（必须，用来定位账目）\n"
+        "- 两次扣款分别的时间、金额、支付方式\n"
+        "\n"
+        "**如果核实确实是重复扣款**，属于实际退款，必须转人工财务审核处理。\n"
+        "\n"
+        "请先提供订单号，我帮您先做初步核对。"
+    ))
+    req = make_request("尾款被扣了两次", IntentCategory.PAYMENT_ISSUE, confidence=0.3)
+
+    result = await orchestrator.run(req)
+    body = result.response.split(_HANDOFF_NOTICE)[0]
+
+    assert "必须转人工财务审核处理" in body        # 加粗开头的整句不能被当成列表项
+    assert "核对系统账目" in body
+    for ask in ("订单号或合同号", "支付方式", "请先提供"):
+        assert ask not in body, f"转人工后仍在向用户索取信息: {ask}"
+
+
+async def test_handoff_does_not_leave_a_heading_with_nothing_under_it(orchestrator):
+    """摘掉追问后，"**下一步说明：**"这种冒号标题下面就空了，标题也得跟着走。"""
+    stub_agents(orchestrator, reply=(
+        "这个问题涉及账目核对，我不能直接给结论。\n"
+        "\n"
+        "**下一步说明：**\n"
+        "\n"
+        "请您提供订单号和两笔扣款截图。"
+    ))
+    req = make_request("尾款被扣了两次", IntentCategory.PAYMENT_ISSUE, confidence=0.3)
+
+    result = await orchestrator.run(req)
+    body = result.response.split(_HANDOFF_NOTICE)[0]
+
+    assert "我不能直接给结论" in body
+    assert "下一步说明" not in body
+    assert body.rstrip().endswith("。")
+
+
 async def test_handoff_sends_only_the_notice_when_the_draft_was_all_questions(orchestrator):
     """整段草稿都是追问时，转人工文案是唯一该发出去的内容。"""
     stub_agents(orchestrator, reply="请问您具体想咨询什么内容呢？")
