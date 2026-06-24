@@ -18,6 +18,7 @@
   - 纯规则实现，零 LLM 调用——策略守卫在每次回复后同步执行，不能引入延迟。
   - 宁可漏判不可错判：只有"数字 + 承诺动词 + 无对冲词 + 无出处"四条同时成立才拦截。
 """
+import logging
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -67,6 +68,11 @@ _HEDGE_RE = re.compile(
 )
 
 # 句子切分：保留原有标点，替换后仍能拼回自然的段落
+logger = logging.getLogger(__name__)
+
+# U+FFFD REPLACEMENT CHARACTER，就是客户看到的那个「�」
+_REPLACEMENT_CHAR = "\ufffd"
+
 _SENT_SPLIT_RE = re.compile(r"(?<=[。！？!?\n])")
 
 _SAFE_REPLACEMENT = {
@@ -145,11 +151,16 @@ class AnswerPolicy:
         self.checked_total = 0
         self.blocked_total = 0
         self.blocked_by_rule: dict[str, int] = {}
+        # 上游网关送来的乱码统计（见 _drop_mojibake）
+        self.mojibake_dropped_chars = 0
+        self.mojibake_events = 0
 
     def enforce(self, answer: str, sources: Iterable[str] | None = None) -> PolicyResult:
         """扫描 answer，拦截其中无依据的价格/时效承诺。"""
+        # 先做数据卫生再谈策略：关掉策略开关也不该把乱码发给客户
+        answer = self._drop_mojibake(answer or "")
         if not self.enabled or not answer:
-            return PolicyResult(text=answer or "", checked=False)
+            return PolicyResult(text=answer, checked=False)
 
         self.checked_total += 1
         normalized_sources = [self._normalize(s) for s in (sources or []) if s]
@@ -189,9 +200,43 @@ class AnswerPolicy:
             "blocked_total": self.blocked_total,
             "block_rate": round(rate, 4),
             "blocked_by_rule": dict(self.blocked_by_rule),
+            "mojibake_dropped_chars": self.mojibake_dropped_chars,
+            "mojibake_events": self.mojibake_events,
         }
 
     # ── 内部实现 ──────────────────────────────────────────────────────────────
+
+    def _drop_mojibake(self, text: str) -> str:
+        """
+        丢掉 U+FFFD（�）——客户看到的那串「���」。
+
+        为什么只能丢、不能修：本进程内每一层都是字符安全的，已逐一排除——
+          · 前端 TextDecoder 带 {stream:true}，跨网络块正确续接；
+          · api/main.py 的 _sse() 返回整串 str，Starlette 整块编码，不会切在字符中间；
+          · 本类全程 str 拼接与切片，Python 的字符串切片按码点走；
+          · anthropic SDK 的 _aiter_chunks 累积到完整 SSE 帧（\n\n）才产出，
+            splitlines() 只在 \r/\n 处切（绝不落在多字节序列内部），
+            再 raw_line.decode("utf-8") —— strict 模式，真被截断会抛
+            UnicodeDecodeError，而不是悄悄产生 �。
+        所以字符到达这里时，U+FFFD 已经是上游第三方网关
+        （ANTHROPIC_BASE_URL，当前指向 claude-relay）替换好才下发的，
+        原始字节在进入本进程之前就没了，任何代码都恢复不出来。
+
+        能做的只有别把它送到客户眼前：少一个字读起来像错别字，
+        「���」读起来像系统坏了。计数进 stats() 交给 /monitor，
+        让网关这个毛病可被量化，而不是静默发生。
+        """
+        if _REPLACEMENT_CHAR not in text:
+            return text
+        dropped = text.count(_REPLACEMENT_CHAR)
+        self.mojibake_dropped_chars += dropped
+        self.mojibake_events += 1
+        logger.warning(
+            "出站文本含 %d 个 U+FFFD，已剔除；来源疑为上游网关重编码，"
+            "累计 %d 次 / %d 字",
+            dropped, self.mojibake_events, self.mojibake_dropped_chars,
+        )
+        return text.replace(_REPLACEMENT_CHAR, "")
 
     def _check_sentence(
         self,

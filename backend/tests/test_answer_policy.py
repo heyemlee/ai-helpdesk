@@ -119,3 +119,51 @@ def test_stats_track_block_rate(policy):
     assert stats["blocked_total"] == 1
     assert stats["block_rate"] == 0.5
     assert stats["blocked_by_rule"]["lead_time_commitment"] == 1
+
+
+# ── 上游网关乱码 ──────────────────────────────────────────────────────────────
+
+def test_drops_replacement_chars_from_answer(policy):
+    """U+FFFD 是上游网关重编码留下的，本进程恢复不了，只能不发给客户。"""
+    result = policy.enforce("好的，我帮你查一下这个���订单的进度。", sources=[])
+
+    assert "�" not in result.text
+    assert result.text == "好的，我帮你查一下这个订单的进度。"
+
+
+def test_mojibake_is_dropped_even_when_policy_disabled():
+    """数据卫生不受策略开关管：关掉策略也不该把乱码发出去。"""
+    policy = AnswerPolicy(enabled=False)
+
+    result = policy.enforce("已受理���。", sources=[])
+
+    assert result.text == "已受理。"
+    assert result.checked is False
+
+
+def test_mojibake_counted_for_monitor(policy):
+    policy.enforce("第一句有三个���。", sources=[])
+    policy.enforce("第二句只有一个�。", sources=[])
+    policy.enforce("这句是干净的。", sources=[])
+
+    stats = policy.stats()
+    # 只统计出现过乱码的那几次调用，干净的那次不计入
+    assert stats["mojibake_events"] == 2
+    assert stats["mojibake_dropped_chars"] == 4
+
+
+def test_clean_answer_is_untouched(policy):
+    answer = "请提供订单号，我这边帮你查。"
+    assert policy.enforce(answer, sources=[]).text == answer
+    assert policy.stats()["mojibake_events"] == 0
+
+
+def test_stream_guard_also_drops_mojibake(policy):
+    """流式和非流式共用 enforce，所以流式链路必须同样干净。"""
+    from core.answer_policy import PolicyStreamGuard
+
+    guard = PolicyStreamGuard(policy, sources=[])
+    out = guard.feed("好的���，") + guard.feed("我这就帮你查。") + guard.flush()
+
+    assert "�" not in out
+    assert out == "好的，我这就帮你查。"
