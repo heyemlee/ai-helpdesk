@@ -81,7 +81,7 @@ def _config() -> dict:
     return cfg
 
 
-async def main(promote: bool, force: bool) -> None:
+async def main(promote: bool, force: bool, concurrency: int | None = None) -> None:
     cfg = _config()
     print(f"供应商: {cfg['provider']}  模型: {cfg['model']}  "
           f"base_url: {cfg.get('base_url', '(官方)')}")
@@ -162,10 +162,12 @@ async def main(promote: bool, force: bool) -> None:
         grounding_provider=grounding,
         baseline_path=str(BASELINE),
         release=os.getenv("AI_HELPDESK_RELEASE", "cabinet-domain"),
+        concurrency=concurrency,
     )
     had_baseline = BASELINE.exists()
     print(f"基线文件: {BASELINE}  ({'已存在，将做回归对比' if had_baseline else '不存在，本次自动建档'})")
-    print(f"用例: {len(DEFAULT_INTENT_CASES)} 个意图 + {len(DEFAULT_DIALOG_CASES)} 个对话\n")
+    print(f"用例: {len(DEFAULT_INTENT_CASES)} 个意图 + {len(DEFAULT_DIALOG_CASES)} 个对话"
+          f"（并发 {evaluator.concurrency}）\n")
 
     # 注意这里恒传 promote=False：是否提升要等回归检测跑完才能判断，
     # 直接传 promote=True 会在"这次比基线差 13%"的情况下照样把它写成新基线——
@@ -231,5 +233,7 @@ if __name__ == "__main__":
     ap.add_argument("--promote", action="store_true", help="把本次结果写为新基线")
     ap.add_argument("--force", action="store_true",
                     help="即使检测到回归也提升基线（仅用于 harness 口径本身变更）")
+    ap.add_argument("--concurrency", type=int, default=None,
+                    help="同时在跑的用例数，默认取 EVAL_CONCURRENCY（4）")
     _a = ap.parse_args()
-    asyncio.run(main(_a.promote, _a.force))
+    asyncio.run(main(_a.promote, _a.force, _a.concurrency))
