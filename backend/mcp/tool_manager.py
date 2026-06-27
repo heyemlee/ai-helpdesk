@@ -469,14 +469,51 @@ class MCPToolManager:
         return self._merge_unique(rows)
 
     @staticmethod
-    def _merge_unique(items: list[Any]) -> list[Any]:
-        """按内容哈希去重，保序。"""
-        seen, merged = set(), []
+    def _identity(item: Any) -> str:
+        """
+        一条候选的身份：内容本身，不含分数。
+
+        之前是 md5(str(item))——item 里带着 score，同一个 chunk 被三个改写子查询
+        召回时分数各不相同，哈希就各不相同，去重从来没生效过：top-5 里同一段
+        出现三次，RAG 上下文被同一段填了三份，还占掉 top-k 预算。
+        入库那边按内容哈希去重，这里对齐同一口径。
+        """
+        if isinstance(item, dict):
+            body = item.get("content")
+            if body is None:
+                body = item.get("id")
+            if body is None:
+                body = json.dumps(
+                    {k: v for k, v in item.items() if k != "score"},
+                    sort_keys=True, ensure_ascii=False, default=str,
+                )
+            return hashlib.md5(str(body).encode()).hexdigest()
+        return hashlib.md5(str(item).encode()).hexdigest()
+
+    @classmethod
+    def _merge_unique(cls, items: list[Any]) -> list[Any]:
+        """
+        按内容去重，保序（首次出现的位置），同一内容保留最高分。
+
+        保序是因为第一个子查询就是用户原话，它召回的顺序最贴题；保留最高分
+        是因为 _evidence_ok 的兜底口径看的是 max(score)，不该被先到的低分压住。
+        """
+        position: dict[str, int] = {}
+        merged: list[Any] = []
         for item in items:
-            key = hashlib.md5(str(item).encode()).hexdigest()
-            if key not in seen:
-                seen.add(key)
+            key = cls._identity(item)
+            at = position.get(key)
+            if at is None:
+                position[key] = len(merged)
                 merged.append(item)
+                continue
+            kept = merged[at]
+            if isinstance(item, dict) and isinstance(kept, dict):
+                new, old = item.get("score"), kept.get("score")
+                if isinstance(new, (int, float)) and (
+                    not isinstance(old, (int, float)) or new > old
+                ):
+                    merged[at] = {**kept, "score": new}
         return merged
 
     # ── 证据充分性判定（自纠错的触发条件）────────────────────────────────────
