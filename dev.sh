@@ -57,6 +57,21 @@ trap cleanup EXIT INT TERM
 env_api_port="$(sed -n 's/^[[:space:]]*API_PORT[[:space:]]*=[[:space:]]*\([^#[:space:]]*\).*/\1/p' "$BACKEND/.env" | tail -1)"
 API_PORT="${API_PORT:-${env_api_port:-8000}}"
 
+# 环境里已有的 ANTHROPIC_* 会盖过 backend/.env（load_dotenv 不覆盖已存在的变量）。
+# Claude Code、部分 CI runner 会导出 ANTHROPIC_BASE_URL=https://api.anthropic.com，
+# 于是 .env 里的第三方网关被静默顶掉，拿网关的 key 去打官方端点——唯一线索是
+# 启动日志里那行 base_url。这里在起进程之前就喊出来。语义不改（环境变量仍然优先），
+# 想用 .env 的值：env -u ANTHROPIC_BASE_URL ./dev.sh
+for var in ANTHROPIC_BASE_URL ANTHROPIC_API_KEY ANTHROPIC_MODEL OPENAI_BASE_URL OPENAI_API_KEY; do
+  env_val="${!var:-}"
+  [ -n "$env_val" ] || continue
+  file_val="$(sed -n "s/^[[:space:]]*$var[[:space:]]*=[[:space:]]*\([^#[:space:]]*\).*/\1/p" "$BACKEND/.env" | tail -1)"
+  [ -n "$file_val" ] && [ "$env_val" != "$file_val" ] || continue
+  case "$var" in *KEY*) shown_env="${env_val:0:6}…"; shown_file="${file_val:0:6}…" ;; *) shown_env="$env_val"; shown_file="$file_val" ;; esac
+  echo "⚠️  环境变量 $var=$shown_env 会盖过 backend/.env 里的 $shown_file" >&2
+  echo "   要用 .env 的值：env -u $var ./dev.sh" >&2
+done
+
 echo "解释器: $PY"
 echo "▶ 后端  http://localhost:$API_PORT  (API 文档 /docs)"
 (
