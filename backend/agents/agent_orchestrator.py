@@ -84,6 +84,21 @@ class AgentStats:
     def success_rate(self) -> float:
         return self.success / self.total if self.total else 1.0
 
+    def record(self, ok: bool, ms: float) -> None:
+        """
+        一次请求结束时记账。total / success / total_ms 必须在同一时刻更新。
+
+        之前 total 在请求开始时 +1、success 在 LLM 返回后才 +1，中间隔着一整次
+        LLM 调用。演示夹具毫秒返回时这个窗口采不中；真模型 8~20s，Monitor 每
+        10s 采一次，几乎每次都落在里面——首个请求的窗口里 success_rate 是
+        0/1 = 0.000，Monitor 按 < 0.9 报 ERROR，_routing_penalty 再给这个
+        一次都没失败过的实例记 0.5 的惩罚，把流量倒给隔壁那个同样在途的实例。
+        """
+        self.total += 1
+        if ok:
+            self.success += 1
+        self.total_ms += ms
+
     @property
     def avg_ms(self) -> float:
         return self.total_ms / self.total if self.total else 0.0
@@ -201,15 +216,14 @@ class BaseAgent:
 
     async def _handle_inner(self, req: Request) -> AgentResponse:
         t0 = time.monotonic()
-        self.stats.total += 1
+        # 统计只在请求结束时记（stats.record），在途期间不动——见 AgentStats.record
         # Skill SOP 既要注入 prompt，也要作为 AnswerPolicy 判断"有无出处"的依据，
         # 所以这里取一次，两处复用。
         skill_prompt = self._skill_prompt(req)
         try:
             content = await self._call_llm(req, skill_prompt)
             ms = (time.monotonic() - t0) * 1000
-            self.stats.success += 1
-            self.stats.total_ms += ms
+            self.stats.record(ok=True, ms=ms)
 
             # 出站策略校验：拦截无依据的价格/时效承诺
             sources = list(req.grounding_sources)
@@ -236,7 +250,7 @@ class BaseAgent:
             )
         except Exception as ex:
             ms = (time.monotonic() - t0) * 1000
-            self.stats.total_ms += ms
+            self.stats.record(ok=False, ms=ms)
             logger.error(f"{self.agent_type.value} 处理失败: {ex}")
             return AgentResponse(
                 agent_type=self.agent_type,
@@ -256,7 +270,6 @@ class BaseAgent:
         用户走了流式接口而失真。
         """
         t0 = time.monotonic()
-        self.stats.total += 1
         skill_prompt = self._skill_prompt(req)
 
         sources = list(req.grounding_sources)
@@ -278,8 +291,7 @@ class BaseAgent:
                 yield {"type": "delta", "text": tail}
 
             ms = (time.monotonic() - t0) * 1000
-            self.stats.success += 1
-            self.stats.total_ms += ms
+            self.stats.record(ok=True, ms=ms)
 
             content = "".join(full)
             escalate = self._needs_escalation(content)
@@ -303,7 +315,7 @@ class BaseAgent:
             }
         except Exception as ex:
             ms = (time.monotonic() - t0) * 1000
-            self.stats.total_ms += ms
+            self.stats.record(ok=False, ms=ms)
             logger.error(f"{self.agent_type.value} 流式处理失败: {ex}")
             yield {
                 "type": "end",
