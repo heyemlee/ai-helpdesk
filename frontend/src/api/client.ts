@@ -1,5 +1,5 @@
 import type {
-  ChatRequest, ChatResponse, EvalReport, HealthResponse,
+  ChatRequest, ChatResponse, ConversationResponse, EvalReport, HealthResponse,
   KnowledgeStats, MonitorSummary, SearchResponse, StreamEvent,
 } from './types'
 
@@ -85,6 +85,9 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     }),
+
+  conversation: (base: string, convId: string) =>
+    request<ConversationResponse>(base, `/conversations/${encodeURIComponent(convId)}`),
 
   runEval: (base: string) =>
     request<EvalReport>(base, '/eval/run', {
