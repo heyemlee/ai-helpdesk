@@ -108,7 +108,7 @@ def test_embedding_signal_stays_enabled_with_third_party_base_url():
     换成第三方网关时，Embedding 这一路不能被静默关掉——
     否则"三路融合"实际只剩两路。
     """
-    recog = IntentRecognizer(api_key="k", base_url="https://api.kabi.pro")
+    recog = IntentRecognizer(api_key="k", base_url="https://gateway.example.com")
     assert recog._embedding_enabled is True
     assert recog.embedding_backend == "local_ngram"
 
@@ -265,6 +265,53 @@ def test_english_anchors_hit_the_fast_path(recognizer, message, expected):
 ])
 def test_compound_questions_fall_back_to_the_ensemble(recognizer, message):
     assert recognizer._fast_path(message) is None
+
+
+# 英文锚点覆盖率语料。锚点是枚举，枚举一定有洞——固定成用例，加规则时不许把
+# 已覆盖的弄丢。两个指标分开看：
+#   · 误判必须是 0：快通道命中即返回，不做任何网络调用，没有第二意见能纠正它；
+#   · 未命中只是回退三路融合，安全方向，代价是一次 LLM 往返。
+_EN_INTENT_CORPUS = {
+    "order_status": ["Where is my order?", "What's the status of order SO-2026-0912?",
+                     "Is my order in production yet?", "When will my order be ready?"],
+    "delivery": ["What's the delivery date?", "When will it ship?",
+                 "Can we reschedule delivery to next week?", "What time does the truck arrive?"],
+    "order_change": ["I want to change my order.", "Can I cancel my order?",
+                     "Can we change the color to matte white?"],
+    "missing_part": ["I never received the drawer slides.", "There's a missing part in my shipment.",
+                     "The hinges weren't included in the box.", "We're short two toe kicks."],
+    "quote_pricing": ["How much does a quartz countertop cost?", "What's the price for an island?",
+                      "Can you send me a quote?", "Do you have a price list?"],
+    "payment_issue": ["I was charged twice.", "There's a duplicate charge on my card.",
+                      "My payment failed."],
+    "installation": ["The hinge is loose.", "The door won't close properly.",
+                     "The upper cabinets don't line up.",
+                     "There's a gap between the counter and the wall."],
+    "damage_defect": ["The door arrived damaged.", "My countertop is chipped.",
+                      "The panel is cracked.", "There's a scratch on the finish."],
+    "human_handoff": ["I want to speak to a human.", "Can you transfer me to a person?",
+                      "Let me talk to your manager."],
+}
+
+
+@pytest.mark.parametrize(
+    "intent,message",
+    [(i, q) for i, qs in _EN_INTENT_CORPUS.items() for q in qs],
+)
+def test_english_corpus_never_routes_to_the_wrong_intent(recognizer, intent, message):
+    """未命中可以接受（回退融合），判错不行——快通道抢答之后没人能纠正。"""
+    hit = recognizer._fast_path(message)
+    assert hit is None or hit["intent"].value == intent, (
+        f"{message!r} 被判成 {hit['intent'].value}，应为 {intent}"
+    )
+
+
+def test_english_corpus_keeps_a_high_fast_path_hit_rate(recognizer):
+    """漏掉一句只是多花一次 LLM 往返，但整体掉下来就说明英文锚点又退化了。"""
+    pairs = [(i, q) for i, qs in _EN_INTENT_CORPUS.items() for q in qs]
+    hits = sum(1 for i, q in pairs if (recognizer._fast_path(q) or {}).get("intent", None)
+               and recognizer._fast_path(q)["intent"].value == i)
+    assert hits / len(pairs) >= 0.90, f"英文快通道命中率跌到 {hits}/{len(pairs)}"
 
 
 def test_how_much_longer_is_not_a_pricing_question(recognizer):

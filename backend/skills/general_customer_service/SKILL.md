@@ -1,7 +1,7 @@
 ---
 name: 展厅接待规范
 description: 适用于 ai-helpdesk GeneralAgent 的展厅与经销商接待、需求澄清、问题分流和转人工规范
-keywords: 你好,您好,咨询,帮助,客服,展厅,门店,预约,量尺,复尺,设计,效果图,样品,门板样,款式,风格,材质,保修,售后,订单,投诉,建议,人工,转人工,处理进度,服务
+keywords: 你好,您好,咨询,帮助,客服,展厅,门店,预约,量尺,复尺,设计,效果图,样品,门板样,款式,风格,材质,保修,售后,订单,投诉,建议,人工,转人工,处理进度,服务,hello,hi,showroom,store,visit,hours,open,appointment,book,measure,field measure,design,rendering,sample,door sample,style,material,warranty,covered,service,after-sales,help,support,human,speak to,agent,consultation,new kitchen,question
 agents: general
 enabled: true
 ---
@@ -69,3 +69,21 @@ enabled: true
 - "您好！请问您是想做整套厨房还是局部改一部分？我先了解一下大概情况，再帮您安排对应的同事跟进。"
 - "价格这块要按实际尺寸和配置算，我这边不能给您一个口头数。我帮您转给报价的同事，出一版正式报价单会把每一项列清楚。麻烦先告诉我房屋地址和大概什么时候方便量尺。"
 - "您说的这两件事我分开处理：门板划痕转给产品与安装的同事看照片定性，少发的那块我同时转给订单履约的同事登记补件。麻烦您提供订单号和柜号，两边都会用到。"
+
+## 术语对照（用英文作答时）
+
+客户用英文提问时，规则一条都不变，只是把下面这些概念用右列的英文说出来。
+不要中英夹注（"production (排产)" 这种），也不要每次现编一个译法——
+同一个概念在不同轮次里换说法，客户会以为是两件事。
+
+| 中文 | English |
+| --- | --- |
+| 展厅 | showroom |
+| 量尺 | measure |
+| 复尺 | field measure |
+| 效果图 | rendering |
+| 门板样 | door sample |
+| 保修 | warranty |
+| 售后 | after-sales |
+| 预约 | appointment |
+| 转人工 | hand off to a human agent |

@@ -44,10 +44,23 @@ class Skill:
         lowered = (message or "").lower()
         return any(keyword.lower() in lowered for keyword in self.keywords)
 
-    def to_prompt_block(self, max_chars: int = 3200) -> str:
+    # 单个 Skill 的正文上限。3200 是 SOP 还只有中文时定的；补上中英术语对照之后
+    # 订单那份 3251 字，正好越线——而截断是**从尾部切**，切掉的恰恰是术语表。
+    # 总预算仍由 SkillManager.max_prompt_chars（默认 5000）兜着，而每份 SOP 都
+    # 用 agents 限定了只对自己那个 Agent 生效，实际同时命中的基本只有一份。
+    MAX_BODY_CHARS = 4000
+
+    def to_prompt_block(self, max_chars: int | None = None) -> str:
         """格式化为可直接拼入 system prompt 的文本块，并限制单个 Skill 长度。"""
+        max_chars = self.MAX_BODY_CHARS if max_chars is None else max_chars
         body = self.content.strip()
         if len(body) > max_chars:
+            # 截断必须喊出来。之前是静默的：SOP 被切掉尾巴，Agent 少看到几条规则，
+            # 日志里没有任何痕迹，只能等某次回答越界了才回头查。
+            logger.warning(
+                "Skill %s 正文 %d 字超过单份上限 %d，尾部被截断（丢失 %d 字）",
+                self.name, len(body), max_chars, len(body) - max_chars,
+            )
             body = body[:max_chars].rstrip() + "\n..."
         description = f"\n说明: {self.description}" if self.description else ""
         return f"### {self.name}{description}\n{body}"
@@ -140,6 +153,10 @@ class SkillManager:
             ]
             block = skill.to_prompt_block()
             if len(block) > remaining:
+                logger.warning(
+                    "Skill prompt 总预算 %d 字用尽，%s 被截断（丢失 %d 字）",
+                    self.max_prompt_chars, skill.name, len(block) - remaining,
+                )
                 block = block[:remaining].rstrip() + "\n..."
             blocks.append(block)
             matched.append((skill, matched_keywords))
