@@ -475,9 +475,7 @@ class BaseAgent:
     # 于是 escalate 恒为 False——自评置信度不扣分、不建工单，明明说了转人工却没转。
     _ESCALATION_KEYWORDS = (
         "转人工", "人工客服", "无法处理", "处理不了",
-        # 用词干 "escalat"：escalate / escalating / escalation / escalated 都算。
-        # 写全词会漏——语料里 "I'm escalating this to our operations team." 就漏过。
-        "escalat", "specialist", "hand this over", "hand it over",
+        "escalate", "specialist", "hand this over", "hand it over",
         "hand you over", "connect you with", "transfer you", "refer you to",
         "a human agent", "our team will", "cannot resolve", "can't resolve",
         "unable to resolve", "beyond what i can",

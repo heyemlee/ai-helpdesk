@@ -162,13 +162,12 @@ _FAST_PATH_RULES: dict[IntentCategory, list[str]] = {
     IntentCategory.ORDER_STATUS: [
         "订单状态", "生产进度", "排产了吗", "订单进度",
         "order status", "production status", "where is my order",
-        "status of my order", "status of order", "when will my order",
-        "when will it be ready", "is it in production", "in production yet",
+        "status of my order", "when will it be ready", "is it in production",
     ],
     IntentCategory.DELIVERY: [
         "什么时候送货", "送货日期", "送货时间", "改送货", "安排送货",
         "delivery date", "delivery time", "when will it ship", "when will it arrive",
-        "reschedule delivery", "schedule delivery", "shipping date", "the truck",
+        "reschedule delivery", "schedule delivery", "shipping date",
     ],
     IntentCategory.ORDER_CHANGE: [
         "改尺寸", "改颜色", "改一下订单", "修改订单", "取消订单",
@@ -182,7 +181,7 @@ _FAST_PATH_RULES: dict[IntentCategory, list[str]] = {
         "少发了", "少了", "漏发", "缺一块", "缺件", "补件",
         "missing part", "missing parts", "missing piece", "didn't receive",
         "did not receive", "never received", "short shipped", "not in the box",
-        "wasn't included", "weren't included", "we're short", "we are short",
+        "wasn't included",
     ],
     IntentCategory.QUOTE_PRICING: [
         "报价单", "报价多少", "价格是多少", "要加多少钱", "能便宜点",
@@ -202,12 +201,12 @@ _FAST_PATH_RULES: dict[IntentCategory, list[str]] = {
     IntentCategory.INSTALLATION: [
         "关不严", "铰链", "对不齐", "有条缝", "装不上",
         "adjust the hinge", "hinge is loose", "loose hinge", "won't close",
-        "doesn't close", "doesn't line up", "don't line up", "not aligned", "gap between",
+        "doesn't close", "doesn't line up", "not aligned", "gap between",
         "won't fit", "doesn't fit",
     ],
     IntentCategory.DAMAGE_DEFECT: [
         "有划痕", "破损", "开裂", "起泡", "色差",
-        "damaged panel", "damaged", "chipped", "cracked", "scratch", "dented",
+        "damaged panel", "damaged", "chipped", "cracked", "scratched", "dented",
         "warped", "peeling", "arrived broken", "color mismatch", "colour mismatch",
     ],
 }

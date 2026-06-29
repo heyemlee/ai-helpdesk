@@ -37,11 +37,8 @@ _PRICE_RE = re.compile(
 
 # 时效表述：带时间单位的数字区间，或"马上/立刻"这类绝对时效词
 _LEAD_TIME_RE = re.compile(
-    r"(?:\d+|[一二两三四五六七八九十几])\s*(?:[-~至到]\s*\d+\s*)?(?:个)?"
-    r"\s*(?:工作日|自然日|天|小时|分钟|周|个月|月)"
-    # 数字也可能是拼出来的："in two weeks" / "两周内"——只认 \d+ 会整条漏掉
-    r"|(?:\d+|a\s+(?:few|couple\s+of)|one|two|three|four|five|six|seven|eight|nine|ten)"
-    r"\s*(?:[-~]\s*\d+\s*)?"
+    r"\d+\s*(?:[-~至到]\s*\d+\s*)?(?:个)?\s*(?:工作日|自然日|天|小时|分钟|周|个月|月)"
+    r"|\d+\s*(?:[-~]\s*\d+\s*)?"
     r"(?:business\s+days?|working\s+days?|business\s+hours?|days?|hours?|minutes?"
     r"|weeks?|months?|years?)"
     r"|马上|立刻|立即|当天|次日|隔天|今天内"
@@ -49,7 +46,6 @@ _LEAD_TIME_RE = re.compile(
     # 不含数字，_LEAD_TIME_RE 之前一条都匹配不上，和英文的 next Tuesday 一样
     # 是无出处的具体交付承诺。不补的话英文反而比中文严。
     r"|(?:下|本|这)?(?:周|星期|礼拜)[一二三四五六日天]"
-    r"|(?:下|本|这|下个)(?:周|星期|礼拜|月)"
     r"|(?:这|下|上)?(?:周末|月底|月初|年底)"
     r"|\d{1,2}\s*月\s*\d{1,2}\s*[号日]"
     r"|immediately|right\s+away|same\s+day|next\s+day|by\s+(?:today|tomorrow)"
@@ -59,8 +55,6 @@ _LEAD_TIME_RE = re.compile(
     r"|(?:next|this|by|on|before)\s+(?:mon|tues|wednes|thurs|fri|satur|sun)day"
     r"|(?:mon|tues|wednes|thurs|fri|satur|sun)day\s+(?:morning|afternoon|at\b)"
     r"|(?:by|before)\s+(?:the\s+)?end\s+of\s+(?:the\s+)?(?:day|week|month)"
-    r"|(?:next|this)\s+(?:week|month|quarter)"
-    r"|\b(?:today|tonight|tomorrow)\b"
     r"|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2}\b",
     re.I,
 )
@@ -92,11 +86,7 @@ _COMMIT_RE = re.compile(
     r"|(?:ship|deliver|dispatch|install|complete|replace|repair|resolve|schedule)"
     r"(?:s|d|ed|ing|ment|ry)?"
     r"|(?:cost|price|fee|total|surcharge|upcharge|freight|shipping|labor)s?"
-    r"|no\s+charge|free\s+of\s+charge|at\s+no\s+cost"
-    # "Production takes 6 weeks." —— 耗时陈述同样是时效承诺，
-    # 主语是流程而不是"我们"，前面那组 will/we'll 覆盖不到。
-    r"|\b(?:takes?|taking)\b"
-    r"|\b(?:production|fabrication|remake|turnaround|lead\s*time|rework)\b",
+    r"|no\s+charge|free\s+of\s+charge|at\s+no\s+cost",
     re.I,
 )
 
