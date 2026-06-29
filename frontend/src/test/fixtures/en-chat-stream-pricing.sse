@@ -1,0 +1,33 @@
+event: meta
+data: {"conv_id": "c8e2c7a8-ee05-43cc-b2d7-013b356e4fde", "intent": "quote_pricing", "intent_group": "billing", "intent_confidence": 0.82, "intent_strategy": "fast_path", "intent_latency_ms": 0.09, "intent_source_scores": {"rules": 0.82, "embedding": 0.0, "llm": 0.0}, "entities": {"order_id": [], "product": [], "date": [], "amount": [], "item_code": []}, "knowledge_used": true}
+
+event: routing
+data: {"primary_agent": "billing", "supporting_agents": [], "reason": "intent=quote_pricing, group=billing, primary=billing, supporting=none, scores=[billing=0.75, general=0.10, technical=0.00, order=0.00]", "confidence": 0.75, "domain_scores": {"general": 0.1, "technical": 0.0, "billing": 0.75, "order": 0.0}}
+
+event: delta
+data: {"text": "I'm not able to give a specific per-metre price for quartz countertops here."}
+
+event: delta
+data: {"text": " Pricing depends on factors such as the quartz brand/model, color, thickness, edge profile, cutouts (sink, cooktop), and the overall project design — these are only finalized once your design drawings are confirmed and a formal quotation is issued.\n\n"}
+
+event: delta
+data: {"text": "**Why I can't quote a number:**\n"}
+
+event: delta
+data: {"text": "- Per our knowledge base, the confirmed design drawing is the production basis, and the **formal quotation issued against that confirmed drawing is the only valid price reference** — verbal or estimated prices are not binding.\n"}
+
+event: delta
+data: {"text": "- I don't have access to a formal quotation or system billing record for your order in this conversation, so I'm not able to calculate or state any dollar amount.\n\n**What I'd recommend:**\n"}
+
+event: delta
+data: {"text": "Please reach out to your sales representative to get (or review) your formal quotation, which will break down the countertop pricing by material, area, edge treatment, and any add-ons."}
+
+event: delta
+data: {"text": " Once you have that quotation in hand, I'm happy to help you understand the line items, verify calculations, or answer questions about deposits, balance payments, or invoicing.\n\n"}
+
+event: delta
+data: {"text": "If you already have a quotation number or order ID, feel free to share it and I can help clarify what's included."}
+
+event: result
+data: {"conv_id": "c8e2c7a8-ee05-43cc-b2d7-013b356e4fde", "request_id": "754d4c4a4954", "ticket_id": null, "response": "I'm not able to give a specific per-metre price for quartz countertops here. Pricing depends on factors such as the quartz brand/model, color, thickness, edge profile, cutouts (sink, cooktop), and the overall project design — these are only finalized once your design drawings are confirmed and a formal quotation is issued.\n\n**Why I can't quote a number:**\n- Per our knowledge base, the confirmed design drawing is the production basis, and the **formal quotation issued against that confirmed drawing is the only valid price reference** — verbal or estimated prices are not binding.\n- I don't have access to a formal quotation or system billing record for your order in this conversation, so I'm not able to calculate or state any dollar amount.\n\n**What I'd recommend:**\nPlease reach out to your sales representative to get (or review) your formal quotation, which will break down the countertop pricing by material, area, edge treatment, and any add-ons. Once you have that quotation in hand, I'm happy to help you understand the line items, verify calculations, or answer questions about deposits, balance payments, or invoicing.\n\nIf you already have a quotation number or order ID, feel free to share it and I can help clarify what's included.", "agent_type": "billing", "agent_types": ["billing"], "primary_agent": "billing", "supporting_agents": [], "routing_reason": "intent=quote_pricing, group=billing, primary=billing, supporting=none, scores=[billing=0.75, general=0.10, technical=0.00, order=0.00]", "routing_confidence": 0.75, "escalated": false, "handoff": false, "handoff_reason": "", "needs_clarification": false, "answer_confidence": 0.75, "policy_violations": [], "latency_ms": 5979.6}
+

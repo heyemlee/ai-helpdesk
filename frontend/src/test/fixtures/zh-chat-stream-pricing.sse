@@ -1,0 +1,27 @@
+event: meta
+data: {"conv_id": "2bb6f9e7-9740-45d9-b0b6-8bda0f3fda37", "intent": "quote_pricing", "intent_group": "billing", "intent_confidence": 0.8017, "intent_strategy": "ensemble", "intent_latency_ms": 2471.12, "intent_source_scores": {"llm": 0.95, "embedding": 0.4335742748772956, "rules": 0.5}, "entities": {"order_id": [], "product": [], "date": [], "amount": [], "item_code": []}, "knowledge_used": true}
+
+event: routing
+data: {"primary_agent": "billing", "supporting_agents": [], "reason": "intent=quote_pricing, group=billing, primary=billing, supporting=none, scores=[billing=1.00, technical=0.12, general=0.10, order=0.00]", "confidence": 1.0, "domain_scores": {"general": 0.1, "technical": 0.12, "billing": 1.0, "order": 0.0}}
+
+event: delta
+data: {"text": "石英石台面的价格没法直接按\"每米\"给您一个口头数字，这个得等销售出正式报价单——原因是台面报价不是单纯的长度计价，会受到这几项影响：\n\n**报价会包含的内容**\n"}
+
+event: delta
+data: {"text": "- 台面板材本身（不同品牌、花色的石英石单价不同）\n- 水槽开孔、灶台开孔的加工费\n"}
+
+event: delta
+data: {"text": "- 台面的形状（直台、L 型、带岛台等会影响下料和拼接方式）\n\n**报价不包含的内容**\n"}
+
+event: delta
+data: {"text": "- 拆旧（如果是旧台面拆除）\n- 水电改造\n- 瓦工泥工、垃圾清运\n\n**下一步怎么拿到正式报价**\n"}
+
+event: delta
+data: {"text": "台面需要按您家实际的厨房布局和尺寸来算，如果还没有现场量尺或确认图纸，建议先安排量尺（需要房屋已交付、墙面地面基本完工、水电点位已定）；如果已经有确认图纸，可以直接请销售按图纸出正式报价单，报价单会把台面这项按板材、加工费分开列清楚，那才是准确、可执行的价格依据。\n\n"}
+
+event: delta
+data: {"text": "您方便告诉我是否已经量过尺、或者手头有没有订单号/设计图纸编号？我可以帮您对接销售出具报价单。"}
+
+event: result
+data: {"conv_id": "2bb6f9e7-9740-45d9-b0b6-8bda0f3fda37", "request_id": "97c54fdd9560", "ticket_id": null, "response": "石英石台面的价格没法直接按\"每米\"给您一个口头数字，这个得等销售出正式报价单——原因是台面报价不是单纯的长度计价，会受到这几项影响：\n\n**报价会包含的内容**\n- 台面板材本身（不同品牌、花色的石英石单价不同）\n- 水槽开孔、灶台开孔的加工费\n- 台面的形状（直台、L 型、带岛台等会影响下料和拼接方式）\n\n**报价不包含的内容**\n- 拆旧（如果是旧台面拆除）\n- 水电改造\n- 瓦工泥工、垃圾清运\n\n**下一步怎么拿到正式报价**\n台面需要按您家实际的厨房布局和尺寸来算，如果还没有现场量尺或确认图纸，建议先安排量尺（需要房屋已交付、墙面地面基本完工、水电点位已定）；如果已经有确认图纸，可以直接请销售按图纸出正式报价单，报价单会把台面这项按板材、加工费分开列清楚，那才是准确、可执行的价格依据。\n\n您方便告诉我是否已经量过尺、或者手头有没有订单号/设计图纸编号？我可以帮您对接销售出具报价单。", "agent_type": "billing", "agent_types": ["billing"], "primary_agent": "billing", "supporting_agents": [], "routing_reason": "intent=quote_pricing, group=billing, primary=billing, supporting=none, scores=[billing=1.00, technical=0.12, general=0.10, order=0.00]", "routing_confidence": 1.0, "escalated": false, "handoff": false, "handoff_reason": "", "needs_clarification": false, "answer_confidence": 0.802, "policy_violations": [], "latency_ms": 8385.2}
+

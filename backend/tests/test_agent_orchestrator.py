@@ -540,3 +540,163 @@ class TestAgentReplicas:
         orch.update_routing_penalties({"technical_0": 5.0, "technical_1": -3.0})
         assert orch._pool[AgentType.TECHNICAL][0].stats.monitor_penalty == 0.9
         assert orch._pool[AgentType.TECHNICAL][1].stats.monitor_penalty == 0.0
+
+
+# ── 双语作答 ──────────────────────────────────────────────────────────────────
+
+def test_system_prompt_pins_reply_language_to_the_customer(orchestrator):
+    """
+    在此之前系统提示词里一条语言指令都没有，中文回复只是模型顺着中文 SOP 和
+    中文脚手架走出来的结果——是巧合不是契约。
+    """
+    for agents in orchestrator._pool.values():
+        prompt = agents[0]._build_system_prompt()
+        assert "[回复语言]" in prompt
+        assert "客户提问所用的语言" in prompt
+
+
+def test_language_rule_survives_dynamic_skills(orchestrator):
+    """Skill SOP 是拼在语言规则之后的，别把规则挤掉。"""
+    agent = orchestrator._pool[AgentType.BILLING][0]
+    prompt = agent._build_system_prompt("【报价SOP】不得口头承诺单价")
+    assert "[回复语言]" in prompt and "【报价SOP】" in prompt
+
+
+@pytest.mark.parametrize("content", [
+    "I'll hand this over to our project team.",
+    "Let me connect you with a specialist who can help.",
+    "This is beyond what I can confirm here — our team will follow up.",
+    "我帮你转人工客服。",
+])
+def test_escalation_is_detected_in_both_languages(orchestrator, content):
+    """
+    回复语言跟客户走之后，英文回复说"要转人工"用的是 hand this over /
+    connect you with 这类说法，一个中文关键词都不含。漏检的后果是
+    escalate 恒为 False：不扣自评置信度、不建工单，说了转人工却没转。
+    """
+    assert orchestrator._pool[AgentType.GENERAL][0]._needs_escalation(content) is True
+
+
+def test_normal_answers_are_not_mistaken_for_escalation(orchestrator):
+    agent = orchestrator._pool[AgentType.TECHNICAL][0]
+    assert agent._needs_escalation("Here are the three hinge adjustment screws.") is False
+    assert agent._needs_escalation("铰链上有三颗调节螺丝，先调左右那颗。") is False
+
+
+def test_scaffolding_follows_the_customer_language(orchestrator):
+    """
+    _build_messages 注入的那两轮是**伪造的助手发言**。写死中文等于让模型看见
+    自己刚用中文说过两句话，再用系统提示词要求它用英文回答英文客户——
+    拿指令去对抗上下文。这里让脚手架跟客户走，不制造这个对抗。
+    """
+    req = make_request("The door arrived damaged.", IntentCategory.DAMAGE_DEFECT,
+                       entities={"item_code": ["W3012"]})
+    req.context = "客户上一轮提到订单 SO-2026-0912。"
+
+    messages = orchestrator._pool[AgentType.TECHNICAL][0]._build_messages(req)
+    spoken = [m["content"] for m in messages if m["role"] == "assistant"]
+
+    assert spoken and all("好的" not in s for s in spoken), f"英文对话里出现中文助手发言: {spoken}"
+    assert any("Understood" in s for s in spoken)
+    # 注入的资料保持原样：那是依据的语言，不是回复的语言
+    assert any("SO-2026-0912" in m["content"] for m in messages)
+    assert any("客户上一轮" in m["content"] for m in messages)
+
+
+def test_chinese_question_keeps_chinese_scaffolding(orchestrator):
+    req = make_request("送来的门板有划痕。", IntentCategory.DAMAGE_DEFECT)
+    req.context = "客户上一轮提到订单 SO-2026-0912。"
+
+    messages = orchestrator._pool[AgentType.TECHNICAL][0]._build_messages(req)
+    spoken = [m["content"] for m in messages if m["role"] == "assistant"]
+
+    assert any("好的" in s for s in spoken)
+    assert all("Understood" not in s for s in spoken)
+
+
+@pytest.mark.parametrize("message,forbidden,expected", [
+    ("The door arrived damaged.", "转交人工客服", "passed this to a human colleague"),
+    ("送来的门板有划痕。", "human colleague", "转交人工客服"),
+])
+def test_handoff_notice_follows_the_customer_language(
+    orchestrator, message, forbidden, expected,
+):
+    """
+    转人工通知是客户读的正文。写死中文时，一整段英文回答的结尾会突然接上
+    一段中文——实测就是这样。
+    """
+    from agents.agent_orchestrator import _customer_text
+
+    assert forbidden not in _customer_text(message, "handoff_notice")
+    assert expected in _customer_text(message, "handoff_notice")
+
+
+@pytest.mark.parametrize("key", [
+    "handoff_notice", "handoff_after_ask", "agent_error",
+    "all_failed", "unavailable", "clarify", "role_primary", "role_supporting",
+])
+def test_every_customer_string_exists_in_both_languages(key):
+    """漏一条就是一段中文掉进英文回复里，加新文案时这条会拦住。"""
+    from agents.agent_orchestrator import _CUSTOMER_TEXT
+
+    for lang in ("zh", "en"):
+        assert _CUSTOMER_TEXT[lang].get(key), f"{lang} 缺少文案 {key}"
+
+
+def test_english_asks_are_stripped_before_the_handoff_notice():
+    """
+    转人工前要摘掉"让客户补资料"的表述，否则同一条回复一边要资料、一边说
+    已经转交人工。_ASK_RE 原本一条英文规则都没有，英文回复必然自相矛盾。
+    """
+    from agents.agent_orchestrator import _strip_customer_asks
+
+    answer = (
+        "A deep scratch is usually a transit issue.\n"
+        "Could you send me photos of the damage?\n"
+        "Please provide your order number as well.\n"
+        "We will classify it once QC reviews the case."
+    )
+    body, asks = _strip_customer_asks(answer)
+
+    assert len(asks) == 2, f"英文索取表述没被识别: {asks}"
+    assert "photos of the damage" not in body
+    assert "order number" not in body
+    assert "transit issue" in body and "QC reviews" in body
+
+
+# ── 升级检测覆盖率语料 ────────────────────────────────────────────────────────
+#
+# 关键词匹配天生脆。固定成语料至少让"英文那半又退化了"这件事会被测出来，
+# 而不是等到 escalate 恒为 False、工单不建、置信度不扣，从面板上看不出来。
+
+_ESCALATION_PHRASINGS = [
+    "I'll hand this over to our project team.",
+    "Let me connect you with a specialist who can help.",
+    "This is beyond what I can confirm here — our team will follow up.",
+    "I'm escalating this to our operations team.",
+    "I can't resolve this from here, so I'm referring you to our service desk.",
+    "I'll transfer you to a human agent.",
+    "我帮你转人工客服。",
+    "这个我处理不了，需要转人工。",
+    "这超出我能确认的范围，我先转交人工客服。",
+]
+
+_NOT_ESCALATION = [
+    "Here are the three hinge adjustment screws.",
+    "Turnaround is typically 4-6 weeks, subject to factory scheduling.",
+    "The showroom is open Monday through Friday.",
+    "铰链上有三颗调节螺丝，先调左右那颗。",
+    "门缝正常应为 2-3mm，且上下一致。",
+]
+
+
+@pytest.mark.parametrize("content", _ESCALATION_PHRASINGS)
+def test_escalation_corpus_is_detected(orchestrator, content):
+    agent = orchestrator._pool[AgentType.GENERAL][0]
+    assert agent._needs_escalation(content) is True, f"漏检: {content}"
+
+
+@pytest.mark.parametrize("content", _NOT_ESCALATION)
+def test_normal_answers_stay_out_of_escalation(orchestrator, content):
+    agent = orchestrator._pool[AgentType.GENERAL][0]
+    assert agent._needs_escalation(content) is False, f"误检: {content}"

@@ -24,6 +24,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
+from core.text_lang import detect_language
+
 # ── 检测规则 ──────────────────────────────────────────────────────────────────
 
 # 价格表述：带货币符号的金额，或带货币单位的数字
@@ -35,13 +37,41 @@ _PRICE_RE = re.compile(
 
 # 时效表述：带时间单位的数字区间，或"马上/立刻"这类绝对时效词
 _LEAD_TIME_RE = re.compile(
-    r"\d+\s*(?:[-~至到]\s*\d+\s*)?(?:个)?\s*(?:工作日|自然日|天|小时|分钟|周|个月|月)"
-    r"|\d+\s*(?:business\s+days?|working\s+days?|days?|hours?|minutes?|weeks?)"
-    r"|马上|立刻|立即|当天|次日|隔天|今天内|immediately|right\s+away|same\s+day",
+    r"(?:\d+|[一二两三四五六七八九十几])\s*(?:[-~至到]\s*\d+\s*)?(?:个)?"
+    r"\s*(?:工作日|自然日|天|小时|分钟|周|个月|月)"
+    # 数字也可能是拼出来的："in two weeks" / "两周内"——只认 \d+ 会整条漏掉
+    r"|(?:\d+|a\s+(?:few|couple\s+of)|one|two|three|four|five|six|seven|eight|nine|ten)"
+    r"\s*(?:[-~]\s*\d+\s*)?"
+    r"(?:business\s+days?|working\s+days?|business\s+hours?|days?|hours?|minutes?"
+    r"|weeks?|months?|years?)"
+    r"|马上|立刻|立即|当天|次日|隔天|今天内"
+    # 中文具名日期。补英文那一类时才发现中文侧同样漏着：「我们下周二发货」
+    # 不含数字，_LEAD_TIME_RE 之前一条都匹配不上，和英文的 next Tuesday 一样
+    # 是无出处的具体交付承诺。不补的话英文反而比中文严。
+    r"|(?:下|本|这)?(?:周|星期|礼拜)[一二三四五六日天]"
+    r"|(?:下|本|这|下个)(?:周|星期|礼拜|月)"
+    r"|(?:这|下|上)?(?:周末|月底|月初|年底)"
+    r"|\d{1,2}\s*月\s*\d{1,2}\s*[号日]"
+    r"|immediately|right\s+away|same\s+day|next\s+day|by\s+(?:today|tomorrow)"
+    # 具名日期也是绝对时效：中文的 当天/次日 对应英文的 next Tuesday / by Friday /
+    # end of the week。这些不带数字，_is_grounded 因此恒判无出处——和中文侧
+    # 处理 马上/立刻 的口径一致：具体交付日期不该在没有出处时被承诺。
+    r"|(?:next|this|by|on|before)\s+(?:mon|tues|wednes|thurs|fri|satur|sun)day"
+    r"|(?:mon|tues|wednes|thurs|fri|satur|sun)day\s+(?:morning|afternoon|at\b)"
+    r"|(?:by|before)\s+(?:the\s+)?end\s+of\s+(?:the\s+)?(?:day|week|month)"
+    r"|(?:next|this)\s+(?:week|month|quarter)"
+    r"|\b(?:today|tonight|tomorrow)\b"
+    r"|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2}\b",
     re.I,
 )
 
 # 承诺动词：出现金额/时效还不够，必须落在"会发生什么"的语境里才算承诺
+#
+# 英文那一半是后补的：在此之前 _COMMIT_RE 一个英文词都没有，而拦截要求
+# 「数字 + 承诺动词 + 无对冲 + 无出处」四条同时成立——缺了承诺动词这一条，
+# 英文回复里的价格/时效承诺**一条也拦不下来**（实测 "I guarantee the
+# replacement door will be delivered next Tuesday." 原样放行）。
+# _PRICE_RE / _LEAD_TIME_RE / _HEDGE_RE 早就各自补过英文，唯独最关键的这条没有。
 _COMMIT_RE = re.compile(
     r"到账|退回|退给|退款|返还|返给|发货|送达|签收|处理完|处理好|解决|完成"
     r"|开好|开具|生效|恢复|收到|补偿|赔付|减免"
@@ -50,12 +80,31 @@ _COMMIT_RE = re.compile(
     r"|做好|做完|完工|出货|发出|补发|送到|送货|到货|到场|上门|安排好"
     r"|排产|开料|复尺|出图|装好|安装完|返工好|修好"
     r"|费用|价格|收费|手续费|服务费|运费|邮费|差价|需支付|支付|付款"
-    r"|只需|只要|仅需|报价|加价|金额为|金额是|一共|总共",
+    r"|只需|只要|仅需|报价|加价|金额为|金额是|一共|总共"
+    # ── 英文 ──
+    # will/we'll + 动词：英文承诺最常见的形状
+    r"|(?:will|we'?ll|you'?ll|i'?ll)\s+(?:be\s+)?(?:get\s+|have\s+)?"
+    r"(?:refund\w*|ship\w*|deliver\w*|dispatch\w*|send|sent|arrive\w*|issue\w*"
+    r"|complete\w*|finish\w*|install\w*|replace\w*|repair\w*|fix\w*|resolve\w*"
+    r"|schedul\w*|process\w*|credit\w*|charge\w*|cost|take|receive\w*|be)"
+    # 名词形态的费用/交付承诺
+    r"|(?:refund|reimburse|credit|invoice|quote|bill|charge)(?:s|d|ed|ing)?"
+    r"|(?:ship|deliver|dispatch|install|complete|replace|repair|resolve|schedule)"
+    r"(?:s|d|ed|ing|ment|ry)?"
+    r"|(?:cost|price|fee|total|surcharge|upcharge|freight|shipping|labor)s?"
+    r"|no\s+charge|free\s+of\s+charge|at\s+no\s+cost"
+    # "Production takes 6 weeks." —— 耗时陈述同样是时效承诺，
+    # 主语是流程而不是"我们"，前面那组 will/we'll 覆盖不到。
+    r"|\b(?:takes?|taking)\b"
+    r"|\b(?:production|fabrication|remake|turnaround|lead\s*time|rework)\b",
+    re.I,
 )
 
 # 绝对化措辞：出现这些词时，即使句子里有对冲词也仍按承诺处理
 _ABSOLUTE_RE = re.compile(
-    r"一定|肯定|必定|保证|承诺|绝对|无条件|包退|包赔|必然|100%|guarantee|guaranteed|definitely",
+    r"一定|肯定|必定|保证|承诺|绝对|无条件|包退|包赔|必然|100%"
+    r"|guarantee\w*|definitely|certainly|absolutely|for\s+sure|no\s+doubt"
+    r"|i\s+promise|we\s+promise|rest\s+assured|without\s+fail",
     re.I,
 )
 
@@ -63,7 +112,11 @@ _ABSOLUTE_RE = re.compile(
 _HEDGE_RE = re.compile(
     r"通常|一般|预计|大约|大概|可能|不确定|视.{0,8}而定|以.{0,14}为准|具体以"
     r"|需(?:要)?核(?:验|实)|审核后|核实后|请以|仅供参考"
-    r"|typically|usually|approximately|estimated|subject\s+to",
+    r"|typically|usually|approximately|approx\.?|estimate[ds]?|subject\s+to"
+    r"|roughly|around|about|likely|should\s+be|depend[s]?\s+on|depending|varies"
+    r"|tentative|preliminary|non-?binding|for\s+reference|pending|to\s+be\s+confirmed"
+    r"|once\s+(?:confirmed|verified)|after\s+(?:review|verification|confirmation)"
+    r"|ballpark|indicative",
     re.I,
 )
 
@@ -73,16 +126,82 @@ logger = logging.getLogger(__name__)
 # U+FFFD REPLACEMENT CHARACTER，就是客户看到的那个「�」
 _REPLACEMENT_CHAR = "\ufffd"
 
-_SENT_SPLIT_RE = re.compile(r"(?<=[。！？!?\n])")
+# 句末标点。英文句号必须区分「句末」和「小数点 / 缩写点」，见 _is_sentence_period。
+# 流式与非流式共用（split_sentences），不再两边各写一份——之前 enforce 用
+# `(?<=[。！？!?\n])`、PolicyStreamGuard.feed 用 `[。！？!?\n]`，两份都漏了 `.`：
+# 一整段英文回复因此被当成**一个句子**，逐句守卫退化成整段守卫。
+_SENT_END_RE       = re.compile(r"[。！？!?\n]|\.(?=\s)")
+_SENT_END_FINAL_RE = re.compile(r"[。！？!?\n]|\.(?=\s|$)")
 
+# 句号前是这些词时不是句末。漏了它们会把 "approx. $12,800" 切成两句，
+# 对冲词留在前半句、金额落在后半句，两边都判不出违规。
+_ABBREVIATIONS = frozenset({
+    "approx", "est", "etc", "e.g", "i.e", "no", "vs", "mr", "ms", "mrs", "dr",
+    "inc", "ltd", "co", "dept", "min", "max", "qty", "ref", "fig", "ext", "apt",
+})
+_WORD_BEFORE_DOT_RE = re.compile(r"([A-Za-z][A-Za-z.]*)\.$")
+
+def _is_sentence_period(text: str, idx: int) -> bool:
+    """
+    text[idx] 是 '.'。判断它是句末还是缩写点。
+
+    小数点不需要单独判：_SENT_END_RE 要求句号后面跟空白，而 "3.5" 和
+    "$12,800.00" 的句号后面是数字，本来就匹配不上。反过来，句末金额
+    （"The total is $980. We will ship tomorrow."）必须切得开，所以这里
+    不能因为句号前是数字就一律否掉。
+    """
+    head = re.search(_WORD_BEFORE_DOT_RE, text[: idx + 1])
+    return not (head and head.group(1).rstrip(".").lower() in _ABBREVIATIONS)
+
+
+def split_sentences(text: str, final: bool = True) -> tuple[list[str], str]:
+    """
+    切句，返回（完整句列表，结尾未完成的半句）。原标点与空白全部保留，
+    拼回去等于原文。
+
+    final=False 用于流式：此时结尾的 '.' 后面还没有空白，无法区分
+    "3." 是句末还是小数点没写完，留在缓冲区等下一片；flush() 时用 final=True。
+    """
+    pattern = _SENT_END_FINAL_RE if final else _SENT_END_RE
+    out: list[str] = []
+    start = 0
+    for m in pattern.finditer(text):
+        if m.group(0) == "." and not _is_sentence_period(text, m.start()):
+            continue
+        out.append(text[start : m.end()])
+        start = m.end()
+    return out, text[start:]
+
+# 安全话术按回复语言选。只有中文版时，拦下一句英文承诺会往英文回复里
+# 插一段中文——客户读到的是一段语言突然跳变的话，比不拦更糟。
 _SAFE_REPLACEMENT = {
-    "price_commitment": (
-        "具体金额需要以正式报价单和合同条款为准，我不能在未核验前给出确定金额。"
-    ),
-    "lead_time_commitment": (
-        "具体时间需要以工厂排产和物流排班的实际情况为准，我不能在未确认前承诺具体日期。"
-    ),
+    "zh": {
+        "price_commitment": (
+            "具体金额需要以正式报价单和合同条款为准，我不能在未核验前给出确定金额。"
+        ),
+        "lead_time_commitment": (
+            "具体时间需要以工厂排产和物流排班的实际情况为准，我不能在未确认前承诺具体日期。"
+        ),
+    },
+    "en": {
+        "price_commitment": (
+            "The exact amount has to come from the formal quotation and the signed "
+            "contract, so I can't commit to a figure before it has been verified."
+        ),
+        "lead_time_commitment": (
+            "The exact timing depends on factory scheduling and delivery routing, so "
+            "I can't commit to a date before it has been confirmed."
+        ),
+    },
 }
+
+
+def _safe_replacement(rule: str, sentence: str) -> str:
+    """
+    按被替换句子的语种取安全话术。判定与编排器的脚手架共用 detect_language，
+    免得两处对"这句是中文还是英文"给出不同答案。
+    """
+    return _SAFE_REPLACEMENT[detect_language(sentence)][rule]
 
 _RULE_LABEL = {
     "price_commitment": "无依据的价格承诺",
@@ -168,7 +287,8 @@ class AnswerPolicy:
         violations: list[PolicyViolation] = []
         rebuilt: list[str] = []
 
-        for chunk in _SENT_SPLIT_RE.split(answer):
+        sentences, tail_chunk = split_sentences(answer, final=True)
+        for chunk in [*sentences, tail_chunk]:
             sentence = chunk.strip()
             if not sentence:
                 rebuilt.append(chunk)
@@ -180,9 +300,11 @@ class AnswerPolicy:
                 continue
 
             violations.append(hit)
-            # 保留原句的尾部空白/换行，避免替换后段落粘连
+            # 句首和句尾的空白都要保留。只保尾部时，中文看不出来（句子之间没有空格），
+            # 英文会把替换句和前一句黏成 "...before it's verified.The invoice..."。
+            head = chunk[: len(chunk) - len(chunk.lstrip())]
             tail = chunk[len(chunk.rstrip()):]
-            rebuilt.append(_SAFE_REPLACEMENT[hit.rule] + tail)
+            rebuilt.append(head + _safe_replacement(hit.rule, sentence) + tail)
 
         if violations:
             self.blocked_total += 1
@@ -339,15 +461,11 @@ class PolicyStreamGuard:
             return ""
         self._buffer += chunk
 
-        emitted = ""
-        # 只处理已经出现句末标点的完整句，剩下的半句继续留在缓冲区
-        while True:
-            match = re.search(r"[。！？!?\n]", self._buffer)
-            if not match:
-                break
-            sentence, self._buffer = self._buffer[:match.end()], self._buffer[match.end():]
-            emitted += self._check(sentence)
-        return emitted
+        # 切句口径和非流式完全一致（同一个 split_sentences），
+        # 这样"流式能说、非流式不能说"的分叉在结构上就不可能出现。
+        # final=False：结尾的 '.' 可能是还没写完的小数，留到 flush 再判。
+        sentences, self._buffer = split_sentences(self._buffer, final=False)
+        return "".join(self._check(s) for s in sentences)
 
     def flush(self) -> str:
         """流结束时把缓冲区里剩下的半句过一遍策略再发出。"""
