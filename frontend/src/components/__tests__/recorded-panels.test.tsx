@@ -3,7 +3,7 @@
  * api 层按 EvalPanel.test 的方式 mock，其余（parseSseBlock 等）保留原实现。
  */
 import { describe, expect, it, vi } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, within } from '@/test/render'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fixtureJson } from '@/test/fixtures'
@@ -45,6 +45,22 @@ describe('录制的 /monitor', () => {
     expect(screen.getByText('校验次数（流式逐句计）')).toBeInTheDocument()
     expect(screen.getByText('拦截数 / 校验次数')).toBeInTheDocument()
     expect(screen.queryByText('出站回复总数')).not.toBeInTheDocument()
+  })
+
+  /* 后端 routing.display_names 是中文单语的（录制的 monitor.json 里就是
+     「展厅接待 Agent」）。英文界面必须走前端闭集映射，不能把它直接显示出来。 */
+  it('英文界面下 Agent 分组名不漏后端中文', async () => {
+    mocks.monitor.mockResolvedValue(monitor)
+    render(<MonitorPanel base="/api" />, { wrapper: wrap, lang: 'en' })
+    expect(await screen.findByText('Showroom Desk Agent')).toBeInTheDocument()
+    expect(screen.queryByText('展厅接待 Agent')).not.toBeInTheDocument()
+    expect(screen.queryByText('报价与账款 Agent')).not.toBeInTheDocument()
+  })
+
+  it('中文界面下仍与后端下发的名字一致', async () => {
+    mocks.monitor.mockResolvedValue(monitor)
+    render(<MonitorPanel base="/api" />, { wrapper: wrap })
+    expect(await screen.findByText('展厅接待 Agent')).toBeInTheDocument()
   })
 
   it('服务过请求的实例按录制值渲染', async () => {

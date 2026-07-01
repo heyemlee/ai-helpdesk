@@ -1,5 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { loadSettings, saveSettings, type Settings } from '@/api/client'
+import { useOrchestratorConfig } from '@/api/hooks'
+import { useT } from '@/i18n'
 import { useChatStream, type ChatMessage } from '@/hooks/useChatStream'
 import { useTheme } from '@/hooks/useTheme'
 import { ChatPanel } from '@/components/ChatPanel'
@@ -10,11 +12,11 @@ import { RoutingInspector } from '@/components/RoutingInspector'
 import { Sidebar, type View } from '@/components/Sidebar'
 import { Icon } from '@/components/Icon'
 
-const TITLES: Record<View, string> = {
-  chat: '对话工作台',
-  monitor: '在线监控',
-  eval: '端到端评测',
-  knowledge: '知识库',
+const TITLE_KEYS: Record<View, 'nav.chat' | 'nav.monitor' | 'nav.eval' | 'nav.knowledge'> = {
+  chat: 'nav.chat',
+  monitor: 'nav.monitor',
+  eval: 'nav.eval',
+  knowledge: 'nav.knowledge',
 }
 
 const INSPECTOR_KEY = 'helpdesk.inspector'
@@ -27,8 +29,19 @@ export default function App() {
   const [view, setView] = useState<View>('chat')
   const [pinned, setPinned] = useState<string | null>(null)
   const { theme, toggle } = useTheme()
+  const { t } = useT()
 
   // 窄屏首次进入默认收起：检查器是浮层，开着等于盖住整个对话区
+  // 协作门槛的两个常量来自 /monitor 快照；搭 MonitorPanel 已有查询的便车，
+  // 不额外轮询。取不到就不传，检查器那条门槛线索性不画。
+  // 阈值在 MonitorSummary.routing 里，不在快照顶层。第 20 轮这里写成了顶层字段，
+  // 运行时恒为 undefined——门槛线在 React 端一次都没画出来过，而 `tsc --noEmit`
+  // 是空转（solution-style tsconfig 要用 `tsc -b`），所以类型检查也没拦住。
+  const routingCfg = useOrchestratorConfig(settings.apiBaseUrl).data?.routing
+  const thresholds = routingCfg
+    ? { minScore: routingCfg.supporting_min_score, minRatio: routingCfg.supporting_min_ratio }
+    : undefined
+
   const [inspectorOpen, setInspectorOpen] = useState(() => {
     const saved = localStorage.getItem(INSPECTOR_KEY)
     return saved ? saved === 'open' : window.innerWidth > 1180
@@ -101,15 +114,15 @@ export default function App() {
 
       <main className="main">
         <header className="topbar">
-          <h1>{TITLES[view]}</h1>
+          <h1>{t(TITLE_KEYS[view])}</h1>
           <span className="spacer" />
           {isChat && (
             <>
               <label className="switch">
                 <input type="checkbox" checked={streaming} onChange={(e) => setStreaming(e.target.checked)} />
-                <span className="track" />流式
+                <span className="track" />{t('cw.stream')}
               </label>
-              <label className="switch" title="展开每轮的完整编排解释">
+              <label className="switch" title={t('cw.explain.title')}>
                 <input
                   type="checkbox" checked={explain}
                   onChange={(e) => {
@@ -117,15 +130,15 @@ export default function App() {
                     localStorage.setItem('helpdesk.explain', e.target.checked ? 'on' : 'off')
                   }}
                 />
-                <span className="track" />讲解
+                <span className="track" />{t('cw.explain')}
               </label>
-              <button className="icon-btn" title="清空对话" aria-label="清空对话"
+              <button className="icon-btn" title={t('shell.clear')} aria-label={t('shell.clear')}
                       onClick={startNewChat}>
                 <Icon name="refresh" />
               </button>
               <button
                 className="icon-btn" aria-pressed={inspectorOpen}
-                title="路由检查器" aria-label="切换路由检查器"
+                title={t('in.title')} aria-label={t('in.toggle')}
                 onClick={() => setInspector(!inspectorOpen)}
               >
                 <Icon name="panel" />
@@ -147,21 +160,21 @@ export default function App() {
       </main>
 
       {isChat && (
-        <aside className="inspector" aria-label="路由检查器">
+        <aside className="inspector" aria-label={t('in.title')}>
           <div className="inspector-head">
-            <h2>路由检查器</h2>
+            <h2>{t('in.title')}</h2>
             <span className="spacer" />
-            <button className="icon-btn" aria-label="关闭检查器" onClick={() => setInspector(false)}>
+            <button className="icon-btn" aria-label={t('in.close')} onClick={() => setInspector(false)}>
               <Icon name="close" />
             </button>
           </div>
           <div className="inspector-body scroll">
             {inspectedIsStale && (
               <p className="note caution" style={{ marginBottom: 12 }}>
-                本轮仍在编排，下面是上一轮的决策。
+                {t('in.stale')}
               </p>
             )}
-            <RoutingInspector message={inspected} />
+            <RoutingInspector message={inspected} thresholds={thresholds} />
           </div>
         </aside>
       )}

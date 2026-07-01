@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { useMonitor } from '@/api/hooks'
 import { Card, Chip, Empty, MeterRow, Stat } from './ui'
 import { Icon } from './Icon'
-import { agentLabel, circuitTone, ms, num, pct } from '@/lib/format'
+import { agentDisplayName, circuitTone, ms, num, pct } from '@/lib/format'
+import { useT } from '@/i18n'
 import type { AgentStat, MonitorSummary } from '@/api/types'
 
 type MonitorAlert = MonitorSummary['active_alerts'][number]
@@ -15,6 +16,7 @@ type MonitorAlert = MonitorSummary['active_alerts'][number]
  * 所以面板按类型分组显示。
  */
 export function MonitorPanel({ base }: { base: string }) {
+  const { t } = useT()
   const { data, error, isLoading, refetch, isFetching, dataUpdatedAt } = useMonitor(base)
   const [onlyPenalized, setOnlyPenalized] = useState(false)
 
@@ -45,38 +47,38 @@ export function MonitorPanel({ base }: { base: string }) {
       <div className="page-inner">
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <h2 className="page-title">意图通道与出站策略</h2>
+            <h2 className="page-title">{t('mon.pageTitle')}</h2>
             <p className="page-lede">
-              规则快通道命中时，这一轮不会发起任何意图识别 LLM 调用；答案策略在回复出站前切除没有依据的价格与交期承诺。
+              {t('mon.lede')}
             </p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
             {!error && dataUpdatedAt > 0 && (
               <span className="topbar-sub mono">
-                更新于 {new Date(dataUpdatedAt).toTimeString().slice(0, 8)}
+                {t('mon.updated')} {new Date(dataUpdatedAt).toTimeString().slice(0, 8)}
               </span>
             )}
-            <button className="icon-btn" title="刷新" aria-label="刷新"
+            <button className="icon-btn" title={t('mon.refresh')} aria-label={t('mon.refresh')}
                     disabled={isFetching} onClick={() => refetch()}>
               <Icon name="refresh" />
             </button>
           </div>
         </div>
 
-        {isLoading && <Empty>加载中…</Empty>}
+        {isLoading && <Empty>{t('mon.loading')}</Empty>}
 
         {/* 后端取不到数据时，绝不逐张卡片声称"没有告警""暂无建议"——
             那是把"不知道"说成"零"。整页收敛成一个连接失败状态。 */}
         {error && (
           <Card>
             <div className="empty">
-              <p style={{ color: 'var(--color-text)' }}>连不上后端，监控数据取不到。</p>
+              <p style={{ color: 'var(--color-text)' }}>{t('mon.down')}</p>
               <p className="note danger" style={{ margin: '10px auto 0', maxWidth: '52ch', textAlign: 'left' }}>
                 {error instanceof Error ? error.message : String(error)}
               </p>
               <button className="btn btn-secondary" style={{ marginTop: 14 }}
                       disabled={isFetching} onClick={() => refetch()}>
-                {isFetching ? '重试中…' : '重试'}
+                {isFetching ? t('mon.retrying') : t('mon.retry')}
               </button>
             </div>
           </Card>
@@ -84,14 +86,14 @@ export function MonitorPanel({ base }: { base: string }) {
 
         {intent && (
           <dl className="stat-grid">
-            <Stat label="规则通道命中" value={pct(intent.fast_path_rate, 1)}
-                  hint={`${intent.fast_path_hits} / ${intent.fast_path_hits + intent.ensemble_hits} 次请求`} />
-            <Stat label="省下 LLM 调用" value={String(intent.llm_calls_saved)}
-                  hint="规则通道跳过的意图识别往返" />
-            <Stat label="细粒度意图" value={String(intent.fine_grained_intents)}
-                  hint={`Embedding：${intent.embedding_backend}`} />
-            <Stat label="意图缓存命中" value={pct(intent.cache.hit_rate, 1)}
-                  hint={`缓存 ${intent.cache.size} 条 · 命中 ${intent.cache.hits} / 未命中 ${intent.cache.misses}`} />
+            <Stat label={t('mon.fastPath')} value={pct(intent.fast_path_rate, 1)}
+                  hint={`${intent.fast_path_hits} / ${intent.fast_path_hits + intent.ensemble_hits} ${t('mon.requestsUnit')}`} />
+            <Stat label={t('mon.saved')} value={String(intent.llm_calls_saved)}
+                  hint={t('mon.saved.hint')} />
+            <Stat label={t('mon.intents')} value={String(intent.fine_grained_intents)}
+                  hint={t('mon.intents.hint', { backend: intent.embedding_backend })} />
+            <Stat label={t('mon.cache')} value={pct(intent.cache.hit_rate, 1)}
+                  hint={t('mon.cache.hint', { size: intent.cache.size, hits: intent.cache.hits, misses: intent.cache.misses })} />
           </dl>
         )}
 
@@ -100,27 +102,26 @@ export function MonitorPanel({ base }: { base: string }) {
             {/* checked_total 不是回复条数：非流式一次回复算 1，流式是逐句
                 enforce()（core/answer_policy.py:360），一条回复能算出几十。
                 三轮对话就显示 71，写「出站回复总数」是错的。 */}
-            <Stat label="策略校验" value={String(policy.checked_total)} hint="校验次数（流式逐句计）" />
-            <Stat label="拦截" value={String(policy.blocked_total)}
-                  hint={Object.entries(policy.blocked_by_rule).map(([k, v]) => `${k} ${v}`).join(' · ') || '无'} />
-            <Stat label="拦截率" value={pct(policy.block_rate, 1)} hint="拦截数 / 校验次数" />
+            <Stat label={t('mon.checked')} value={String(policy.checked_total)} hint={t('mon.checked.hint')} />
+            <Stat label={t('mon.blocked')} value={String(policy.blocked_total)}
+                  hint={Object.entries(policy.blocked_by_rule).map(([k, v]) => `${k} ${v}`).join(' · ') || t('mon.blocked.none')} />
+            <Stat label={t('mon.blockRate')} value={pct(policy.block_rate, 1)} hint={t('mon.blockRate.hint')} />
           </dl>
         )}
 
         {Object.keys(grouped).length > 0 && (
           <Card
-            title="Agent 实例路由权重"
-            badge={data?.routing && <Chip>每类 {data.routing.replicas_per_type} 实例</Chip>}
+            title={t('mon.agents')}
+            badge={data?.routing && <Chip>{t('mon.replicas', { n: data.routing.replicas_per_type })}</Chip>}
             actions={
-              <div className="segmented" role="tablist" aria-label="实例筛选">
-                <button role="tab" aria-selected={!onlyPenalized} onClick={() => setOnlyPenalized(false)}>全部实例</button>
-                <button role="tab" aria-selected={onlyPenalized} onClick={() => setOnlyPenalized(true)}>仅劣化实例</button>
+              <div className="segmented" role="tablist" aria-label={t('mon.filter')}>
+                <button role="tab" aria-selected={!onlyPenalized} onClick={() => setOnlyPenalized(false)}>{t('mon.filter.all')}</button>
+                <button role="tab" aria-selected={onlyPenalized} onClick={() => setOnlyPenalized(true)}>{t('mon.filter.penalized')}</button>
               </div>
             }
           >
             <p className="note neutral" style={{ marginBottom: 14 }}>
-              同类型的多个实例共享流量。某个实例失败率上去之后，Monitor 给它记一笔 <code className="mono">monitor_penalty</code>，
-              路由权重被压低，流量自动倒给同类型的另一个实例——单实例部署时看不见这个闭环，所以这里按类型分组。
+              {t('mon.agents.hint')}
             </p>
             <div className="dl" style={{ gap: 18 }}>
               {Object.entries(grouped).map(([type, rows]) => {
@@ -129,10 +130,10 @@ export function MonitorPanel({ base }: { base: string }) {
                 <div key={type}>
                   <div className="chip-row" style={{ marginBottom: 8 }}>
                     <strong style={{ fontSize: 'var(--text-sm)' }}>
-                      {data?.routing?.display_names?.[type] ?? agentLabel(type)}
+                      {agentDisplayName(type, t, data?.routing?.display_names?.[type])}
                     </strong>
                     <Chip tone={head?.specialist ? 'info' : 'neutral'}>
-                      {head?.specialist ? '专家' : '兜底'}
+                      {t(head?.specialist ? 'mon.specialist' : 'mon.fallback')}
                     </Chip>
                     {head?.model && <Chip mono>{head.model}</Chip>}
                   </div>
@@ -146,9 +147,9 @@ export function MonitorPanel({ base }: { base: string }) {
                         tone={s.monitor_penalty > 0 ? 'danger' : 'primary'}
                         note={
                           <>
-                            {s.total} 次 · {pct(s.success_rate, 1)} · {ms(s.avg_ms)}
+                            {s.total} {t('mon.callsUnit')} · {pct(s.success_rate, 1)} · {ms(s.avg_ms)}
                             {s.monitor_penalty > 0 && (
-                              <Chip tone="danger" title="Monitor 判定该实例劣化，已按此数值降低其路由权重">
+                              <Chip tone="danger" title={t('mon.penaltyTitle')}>
                                 −{num(s.monitor_penalty)}
                               </Chip>
                             )}
@@ -165,11 +166,11 @@ export function MonitorPanel({ base }: { base: string }) {
         )}
 
         {tools.length > 0 && (
-          <Card title="工具与熔断器" bodyStyle={{ padding: 0 }}>
+          <Card title={t('mon.tools')} bodyStyle={{ padding: 0 }}>
             <div className="table-scroll">
             <table className="data">
               <thead>
-                <tr><th>工具</th><th>调用</th><th>成功率</th><th>平均延迟</th><th>连续失败</th><th>熔断状态</th></tr>
+                <tr><th>{t('mon.th.tool')}</th><th>{t('mon.th.calls')}</th><th>{t('mon.th.success')}</th><th>{t('mon.th.latency')}</th><th>{t('mon.th.fails')}</th><th>{t('mon.th.circuit')}</th></tr>
               </thead>
               <tbody>
                 {tools.map(([name, s]) => (
@@ -190,9 +191,9 @@ export function MonitorPanel({ base }: { base: string }) {
 
         {!error && data && (
         <div style={{ display: 'grid', gap: 20, gridTemplateColumns: 'repeat(auto-fit,minmax(min(340px,100%),1fr))' }}>
-          <Card title="活跃告警" badge={<Chip tone={alerts.length ? 'caution' : 'neutral'}>{alerts.length}</Chip>}>
+          <Card title={t('mon.alerts')} badge={<Chip tone={alerts.length ? 'caution' : 'neutral'}>{alerts.length}</Chip>}>
             {alerts.length === 0
-              ? <Empty>当前没有活跃告警。</Empty>
+              ? <Empty>{t('mon.alerts.empty')}</Empty>
               : (
                 <div className="dl">
                   {alerts.slice(-6).map((a, i) => (
@@ -207,9 +208,9 @@ export function MonitorPanel({ base }: { base: string }) {
               )}
           </Card>
 
-          <Card title="优化建议" badge={<Chip>按优先级</Chip>}>
+          <Card title={t('mon.sugg')} badge={<Chip>{t('mon.sugg.by')}</Chip>}>
             {suggestions.length === 0
-              ? <Empty>暂无建议。</Empty>
+              ? <Empty>{t('mon.sugg.empty')}</Empty>
               : (
                 <div className="dl">
                   {[...suggestions].sort((a, b) => a.priority - b.priority).map((s, i) => (

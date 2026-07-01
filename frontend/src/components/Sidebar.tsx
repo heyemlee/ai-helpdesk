@@ -1,4 +1,6 @@
 import { useHealth } from '@/api/hooks'
+import { useT } from '@/i18n'
+import type { Key } from '@/i18n/catalog'
 import { Chip, KV } from './ui'
 import { Icon, type IconName } from './Icon'
 import type { Settings } from '@/api/client'
@@ -6,11 +8,11 @@ import type { Theme } from '@/hooks/useTheme'
 
 export type View = 'chat' | 'monitor' | 'eval' | 'knowledge'
 
-const NAV: Array<{ id: View; label: string; icon: IconName }> = [
-  { id: 'chat', label: '对话工作台', icon: 'chat' },
-  { id: 'monitor', label: '在线监控', icon: 'pulse' },
-  { id: 'eval', label: '端到端评测', icon: 'check' },
-  { id: 'knowledge', label: '知识库', icon: 'book' },
+const NAV: Array<{ id: View; key: Key; icon: IconName }> = [
+  { id: 'chat', key: 'nav.chat', icon: 'chat' },
+  { id: 'monitor', key: 'nav.monitor', icon: 'pulse' },
+  { id: 'eval', key: 'nav.eval', icon: 'check' },
+  { id: 'knowledge', key: 'nav.knowledge', icon: 'book' },
 ]
 
 export function Sidebar({ settings, onChange, view, onView, onNewChat, theme, onToggleTheme }: {
@@ -24,6 +26,7 @@ export function Sidebar({ settings, onChange, view, onView, onNewChat, theme, on
 }) {
   const health = useHealth(settings.apiBaseUrl)
   const routing = health.data?.routing
+  const { t, lang, toggle: toggleLang } = useT()
 
   return (
     <aside className="rail">
@@ -32,17 +35,17 @@ export function Sidebar({ settings, onChange, view, onView, onNewChat, theme, on
           <span className="brand-mark" aria-hidden="true"><Icon name="spark" size={16} /></span>
           <span style={{ minWidth: 0 }}>
             <span className="brand-name">ai-helpdesk</span>
-            <span className="brand-sub" style={{ display: 'block' }}>橱柜工厂客服编排</span>
+            <span className="brand-sub" style={{ display: 'block' }}>{t('brand.sub')}</span>
           </span>
         </div>
       </div>
 
       <div className="rail-body scroll">
         <button className="nav-item" onClick={onNewChat}>
-          <Icon name="plus" />新建对话
+          <Icon name="plus" />{t('shell.newChat')}
         </button>
 
-        <p className="rail-label">工作台</p>
+        <p className="rail-label">{t('nav.section.workbench')}</p>
         {NAV.map((n) => (
           <button
             key={n.id}
@@ -50,7 +53,7 @@ export function Sidebar({ settings, onChange, view, onView, onNewChat, theme, on
             aria-current={view === n.id ? 'page' : undefined}
             onClick={() => onView(n.id)}
           >
-            <Icon name={n.icon} />{n.label}
+            <Icon name={n.icon} />{t(n.key)}
           </button>
         ))}
       </div>
@@ -59,19 +62,19 @@ export function Sidebar({ settings, onChange, view, onView, onNewChat, theme, on
         <div className="card" style={{ borderRadius: 'var(--radius-xl)' }}>
           <div className="card-body" style={{ padding: '10px 12px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-              <span className="section-label" style={{ margin: 0 }}>服务状态</span>
+              <span className="section-label" style={{ margin: 0 }}>{t('shell.status')}</span>
               {health.isError
-                ? <Chip tone="danger" dot>不可达</Chip>
+                ? <Chip tone="danger" dot>{t('shell.status.down')}</Chip>
                 : health.data?.status === 'ok'
-                  ? <Chip tone="success" dot>正常</Chip>
-                  : <Chip dot>连接中</Chip>}
+                  ? <Chip tone="success" dot>{t('shell.status.ok')}</Chip>
+                  : <Chip dot>{t('shell.status.connecting')}</Chip>}
             </div>
             {routing && (
               <dl style={{ margin: '8px 0 0' }}>
-                <KV label="专家 Agent">
-                  {routing.specialists.length} 类 · 每类 {routing.replicas_per_type} 实例
+                <KV label={t('shell.specialists')}>
+                  {t('shell.specialists.v', { types: routing.specialists.length, replicas: routing.replicas_per_type })}
                 </KV>
-                <KV label="细粒度意图">{routing.intent.fine_grained_intents}</KV>
+                <KV label={t('shell.intents')}>{routing.intent.fine_grained_intents}</KV>
                 <KV label="Embedding">
                   <span className="mono">{routing.intent.embedding_backend}</span>
                 </KV>
@@ -81,29 +84,37 @@ export function Sidebar({ settings, onChange, view, onView, onNewChat, theme, on
         </div>
 
         <details className="raw" style={{ marginTop: 8 }}>
-          <summary>连接设置</summary>
+          <summary>{t('shell.settings')}</summary>
           <div style={{ display: 'grid', gap: 6, marginTop: 8 }}>
-            <Field label="API 地址" value={settings.apiBaseUrl}
+            <Field label={t('shell.apiBase')} value={settings.apiBaseUrl}
                    onChange={(v) => onChange({ apiBaseUrl: v })} placeholder="/api" />
-            <Field label="用户 ID" value={settings.userId}
+            <Field label={t('shell.userId')} value={settings.userId}
                    onChange={(v) => onChange({ userId: v })} placeholder="u1001" />
-            <Field label="会话 ID" value={settings.conversationId}
-                   onChange={(v) => onChange({ conversationId: v })} placeholder="自动生成" />
+            <Field label={t('shell.convId')} value={settings.conversationId}
+                   onChange={(v) => onChange({ conversationId: v })} placeholder={t('shell.convId.ph')} />
           </div>
         </details>
 
         <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
           <button
             className="btn btn-ghost" style={{ flex: 1 }} onClick={onToggleTheme}
-            aria-label={theme === 'dark' ? '切换到浅色主题' : '切换到深色主题'}
+            aria-label={t(theme === 'dark' ? 'shell.theme.toLight' : 'shell.theme.toDark')}
           >
             <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={16} />
+          </button>
+          {/* 按钮上写的是**切过去之后**的语言，和主题按钮显示目标状态图标同一套逻辑 */}
+          <button
+            className="btn btn-ghost" style={{ flex: 1 }} onClick={toggleLang}
+            data-od-id="lang-toggle"
+            aria-label={t(lang === 'zh' ? 'shell.lang.toEn' : 'shell.lang.toZh')}
+          >
+            {lang === 'zh' ? 'EN' : '中文'}
           </button>
           <a
             className="btn btn-ghost" style={{ flex: 1 }} target="_blank" rel="noreferrer"
             href={`${settings.apiBaseUrl.replace(/\/+$/, '')}/docs`}
           >
-            API 文档
+            {t('shell.apiDocs')}
           </a>
         </div>
       </div>

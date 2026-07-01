@@ -2,14 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { MessageBubble } from './MessageBubble'
 import { Icon } from './Icon'
 import type { ChatMessage } from '@/hooks/useChatStream'
+import { useT } from '@/i18n'
 
 /** 内置示例问题，覆盖规则快通道、跨域主辅协作、答案策略拦截三条典型链路。 */
-const SAMPLES = [
-  '12 号下的那单现在生产到哪一步了？',
-  '橱柜门板到货的时候有磕碰，能补发吗？',
-  '想把吊柜高度改一下，另外尾款发票什么时候能开？',
-  '石英石台面多少钱一米？',
-]
+/* 建议问句跟着界面语言走：夹具的匹配在演示原型里，真实后端不依赖问句语种。 */
+const SAMPLE_KEYS = ['cw.sample.1', 'cw.sample.2', 'cw.sample.3', 'cw.sample.4'] as const
 
 export function ChatPanel({ messages, busy, onSend, onInspect, explain, restoring }: {
   messages: ChatMessage[]
@@ -20,14 +17,15 @@ export function ChatPanel({ messages, busy, onSend, onInspect, explain, restorin
   /** 正在从服务端拉刷新前的历史 */
   restoring?: boolean
 }) {
+  const { t } = useT()
   const [draft, setDraft] = useState('')
   const listRef = useRef<HTMLDivElement>(null)
   const areaRef = useRef<HTMLTextAreaElement>(null)
 
-  // 新增量到达时贴底滚动
+  // 新增量到达时贴底滚动；讲解模式事后开启会在已有轮次下方展开新内容，同样要贴底
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight })
-  }, [messages])
+  }, [messages, explain])
 
   const grow = () => {
     const el = areaRef.current
@@ -52,15 +50,15 @@ export function ChatPanel({ messages, busy, onSend, onInspect, explain, restorin
         {messages.length === 0 && restoring ? (
           // 拉历史的那一两秒别闪一下空态——空态会被读成「这是个新会话」
           <div className="thread-inner">
-            <div className="thinking"><span className="pulse" />正在恢复会话…</div>
+            <div className="thinking"><span className="pulse" />{t('cw.restoring')}</div>
           </div>
         ) : messages.length === 0 ? (
           <div className="thread-empty">
-            <h2>今天要处理哪一单？</h2>
-            <p>发一条客户问题，右侧检查器会摊开这一轮的完整编排决策。</p>
+            <h2>{t('cw.empty.title')}</h2>
+            <p>{t('cw.empty.body')}</p>
             <div className="suggestions">
-              {SAMPLES.map((s) => (
-                <button key={s} className="suggestion" onClick={() => onSend(s)}>{s}</button>
+              {SAMPLE_KEYS.map((k) => (
+                <button key={k} className="suggestion" onClick={() => onSend(t(k))}>{t(k)}</button>
               ))}
             </div>
           </div>
@@ -68,8 +66,7 @@ export function ChatPanel({ messages, busy, onSend, onInspect, explain, restorin
           <div className="thread-inner">
             {restoredCount > 0 && (
               <p className="note neutral" style={{ marginBottom: 16 }}>
-                已从服务端恢复 {restoredCount} 条历史消息。路由决策只在当轮保留，
-                检查器只能查本次新发的消息。
+                {t('cw.restored', { n: restoredCount })}
               </p>
             )}
             {messages.map((m) => (
@@ -81,10 +78,10 @@ export function ChatPanel({ messages, busy, onSend, onInspect, explain, restorin
 
       <div className="composer-wrap">
         <form className="composer" onSubmit={(e) => { e.preventDefault(); submit() }}>
-          <label className="sr-only" htmlFor="draft">输入客户问题</label>
+          <label className="sr-only" htmlFor="draft">{t('cw.composeLabel')}</label>
           <textarea
             id="draft" ref={areaRef} rows={1} value={draft}
-            placeholder="输入客户问题，Enter 发送 / Shift+Enter 换行"
+            placeholder={t('cw.placeholder')}
             onChange={(e) => { setDraft(e.target.value); grow() }}
             onKeyDown={(e) => {
               // 输入法组合中的 Enter 是「确认候选」，不是「发送」。少了 isComposing
@@ -96,13 +93,13 @@ export function ChatPanel({ messages, busy, onSend, onInspect, explain, restorin
             }}
           />
           <div className="composer-bar">
-            <button className="send" type="submit" disabled={busy || !draft.trim()} aria-label="发送">
+            <button className="send" type="submit" disabled={busy || !draft.trim()} aria-label={t('cw.send')}>
               <Icon name="send" size={18} />
             </button>
           </div>
         </form>
         <p className="composer-hint">
-          回复由多 Agent 编排生成，价格与交期承诺经答案策略校验后才会出站。
+          {t('cw.hint')}
         </p>
       </div>
     </>

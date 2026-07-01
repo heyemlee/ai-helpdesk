@@ -2,7 +2,9 @@ import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Chip } from './ui'
 import { Icon } from './Icon'
-import { HANDOFF_AGENT, agentIdentity, agentLabel, ms, num } from '@/lib/format'
+import { agentIdentity, agentLabel, ms, num } from '@/lib/format'
+import { useT } from '@/i18n'
+import type { Key } from '@/i18n/catalog'
 import type { ChatMessage } from '@/hooks/useChatStream'
 
 /**
@@ -29,20 +31,21 @@ const K = {
  * 「给了却不解释」正是这套界面最早被指出的问题。
  */
 function ExplainBlock({ message }: { message: ChatMessage }) {
+  const { t } = useT()
   const { meta, routing: r, result: res } = message
   if (!r || !res) return null
 
   const rows: Array<[string, React.ReactNode]> = []
 
   if (meta?.intent_strategy === 'fast_path') {
-    rows.push(['意图', <>
-      <code className="mono">{meta.intent}</code> · 规则锚点命中，本轮 <strong>0 次 LLM 调用</strong>——省下 Embedding 与 LLM 两次网络往返
+    rows.push([t('ex.intent'), <>
+      <code className="mono">{meta.intent}</code> · {t('ex.fastPath')}
     </>])
   } else if (meta?.intent_source_scores) {
     const v = meta.intent_source_scores
-    rows.push(['意图', <>
-      <code className="mono">{meta.intent}</code> · 三路加权投票：
-      LLM {K.W.llm.toFixed(2)}×{num(v.llm ?? 0)} ＋ Embedding {K.W.embedding.toFixed(2)}×{num(v.embedding ?? 0)} ＋ 规则 {K.W.rules.toFixed(2)}×{num(v.rules ?? 0)}
+    rows.push([t('ex.intent'), <>
+      <code className="mono">{meta.intent}</code> · {t('ex.vote')}{' '}
+      LLM {K.W.llm.toFixed(2)}×{num(v.llm ?? 0)} ＋ Embedding {K.W.embedding.toFixed(2)}×{num(v.embedding ?? 0)} ＋ {t('ex.rules')} {K.W.rules.toFixed(2)}×{num(v.rules ?? 0)}
     </>])
   }
 
@@ -52,27 +55,26 @@ function ExplainBlock({ message }: { message: ChatMessage }) {
     const gate = Math.max(K.SUPPORT_MIN, top[1] * K.SUPPORT_RATIO)
     const support = r.supporting_agents ?? []
     const second = ranked[1]
-    rows.push(['路由', <>
-      {agentLabel(top[0])} {num(top[1])} 胜出。协作门槛取两者较大值：绝对 {K.SUPPORT_MIN} 与
-      主分×{K.SUPPORT_RATIO}={num(top[1] * K.SUPPORT_RATIO)} → <strong>{num(gate)}</strong>
+    rows.push([t('ex.route'), <>
+      {agentLabel(top[0], t)} {num(top[1])} {t('ex.wins')} {K.SUPPORT_MIN} {t('ex.and')}{K.SUPPORT_RATIO}={num(top[1] * K.SUPPORT_RATIO)} → <strong>{num(gate)}</strong>
       {support.length > 0
-        ? <>；{support.map(agentLabel).join('、')} 过线，并行协作后由主 Agent 合并</>
-        : second ? <>；次高 {agentLabel(second[0])} {num(second[1])} 未过线，本轮单 Agent 作答</> : null}
+        ? <>; {support.map((x) => agentLabel(x, t)).join(', ')} {t('ex.passed')}</>
+        : second ? <>; {t('ex.runnerUp')} {agentLabel(second[0], t)} {num(second[1])} {t('ex.notPassed')}</> : null}
     </>])
   }
 
-  rows.push(['出站', res.policy_violations?.length
-    ? <>触发 <code className="mono">{res.policy_violations[0]!.rule}</code>：按句缓冲校验后整句切除才发出，流式与非流式受同一套策略约束</>
-    : <>答案策略逐句校验通过，无切除</>])
+  rows.push([t('ex.out'), res.policy_violations?.length
+    ? <>{t('ex.outHit1')} <code className="mono">{res.policy_violations[0]!.rule}</code> {t('ex.outHit2')}</>
+    : <>{t('ex.outClean')}</>])
 
   const c = res.answer_confidence
-  rows.push(['处置', res.handoff
-    ? <>综合置信度 {num(c)} —— 已建单转人工，本轮对话记录一并转交，人工接手时客户无需复述</>
+  rows.push([t('ex.disp'), res.handoff
+    ? <>{t('ex.conf')} {num(c)} — {t('ex.handoff')}</>
     : res.needs_clarification
-      ? <>综合置信度 {num(c)} <strong>低于</strong>澄清阈值 {K.CLARIFY.toFixed(2)} → 追问而不是硬答</>
-      : <>综合置信度 {num(c)} 高于澄清阈值 {K.CLARIFY.toFixed(2)}，正常作答</>])
+      ? <>{t('ex.conf')} {num(c)} <strong>{t('ex.below')}</strong> {t('ex.clarifyTh')} {K.CLARIFY.toFixed(2)} → {t('ex.askInstead')}</>
+      : <>{t('ex.conf')} {num(c)} {t('ex.above')} {t('ex.clarifyTh')} {K.CLARIFY.toFixed(2)}, {t('ex.normal')}</>])
 
-  rows.push(['耗时', ms(res.latency_ms)])
+  rows.push([t('ex.latency'), ms(res.latency_ms)])
 
   return (
     <div className="explain">
@@ -88,6 +90,7 @@ export function MessageBubble({ message, onInspect, explain }: {
   onInspect?: () => void
   explain?: boolean
 }) {
+  const { t } = useT()
   const { routing, result } = message
 
   if (message.role === 'user') {
@@ -109,14 +112,13 @@ export function MessageBubble({ message, onInspect, explain }: {
   // 刷新后从审计日志恢复的历史：只有原文和作答 Agent，没有路由/置信度，
   // 不能走下面「routing 还没到 = 正在编排」那条分支，否则永远转圈
   if (message.restored) {
-    const agent = message.agentType === 'handoff' ? HANDOFF_AGENT
-      : message.agentType ? agentIdentity(message.agentType)
-        : { name: '客服回复', mark: '·' }
+    const agent = message.agentType ? agentIdentity(message.agentType, t)
+        : { name: t('agent.reply'), mark: '·' }
     return (
       <article className="turn assistant restored">
         <div className="chip-row">
           <p className="turn-role">{agent.name}</p>
-          <Chip>历史</Chip>
+          <Chip>{t('cw.history')}</Chip>
         </div>
         <div className="body">
           <div className="prose-chat">
@@ -131,12 +133,12 @@ export function MessageBubble({ message, onInspect, explain }: {
   if (!routing?.primary_agent) {
     return (
       <article className="turn assistant">
-        <div className="thinking"><span className="pulse" />正在编排…</div>
+        <div className="thinking"><span className="pulse" />{t('cw.orchestrating')}</div>
       </article>
     )
   }
 
-  const agent = agentIdentity(routing.primary_agent)
+  const agent = agentIdentity(routing.primary_agent, t)
   const support = routing.supporting_agents ?? []
   const cut = result?.policy_violations?.[0]
 
@@ -146,8 +148,8 @@ export function MessageBubble({ message, onInspect, explain }: {
         // 转人工是会话的处置结果，不是某个 Agent 在说话
         <p className="turn-status">
           <Icon name="person" size={14} />
-          已转人工
-          {result.ticket_id && <>· 工单 <span className="mono">{result.ticket_id}</span></>}
+          {t('cw.handedOff')}
+          {result.ticket_id && <>· {t('cw.ticket')} <span className="mono">{result.ticket_id}</span></>}
         </p>
       ) : (
         <div className="chip-row">
@@ -156,12 +158,12 @@ export function MessageBubble({ message, onInspect, explain }: {
             {support.length > 0 && (
               <>
                 <span className="sep">·</span>
-                <span className="support">＋ {support.map(agentLabel).join('、')} 并行协作</span>
+                <span className="support">＋ {support.map((x) => agentLabel(x, t)).join(', ')} {t('cw.parallel')}</span>
               </>
             )}
           </p>
-          {result?.needs_clarification && <Chip tone="caution">需要补充信息</Chip>}
-          {result?.escalated && <Chip tone="caution">已升级</Chip>}
+          {result?.needs_clarification && <Chip tone="caution">{t('cw.needInfo')}</Chip>}
+          {result?.escalated && <Chip tone="caution">{t('cw.escalated')}</Chip>}
         </div>
       )}
 
@@ -178,12 +180,12 @@ export function MessageBubble({ message, onInspect, explain }: {
         <div className="redaction">
           <p className="redaction-head">
             <Icon name="shield" size={14} />
-            答案策略切除 {result!.policy_violations!.length} 句 · {cut.label}
+            {t('cw.cut', { n: result!.policy_violations!.length })} · {t(`policy.${cut.rule}` as Key)}
           </p>
           <p className="redaction-cut">{cut.sentence}</p>
           {onInspect && (
             <button className="redaction-why" onClick={onInspect}>
-              为什么被切？在检查器里看规则与依据
+              {t('cw.why')}
             </button>
           )}
         </div>
@@ -194,14 +196,14 @@ export function MessageBubble({ message, onInspect, explain }: {
       <div className="turn-foot">
         <span className="turn-actions">
           <button
-            className="icon-btn" title="复制回复" aria-label="复制回复"
+            className="icon-btn" title={t('cw.copy')} aria-label={t('cw.copy')}
             onClick={() => navigator.clipboard?.writeText(message.content)}
           >
             <Icon name="copy" size={16} />
           </button>
           {onInspect && (
             <button
-              className="icon-btn" title="查看本轮编排详情" aria-label="查看本轮编排详情"
+              className="icon-btn" title={t('cw.inspectTurn')} aria-label={t('cw.inspectTurn')}
               onClick={onInspect}
             >
               <Icon name="panel" size={16} />

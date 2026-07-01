@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react'
 import { useRunEval } from '@/api/hooks'
 import { Card, Chip, Empty, ErrorNote } from './ui'
 import { num, pct } from '@/lib/format'
+import { useT } from '@/i18n'
 
 const DIMENSIONS = [
-  { key: 'relevance', label: '相关性' },
-  { key: 'accuracy', label: '准确性' },
-  { key: 'completeness', label: '完整性' },
-  { key: 'helpfulness', label: '有用性' },
+  { key: 'relevance', label: 'ev.dim.relevance' },
+  { key: 'accuracy', label: 'ev.dim.accuracy' },
+  { key: 'completeness', label: 'ev.dim.completeness' },
+  { key: 'helpfulness', label: 'ev.dim.helpfulness' },
 ] as const
 
 const tone = (v: number) => (v >= 0.75 ? 'success' : v >= 0.6 ? 'caution' : 'danger')
@@ -34,6 +35,7 @@ function Elapsed({ since }: { since: number }) {
  * 所以"相比基线退化"是真的在对比历史，而不是在跟上一次运行比。
  */
 export function EvalPanel({ base }: { base: string }) {
+  const { t } = useT()
   const { run, data, error, isPending, startedAt } = useRunEval(base)
   const [onlyFailed, setOnlyFailed] = useState(false)
 
@@ -44,15 +46,14 @@ export function EvalPanel({ base }: { base: string }) {
       <div className="page-inner">
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <h2 className="page-title">LLM-as-Judge 四维评分</h2>
+            <h2 className="page-title">{t('ev.pageTitle')}</h2>
             <p className="page-lede">
-              评测走的是和 <code className="mono">/chat</code> 完全同一套检索与编排，测出来的分数就是线上表现。
-              基线不会跑完自动覆盖——只有显式 promote 才更新，所以「相比基线退化」比的是历史，不是上一次运行。
+              {t('ev.lede1')} <code className="mono">/chat</code>{t('ev.lede2')}
             </p>
           </div>
           <button className="btn btn-primary" onClick={run}
                   disabled={isPending} aria-busy={isPending}>
-            {isPending ? '评测中…' : data ? '重新运行' : '运行评测'}
+            {isPending ? t('ev.running.btn') : data ? t('ev.rerun') : t('ev.run')}
           </button>
         </div>
 
@@ -62,14 +63,13 @@ export function EvalPanel({ base }: { base: string }) {
           <Card>
             <div className="empty">
               <span className="thinking" style={{ justifyContent: 'center' }}>
-                <span className="pulse" />正在跑用例并让 LLM 打分…
+                <span className="pulse" />{t('ev.running')}
                 {startedAt !== undefined && (
                   <span className="mono" style={{ marginLeft: 6 }}><Elapsed since={startedAt} /></span>
                 )}
               </span>
               <p style={{ marginTop: 10, fontSize: 'var(--text-xs)' }}>
-                每条用例都要真的走一遍检索、编排和 LLM 打分，整轮通常要几分钟。
-                中途切到别的页面不会中断，回来还在这里。
+                {t('ev.runningHint')}
               </p>
             </div>
           </Card>
@@ -77,7 +77,7 @@ export function EvalPanel({ base }: { base: string }) {
 
         {!data && !isPending && !error && (
           <Card>
-            <Empty>点击右上角「运行评测」跑内置用例，四个维度打分并与存档基线对比。</Empty>
+            <Empty>{t('ev.empty')}</Empty>
           </Card>
         )}
 
@@ -85,15 +85,15 @@ export function EvalPanel({ base }: { base: string }) {
           <>
             <div className="chip-row">
               <Chip tone={data.pass_rate >= 0.8 ? 'success' : data.pass_rate >= 0.6 ? 'caution' : 'danger'}>
-                通过率 {pct(data.pass_rate, 1)}
+                {t('ev.passRate')} {pct(data.pass_rate, 1)}
               </Chip>
-              <Chip>{data.passed}/{data.total} 用例</Chip>
+              <Chip>{data.passed}/{data.total} {t('ev.casesUnit')}</Chip>
               {data.release && <Chip tone="info" mono>{data.release}</Chip>}
-              {data.promoted && <Chip tone="success">已提升为新基线</Chip>}
+              {data.promoted && <Chip tone="success">{t('ev.promoted')}</Chip>}
             </div>
 
             <div style={{ display: 'grid', gap: 20, gridTemplateColumns: 'repeat(auto-fit,minmax(min(320px,100%),1fr))' }}>
-              <Card title="四维质量分" actions={<Chip>0–1</Chip>}>
+              <Card title={t('ev.axes')} actions={<Chip>0–1</Chip>}>
                 <dl className="dl">
                   {DIMENSIONS.map(({ key, label }) => {
                     const v = data.avg_scores[key] ?? 0
@@ -108,7 +108,7 @@ export function EvalPanel({ base }: { base: string }) {
                   {data.avg_scores.intent_accuracy !== undefined && (
                     <div style={{ borderTop: '1px solid var(--color-border-subtle)', paddingTop: 10 }}>
                       <div className="meter-row" style={{ gridTemplateColumns: '72px 1fr auto' }}>
-                        <span className="k">意图准确</span>
+                        <span className="k">{t('ev.dim.intent')}</span>
                         <span className={`meter ${tone(data.avg_scores.intent_accuracy)}`}>
                           <i style={{ width: `${data.avg_scores.intent_accuracy * 100}%` }} />
                         </span>
@@ -120,24 +120,24 @@ export function EvalPanel({ base }: { base: string }) {
               </Card>
 
               <Card
-                title="回归检测"
+                title={t('ev.regress')}
                 actions={data.baseline?.release && (
-                  <span className="topbar-sub mono">vs 基线 {data.baseline.release}</span>
+                  <span className="topbar-sub mono">{t('ev.vsBaseline')} {data.baseline.release}</span>
                 )}
               >
                 {data.regressions.length === 0
-                  ? <p className="note success">相比基线没有退化。</p>
+                  ? <p className="note success">{t('ev.noRegress')}</p>
                   : <div className="dl">{data.regressions.map((r, i) => <p className="note danger" key={i}>{r}</p>)}</div>}
               </Card>
             </div>
 
             {data.results.length > 0 && (
               <Card
-                title="用例明细"
+                title={t('ev.cases')}
                 actions={
-                  <div className="segmented" role="tablist" aria-label="用例筛选">
-                    <button role="tab" aria-selected={!onlyFailed} onClick={() => setOnlyFailed(false)}>全部</button>
-                    <button role="tab" aria-selected={onlyFailed} onClick={() => setOnlyFailed(true)}>仅未通过</button>
+                  <div className="segmented" role="tablist" aria-label={t('ev.caseFilter')}>
+                    <button role="tab" aria-selected={!onlyFailed} onClick={() => setOnlyFailed(false)}>{t('ev.all')}</button>
+                    <button role="tab" aria-selected={onlyFailed} onClick={() => setOnlyFailed(true)}>{t('ev.failedOnly')}</button>
                   </div>
                 }
                 bodyStyle={{ padding: '8px 12px 12px' }}
@@ -146,7 +146,7 @@ export function EvalPanel({ base }: { base: string }) {
                   {results.map((r) => (
                     <details className="raw" key={r.test_id} style={{ padding: '8px 10px', borderRadius: 'var(--radius-lg)' }}>
                       <summary style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--color-text)' }}>
-                        <Chip tone={r.passed ? 'success' : 'danger'} dot>{r.passed ? '通过' : '未通过'}</Chip>
+                        <Chip tone={r.passed ? 'success' : 'danger'} dot>{r.passed ? t('ev.pass') : t('ev.fail')}</Chip>
                         <span className="mono" style={{ fontSize: 'var(--text-xs)' }}>{r.test_id}</span>
                       </summary>
                       <div style={{ marginTop: 10, display: 'grid', gap: 8 }}>
@@ -173,7 +173,7 @@ export function EvalPanel({ base }: { base: string }) {
             )}
 
             {data.recommendations.length > 0 && (
-              <Card title="优化建议">
+              <Card title={t('ev.sugg')}>
                 <div className="dl">
                   {data.recommendations.map((r, i) => <p className="note neutral" key={i}>{r}</p>)}
                 </div>
