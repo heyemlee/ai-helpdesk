@@ -62,6 +62,7 @@ _monitor      = None
 _evaluator    = None
 _skill_manager = None
 _knowledge_base = None
+_sql_agent    = None
 _recognizer   = None
 _user_auth    = None
 _rate_limiter = None
@@ -101,7 +102,7 @@ def _embedding_cfg() -> dict[str, Any]:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _orchestrator, _memory, _tool_manager, _monitor, _evaluator
-    global _skill_manager, _knowledge_base, _recognizer
+    global _skill_manager, _knowledge_base, _recognizer, _sql_agent
 
     print(BANNER, flush=True)
 
@@ -123,6 +124,7 @@ async def lifespan(app: FastAPI):
     from storage.vector_store import LocalStore, PgStore
     from tickets.ticket_store import PgTicketStore, TicketStore
     from tools.knowledge_base import KnowledgeBase
+    from tools.sql_agent_client import SQLAgentClient
     from tools.tool_manager import Tool, ToolManager
 
     global _user_auth, _rate_limiter, _ticket_store, _shared_state, _infra_redis
@@ -273,6 +275,40 @@ async def lifespan(app: FastAPI):
         supports_rerank=True,
         fallback=knowledge_fallback,
     ))
+
+    # 业务数据委派：订单/交期/库存这类问题的答案在 ERP 等业务库里，不在知识库里。
+    # 委派给 ai-sql-agent（另一个服务）去查。未配置 SQL_AGENT_URL 时整块不注册，
+    # 行为与加它之前完全一致——这是个可选增强项，不能变成新的启动依赖。
+    _sql_agent = SQLAgentClient.from_env()
+    if _sql_agent.enabled:
+        def sql_agent_fallback(params: dict[str, Any], context: dict[str, Any] | None, error: str):
+            # 查不到数据不是错误，是"这轮没有数据可用"。返回空 answer，
+            # 让上层照常走知识库 + SOP 的回答路径，而不是把下游故障捅给客户。
+            logger.warning(f"业务数据委派不可用，本轮按无数据处理: {error}")
+            return {"answer": "", "queried_database": False, "unavailable": True, "error": error}
+
+        _tool_manager.register(Tool(
+            name="order_data_query",
+            description="向 ai-sql-agent 查询订单/生产/库存/账款等业务数据（只读）",
+            handler=_sql_agent.handler,
+            schema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "user_id": {"type": "string"},
+                    "session_id": {"type": "string"},
+                },
+                "required": ["query"],
+            },
+            # 不缓存：订单状态是会变的，命中缓存等于给客户一个过期的交期。
+            cache_ttl=0.0,
+            # 和客户端自身超时对齐（契约 §1 现阶段口径），留 2s 给连接建立。
+            timeout_s=float(os.getenv("SQL_AGENT_TIMEOUT_S", "25")) + 2.0,
+            fallback=sql_agent_fallback,
+        ))
+        logger.info(f"业务数据委派已启用: {_sql_agent.endpoint}")
+    else:
+        logger.info("业务数据委派未配置（SQL_AGENT_URL 为空），订单类问题只走知识库")
 
     # 性能监控（可选启动 Prometheus）
     prom_port = int(os.getenv("PROMETHEUS_PORT", "0")) or None
@@ -589,14 +625,27 @@ async def _prepare_request(req: "ChatRequest", conv_id: str, user_id: str):
 
     # 规则通道命中说明意图已经确定，检索这边也跟着走短链路：
     # 直接检索，跳过"查询改写 + LLM 重排"两次额外的 LLM 往返。
-    knowledge_text, knowledge_used = await _build_knowledge_context(
-        req.message,
-        intent=intent_result.intent,
-        fast_path=intent_result.fast_path,
+    # 知识检索和业务数据查询互不依赖，并发跑。串起来的话查库那 17.7s（契约 §2）
+    # 会整段叠在检索之后，用户等待时间白白多出一截。
+    (knowledge_text, knowledge_used), (order_text, _order_used) = await asyncio.gather(
+        _build_knowledge_context(
+            req.message,
+            intent=intent_result.intent,
+            fast_path=intent_result.fast_path,
+        ),
+        _build_order_data_context(
+            req.message,
+            intent=intent_result.intent,
+            entities=intent_result.entities,
+            user_id=user_id,
+            conv_id=conv_id,
+        ),
     )
     context_parts = [mem_ctx.to_prompt_text()]
     if knowledge_text:
         context_parts.append(knowledge_text)
+    if order_text:
+        context_parts.append(order_text)
     full_context = "\n\n".join(part for part in context_parts if part)
 
     orch_req = OrcReq(
@@ -612,8 +661,10 @@ async def _prepare_request(req: "ChatRequest", conv_id: str, user_id: str):
         intent_group=intent_result.intent_group,
         urgency=intent_result.urgency,
         intent_confidence=intent_result.confidence,
-        # 只有检索到的知识才算"出处"，记忆和历史不能作为价格/时效的依据
-        grounding_sources=[knowledge_text] if knowledge_text else [],
+        # 只有检索到的知识和查回来的业务数据才算"出处"，记忆和历史不能作为
+        # 价格/时效的依据。业务数据必须在这里——否则真实交期会被答案策略
+        # 当成无依据承诺替换掉，见 _build_order_data_context 的说明。
+        grounding_sources=[t for t in (knowledge_text, order_text) if t],
     )
     return orch_req, intent_result, knowledge_used
 
@@ -842,6 +893,89 @@ async def _build_knowledge_context(
         return "\n".join(parts), True
     except Exception as ex:
         logger.warning(f"构建知识库上下文失败: {ex}")
+        return "", False
+
+
+async def _build_order_data_context(
+    message: str,
+    intent=None,
+    entities: dict | None = None,
+    user_id: str = "",
+    conv_id: str = "",
+) -> tuple[str, bool]:
+    """
+    为 /chat 主链路构建业务数据上下文：把问题委派给 ai-sql-agent 查真实数据。
+
+    返回 (上下文文本, 是否用到)。任何一环不成立都返回空——这是增强项，
+    拿不到数据时链路照常走知识库 + SOP，不能因此中断。
+
+    **三种"拿到了响应但不该用"的情况，都要挡在这里：**
+
+    1. `unavailable` —— 下游挂了或熔断，fallback 给的占位结果；
+    2. `queried_database=False` —— ai-sql-agent 自己判断这问题不需要查库，
+       走了对话路径。那个 answer 是模型说的话，**不是数据**，把它当依据
+       注入等于给一段没有出处的文本盖了"实时数据"的章；
+    3. 空 answer —— 查了但没查出东西。
+
+    **关于把它放进 grounding_sources（安全相关，别随手改）。** AnswerPolicy 会
+    拦截"无依据的价格/时效承诺"，判据是承诺里的数字能不能在本轮 grounding
+    sources 里找到出处。订单交期、账款金额恰好就是这两类数字——如果查回来的
+    真实数据不进 sources，客服说"您的柜体 9 月 15 日出厂"会被当成无依据承诺
+    替换成安全话术，整条委派看起来就像没生效。所以这段文本必须进 sources；
+    反过来，上面第 2 条那种"不是数据的文本"绝不能进。
+    """
+    from tools.sql_agent_client import should_query_business_data
+
+    if _tool_manager is None or _sql_agent is None or not _sql_agent.enabled:
+        return "", False
+    if not should_query_business_data(message, intent=intent, entities=entities):
+        return "", False
+
+    try:
+        result = await _tool_manager.call(
+            "order_data_query",
+            {"query": message, "user_id": user_id, "session_id": conv_id},
+        )
+        data = result.data if isinstance(result.data, dict) else {}
+        if not result.success and not data:
+            return "", False
+        if data.get("unavailable"):
+            return "", False
+        if not data.get("queried_database"):
+            return "", False
+
+        answer = str(data.get("answer", "")).strip()
+        if not answer:
+            return "", False
+
+        # ai-sql-agent 的 answer 里嵌的是查询结果的 JSON 原文，行数多的时候
+        # 能到几万字符（它那边 max_rows 默认 10000）。整段塞进 prompt 会把
+        # 上下文顶爆，也会把知识库那部分挤掉，所以这里截断。
+        # 截断阈值调大之前先想清楚：真正该做的是让下游少返点行，不是这边多收点。
+        limit = int(os.getenv("SQL_AGENT_MAX_CONTEXT_CHARS", "2000"))
+        if len(answer) > limit:
+            answer = answer[:limit] + f"\n…（结果过长已截断，完整结果见 trace_id {data.get('trace_id', '')}）"
+
+        databases = ", ".join(str(d) for d in data.get("selected_databases") or []) or "未标明"
+        parts = [
+            "[业务系统实时数据]",
+            f"来源: ai-sql-agent（命中库: {databases}；trace_id: {data.get('trace_id', '')}）",
+            answer,
+        ]
+        if data.get("has_risk"):
+            parts.append(
+                "注意: 这条查询结果带有异常提示（空结果 / 基数异常 / 语义不一致），"
+                "回答时要提示客户以正式单据为准，不要把数字说成确定结论。"
+            )
+        if data.get("degraded"):
+            parts.append(
+                f"注意: 数据服务处于降级状态（{data.get('degrade_reason', '')}），"
+                "结果可能来自历史查询重放，建议提示客户核对。"
+            )
+        parts.append("以上是业务系统查到的真实数据，回答订单/交期/库存/账款问题时优先依据它。")
+        return "\n".join(parts), True
+    except Exception as ex:
+        logger.warning(f"构建业务数据上下文失败: {ex}")
         return "", False
 
 
