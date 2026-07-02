@@ -59,9 +59,9 @@ from evaluation.evaluator import (  # noqa: E402
     DEFAULT_INTENT_CASES,
     EndToEndEvaluator,
 )
-from mcp.knowledge_base import KnowledgeBase, should_use_knowledge  # noqa: E402
-from mcp.tool_manager import MCPToolManager, Tool  # noqa: E402
 from storage.vector_store import LocalStore  # noqa: E402
+from tools.knowledge_base import KnowledgeBase, should_use_knowledge  # noqa: E402
+from tools.tool_manager import Tool, ToolManager  # noqa: E402
 
 BASELINE = _ROOT / "data" / "eval" / "baseline.json"
 
@@ -113,7 +113,7 @@ async def main(promote: bool, force: bool, concurrency: int | None = None) -> No
     await kb.backfill_lexical()   # 与线上一致：老片段补关键词索引后再评测
     print(f"知识库: {await kb.doc_count_async()} 个片段（后端 {kb.backend}，向量 {embedder.backend} {embedder.dim} 维）")
 
-    tools = MCPToolManager(
+    tools = ToolManager(
         api_key=cfg["api_key"], base_url=cfg.get("base_url"), model=cfg["model"],
         shared_state=None,   # 熔断器退化为进程内，评测不需要跨实例共享
         reranker=Reranker.from_env(),

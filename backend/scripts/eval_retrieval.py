@@ -34,8 +34,8 @@ except ImportError:
 
 from core.embedder import Embedder  # noqa: E402
 from core.lexical import query_tokens  # noqa: E402
-from mcp.knowledge_base import KnowledgeBase, rrf_fuse  # noqa: E402
 from storage.vector_store import LocalStore  # noqa: E402
+from tools.knowledge_base import KnowledgeBase, rrf_fuse  # noqa: E402
 
 # (查询, 应当召回的文档标题)。标题取自 knowledge_base._DEFAULT_DOCS。
 # 用词刻意贴近真实客服问句：口语、省略主语、混着领域专名。

@@ -35,7 +35,6 @@ from enum import Enum
 from typing import Any
 
 from core.answer_policy import AnswerPolicy, PolicyStreamGuard, PolicyViolation
-from core.text_lang import detect_language
 from core.intent_recognizer import IntentCategory, IntentRecognizer, UrgencyLevel
 from core.llm_utils import (
     ANSWER_MAX_TOKENS,
@@ -45,6 +44,7 @@ from core.llm_utils import (
 )
 from core.metrics import record_agent_latency, record_llm_tokens
 from core.telemetry import span
+from core.text_lang import detect_language
 
 logger = logging.getLogger(__name__)
 

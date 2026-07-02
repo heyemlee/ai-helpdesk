@@ -9,7 +9,7 @@ OpenAI 兼容端点的适配层：把 `client.messages.create/stream` 这套 Ant
 
 只翻译项目真正用到的子集：system / messages / max_tokens / temperature、文本流式，
 以及 stop_reason 和 usage（token 计量和"推理把预算吃光"的报错都依赖这两个字段）。
-项目没有用 tools= 走原生 function calling（工具编排在 mcp/tool_manager.py 里自己做），
+项目没有用 tools= 走原生 function calling（工具编排在 tools/tool_manager.py 里自己做），
 因此工具调用不在翻译范围内。
 """
 from __future__ import annotations

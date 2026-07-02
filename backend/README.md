@@ -50,8 +50,8 @@ ai-helpdesk/                             # 仓库根
 │   ├── core/llm_utils.py                # LLM 调用封装
 │   ├── agents/agent_orchestrator.py     # 三专家 + 兜底的领域分路由、主辅协作、转人工
 │   ├── memory/conversation_memory.py    # Redis + Postgres(pgvector) 记忆管理
-│   ├── mcp/tool_manager.py              # MCP 工具调用、查询改写、重排、熔断、缓存、降级
-│   ├── mcp/knowledge_base.py            # Postgres(pgvector) RAG 知识库
+│   ├── tools/tool_manager.py              # 工具调用、查询改写、重排、熔断、缓存、降级
+│   ├── tools/knowledge_base.py            # Postgres(pgvector) RAG 知识库
 │   ├── monitor/performance_monitor.py   # Agent/工具在线监控
 │   ├── evaluation/evaluator.py          # 四维 LLM-as-Judge + 相对存档基线的回归检测
 │   ├── skills/                          # 四份 SOP，与四个 Agent 一一对应
@@ -538,7 +538,7 @@ curl http://localhost:8000/health
 
 ### 5.5 `/search`
 
-用途：测试 MCP 工具调用和 RAG 检索优化。
+用途：测试 工具调用和 RAG 检索优化。
 
 Query 参数：
 
@@ -756,7 +756,7 @@ curl -X POST http://localhost:8000/chat \
 
 ## 7. 知识库使用
 
-ai-helpdesk 的知识库由 `mcp/knowledge_base.py` 管理，底层使用 Postgres(pgvector) collection：
+ai-helpdesk 的知识库由 `tools/knowledge_base.py` 管理，底层使用 Postgres(pgvector) collection：
 
 ```text
 knowledge_base
@@ -868,7 +868,7 @@ ai-helpdesk 使用了三个 Postgres(pgvector) collection：
 
 | Collection | 模块 | 作用 |
 |------------|------|------|
-| `knowledge_base` | `mcp/knowledge_base.py` | RAG 知识库文档片段 |
+| `knowledge_base` | `tools/knowledge_base.py` | RAG 知识库文档片段 |
 | `episodic` | `memory/conversation_memory.py` | 压缩后的历史对话摘要 |
 | `user_profile` | `memory/conversation_memory.py` | 用户画像，包含偏好和关键实体 |
 

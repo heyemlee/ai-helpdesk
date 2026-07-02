@@ -249,10 +249,10 @@ class KnowledgeBase:
             logger.info(f"已为 {total} 个历史片段回填关键词索引")
         return total
 
-    # ── MCP 工具 handler ─────────────────────────────────────────────────────
+    # ── 工具 handler ─────────────────────────────────────────────────────
 
     async def search_handler(self, params: dict[str, Any], context: Any) -> list[dict]:
-        """作为 MCP 工具 knowledge_search 的 handler 注册。"""
+        """作为工具 knowledge_search 的 handler 注册。"""
         query = params.get("query", "")
         top_k = params.get("top_k", 5)
         return await self.search_async(query, top_k=top_k)

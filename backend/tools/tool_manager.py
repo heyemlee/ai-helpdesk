@@ -1,5 +1,12 @@
 """
-亮点：MCP 工具调用框架
+亮点：工具调用治理框架
+
+**为什么这个包不叫 mcp。** 早期它叫 `backend/mcp/`、类叫 `MCPToolManager`，但它
+和 Model Context Protocol 没有关系——MCP 是一套跨进程的 JSON-RPC 协议（无状态核心、
+Streamable HTTP 传输、OAuth 授权），而这里是**进程内**的工具注册表加治理逻辑，
+不走任何协议。顶着那个名字有两个实际代价：读代码的人以为能拿 MCP 客户端接进来，
+以及 `pip install mcp`（官方 SDK 的包名）之后本地包会把它整个遮蔽掉。
+真要对外提供 MCP server 是另一件事，等工具需要被别的客户端复用时再做。
 
 核心问题：工具调用出错（检索不全、召回不好）怎么优化？
 
@@ -160,11 +167,11 @@ class Tool:
     breaker: CircuitBreaker = field(default_factory=CircuitBreaker, init=False)
 
 
-# ── MCP 工具管理器 ────────────────────────────────────────────────────────────
+# ── 工具管理器 ────────────────────────────────────────────────────────────
 
-class MCPToolManager:
+class ToolManager:
     """
-    MCP 工具调用框架。
+    工具调用治理框架。
 
     核心优化链路（针对检索类工具）：
       用户查询 → 查询改写（多角度子查询）→ 并行召回 → 结果重排
