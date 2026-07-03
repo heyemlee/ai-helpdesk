@@ -25,15 +25,16 @@ import re
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 import httpx
+from pydantic import BaseModel
 
 from core.llm_utils import (
+    DEFAULT_ANTHROPIC_MODEL,
     STRUCTURED_MAX_TOKENS,
     create_llm_client,
-    extract_structured_text,
-    structured_create,
+    structured_parse,
 )
 from core.telemetry import span
 
@@ -81,6 +82,23 @@ class UrgencyLevel(Enum):
 # 而不是文档里的一句话。
 FINE_GRAINED_INTENTS = tuple(c for c in IntentCategory if c is not IntentCategory.OTHER)
 FINE_GRAINED_INTENT_COUNT = len(FINE_GRAINED_INTENTS)
+
+
+class LLMIntentPayload(BaseModel):
+    """
+    LLM 那一路的返回形状，交给结构化输出在服务端强制。
+
+    `intent` 写成 Literal 而不是直接用 IntentCategory：两者都能生成合法 schema，
+    但 Enum 会被 Pydantic 拆成 `$defs` + `$ref`，Literal 直接内联成一个 `enum`
+    数组。内联的那份更小、也不依赖服务端对 `$ref` 的支持。
+
+    这一层约束替掉了原来的 `except ValueError: intent = OTHER`——模型现在**不可能**
+    返回意图表以外的值，那个兜底分支从"经常走"变成了纯粹的防御。
+    """
+
+    intent: Literal[tuple(c.value for c in IntentCategory)]  # type: ignore[valid-type]
+    confidence: float
+    reasoning: str
 
 
 @dataclass
@@ -280,7 +298,7 @@ class IntentRecognizer:
         self,
         api_key: str,
         base_url: str | None = None,
-        model: str = "claude-3-5-sonnet-20241022",
+        model: str = DEFAULT_ANTHROPIC_MODEL,
         confidence_threshold: float = 0.5,
         embedding_base_url: str | None = None,
         embedding_api_key: str | None = None,
@@ -484,7 +502,7 @@ class IntentRecognizer:
                 for m in history[-3:]
             )
 
-        prompt = f"""你是橱柜工厂与销售展厅的客服意图分析专家。根据示例判断用户意图，返回 JSON。
+        prompt = f"""你是橱柜工厂与销售展厅的客服意图分析专家。根据示例判断用户意图。
 如果用户问题能匹配细粒度业务意图，请优先返回细粒度意图，而不是宽泛大类。
 例如缺件漏发优先返回 missing_part，问价优先返回 quote_pricing，
 改尺寸改配置优先返回 order_change，柜门/铰链调整优先返回 installation。
@@ -495,28 +513,26 @@ class IntentRecognizer:
 {ctx}
 用户消息: "{message}"
 
-返回格式（仅 JSON，不要其他文字）:
-{{"intent": "<意图值>", "confidence": <0-1>, "reasoning": "<一句话说明>"}}
+confidence 表示你对该判断的把握，0 到 1 之间。
 
 可选意图: {", ".join(c.value for c in IntentCategory)}"""
         prompt = self._clean_text(prompt)
 
         try:
-            resp = await structured_create(
+            payload = await structured_parse(
                 self.client,
+                output_format=LLMIntentPayload,
                 model=self.model,
                 max_tokens=STRUCTURED_MAX_TOKENS,
-                temperature=0.1,
                 messages=[{"role": "user", "content": prompt}],
             )
-            raw = extract_structured_text(resp)
-            s, e = raw.find("{"), raw.rfind("}") + 1
-            data = json.loads(raw[s:e])
-            try:
-                data["intent"] = IntentCategory(data["intent"])
-            except ValueError:
-                data["intent"] = IntentCategory.OTHER
-            return data
+            return {
+                # schema 已经把取值限死在意图表里，这里的转换不会再抛。
+                "intent": IntentCategory(payload.intent),
+                # 置信度进三路投票要参与加权，越界值会污染融合分，钳一下。
+                "confidence": min(1.0, max(0.0, payload.confidence)),
+                "reasoning": payload.reasoning,
+            }
         except Exception as ex:
             logger.warning(f"LLM 识别失败: {ex}")
             return {"intent": IntentCategory.OTHER, "confidence": 0.0, "reasoning": "LLM 失败", "failed": True}

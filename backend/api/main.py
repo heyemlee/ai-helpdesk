@@ -4,6 +4,33 @@ ai-helpdesk 智能客服系统 — FastAPI 入口
 启动时打印小熊饼干图案。
 所有核心组件在 lifespan 中初始化，通过环境变量配置。
 """
+# ── httpx / httpx2 别名（必须在任何 import httpx 之前）────────────────────────
+#
+# anthropic 1.x 把 HTTP 层换成了 httpx2（httpx 原作者维护的同 API 分支）。
+# 而 OTel 的 HTTPXClientInstrumentor 打的是 httpx 的补丁——不接起来的话，
+# 它会照常安装成功、照常不报错，只是**再也看不到 LLM 的请求**：Tempo 里那一段
+# 调用链凭空消失，而"追踪没坏、只是少了一层"是最难被发现的一类退化。
+#
+# alias_httpx() 让全进程的 `import httpx` 解析到 httpx2，埋点因此重新覆盖到
+# SDK 的流量；同时项目自己直连 Embedding / Rerank / webhook 的那几处 httpx
+# 调用也一并走 httpx2，不用逐个文件改导入。
+#
+# 它要求在 httpx / httpcore 被导入之前调用，所以位置必须是这里——第一行可执行语句。
+import httpx2 as _httpx2
+
+try:
+    _httpx2.alias_httpx()
+except RuntimeError as _alias_ex:  # pragma: no cover - 只在导入顺序被破坏时发生
+    import warnings
+
+    warnings.warn(
+        f"httpx2.alias_httpx() 调用过晚（{_alias_ex}）：httpx 已被先一步导入。"
+        "服务功能不受影响，但 OTel 的 httpx 埋点将看不到 LLM SDK 的请求，"
+        "Tempo 里会缺少这一段调用链。检查是否有新的顶层 import 排到了它前面。",
+        RuntimeWarning,
+        stacklevel=2,
+    )
+
 import asyncio
 import json
 import logging

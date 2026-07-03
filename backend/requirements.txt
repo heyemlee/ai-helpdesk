@@ -3,7 +3,14 @@
 # ── AI / LLM ──────────────────────────────────────────────────────────────────
 # 两个 SDK 按 .env 里的 LLM_PROVIDER 二选一使用，core/openai_compat.py 把 OpenAI
 # 那条路翻译成同一套 messages 接口，业务代码只写一份调用。
-anthropic==0.40.0          # LLM_PROVIDER=anthropic（含兼容该协议的第三方网关）
+anthropic==1.3.0           # LLM_PROVIDER=anthropic（含兼容该协议的第三方网关）
+                           # 1.x 的两处硬性变化，升级时都不会报错、只会静默变味：
+                           # 1) temperature/top_p/top_k 从 messages.* 的签名里删除了，
+                           #    再传是 TypeError 而不是 400。调用点一处都不传，
+                           #    确定性交给结构化输出，见 core/llm_utils.py。
+                           # 2) HTTP 层从 httpx 换成 httpx2，OTel 的 httpx 埋点会
+                           #    看不到 SDK 的请求 —— api/main.py 顶部用
+                           #    httpx2.alias_httpx() 把两者接回同一个模块。
 openai==1.109.1            # LLM_PROVIDER=openai（含兼容 /chat/completions 的第三方网关）
                            # 注意 <1.55.3 的版本会给 httpx 传已被移除的 proxies 参数，
                            # 和这里锁的 httpx 0.28 撞车，建单条请求时就 TypeError
@@ -33,7 +40,11 @@ opentelemetry-instrumentation-redis==0.50b0
 opentelemetry-instrumentation-asyncpg==0.50b0
 
 # ── HTTP 客户端 ───────────────────────────────────────────────────────────────
-httpx==0.28.1              # monitor/performance_monitor.py webhook 告警
+httpx==0.28.1              # 告警 webhook、Embedding / Rerank 直连、业务数据委派
+httpx2==2.12.0             # anthropic 1.x 的 HTTP 层。它是 httpx 原作者维护的
+                           # 同 API 分支（pydantic/httpx2），随 anthropic 一起装进来，
+                           # 这里显式声明是因为 api/main.py 直接 import 它做别名。
+                           # openai SDK 仍然用 httpx，两个包共存。
 
 # ── 工具 ──────────────────────────────────────────────────────────────────────
 python-dotenv==1.0.1

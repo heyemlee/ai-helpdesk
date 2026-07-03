@@ -38,6 +38,7 @@ from core.answer_policy import AnswerPolicy, PolicyStreamGuard, PolicyViolation
 from core.intent_recognizer import IntentCategory, IntentRecognizer, UrgencyLevel
 from core.llm_utils import (
     ANSWER_MAX_TOKENS,
+    DEFAULT_ANTHROPIC_MODEL,
     LLMClient,
     create_llm_client,
     extract_structured_text,
@@ -375,7 +376,7 @@ class BaseAgent:
         async with self._client.messages.stream(
             model=self._model,
             max_tokens=ANSWER_MAX_TOKENS,
-            system=self._build_system_prompt(skill_prompt),
+            system=self._system_blocks(skill_prompt),
             messages=self._build_messages(req),
         ) as stream:
             async for text in stream.text_stream:
@@ -398,7 +399,7 @@ class BaseAgent:
             resp = await self._client.messages.create(
                 model=self._model,
                 max_tokens=ANSWER_MAX_TOKENS,
-                system=self._build_system_prompt(skill_prompt),
+                system=self._system_blocks(skill_prompt),
                 messages=self._build_messages(req),
             )
         usage = getattr(resp, "usage", None)
@@ -455,6 +456,28 @@ class BaseAgent:
         if not skill_prompt:
             return prompt
         return f"{prompt}\n\n[动态 Skills]\n{skill_prompt}"
+
+    def _system_blocks(self, skill_prompt: str = "") -> list[dict[str, Any]]:
+        """
+        把 system prompt 包成一个带缓存标记的文本块。
+
+        **为什么标在 system 上而不是用顶层 cache_control。** 缓存是前缀匹配，
+        顺序是 tools → system → messages。顶层自动缓存标的是"最后一个可缓存块"，
+        在这里就是 messages 的末尾——而 messages 里装的是记忆上下文、检索出处和
+        用户这句话，每次都不一样。那样标等于每次写一份全新的缓存再也命中不了，
+        还要按 1.25 倍写入价付钱。标在 system 上，缓存边界正好落在"每次都相同"
+        和"每次都不同"的交界处。
+
+        **命中率取决于 SOP 是否命中。** system = 角色提示词 + 语言规则 + 匹配到的
+        SKILL.md。同一个 Agent 在同一份 SOP 下重复提问就能命中；没匹配到 SOP 时
+        前缀只有几百 token，低于模型的最小可缓存长度（Sonnet 5 是 1024），
+        服务端会直接不缓存——不报错，也不额外收费，只是没有收益。
+        """
+        return [{
+            "type": "text",
+            "text": self._build_system_prompt(skill_prompt),
+            "cache_control": {"type": "ephemeral"},
+        }]
 
     @staticmethod
     def _self_confidence(violations: list[PolicyViolation], escalate: bool) -> float:
@@ -822,7 +845,7 @@ class AgentOrchestrator:
         self,
         api_key:  str,
         base_url: str | None = None,
-        model:    str = "claude-3-5-sonnet-20241022",
+        model: str = DEFAULT_ANTHROPIC_MODEL,
         skill_manager: Any | None = None,
         policy: AnswerPolicy | None = None,
         recognizer: IntentRecognizer | None = None,

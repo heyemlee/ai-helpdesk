@@ -40,11 +40,13 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
+from pydantic import BaseModel
+
 from core.llm_utils import (
+    DEFAULT_ANTHROPIC_MODEL,
     STRUCTURED_MAX_TOKENS,
     create_llm_client,
-    extract_structured_text,
-    structured_create,
+    structured_parse,
 )
 
 logger = logging.getLogger(__name__)
@@ -74,6 +76,29 @@ class ToolResult:
     reranked:       bool = False   # 是否经过重排
     corrected:      bool = False   # 是否触发过检索自纠错（补检一轮）
     evidence_ok:    bool | None = None  # 证据充分性判定；None = 未判定
+
+
+class QueryRewritePayload(BaseModel):
+    """多角度改写的返回形状。"""
+
+    queries: list[str]
+
+
+class RerankPayload(BaseModel):
+    """
+    重排 + 证据充分性判定的返回形状，由结构化输出在服务端约束。
+
+    这个 schema 替掉了原来的 `_parse_rerank_payload`：那个函数要兼容"模型只返回
+    了一个裸数组"的情况，此时充分性判定取 None（未判定）。schema 生效之后
+    sufficient 是必填布尔，那条兼容分支不再可能发生，跟着一起删了。
+
+    注意 RerankOutcome.sufficient 仍然保留 None——它现在只表示另外两种情况：
+    走的是 cross-encoder 路径（压根没问模型），或候选太少没触发重排。
+    """
+
+    order: list[int]
+    sufficient: bool
+    missing: str
 
 
 @dataclass
@@ -182,7 +207,7 @@ class ToolManager:
         self,
         api_key: str,
         base_url: str | None = None,
-        model: str = "claude-3-5-sonnet-20241022",
+        model: str = DEFAULT_ANTHROPIC_MODEL,
         shared_state=None,
         reranker=None,
     ):
@@ -387,18 +412,16 @@ class ToolManager:
         gap = f"\n上一轮检索到的内容不足以回答问题，缺少：{hint}\n请围绕这个缺口改写，不要重复上一轮的角度。" if hint else ""
         prompt = f"""将以下用户查询改写为 {n} 个不同角度的搜索子查询，用于检索知识库。
 要求：每个子查询角度不同，覆盖原始问题的不同方面。
-原始查询: "{query}"{gap}
-返回 JSON 数组，例如: ["子查询1", "子查询2", "子查询3"]"""
+原始查询: "{query}"{gap}"""
         prompt = self._clean_text(prompt)
         try:
-            resp = await structured_create(
+            payload = await structured_parse(
                 self._client,
-                model=self._model, max_tokens=STRUCTURED_MAX_TOKENS, temperature=0.3,
+                output_format=QueryRewritePayload,
+                model=self._model, max_tokens=STRUCTURED_MAX_TOKENS,
                 messages=[{"role": "user", "content": prompt}],
             )
-            raw = extract_structured_text(resp)
-            s, e = raw.find("["), raw.rfind("]") + 1
-            queries = json.loads(raw[s:e])
+            queries = [q for q in (s.strip() for s in payload.queries) if q]
             # 原始查询也保留，去重。补检索回合不再重复原始查询——它的结果
             # 已经在上一轮的候选池里了。
             base = [] if hint else [query]
@@ -609,21 +632,24 @@ class ToolManager:
 检索结果:
 {items_text}
 
-只返回 JSON 对象，不要其他文字：
-{{"order": [按相关性降序的索引], "sufficient": true 或 false, "missing": "证据不足时，一句话说明缺什么信息"}}
+order 是按相关性降序排列的候选索引。
 sufficient 判断标准：排在最前的内容能否直接支撑一个具体、有依据的回答；
-只是话题相关但答不到点上，算 false。"""
+只是话题相关但答不到点上，算 false。
+missing 在 sufficient 为 false 时用一句话说明缺什么信息，充分时留空字符串。"""
         prompt = self._clean_text(prompt)
 
         try:
-            resp = await structured_create(
+            payload = await structured_parse(
                 self._client,
-                model=self._model, max_tokens=STRUCTURED_MAX_TOKENS, temperature=0.0,
+                output_format=RerankPayload,
+                model=self._model, max_tokens=STRUCTURED_MAX_TOKENS,
                 messages=[{"role": "user", "content": prompt}],
             )
-            raw = extract_structured_text(resp)
-            order, sufficient, missing = self._parse_rerank_payload(raw)
-            reordered = [items[i] for i in order if 0 <= i < len(items)]
+            sufficient, missing = payload.sufficient, payload.missing[:200]
+            # 索引仍然要过滤：schema 保证得了"是一个整数数组"，保证不了每个整数都
+            # 落在候选范围内。越界索引会 IndexError 掉进下面的 except，把一次本可
+            # 以用的重排变成"返回原始顺序"。
+            reordered = [items[i] for i in payload.order if 0 <= i < len(items)]
             if not reordered:
                 return RerankOutcome(items=items[:top_k], reranked=False,
                                      sufficient=sufficient, missing=missing)
@@ -632,25 +658,6 @@ sufficient 判断标准：排在最前的内容能否直接支撑一个具体、
         except Exception as ex:
             logger.warning(f"重排失败，返回原始顺序: {ex}")
             return RerankOutcome(items=items[:top_k], reranked=False)
-
-    @staticmethod
-    def _parse_rerank_payload(raw: str) -> tuple[list[int], bool | None, str]:
-        """
-        解析重排响应，兼容模型只返回裸数组的情况。
-
-        裸数组时 sufficient 取 None（未判定）而不是 True/False：不能把
-        "模型没按格式回答"曲解成一个证据判定，那会让自纠错要么永不触发、
-        要么每次都触发，两种都不是判定该有的样子。
-        """
-        s, e = raw.find("{"), raw.rfind("}") + 1
-        if s >= 0 and e > s:
-            payload = json.loads(raw[s:e])
-            order = [int(i) for i in payload.get("order", []) if isinstance(i, (int, str)) and str(i).lstrip("-").isdigit()]
-            sufficient = payload.get("sufficient")
-            return order, sufficient if isinstance(sufficient, bool) else None, str(payload.get("missing", ""))[:200]
-
-        s, e = raw.find("["), raw.rfind("]") + 1
-        return json.loads(raw[s:e]), None, ""
 
     # ── 缓存 ──────────────────────────────────────────────────────────────────
 

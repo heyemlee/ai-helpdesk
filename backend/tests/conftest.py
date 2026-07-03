@@ -1,8 +1,18 @@
 """测试公共设施。所有测试都不发真实网络请求。"""
-import pathlib
-import sys
+# 和 api/main.py 顶部同一件事，也必须同样排在所有 import httpx 之前：让全进程的
+# httpx 解析到 httpx2（anthropic 1.x 的 HTTP 层）。conftest 由 pytest 最先导入，
+# 所以放这里能覆盖到随后加载的测试模块。
+#
+# 不这么做测试仍然全绿——但每个 import httpx 的测试模块都会打一条"调用过晚"的
+# 告警，把生产环境真正出问题时的那条信号淹掉。
+import httpx2 as _httpx2
 
-import pytest
+_httpx2.alias_httpx()
+
+import pathlib  # noqa: E402
+import sys  # noqa: E402
+
+import pytest  # noqa: E402
 
 _ROOT = str(pathlib.Path(__file__).parent.parent.resolve())
 if _ROOT not in sys.path:
