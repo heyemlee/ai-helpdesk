@@ -346,8 +346,11 @@ class ToolManager:
             tool.stats.failed += 1
             tool.stats.consecutive_fails += 1
             await self._breaker_failure(tool)
-            logger.error(f"工具异常: {name} — {ex}")
-            return await self._fallback_result(tool, params, context, str(ex))
+            # 有些异常的 str() 是空串（httpx.ReadTimeout 就是），只打 {ex} 会得到
+            # 「工具异常: order_data_query — 」这种没有任何线索的日志。带上类型名。
+            detail = str(ex) or type(ex).__name__
+            logger.error(f"工具异常: {name} — {type(ex).__name__}: {detail}")
+            return await self._fallback_result(tool, params, context, detail)
 
     async def _fallback_result(
         self,
