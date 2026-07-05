@@ -329,8 +329,9 @@ async def lifespan(app: FastAPI):
             },
             # 不缓存：订单状态是会变的，命中缓存等于给客户一个过期的交期。
             cache_ttl=0.0,
-            # 和客户端自身超时对齐（契约 §1 现阶段口径），留 2s 给连接建立。
-            timeout_s=float(os.getenv("SQL_AGENT_TIMEOUT_S", "25")) + 2.0,
+            # 和客户端自身超时对齐，留 2s 给连接建立。45s 的由来见
+            # sql_agent_client 模块开头：25s 会掉掉约四分之一的查询。
+            timeout_s=float(os.getenv("SQL_AGENT_TIMEOUT_S", "45")) + 2.0,
             fallback=sql_agent_fallback,
         ))
         logger.info(f"业务数据委派已启用: {_sql_agent.endpoint}")
@@ -654,7 +655,7 @@ async def _prepare_request(req: "ChatRequest", conv_id: str, user_id: str):
     # 直接检索，跳过"查询改写 + LLM 重排"两次额外的 LLM 往返。
     # 知识检索和业务数据查询互不依赖，并发跑。串起来的话查库那 17.7s（契约 §2）
     # 会整段叠在检索之后，用户等待时间白白多出一截。
-    (knowledge_text, knowledge_used), (order_text, _order_used) = await asyncio.gather(
+    (knowledge_text, knowledge_used), (order_text, order_is_evidence) = await asyncio.gather(
         _build_knowledge_context(
             req.message,
             intent=intent_result.intent,
@@ -688,10 +689,14 @@ async def _prepare_request(req: "ChatRequest", conv_id: str, user_id: str):
         intent_group=intent_result.intent_group,
         urgency=intent_result.urgency,
         intent_confidence=intent_result.confidence,
-        # 只有检索到的知识和查回来的业务数据才算"出处"，记忆和历史不能作为
-        # 价格/时效的依据。业务数据必须在这里——否则真实交期会被答案策略
-        # 当成无依据承诺替换掉，见 _build_order_data_context 的说明。
-        grounding_sources=[t for t in (knowledge_text, order_text) if t],
+        # 只有检索到的知识和**真的查回来的**业务数据才算"出处"，记忆和历史不能
+        # 作为价格/时效的依据。业务数据必须在这里——否则真实交期会被答案策略
+        # 当成无依据承诺替换掉。反过来，委派失败时那段降级提示进的是上下文而
+        # 不是这里：它是指令不是证据，`order_is_evidence` 就是这个开关。
+        # 见 _build_order_data_context 的说明。
+        grounding_sources=[
+            t for t in (knowledge_text, order_text if order_is_evidence else "") if t
+        ],
     )
     return orch_req, intent_result, knowledge_used
 
@@ -933,8 +938,16 @@ async def _build_order_data_context(
     """
     为 /chat 主链路构建业务数据上下文：把问题委派给 ai-sql-agent 查真实数据。
 
-    返回 (上下文文本, 是否用到)。任何一环不成立都返回空——这是增强项，
-    拿不到数据时链路照常走知识库 + SOP，不能因此中断。
+    返回 `(上下文文本, 是否可作为依据)`。**第二个值不是"用没用到"，是"能不能
+    当出处"**——调用方据此决定要不要放进 `grounding_sources`。两种非空返回：
+
+    - **真数据** → `(数据块, True)`，进上下文也进 grounding sources；
+    - **降级提示** → `(提示块, False)`，只进上下文**不进** grounding sources。
+      它是写给 Agent 的指令而不是证据，混进 sources 会让答案策略拿它去给
+      价格/日期"找出处"，等于用一句"查询失败了"来批准一个凭空的数字。
+
+    任何一环不成立都返回空——这是增强项，拿不到数据时链路照常走知识库 + SOP，
+    不能因此中断。
 
     **三种"拿到了响应但不该用"的情况，都要挡在这里：**
 
@@ -964,10 +977,23 @@ async def _build_order_data_context(
             {"query": message, "user_id": user_id, "session_id": conv_id},
         )
         data = result.data if isinstance(result.data, dict) else {}
-        if not result.success and not data:
-            return "", False
-        if data.get("unavailable"):
-            return "", False
+
+        # 委派失败（超时、熔断、下游异常）。**不静默**——实测里最危险的一种
+        # 形态就是这个：下游其实查完了（HTTP 200），只是调用方先放弃，客户
+        # 拿到一段听起来完全合理、实则没有任何系统依据的回答，客户和坐席
+        # 都分辨不出来。这里把失败明写进上下文，要求 Agent 说出来。
+        if data.get("unavailable") or (not result.success and not data):
+            reason = str(data.get("error") or result.error or "未知原因")
+            return "\n".join([
+                "[业务系统查询未完成]",
+                f"本轮尝试查询订单/生产/库存/账款系统，但没有拿到结果（{reason}）。",
+                "回答时必须做到两点：",
+                "1. 不要给出任何具体的订单状态、日期、金额、库存数字——这些本轮没有系统依据；",
+                "2. 明确告诉客户这次没能查到系统记录，建议由人工跟进核实，不要让客户以为"
+                "你说的内容已经过系统核对。",
+            ]), False
+
+        # 下游自己判断这问题不需要查库（走了对话路径）。不是故障，不提示。
         if not data.get("queried_database"):
             return "", False
 
