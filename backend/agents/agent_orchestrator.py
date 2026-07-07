@@ -34,7 +34,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-from core.answer_policy import AnswerPolicy, PolicyStreamGuard, PolicyViolation
+from core.answer_policy import AnswerPolicy, PolicyStreamGuard, PolicyViolation, split_sentences
 from core.intent_recognizer import IntentCategory, IntentRecognizer, UrgencyLevel
 from core.llm_utils import (
     ANSWER_MAX_TOKENS,
@@ -281,7 +281,10 @@ class BaseAgent:
                     "; ".join(v.evidence for v in policy_result.violations),
                 )
 
-            escalate = self._needs_escalation(policy_result.text)
+            escalate = self._needs_escalation(
+                policy_result.text,
+                grounded=bool(req.grounding_sources) and not policy_result.violations,
+            )
             return AgentResponse(
                 agent_type=self.agent_type,
                 content=policy_result.text,
@@ -337,7 +340,10 @@ class BaseAgent:
             self._record(ok=True, ms=ms)
 
             content = "".join(full)
-            escalate = self._needs_escalation(content)
+            escalate = self._needs_escalation(
+                content,
+                grounded=bool(req.grounding_sources) and not guard.violations,
+            )
             if guard.violations:
                 logger.warning(
                     "%s 流式回复触发答案策略拦截 %d 处: %s",
@@ -493,23 +499,83 @@ class BaseAgent:
             confidence -= 0.35
         return round(max(0.0, confidence), 3)
 
+    # 「提到人工」和「需要人工」是两回事，以前的关键词表把它们混成了一种。
+    #
+    # 实测过的误判：客户问欠款，Agent 查到真实数据、算对了金额，收尾出于周全加了
+    # 一句「如果您对这个数字有异议，需要转人工财务审核后再确认」。「转人工」命中
+    # 关键词 → 自评扣 0.35 → 0.65 低于 0.70 → 系统真的开了工单转人工，并在答案末尾
+    # 再贴一段「已转交人工客服」，顺手把 Agent 的追问（「要不要我帮您拆开看」）也删了。
+    # Agent 只是把话说周全，系统把这句话当成了它没把握的证据——一个自我实现的循环，
+    # 而且误转不只是多一张工单，它会把一个好答案改坏。
+    #
+    # 所以按「这句话在做什么」分三档：
+    #   · 做不到       ——「处理不了」「beyond what I can」——**总是**算数
+    #   · 决定转       ——第一人称动作「我帮您转」「I'll hand this over」「已转交」——
+    #                   算数，除非它在条件句里（「如果您确认取消，我帮您转」还没转）
+    #   · 只是提到人工 ——「转人工」「specialist」——条件句里不算；本轮有真实数据支撑
+    #                   且没被策略拦截时也不算，因为它已经证明了自己能答
+    #
+    # 这仍是关键词匹配，分不出所有情况；真正的解法是让 Agent 明确输出「本轮是否转人工」
+    # 这个决定而不是从文字里猜。那一步动 Agent 的输出格式，先把判断本身的错修掉。
+    #
     # 英文那几条是补的：回复语言跟客户走之后，英文回复里说"我处理不了、要转人工"
     # 用的是 hand this over / connect you with 这类说法，一个中文关键词都不含，
     # 于是 escalate 恒为 False——自评置信度不扣分、不建工单，明明说了转人工却没转。
-    _ESCALATION_KEYWORDS = (
-        "转人工", "人工客服", "无法处理", "处理不了",
+    _INABILITY_KEYWORDS = (
+        "无法处理", "处理不了", "超出我能", "超出我的",
+        "cannot resolve", "can't resolve", "unable to resolve", "beyond what i can",
+    )
+    _DECISION_KEYWORDS = (
+        # 第一人称动作：我来转 / 已经转了。你/您两种都要，语料里两种都有
+        "已转交", "已经转交", "我已转", "我这就转", "我会转", "先转交",
+        "我帮您转", "我帮你转", "我为您转", "我为你转",
         # 用词干 "escalat"：escalate / escalating / escalation / escalated 都算。
         # 写全词会漏——语料里 "I'm escalating this to our operations team." 就漏过。
-        "escalat", "specialist", "hand this over", "hand it over",
-        "hand you over", "connect you with", "transfer you", "refer you to",
-        "a human agent", "our team will", "cannot resolve", "can't resolve",
-        "unable to resolve", "beyond what i can",
+        "escalat",
+        "i'll hand", "i will hand", "i'm handing", "i've handed", "i have handed",
+        "i'll transfer", "i will transfer", "i'm transferring",
+        "i'll connect", "i will connect", "i'm connecting",
+        "let me connect", "let me hand", "let me transfer",
+        "i'm referring you", "i am referring you",
+    )
+    _MENTION_KEYWORDS = (
+        "转人工", "人工客服", "人工",
+        "specialist", "hand this over", "hand it over", "hand you over",
+        "connect you with", "transfer you", "refer you to", "referring you",
+        "a human agent", "our team will", "human agent", "service desk",
+    )
+    # 出现这些词的句子是在给客户一个选项，不是在宣布自己不行 / 已经转了。
+    _OFFER_MARKERS = (
+        "如果", "如有", "若", "可以", "建议", "需要时", "有异议", "有任何", "有问题", "随时",
+        "if you", "if needed", "if there", "should you", "feel free", "you can",
+        "you may", "can also", "could also", "any questions", "any concerns", "welcome to",
     )
 
-    def _needs_escalation(self, content: str) -> bool:
-        """检测 Agent 是否建议升级（简单关键词检测，中英双语）。"""
-        lowered = content.lower()
-        return any(kw.lower() in lowered for kw in self._ESCALATION_KEYWORDS)
+    def _needs_escalation(self, content: str, grounded: bool = False) -> bool:
+        """
+        检测 Agent 是否真的在转人工（中英双语）。
+
+        grounded=True 表示本轮回答建立在真实数据上且没被策略拦截：这时只提到人工
+        不算——一个拿出了数据的回答已经证明了自己能答。说自己做不到、或明确决定转，
+        无论有没有数据都算。
+        """
+        sentences, tail = split_sentences(content, final=True)
+        for sentence in [*sentences, tail]:
+            lowered = sentence.lower()
+            if not lowered.strip():
+                continue
+            if any(kw in lowered for kw in self._INABILITY_KEYWORDS):
+                return True
+            conditional = any(m in lowered for m in self._OFFER_MARKERS)
+            if any(kw in lowered for kw in self._DECISION_KEYWORDS):
+                if not conditional:
+                    return True
+                continue          # 「如果您确认要取消，我帮您转」——还在等确认，没转
+            if any(kw in lowered for kw in self._MENTION_KEYWORDS):
+                if conditional or grounded:
+                    continue
+                return True
+        return False
 
 
 class GeneralAgent(BaseAgent):
