@@ -86,15 +86,43 @@ class MemoryContext:
         """移除 Unicode 代理字符，防止编码错误。"""
         return text.encode("utf-8", errors="ignore").decode("utf-8")
 
+    # 跨会话召回内容的使用边界。三级记忆里，「会话摘要」和「最近对话」属于当前
+    # 这轮对话，而「相关历史」和「用户画像」是按 user_id 跨会话检索来的——它们
+    # 可能来自几周前、可能讲的是完全另一个工程。
+    #
+    # 不标注会出真问题。实测过一次：客户在新会话里问 J26-00001 的欠款，模型从
+    # 相关历史里读到上一个会话的 J26-00136，认定那才是「该账户名下的订单」，
+    # 于是以账户安全为由拒绝回答，反过来要客户证明 J26-00001 是自己的。对
+    # builder 客户这是常态——一个客户同时有几十个 job，每问一个新工程都会撞上。
+    #
+    # 又不能简单关掉：同一份召回在另一个用例里帮了忙（客户报了个不存在的工程号，
+    # 模型顺带提示「您之前问过 J26-00136，是不是想查这一单」）。所以边界是
+    # **可以用来提示，不能用来否定客户此刻说的话**。
+    _RECALL_CAUTION = (
+        "以下两节是按用户身份跨会话召回的，**不属于当前这轮对话**：可能来自很久以前，"
+        "也可能讲的是另一个工程/订单。用途仅限于补充背景或在客户信息有误时给出提示"
+        "（例如「您之前咨询过 X，是不是想查这一单」）。"
+        "**不得**据此认定客户「名下只有」其中提到的工程，"
+        "**不得**用它质疑或拒绝客户此刻提出的工程号，"
+        "**不得**把其中的金额、日期、状态当作本轮的事实——本轮事实只来自本轮查到的数据。"
+    )
+
     def to_prompt_text(self) -> str:
         """将记忆上下文格式化为 LLM 可用的文本。"""
         parts = []
         if self.summary:
             parts.append(f"[会话摘要]\n{self._clean(self.summary)}")
+
+        recalled = []
         if self.relevant_history:
-            parts.append("[相关历史]\n" + "\n".join(f"- {self._clean(h)}" for h in self.relevant_history[:3]))
+            recalled.append("[相关历史（跨会话召回）]\n"
+                            + "\n".join(f"- {self._clean(h)}" for h in self.relevant_history[:3]))
         if self.user_profile:
-            parts.append(f"[用户画像]\n{json.dumps(self.user_profile, ensure_ascii=True)}")
+            recalled.append("[用户画像（跨会话累积）]\n"
+                            + json.dumps(self.user_profile, ensure_ascii=True))
+        if recalled:
+            parts.append(self._RECALL_CAUTION)
+            parts.extend(recalled)
         if self.recent_messages:
             parts.append("[最近对话]")
             for m in self.recent_messages:
