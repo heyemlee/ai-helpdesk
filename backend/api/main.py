@@ -1025,6 +1025,13 @@ async def _build_order_data_context(
                 f"注意: 数据服务处于降级状态（{data.get('degrade_reason', '')}），"
                 "结果可能来自历史查询重放，建议提示客户核对。"
             )
+        if _sql_agent.currency:
+            # 下游只返回数字不返回币种，不点明的话中文回答会默认写成「元」——
+            # 接美国厂的库时，报给 builder 的金额就带了错误的币种。
+            parts.append(
+                f"以上金额的币种是 {_sql_agent.currency}。"
+                f"提到金额时按 {_sql_agent.currency} 表述，不要换算，也不要写成其它币种。"
+            )
         parts.append("以上是业务系统查到的真实数据，回答订单/交期/库存/账款问题时优先依据它。")
         return "\n".join(parts), True
     except Exception as ex:
