@@ -629,7 +629,7 @@ async def reload_skills():
     return _skill_manager.summary()
 
 
-async def _prepare_request(req: "ChatRequest", conv_id: str, user_id: str):
+async def _prepare_request(req: "ChatRequest", conv_id: str, user_id: str, progress_cb=None):
     """
     /chat 和 /chat/stream 共用的准备阶段：
       读取三级记忆 → 意图识别 → 按需 RAG → 组装编排请求
@@ -667,6 +667,7 @@ async def _prepare_request(req: "ChatRequest", conv_id: str, user_id: str):
             entities=intent_result.entities,
             user_id=user_id,
             conv_id=conv_id,
+            progress_cb=progress_cb,
         ),
     )
     context_parts = [mem_ctx.to_prompt_text()]
@@ -784,7 +785,16 @@ async def chat_stream(req: ChatRequest, x_user_token: str | None = Header(None, 
 
     async def event_source():
         try:
-            orch_req, intent_result, knowledge_used = await _prepare_request(req, conv_id, user_id)
+            # 准备阶段（记忆、意图、检索、**委派查库**）以前是先 await 完再发第一个事件——
+            # 委派那 17~40 秒里客户端零字节。现在把它放进任务，边等边把下游进度作为
+            # progress 事件推出去；静默满 15s 发一条 SSE 注释当心跳。
+            progress_q: asyncio.Queue = asyncio.Queue()
+            prep = asyncio.create_task(
+                _prepare_request(req, conv_id, user_id, progress_cb=progress_q.put_nowait)
+            )
+            async for frame in _pump_until_done(prep, progress_q, heartbeat_s=SSE_HEARTBEAT_S):
+                yield frame
+            orch_req, intent_result, knowledge_used = prep.result()
             yield _sse("meta", {
                 "conv_id": conv_id,
                 "intent": intent_result.intent.value,
@@ -856,6 +866,37 @@ async def chat_stream(req: ChatRequest, x_user_token: str | None = Header(None, 
 def _sse(event: str, data: dict[str, Any]) -> str:
     """按 SSE 线格式序列化一个事件。"""
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+SSE_HEARTBEAT_S = float(os.getenv("SSE_HEARTBEAT_S", "15"))
+
+
+async def _pump_until_done(task, progress_q, heartbeat_s: float = 15.0):
+    """
+    等一个任务完成，期间把队列里的进度作为 progress 事件吐出；静默满 heartbeat_s
+    就吐一条 SSE 注释（`: ping`）——浏览器忽略它，代理不会因空闲断连。
+
+    **同时等队列和任务**，谁先来算谁。只等队列的话，任务干完了泵还阻塞在
+    `queue.get()` 上，要等满一个心跳周期才发现——生产上心跳 15s，等于每次流式
+    都白等 15 秒才发 meta。这个坑是测试里 frames 多出一条 ping 才暴露的。
+
+    任务结束后把队列里剩下的进度清空再返回，保证 progress 一定在 meta 之前。
+    抽成独立函数是为了不起整个 app 也能测它。
+    """
+    while not task.done():
+        getter = asyncio.ensure_future(progress_q.get())
+        done, _ = await asyncio.wait(
+            {getter, task}, timeout=heartbeat_s, return_when=asyncio.FIRST_COMPLETED
+        )
+        if getter in done:
+            yield _sse("progress", getter.result())
+            continue
+        # 取消前再看一眼：可能刚好在这一瞬间拿到了，丢掉就少一条进度
+        getter.cancel()
+        if not done:
+            yield ": ping\n\n"
+    while not progress_q.empty():
+        yield _sse("progress", progress_q.get_nowait())
 
 
 async def _eval_grounding(message: str, intent_result) -> str:
@@ -934,6 +975,7 @@ async def _build_order_data_context(
     entities: dict | None = None,
     user_id: str = "",
     conv_id: str = "",
+    progress_cb=None,
 ) -> tuple[str, bool]:
     """
     为 /chat 主链路构建业务数据上下文：把问题委派给 ai-sql-agent 查真实数据。
@@ -975,6 +1017,8 @@ async def _build_order_data_context(
         result = await _tool_manager.call(
             "order_data_query",
             {"query": message, "user_id": user_id, "session_id": conv_id},
+            # 走 A2A 流式时，下游的阶段进度经这个回调进 /chat/stream 的 progress 事件
+            context={"progress_cb": progress_cb} if progress_cb else None,
         )
         data = result.data if isinstance(result.data, dict) else {}
 

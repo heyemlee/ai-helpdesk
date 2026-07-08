@@ -142,6 +142,27 @@ _LANGUAGE_RULE = (
     "给英文客户作答时把依据翻译成英文表述，不要因为资料是中文就改用中文回复。"
 )
 
+# Agent 自己声明「本轮转没转人工」。以前是从回答的文字里猜（关键词分三档），
+# 猜得再细也分不出所有措辞——「如果需要可以转人工」和「我帮您转人工」之间有
+# 无穷多种写法。Agent 自己最清楚它做了什么决定，让它说出来。
+#
+# 用一个固定标记放在最后一行而不是 JSON：流式是按句往外吐的，JSON 没法边流边
+# 解析；一个没有句末标点的标记会留在缓冲区直到 flush，天然不会漏给客户。
+# 标记缺失时退回关键词三档，所以老模型 / 老 prompt 也不会断。
+_HANDOFF_RULE = (
+    "\n\n[转人工声明 / Handoff declaration]\n"
+    "回答的最后一行必须单独写一个标记（不展示给客户，只用于系统判定，不要在正文里解释它）：\n"
+    "  [[handoff:yes]] —— 你决定把这件事转交人工处理：你做不到、需要人工审批或操作、"
+    "或客户明确要求人工。\n"
+    "  [[handoff:no]]  —— 你已经回答了客户的问题。**只是提到「有需要可以找人工」不算转交**，"
+    "那是 no。\n"
+    "Write exactly one of these markers alone on the final line: [[handoff:yes]] if you are "
+    "handing this to a human (you cannot do it, it needs human approval or action, or the "
+    "customer asked for a person); [[handoff:no]] if you answered. Merely offering a human as "
+    "an option is NOT a handoff -- that is no."
+)
+_HANDOFF_TRAILER_RE = re.compile(r"\s*\[\[\s*handoff\s*:\s*(yes|no)\s*\]\]\s*$", re.I)
+
 
 @dataclass
 class AgentResponse:
@@ -264,7 +285,8 @@ class BaseAgent:
         # 所以这里取一次，两处复用。
         skill_prompt = self._skill_prompt(req)
         try:
-            content = await self._call_llm(req, skill_prompt)
+            raw = await self._call_llm(req, skill_prompt)
+            content, declared = self._split_handoff_trailer(raw)
             ms = (time.monotonic() - t0) * 1000
             self._record(ok=True, ms=ms)
 
@@ -281,8 +303,9 @@ class BaseAgent:
                     "; ".join(v.evidence for v in policy_result.violations),
                 )
 
-            escalate = self._needs_escalation(
+            escalate = self._decide_escalation(
                 policy_result.text,
+                declared,
                 grounded=bool(req.grounding_sources) and not policy_result.violations,
             )
             return AgentResponse(
@@ -324,14 +347,25 @@ class BaseAgent:
         guard = PolicyStreamGuard(self._policy, sources)
 
         full: list[str] = []
+        declared: bool | None = None
         try:
             async for chunk in self._stream_llm(req, skill_prompt):
                 safe = guard.feed(chunk)
+                if safe:
+                    # 标记通常没有句末标点、会留在缓冲区到 flush；但模型若在它后面
+                    # 换了行，\n 会把它当一句放出来——所以每一段都要摘一遍。
+                    safe, seen = self._split_handoff_trailer(safe)
+                    if seen is not None:
+                        declared = seen
                 if safe:
                     full.append(safe)
                     yield {"type": "delta", "text": safe}
 
             tail = guard.flush()
+            if tail:
+                tail, seen = self._split_handoff_trailer(tail)
+                if seen is not None:
+                    declared = seen
             if tail:
                 full.append(tail)
                 yield {"type": "delta", "text": tail}
@@ -340,8 +374,9 @@ class BaseAgent:
             self._record(ok=True, ms=ms)
 
             content = "".join(full)
-            escalate = self._needs_escalation(
+            escalate = self._decide_escalation(
                 content,
+                declared,
                 grounded=bool(req.grounding_sources) and not guard.violations,
             )
             if guard.violations:
@@ -458,7 +493,7 @@ class BaseAgent:
 
     def _build_system_prompt(self, skill_prompt: str = "") -> str:
         """把动态加载的 Skills 拼入 system prompt，让业务规则随请求生效。"""
-        prompt = self.system_prompt + _LANGUAGE_RULE
+        prompt = self.system_prompt + _LANGUAGE_RULE + _HANDOFF_RULE
         if not skill_prompt:
             return prompt
         return f"{prompt}\n\n[动态 Skills]\n{skill_prompt}"
@@ -550,6 +585,35 @@ class BaseAgent:
         "if you", "if needed", "if there", "should you", "feel free", "you can",
         "you may", "can also", "could also", "any questions", "any concerns", "welcome to",
     )
+
+    @staticmethod
+    def _split_handoff_trailer(text: str) -> tuple[str, bool | None]:
+        """
+        把末尾的 [[handoff:yes|no]] 标记摘掉，返回 (干净正文, 声明的决定)。
+        没有标记时第二项为 None，调用方退回关键词判断。
+        """
+        m = _HANDOFF_TRAILER_RE.search(text or "")
+        if not m:
+            return text, None
+        return text[: m.start()].rstrip(), m.group(1).lower() == "yes"
+
+    def _decide_escalation(self, content: str, declared: bool | None, grounded: bool) -> bool:
+        """
+        声明优先，关键词兜底。
+
+        两者不一致时记一条 warning——那正是关键词分档分错的样本，攒起来能看出
+        还有哪类措辞在骗过关键词；也可能反过来是模型声明错了，同样值得看。
+        """
+        inferred = self._needs_escalation(content, grounded=grounded)
+        if declared is None:
+            logger.info("%s 未声明转人工标记，退回关键词判断: %s", self.agent_type.value, inferred)
+            return inferred
+        if declared != inferred:
+            logger.warning(
+                "%s 转人工声明(%s)与关键词判断(%s)不一致，以声明为准",
+                self.agent_type.value, declared, inferred,
+            )
+        return declared
 
     def _needs_escalation(self, content: str, grounded: bool = False) -> bool:
         """

@@ -351,3 +351,60 @@ class TestCurrencyIsDeclared:
         monkeypatch.setenv("SQL_AGENT_URL", "http://x:8000")
         monkeypatch.delenv("SQL_AGENT_CURRENCY", raising=False)
         assert SQLAgentClient.from_env().currency == ""
+
+
+class TestA2ATransport:
+    """传输开关：默认 query（今天验证过的路）；a2a 时 -32004 在流前 → 改发 send，流中失败不重发。"""
+
+    def test_default_transport_is_query(self, monkeypatch):
+        monkeypatch.setenv("SQL_AGENT_URL", "http://x:8000")
+        monkeypatch.delenv("SQL_AGENT_TRANSPORT", raising=False)
+        assert SQLAgentClient.from_env().transport == "query"
+
+    async def test_prestream_32004_falls_back_to_send(self, monkeypatch):
+        from tools.a2a_client import StreamUnsupported
+        c = SQLAgentClient(base_url="http://x:8000", transport="a2a")
+        calls = []
+
+        class Fake:
+            async def streaming_supported(self): return True
+            async def stream(self, *a, **k):
+                calls.append("stream"); raise StreamUnsupported("off")
+            async def send(self, *a, **k):
+                calls.append("send"); return {"answer": "ok", "queried_database": True,
+                                              "selected_databases": [], "has_risk": False, "degraded": False,
+                                              "degrade_reason": "", "trace_id": "t", "route": "database_query"}
+        c._a2a = Fake()
+        out = await c.handler({"query": "q"}, {})
+        assert calls == ["stream", "send"] and out["answer"] == "ok"
+
+    async def test_midstream_failure_does_not_resend(self, monkeypatch):
+        from tools.a2a_client import A2AError
+        c = SQLAgentClient(base_url="http://x:8000", transport="a2a")
+        calls = []
+
+        class Fake:
+            async def streaming_supported(self): return True
+            async def stream(self, *a, **k):
+                calls.append("stream"); raise A2AError("终态为 failed")
+            async def send(self, *a, **k):
+                calls.append("send"); return {}
+        c._a2a = Fake()
+        with pytest.raises(A2AError):
+            await c.handler({"query": "q"}, {})
+        assert calls == ["stream"], "流中途失败不得重发 send（契约 §5.4）"
+
+    async def test_progress_cb_reaches_the_stream(self):
+        c = SQLAgentClient(base_url="http://x:8000", transport="a2a")
+        got = {}
+
+        class Fake:
+            async def streaming_supported(self): return True
+            async def stream(self, q, u, s, on_progress=None):
+                got["cb"] = on_progress
+                return {"answer": "ok", "queried_database": True, "selected_databases": [],
+                        "has_risk": False, "degraded": False, "degrade_reason": "", "trace_id": "t", "route": "x"}
+        c._a2a = Fake()
+        cb = lambda e: None
+        await c.handler({"query": "q"}, {"progress_cb": cb})
+        assert got["cb"] is cb

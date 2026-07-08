@@ -128,6 +128,7 @@ class SQLAgentClient:
         service_user_id: str = "ai-helpdesk",
         impersonate: bool = False,
         currency: str = "",
+        transport: str = "query",
     ):
         self._base_url = (base_url or "").rstrip("/") or None
         self._api_key = api_key or None
@@ -135,6 +136,9 @@ class SQLAgentClient:
         self._service_user_id = service_user_id or "ai-helpdesk"
         self._impersonate = impersonate
         self._currency = (currency or "").strip()
+        # query = 直连 /query（今天验证过的路）；a2a = 走 A2A（有流式进度，契约见 a2a-contract）
+        self._transport = (transport or "query").strip().lower()
+        self._a2a = None
 
     @classmethod
     def from_env(cls) -> SQLAgentClient:
@@ -145,6 +149,7 @@ class SQLAgentClient:
             service_user_id=os.getenv("SQL_AGENT_USER_ID", "ai-helpdesk").strip(),
             impersonate=os.getenv("SQL_AGENT_IMPERSONATE", "false").lower() == "true",
             currency=os.getenv("SQL_AGENT_CURRENCY", "").strip(),
+            transport=os.getenv("SQL_AGENT_TRANSPORT", "query").strip(),
         )
 
     @property
@@ -225,10 +230,47 @@ class SQLAgentClient:
         )
         return result
 
+    @property
+    def transport(self) -> str:
+        return self._transport
+
+    def _a2a_client(self):
+        if self._a2a is None:
+            from tools.a2a_client import a2a_client_from_env
+            self._a2a = a2a_client_from_env(self._base_url or "", self._api_key)
+        return self._a2a
+
+    async def query_a2a(self, question: str, user_id: str = "", session_id: str = "",
+                        on_progress=None) -> dict[str, Any]:
+        """
+        走 A2A。Card 说支持流式就先试 stream；服务端在**流打开之前**返回 -32004
+        （开关关着）就改发 send——这不算重试，一个令牌都还没扣（契约 §5.4 的豁免）。
+        流中途的任何失败都直接抛，**不**重发 send：那时配额已经扣了、模型已经跑了，
+        重发就是实打实的两份。
+        """
+        from tools.a2a_client import StreamUnsupported
+        client = self._a2a_client()
+        uid = (user_id or self._service_user_id) if self._impersonate else self._service_user_id
+        sid = session_id or "helpdesk-oneshot"
+        if await client.streaming_supported():
+            try:
+                result = await client.stream(question, uid, sid, on_progress=on_progress)
+            except StreamUnsupported:
+                logger.info("A2A 服务端返回 -32004（流打开之前），改发 message/send")
+                result = await client.send(question, uid, sid)
+        else:
+            result = await client.send(question, uid, sid)
+        logger.info("sql_agent.a2a 完成 trace_id=%s route=%s queried_db=%s databases=%s",
+                    result["trace_id"], result["route"], result["queried_database"],
+                    result["selected_databases"])
+        return result
+
     async def handler(self, params: dict[str, Any], context: Any = None) -> dict[str, Any]:
         """作为工具 `order_data_query` 的 handler 注册。"""
-        return await self.query(
-            question=params.get("query", ""),
-            user_id=params.get("user_id", ""),
-            session_id=params.get("session_id", ""),
-        )
+        question = params.get("query", "")
+        user_id = params.get("user_id", "")
+        session_id = params.get("session_id", "")
+        if self._transport == "a2a":
+            on_progress = (context or {}).get("progress_cb") if isinstance(context, dict) else None
+            return await self.query_a2a(question, user_id, session_id, on_progress=on_progress)
+        return await self.query(question=question, user_id=user_id, session_id=session_id)

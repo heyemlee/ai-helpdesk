@@ -815,3 +815,74 @@ def test_a_conditional_decision_is_still_waiting(orchestrator):
     agent = orchestrator._pool[AgentType.GENERAL][0]
     assert agent._needs_escalation("如果您确认要取消，我帮您转人工。", grounded=True) is False
     assert agent._needs_escalation("If you confirm, I'll hand this over.", grounded=False) is False
+
+
+# ── Agent 自己声明转人工 ─────────────────────────────────────────────────────
+#
+# 第二层：不再从回答的文字里猜，让 Agent 在最后一行写 [[handoff:yes|no]]。
+# 关键词三档退为兜底。标记不能漏给客户，流式和非流式都不能。
+
+def test_trailer_is_stripped_and_parsed(orchestrator):
+    agent = orchestrator._pool[AgentType.GENERAL][0]
+    text, decided = agent._split_handoff_trailer("已经帮您查到了。\n[[handoff:no]]")
+    assert text == "已经帮您查到了。"
+    assert decided is False
+    text, decided = agent._split_handoff_trailer("这个需要人工审批。\n\n[[ HANDOFF : YES ]]  ")
+    assert text == "这个需要人工审批。"
+    assert decided is True
+
+
+def test_missing_trailer_returns_none(orchestrator):
+    agent = orchestrator._pool[AgentType.GENERAL][0]
+    text, decided = agent._split_handoff_trailer("普通回答，没有标记。")
+    assert text == "普通回答，没有标记。"
+    assert decided is None
+
+
+def test_declaration_beats_keywords(orchestrator):
+    """
+    有声明时以声明为准——这正是第二层存在的理由。
+    正文里「如果您有异议需要转人工财务审核」按关键词是条件句、不算；
+    但就算换成会命中关键词的写法，声明 no 也压得住。
+    """
+    agent = orchestrator._pool[AgentType.GENERAL][0]
+    prose = "订单查到了，当前应付 49,448.16 美元。这个我处理不了。"   # 关键词会判 True
+    assert agent._decide_escalation(prose, declared=False, grounded=True) is False
+    assert agent._decide_escalation("已经帮您查到了。", declared=True, grounded=True) is True
+
+
+def test_no_declaration_falls_back_to_keywords(orchestrator):
+    agent = orchestrator._pool[AgentType.GENERAL][0]
+    assert agent._decide_escalation("这个我处理不了。", declared=None, grounded=True) is True
+    assert agent._decide_escalation("已经帮您查到了。", declared=None, grounded=True) is False
+
+
+def test_handoff_rule_is_in_the_system_prompt(orchestrator):
+    agent = orchestrator._pool[AgentType.GENERAL][0]
+    prompt = agent._build_system_prompt("")
+    assert "[[handoff:yes]]" in prompt and "[[handoff:no]]" in prompt
+
+
+@pytest.mark.asyncio
+async def test_streaming_never_leaks_the_trailer(orchestrator, monkeypatch):
+    """
+    流式路径：标记可能被 \\n 当成一句放出来，也可能留在 flush 的尾巴里，
+    两种情况都不能出现在 delta 事件里，最终 content 里也不能有。
+    """
+    from agents.agent_orchestrator import Request
+    agent = orchestrator._pool[AgentType.GENERAL][0]
+
+    async def fake_stream(req, skill_prompt=""):
+        for piece in ["订单已排产。", "预计下周出厂。\n", "[[handoff:no]]\n"]:
+            yield piece
+    monkeypatch.setattr(agent, "_stream_llm", fake_stream)
+    monkeypatch.setattr(agent, "_skill_prompt", lambda req: "")
+
+    req = Request(message="我的柜子呢", user_id="u", conv_id="c",
+                  grounding_sources=["订单已排产。预计下周出厂。"])
+    events = [e async for e in agent.stream(req)]
+    deltas = "".join(e["text"] for e in events if e["type"] == "delta")
+    end = next(e for e in events if e["type"] == "end")["response"]
+    assert "handoff" not in deltas
+    assert "handoff" not in end.content
+    assert end.escalate is False
