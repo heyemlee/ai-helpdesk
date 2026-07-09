@@ -52,3 +52,26 @@ describe('MessageBubble', () => {
     expect(screen.getByText('502 Bad Gateway')).toBeInTheDocument()
   })
 })
+
+describe('准备阶段的进度', () => {
+  // 委派查库要十几到四十秒。以前这段只有一个转圈，客户盯着不动的点看半分钟。
+  it('有 progress 时铺成步骤，最后一条在进行中', () => {
+    render(<MessageBubble message={{
+      id: 'p1', role: 'assistant', content: '',
+      progress: [
+        { stage: 'routing', label: '正在判断问题类型' },
+        { stage: 'execution', label: '正在查询（ERP 订单库）' },
+      ],
+    }} />)
+    expect(screen.getByText('正在判断问题类型')).toBeInTheDocument()
+    const active = screen.getByText('正在查询（ERP 订单库）').closest('li')
+    expect(active).toHaveClass('active')
+    expect(screen.getByText('正在判断问题类型').closest('li')).toHaveClass('done')
+  })
+
+  it('没有 progress 时退回原来的转圈——非 A2A 传输时后端不发这个事件', () => {
+    const { container } = render(<MessageBubble message={{ id: 'p2', role: 'assistant', content: '' }} />)
+    expect(container.querySelector('.thinking')).toBeTruthy()
+    expect(container.querySelector('.progress-steps')).toBeNull()
+  })
+})

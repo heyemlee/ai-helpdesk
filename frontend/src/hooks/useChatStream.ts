@@ -12,6 +12,8 @@ export interface ChatMessage {
   streaming?: boolean
   /** 请求失败时的错误文案 */
   error?: string
+  /** 准备阶段的进度，按到达顺序累积；第一个字吐出来之前它就是全部可见反馈 */
+  progress?: StreamProgressEvent[]
   meta?: Partial<StreamMetaEvent>
   routing?: StreamRoutingEvent
   result?: Partial<ChatResponse>
@@ -30,6 +32,7 @@ const newId = () =>
  */
 export function applyStreamEvent(m: ChatMessage, evt: StreamEvent): ChatMessage {
   switch (evt.event) {
+    case 'progress': return { ...m, progress: [...(m.progress ?? []), evt.data] }
     case 'meta':    return { ...m, meta: evt.data }
     case 'routing': return { ...m, routing: evt.data }
     case 'delta':   return { ...m, content: m.content + evt.data.text }

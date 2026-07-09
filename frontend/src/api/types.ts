@@ -70,7 +70,19 @@ export interface ConversationResponse {
 }
 
 // ── SSE 事件 ────────────────────────────────────────────────────────────────
-// /chat/stream 的事件序列：meta → routing → delta* → result
+// /chat/stream 的事件序列：progress* → meta → routing → delta* → result
+//
+// progress 在 meta 之前：准备阶段（记忆、意图、检索、委派查库）本身就要十几到
+// 四十秒，以前这段是纯空白。委派走 A2A 时下游每进一个阶段推一条。
+
+/** 准备阶段的进度。stage 是契约面的机器可读标识，label 是已经本地化好的文案。 */
+export interface StreamProgressEvent {
+  stage: string
+  label: string
+  step?: number | null
+  database?: string | null
+  trace_id?: string | null
+}
 
 export interface StreamMetaEvent {
   conv_id: string
@@ -103,6 +115,7 @@ export type StreamResultEvent = Omit<
 >
 
 export type StreamEvent =
+  | { event: 'progress'; data: StreamProgressEvent }
   | { event: 'meta'; data: StreamMetaEvent }
   | { event: 'routing'; data: StreamRoutingEvent }
   | { event: 'delta'; data: StreamDeltaEvent }
