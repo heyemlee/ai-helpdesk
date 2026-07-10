@@ -23,7 +23,8 @@ import json
 import logging
 import os
 import time
-from typing import Any, Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 import httpx
 
@@ -154,7 +155,7 @@ class A2AClient:
                         line = await asyncio.wait_for(lines.__anext__(), timeout=min(self._silence_s, remaining))
                     except StopAsyncIteration:
                         break
-                    except asyncio.TimeoutError as ex:
+                    except TimeoutError as ex:
                         raise A2AError(f"message/stream 静默超过 {self._silence_s}s") from ex
                     if not line.startswith("data:"):
                         continue            # 注释行 / 空行；契约说服务端不发心跳，但容忍
