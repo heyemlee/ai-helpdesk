@@ -367,13 +367,18 @@ class TestA2ATransport:
         calls = []
 
         class Fake:
-            async def streaming_supported(self): return True
+            async def streaming_supported(self):
+                return True
+
             async def stream(self, *a, **k):
-                calls.append("stream"); raise StreamUnsupported("off")
+                calls.append("stream")
+                raise StreamUnsupported("off")
+
             async def send(self, *a, **k):
-                calls.append("send"); return {"answer": "ok", "queried_database": True,
-                                              "selected_databases": [], "has_risk": False, "degraded": False,
-                                              "degrade_reason": "", "trace_id": "t", "route": "database_query"}
+                calls.append("send")
+                return {"answer": "ok", "queried_database": True, "selected_databases": [],
+                        "has_risk": False, "degraded": False, "degrade_reason": "",
+                        "trace_id": "t", "route": "database_query"}
         c._a2a = Fake()
         out = await c.handler({"query": "q"}, {})
         assert calls == ["stream", "send"] and out["answer"] == "ok"
@@ -384,11 +389,16 @@ class TestA2ATransport:
         calls = []
 
         class Fake:
-            async def streaming_supported(self): return True
+            async def streaming_supported(self):
+                return True
+
             async def stream(self, *a, **k):
-                calls.append("stream"); raise A2AError("终态为 failed")
+                calls.append("stream")
+                raise A2AError("终态为 failed")
+
             async def send(self, *a, **k):
-                calls.append("send"); return {}
+                calls.append("send")
+                return {}
         c._a2a = Fake()
         with pytest.raises(A2AError):
             await c.handler({"query": "q"}, {})
@@ -399,12 +409,18 @@ class TestA2ATransport:
         got = {}
 
         class Fake:
-            async def streaming_supported(self): return True
+            async def streaming_supported(self):
+                return True
+
             async def stream(self, q, u, s, on_progress=None):
                 got["cb"] = on_progress
                 return {"answer": "ok", "queried_database": True, "selected_databases": [],
-                        "has_risk": False, "degraded": False, "degrade_reason": "", "trace_id": "t", "route": "x"}
+                        "has_risk": False, "degraded": False, "degrade_reason": "",
+                        "trace_id": "t", "route": "x"}
+
+        def cb(_evt):
+            return None
+
         c._a2a = Fake()
-        cb = lambda e: None
         await c.handler({"query": "q"}, {"progress_cb": cb})
         assert got["cb"] is cb
