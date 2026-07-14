@@ -28,6 +28,8 @@ from typing import Any
 
 import httpx
 
+from core.evidence import normalize_delegation_result
+
 logger = logging.getLogger(__name__)
 
 ProgressCallback = Callable[[dict[str, Any]], None | Awaitable[None]]
@@ -248,23 +250,24 @@ class A2AClient:
 
     @staticmethod
     def _normalize(artifact: dict[str, Any], metadata: dict[str, Any]) -> dict[str, Any]:
-        """归一成与直连 /query 客户端一致的字段，上层不用区分走了哪条路。"""
+        """
+        归一成与直连 /query 客户端一致的字段，上层不用区分走了哪条路。
+
+        **三个信任布尔在这里不做 bool() 转换。** 原先这里写的是
+        `bool(data.get("has_risk", False))`——那是契约 §9.1 记的那个缺口本身：
+        字段缺失被翻译成"无风险"（fail-open），而 `bool("false")` 又是真。
+        校验只在 `core.evidence` 里做一次，两条 transport 共用，见那个模块的说明。
+        """
         text, data = "", {}
         for part in artifact.get("parts") or []:
             if part.get("kind") == "text":
                 text = part.get("text", "") or text
             elif part.get("kind") == "data":
                 data = part.get("data") or {}
-        return {
-            "answer": (text or "").strip(),
-            "queried_database": bool(data.get("queried_database", False)),
-            "selected_databases": data.get("selected_databases") or [],
-            "has_risk": bool(data.get("has_risk", False)),
-            "degraded": bool(data.get("degraded", False)),
-            "degrade_reason": str(data.get("degrade_reason", "")),
-            "trace_id": str(data.get("trace_id") or metadata.get("trace_id") or ""),
-            "route": str(data.get("route", "")),
-        }
+        return normalize_delegation_result(
+            data, answer=text, steps_key="steps",
+            trace_id_fallback=str(metadata.get("trace_id") or ""),
+        )
 
 
 def a2a_client_from_env(base_url: str, api_key: str | None) -> A2AClient:

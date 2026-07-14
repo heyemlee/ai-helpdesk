@@ -47,6 +47,8 @@ from typing import Any
 
 import httpx
 
+from core.evidence import assess, normalize_delegation_result
+
 logger = logging.getLogger(__name__)
 
 # 实测覆盖：下游最大 40.5s（见模块开头）。契约 §1 的 25s 是给回滚路径 send 定的，
@@ -210,23 +212,24 @@ class SQLAgentClient:
         if not isinstance(data, dict):
             raise ValueError(f"ai-sql-agent 返回了非对象响应: {type(data).__name__}")
 
-        result = {
-            "answer": str(data.get("answer", "")).strip(),
-            "queried_database": bool(data.get("queried_database", False)),
-            "selected_databases": data.get("selected_databases") or [],
-            "has_risk": bool(data.get("has_risk", False)),
-            "degraded": bool(data.get("degraded", False)),
-            "degrade_reason": str(data.get("degrade_reason", "")),
-            "trace_id": str(data.get("trace_id", "")),
-            "route": str(data.get("route", "")),
-        }
+        # 归一与 A2A 那条路共用同一个函数，信任判定因此只有一份口径。
+        # `/query` 把逐步骤日志叫 `step_logs`，A2A 的 data part 叫 `steps`
+        # ——只有名字不同，元素是同一个 StepLogResponse。名字在这里对齐，
+        # 之后 core.evidence 就看不出调用方走了哪条路（契约 §4.4 的同构承诺
+        # 落到调用方这一侧就是这个意思）。
+        result = normalize_delegation_result(data, steps_key="step_logs")
 
         # 对面的 trace_id 落进本方日志，两个服务的链路才能对起来——出了问题
         # 拿这个 id 直接去 ai-sql-agent 的审计库里查那一次调用。
+        # 一并记信任结论：`queried_database=true` 而 `execution_status=failed`
+        # 是"SQL 全跑挂了但下游照发成功"那种形态，只看前者在日志里是看不出来的。
+        v = assess(result)
         logger.info(
-            "sql_agent.query 完成 trace_id=%s route=%s queried_db=%s databases=%s risk=%s degraded=%s",
-            result["trace_id"], result["route"], result["queried_database"],
-            result["selected_databases"], result["has_risk"], result["degraded"],
+            "sql_agent.query 完成 trace_id=%s session=%s route=%s queried_db=%s databases=%s "
+            "risk=%s degraded=%s status=%s(%s) usable=%s",
+            result["trace_id"], payload["session_id"], result["route"], v.queried_database,
+            result["selected_databases"], v.has_risk, v.degraded,
+            v.execution_status, v.status_source, v.usable_as_source,
         )
         return result
 
@@ -260,9 +263,12 @@ class SQLAgentClient:
                 result = await client.send(question, uid, sid)
         else:
             result = await client.send(question, uid, sid)
-        logger.info("sql_agent.a2a 完成 trace_id=%s route=%s queried_db=%s databases=%s",
-                    result["trace_id"], result["route"], result["queried_database"],
-                    result["selected_databases"])
+        v = assess(result)
+        logger.info("sql_agent.a2a 完成 trace_id=%s session=%s route=%s queried_db=%s databases=%s "
+                    "status=%s(%s) usable=%s",
+                    result["trace_id"], sid, result["route"], v.queried_database,
+                    result["selected_databases"],
+                    v.execution_status, v.status_source, v.usable_as_source)
         return result
 
     async def handler(self, params: dict[str, Any], context: Any = None) -> dict[str, Any]:
