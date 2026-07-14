@@ -170,7 +170,11 @@ class TestClient:
         assert sent["url"] == "http://sql-agent:8000/query"
         assert sent["headers"]["X-API-Key"] == "k1"
         assert sent["json"]["user_id"] == "ai-helpdesk"
-        assert sent["json"]["session_id"] == "conv-7"
+        # session_id 不是原样的 conv_id：它绑定了认证身份之后才发下去，
+        # 理由见 _downstream_session_id。这里只断言"不是原样转发"，
+        # 具体性质由 TestDownstreamSessionIsolation 那一组盯。
+        assert sent["json"]["session_id"] != "conv-7"
+        assert sent["json"]["session_id"].startswith("hd-")
         assert sent["json"]["query"] == "我的订单呢"
 
     async def test_impersonate_forwards_real_user(self, monkeypatch):
@@ -236,6 +240,64 @@ class TestClient:
         _patch_httpx(monkeypatch, ["not", "an", "object"])
         with pytest.raises(ValueError):
             await SQLAgentClient(base_url="http://x:8000").query("q", session_id="s")
+
+
+class TestDownstreamSessionIsolation:
+    """
+    下游会话标识必须绑定到认证身份。
+
+    默认配置下所有查询都以同一个服务身份发出，下游的多轮记忆只按 session_id
+    分隔；而 conv_id 是请求体里客户端自己填的。原样转发 = 客户 A 填上客户 B
+    的 conv_id 就能读到 B 的下游会话记忆。这条通道**没有任何症状**，
+    两边日志看起来都正常，所以只能靠用例守。
+    """
+
+    async def test_two_users_never_share_a_downstream_session(self, monkeypatch):
+        _patch_httpx(monkeypatch, OK_PAYLOAD_QUERY_SHAPE)
+        client = SQLAgentClient(base_url="http://x:8000")
+
+        await client.query("q", user_id="alice", session_id="conv-7")
+        alice = _FakeAsyncClient.last_call["json"]["session_id"]
+        await client.query("q", user_id="bob", session_id="conv-7")
+        bob = _FakeAsyncClient.last_call["json"]["session_id"]
+
+        assert alice != bob, "同一个 conv_id 落到了同一个下游会话——跨客户串话"
+
+    async def test_anonymous_users_do_not_share_one_session_either(self, monkeypatch):
+        """
+        原先没带 conv_id 的请求共用字面量 "helpdesk-oneshot"。
+
+        那是同一个问题最严重的形态：**所有**匿名/单轮用户共享一段下游记忆。
+        """
+        _patch_httpx(monkeypatch, OK_PAYLOAD_QUERY_SHAPE)
+        client = SQLAgentClient(base_url="http://x:8000")
+
+        await client.query("q", user_id="alice")
+        alice = _FakeAsyncClient.last_call["json"]["session_id"]
+        await client.query("q", user_id="bob")
+        bob = _FakeAsyncClient.last_call["json"]["session_id"]
+
+        assert alice != bob
+        assert "helpdesk-oneshot" not in (alice, bob)
+
+    async def test_the_same_user_and_conversation_stays_stable(self, monkeypatch):
+        """绑定不能把多轮记忆打散：同一个人同一段对话必须落到同一个会话。"""
+        _patch_httpx(monkeypatch, OK_PAYLOAD_QUERY_SHAPE)
+        client = SQLAgentClient(base_url="http://x:8000")
+
+        await client.query("q1", user_id="alice", session_id="conv-7")
+        first = _FakeAsyncClient.last_call["json"]["session_id"]
+        await client.query("q2", user_id="alice", session_id="conv-7")
+        assert _FakeAsyncClient.last_call["json"]["session_id"] == first
+
+    async def test_our_identifiers_do_not_leak_into_the_other_service(self, monkeypatch):
+        """本方的 user_id / conv_id 不落进另一个服务的存储。"""
+        _patch_httpx(monkeypatch, OK_PAYLOAD_QUERY_SHAPE)
+        await SQLAgentClient(base_url="http://x:8000").query(
+            "q", user_id="alice@example.com", session_id="conv-7"
+        )
+        sid = _FakeAsyncClient.last_call["json"]["session_id"]
+        assert "alice" not in sid and "conv-7" not in sid
 
 
 # ── 3. 上下文构建 ────────────────────────────────────────────────────────────
