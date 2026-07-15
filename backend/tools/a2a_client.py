@@ -52,10 +52,24 @@ STAGE_LABEL = {
     "answering": "正在组织回答",
     # normalization / validation：契约建议不展示（内部动作，用户看不出差别）
 }
+# 契约 §4.5 在 v1.6 改了：`database` 的契约面是**形状**（`^[a-z][a-z0-9_]*_db$`）
+# 加一份可拉取的生效清单，不再是钉死的枚举。两个后果：
+#
+# 1. **新增标识符不算契约变更。** 所以"遇到不认识的库"是**常规路径不是异常
+#    路径**：照常采信，映射退化成显示原始标识符即可（见 progress_label）。
+#    `prod_db` / `svc_db` 当初是本仓库单方面加的，v1.6 已追认为合规。
+# 2. `mes_db` / `pm_db` 已被契约标为**退役**——`mes_db` 是 `prod_db` 的旧名，
+#    `pm_db` 的职责本就在 `erp_db`，两个都**从未在任何部署里存在过**。
+#    映射保留着没坏处（benchmark 夹具和历史 trace 里还有），
+#    但别指望运行时会出现，也**不要**拿它们去断言线上会发出什么。
+#
+# 映射表必须覆盖 schema 的 `$defs["known"]`，用例：
+# tests/test_contract_fixtures.py::test_chinese_labels_cover_every_known_identifier
 DATABASE_LABEL = {
-    "erp_db": "ERP 订单库", "mes_db": "MES 生产库", "pm_db": "PM 项目库", "wms_db": "WMS 库存库",
-    # 模拟 ERP 多出来的两个；接真库时按契约 §4.5 走契约变更再加
+    "erp_db": "ERP 订单库", "wms_db": "WMS 库存库",
     "prod_db": "生产库", "svc_db": "售后服务库",
+    # 退役，仅为历史 trace 与 benchmark 夹具保留
+    "mes_db": "MES 生产库", "pm_db": "PM 项目库",
 }
 
 
