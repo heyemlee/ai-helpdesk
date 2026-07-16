@@ -18,10 +18,20 @@ openai==1.109.1            # LLM_PROVIDER=openai（含兼容 /chat/completions �
                            # 未配置时退化为本地 n-gram 向量，三路融合链路不中断
 
 # ── Web 框架 ──────────────────────────────────────────────────────────────────
-fastapi==0.115.5
+# 安全升级，三个包**必须一起动**：FastAPI 把 Starlette 的版本范围
+# 钉在自己的元数据里，单独强装一个新 Starlette 会得到一个 pip 认为不兼容的组合。
+# 升到 0.119 是为了把 Starlette 的范围放开到 0.48。
+fastapi==0.119.1
 uvicorn[standard]==0.32.1
 pydantic==2.10.3
-python-multipart==0.0.12    # FastAPI 文件上传支持
+starlette==0.48.0           # 显式声明：GHSA-2c2j-9gv5-cj73 在 0.47.2 修复，
+                            # 这里跟随 FastAPI 0.119 的上界取 0.48.0。
+                            # 写出来是为了让"我们要的是 >=0.47.2"这件事可见——
+                            # 只写 fastapi 的话，下一次有人回退 FastAPI 版本时
+                            # Starlette 会跟着悄悄退回有漏洞的版本
+python-multipart==0.0.32    # FastAPI 文件上传支持。0.0.12 有两个 DoS
+                            # （GHSA-59g5-xgcq-4qw3 / GHSA-pp6c-gr5w-3c5g），
+                            # 修复在 0.0.27
 
 # ── 数据存储 ──────────────────────────────────────────────────────────────────
 redis==5.2.1
