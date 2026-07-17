@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+/* 控制台是深色单一主题，直接固定，不跟随系统 */
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #020617; /* slate-950 */
+  font-family: ui-sans-serif, system-ui, -apple-system, "PingFang SC",
+               "Microsoft YaHei", "Helvetica Neue", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 滚动条压暗，避免在深色面板上突兀 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #334155 transparent;
+}
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+*::-webkit-scrollbar-track { background: transparent; }
