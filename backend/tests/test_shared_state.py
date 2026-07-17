@@ -103,6 +103,95 @@ async def test_breaker_half_open_after_recovery(monkeypatch):
     assert await breaker.state_name() == "half_open"
 
 
+async def test_half_open_admits_exactly_one_probe(monkeypatch):
+    """
+    恢复窗口到了之后**只放一个**探测请求。
+
+    原先窗口一到就无条件放行，于是积压的流量会在同一瞬间全部涌向一个刚缓过来
+    的下游，把它再打断一轮。副本越多这个尖峰越高——而熔断器存在的理由正是
+    不要让这件事发生。
+    """
+    state = SharedState(redis_client=None)
+    breaker = DistributedCircuitBreaker(state, "search", failure_threshold=1, recovery_s=60)
+    await breaker.record_failure()
+
+    real_time = time.time
+    monkeypatch.setattr(time, "time", lambda: real_time() + 61)
+
+    admitted = [await breaker.allow() for _ in range(5)]
+    assert admitted == [True, False, False, False, False]
+
+
+async def test_half_open_permit_is_shared_across_instances(monkeypatch):
+    """
+    许可要跨实例互斥，否则每个副本各放一个，尖峰变成 N 个而不是 1 个。
+
+    这里两个 breaker 共用一个 SharedState，模拟同一个 Redis 后面的两个副本。
+    """
+    state = SharedState(redis_client=None)
+    a = DistributedCircuitBreaker(state, "search", failure_threshold=1, recovery_s=60)
+    b = DistributedCircuitBreaker(state, "search", failure_threshold=1, recovery_s=60)
+    await a.record_failure()
+
+    real_time = time.time
+    monkeypatch.setattr(time, "time", lambda: real_time() + 61)
+
+    assert await a.allow() is True
+    assert await b.allow() is False, "第二个副本不该再放一个探测请求"
+
+
+async def test_failed_probe_lets_the_next_window_try_again(monkeypatch):
+    """
+    探测失败之后许可必须清掉，否则熔断器再也合不上。
+
+    留着一张用过的许可，下一个恢复窗口的探测会被它挡住 —— 表现是下游早就好了、
+    熔断器却永远停在 open，而且没有任何报错。
+    """
+    state = SharedState(redis_client=None)
+    breaker = DistributedCircuitBreaker(state, "search", failure_threshold=1, recovery_s=60)
+    await breaker.record_failure()
+
+    real_time = time.time
+    monkeypatch.setattr(time, "time", lambda: real_time() + 61)
+    assert await breaker.allow() is True
+    await breaker.record_failure()          # 探测也失败，重新打开
+
+    monkeypatch.setattr(time, "time", lambda: real_time() + 122)
+    assert await breaker.allow() is True, "下一个恢复窗口应当能再探一次"
+
+
+async def test_successful_probe_closes_the_breaker(monkeypatch):
+    state = SharedState(redis_client=None)
+    breaker = DistributedCircuitBreaker(state, "search", failure_threshold=1, recovery_s=60)
+    await breaker.record_failure()
+
+    real_time = time.time
+    monkeypatch.setattr(time, "time", lambda: real_time() + 61)
+    assert await breaker.allow() is True
+    await breaker.record_success()
+
+    # 合上之后是正常放行，不再受许可限制
+    assert [await breaker.allow() for _ in range(3)] == [True, True, True]
+    assert await breaker.state_name() == "closed"
+
+
+async def test_set_if_absent_is_first_writer_wins():
+    state = SharedState(redis_client=None)
+    assert await state.set_if_absent("lock", "1", ttl_s=60) is True
+    assert await state.set_if_absent("lock", "2", ttl_s=60) is False
+    assert await state.get("lock") == "1", "后来者不得覆盖已有的值"
+
+
+async def test_set_if_absent_releases_after_ttl(monkeypatch):
+    """没有 TTL 的话，持有者崩掉就等于把这把锁永久锁死。"""
+    state = SharedState(redis_client=None)
+    assert await state.set_if_absent("lock", "1", ttl_s=30) is True
+
+    real_time = time.time
+    monkeypatch.setattr(time, "time", lambda: real_time() + 31)
+    assert await state.set_if_absent("lock", "2", ttl_s=30) is True
+
+
 async def test_breaker_success_resets():
     state = SharedState(redis_client=None)
     breaker = DistributedCircuitBreaker(state, "search", failure_threshold=2, recovery_s=60)
