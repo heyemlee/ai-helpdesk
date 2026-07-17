@@ -24,13 +24,10 @@ COPY requirements.txt .
 RUN pip install --upgrade pip && \
     pip install -r requirements.txt
 
-# 预下载 ChromaDB 内置的 ONNX embedding 模型（~79MB），避免运行时下载超时
-RUN mkdir -p /root/.cache/chroma/onnx_models/all-MiniLM-L6-v2 && \
-    curl -L --retry 3 --retry-delay 5 -o /root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz \
-    https://chroma-onnx-models.s3.amazonaws.com/all-MiniLM-L6-v2/onnx.tar.gz && \
-    cd /root/.cache/chroma/onnx_models/all-MiniLM-L6-v2 && \
-    tar -xzf onnx.tar.gz && \
-    rm onnx.tar.gz
+# 这里原先预下载 ChromaDB 内置的 ONNX embedding 模型（~79MB）。**已删除**：
+# 当前存储实现是 pgvector / SQLite（storage/vector_store.py 的 PgStore / LocalStore），
+# 早就不用 Chroma 了，这一步只是每次构建都去 S3 拉 79MB 再烤进镜像。
+# 顺带去掉了一个构建期的外网依赖——那个 URL 挂掉时构建会跟着挂。
 
 # ── 阶段 3：生产镜像 ──────────────────────────────────────────────────────────
 FROM base AS production
@@ -41,15 +38,12 @@ RUN useradd -m -u 1000 aihelpdesk
 # 从依赖阶段复制已安装的包
 COPY --from=dependencies /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=dependencies /usr/local/bin /usr/local/bin
-# 复制预下载的 ONNX 模型缓存
-COPY --from=dependencies --chown=aihelpdesk:aihelpdesk /root/.cache/chroma /home/aihelpdesk/.cache/chroma
-
 # 复制应用代码
 COPY --chown=aihelpdesk:aihelpdesk . .
 
 # 创建必要目录，只调整运行期需要写入的目录权限，避免递归 chown 整个应用。
-RUN mkdir -p /app/data/chroma /app/logs /app/config && \
-    chown aihelpdesk:aihelpdesk /app/data /app/data/chroma /app/logs /app/config
+RUN mkdir -p /app/data /app/logs /app/config && \
+    chown aihelpdesk:aihelpdesk /app/data /app/logs /app/config
 USER aihelpdesk
 
 EXPOSE 8000
@@ -64,7 +58,7 @@ FROM dependencies AS development
 
 COPY . .
 
-RUN mkdir -p /app/data/chroma /app/logs /app/config /app/tests && \
+RUN mkdir -p /app/data /app/logs /app/config /app/tests && \
     chmod -R 777 /app/data /app/logs
 
 EXPOSE 8000
