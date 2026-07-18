@@ -1039,25 +1039,30 @@ def _currency_note(data: dict) -> str:
     它是**部署**的属性不是**数据**的属性，一个部署里只要有多币种的库，
     它必然给出错误答案，而且报出去的金额看起来完全正常。
 
-    在服务端下发 `currency` 之前，这里能做的是不让那个配置值伪装成查出来的
-    事实——三种情况说三种话，来源写在句子里：
+    契约 v1.8 把这一条改成**按来源三分**，来源判定在
+    `core.evidence.resolve_currency()`（`currency_source`，与 `status_source`
+    同构）；这里只负责把那个来源**说进句子里**：
 
-    1. 数据自己声明了 `currency`（§4.6.5 落地后）→ 按数据说，可以当事实；
-    2. 数据没声明、部署配了全局币种 → 按配置说，但**明写它来自部署配置**，
-       不是本次查询的结果；
-    3. 两者都没有 → 契约要求原样呈现数字并说明币种未知，**不得**擅自补符号。
+    1. `contract` —— 数据自己声明了 `currency` → 按数据说，可以当事实；
+    2. `deployment_config` —— 部署配了全局币种 → 可以用，但**明写它来自部署
+       配置**、不是本次查询返回的字段；
+    3. `unknown` —— 两者都没有 → 只写数字，并**主动禁止**语言的默认值。
+
+    第三档是一条**指令**不是一条禁令。契约 v1.6/v1.7 那条"不得补币种"是禁令，
+    而自然语言有自己的默认值：中文回答不说币种就会写成「元」。
+    "不说"会被默认值填上，所以规则必须写成"说什么"。
     """
-    declared = evidence.declared_currency(data)
-    if declared:
-        return (
-            f"以上金额的币种是 {declared}（本次查询随数据一同返回）。"
-            f"提到金额时按 {declared} 表述，不要换算，也不要写成其它币种。"
-        )
     configured = _sql_agent.currency if _sql_agent is not None else ""
-    if configured:
+    currency, source = evidence.resolve_currency(data, configured)
+    if source == evidence.CURRENCY_CONTRACT:
         return (
-            f"以上金额按 {configured} 表述，不要换算，也不要写成其它币种。"
-            f"但请注意：{configured} 来自本部署的配置（SQL_AGENT_CURRENCY），"
+            f"以上金额的币种是 {currency}（本次查询随数据一同返回）。"
+            f"提到金额时按 {currency} 表述，不要换算，也不要写成其它币种。"
+        )
+    if source == evidence.CURRENCY_DEPLOYMENT_CONFIG:
+        return (
+            f"以上金额按 {currency} 表述，不要换算，也不要写成其它币种。"
+            f"但请注意：{currency} 来自本部署的配置（SQL_AGENT_CURRENCY），"
             "**不是**本次查询返回的字段——业务系统目前不返回币种。"
             "因此不得把币种说成系统核实过的结果；客户对币种有疑问时请转人工确认。"
         )
@@ -1090,8 +1095,8 @@ async def _build_order_data_context(
     不能因此中断。
 
     **"拿到了响应但不该当依据"的情况，都要挡在这里。** 判定不在这个函数里
-    自己写，统一走 `core.evidence.assess()`——`/query` 与 A2A 两条路径共用
-    同一套口径，否则回滚（契约 §6.2）会变成静默的信任口径切换。分四类：
+    自己写，统一走 `core.evidence.assess()`——三个承载者共用同一套口径
+    （契约 §4.4.1），否则回滚（§6.2）会变成静默的信任口径切换。分四类：
 
     1. `unavailable` —— 下游挂了或熔断，fallback 给的占位结果。返回降级提示；
     2. `not_applicable` —— ai-sql-agent 自己判断这问题不需要查库，走了对话
@@ -1147,8 +1152,9 @@ async def _build_order_data_context(
                 "你说的内容已经过系统核对。",
             ]), False
 
-        # 信任判定（契约 §4.6）。**唯一的一处**——`/query` 和 A2A 两条路径
-        # 走的是同一个 assess()，因为回滚会让流量在两条路之间切换（契约 §6.2），
+        # 信任判定（契约 §4.6）。**唯一的一处**——三个承载者
+        # （stream / send / 直连 /query）走的是同一个 assess()，
+        # 因为回滚会让流量在它们之间切换（契约 §6.2 与 §4.4.1），
         # 判定要是分了叉，回滚就成了静默的信任口径切换。
         verdict = assess(data)
 

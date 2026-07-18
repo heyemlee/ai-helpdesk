@@ -20,6 +20,12 @@
   只能靠业务判定。
 - **D 组**：清单外的合法标识符（`hr_db`）是**常规路径不是异常路径**，
   v1.6 起新增库不算契约变更。
+
+**v1.8 起硬规则由「两条 transport」改成「三个承载者」**（§4.4.1）：
+`message/stream` / `message/send` / 直连 `POST /query`。第三个是
+`SQL_AGENT_TRANSPORT` 的默认值，也就是**今天跑生产流量的那条**——
+在 v1.8 之前它一直在契约的保护范围之外。E 组只适用于 A2A 那两条
+（`/query` 同步无事件），这是范围差异不是同构破例。
 """
 import json
 import os
@@ -37,7 +43,7 @@ REQUIRED = os.getenv("A2A_CONTRACT_REQUIRED", "").strip().lower() in _TRUE
 
 # 契约仓库钉在 tag 上，不跟 main（附录 B）。CI 里 checkout 哪个 tag 见
 # .github/workflows/ci.yml 的 contract job；改 tag 是一次要过评审的改动。
-PINNED_TAG = "v1.6"
+PINNED_TAG = "v1.8"
 
 
 def _contract_dir() -> pathlib.Path | None:
@@ -115,7 +121,7 @@ def _schema_errors(case: dict, payload: dict) -> list:
     return list(_validator_for(case["schema"]).iter_errors(payload))
 
 
-# ── 两条 transport 的取出方式（CONSUMER-TESTS 的那张表）──────────────────────
+# ── 三个承载者的取出方式（CONSUMER-TESTS 的那张表）──────────────────────────
 
 def _send_artifact(data_part: dict) -> dict:
     """`message/send`：`result.artifacts[0].parts[]` 里 kind == "data" 那一项。"""
@@ -132,27 +138,49 @@ def _stream_artifact(data_part: dict) -> dict:
     return frame["artifact"]
 
 
-def _query_response(data_part: dict) -> dict:
-    """直连 `/query` 的响应形状：同样的字段，逐步骤日志那个数组叫 `step_logs`。"""
+# `/query` 的逐步骤日志正处在改名的过渡期（契约 §4.4.1）：服务端要把
+# `step_logs` 改成 `steps`，过渡期两个同时发。三种形态都必须走通——
+# 只认一个名字的实现会在过渡的某一端静默失效：取不到 `steps` 就按
+# 「缺失即不可信」处置，**每一次直连查询都不再是出处，而链路看起来完全正常**。
+QUERY_SHAPES = ("legacy", "transitional", "renamed")
+
+
+def _query_response(data_part: dict, shape: str = "transitional") -> dict:
+    """
+    直连 `/query` 的响应形状：同样的字段在顶层，逐步骤日志的名字按过渡阶段变。
+
+    - `legacy`       —— 只有 `step_logs`（改名之前，也就是今天）；
+    - `transitional` —— 两个都发（改名过渡期，契约要求的形态）；
+    - `renamed`      —— 只有 `steps`（弃用 `step_logs` 之后，走 §6 变更）。
+    """
     out = {k: v for k, v in data_part.items() if k != "steps"}
     if "steps" in data_part:
-        out["step_logs"] = data_part["steps"]
+        if shape in ("legacy", "transitional"):
+            out["step_logs"] = data_part["steps"]
+        if shape in ("transitional", "renamed"):
+            out["steps"] = data_part["steps"]
     out.setdefault("answer", "（答案正文）")
     return out
 
 
-def _consume_all_transports(data_part: dict) -> list:
+def _consume_all_bearers(data_part: dict) -> list:
     """
-    三条消费路径各走一遍，返回各自的信任结论。
+    三个承载者各走一遍（`/query` 再按三种过渡形态各走一遍），返回信任结论。
 
-    A2A 的两条必须**逐字同构**（§4.4），直连 `/query` 必须得到**同一个业务
-    判定**（回滚会让流量在它们之间切换，判定分叉时回滚就是静默降级）。
+    A2A 的两条必须**逐字同构**（§4.4）；三个承载者必须得到**同一个业务判定**
+    （§4.4.1）——回滚会依次落在 `send` 和 `/query` 上，判定分叉时回滚就是
+    静默降级，而那正是 §6.2 反复要防的事。
     """
     send = A2AClient._normalize(_send_artifact(data_part), {})
     stream = A2AClient._normalize(_stream_artifact(data_part), {})
     assert send == stream, "send 与 stream 的归一结果必须逐字相同（§4.4 同构）"
-    query = normalize_delegation_result(_query_response(data_part), steps_key="step_logs")
-    return [assess(send), assess(stream), assess(query)]
+    verdicts = [assess(send), assess(stream)]
+    verdicts += [
+        assess(normalize_delegation_result(_query_response(data_part, shape)))
+        for shape in QUERY_SHAPES
+    ]
+    return verdicts
+
 
 
 # ── A / D 组：正例 ───────────────────────────────────────────────────────────
@@ -168,17 +196,21 @@ def test_valid_fixtures_pass_schema(case):
 
 
 @pytest.mark.parametrize("case", DATA_PART_CASES, ids=_ids(DATA_PART_CASES))
-def test_every_data_part_is_judged_the_same_on_every_transport(case):
+def test_every_data_part_is_judged_the_same_on_every_bearer(case):
     """
-    **两条 transport 一致**是 P0 验收里点名的一条。
+    **三个承载者一致**（契约 §4.4.1，v1.8 由两条改为三条）。
 
     缺字段 / 字符串布尔 / 失败步骤 / 带风险 / 降级 / 截断——每一种形态，
-    `message/send`、`message/stream`、直连 `/query` 必须给出同一个业务判定。
+    `message/send`、`message/stream`、直连 `/query`（三种改名过渡形态）
+    必须给出同一个业务判定。
+
+    第三个承载者是 v1.8 才纳入的，而它是 `SQL_AGENT_TRANSPORT` 的默认值：
+    在此之前，**跑生产流量的那条路一直没有契约用例覆盖**。
     """
-    verdicts = _consume_all_transports(_load(f"fixtures/{case['file']}"))
+    verdicts = _consume_all_bearers(_load(f"fixtures/{case['file']}"))
     first = verdicts[0]
     for other in verdicts[1:]:
-        assert other == first, f"{case['id']} 在不同 transport 上判定不一致"
+        assert other == first, f"{case['id']} 在不同承载者上判定不一致"
 
 
 # ── B 组：schema 反例必须被拒，且回落方向是"不可信" ─────────────────────────
@@ -202,7 +234,7 @@ def test_schema_invalid_fixtures_fall_back_to_untrusted(case):
     这一组直接对应审查 P0-3 的 (a)(b)：原来的 `bool(data.get(k, False))`
     在这六个载荷上全部会给出"可信"。
     """
-    for verdict in _consume_all_transports(_load(f"fixtures/{case['file']}")):
+    for verdict in _consume_all_bearers(_load(f"fixtures/{case['file']}")):
         assert verdict.usable_as_source is False, f"{case['id']}: {verdict}"
 
 
@@ -216,7 +248,7 @@ def test_the_two_groups_are_not_both_green_by_writing_the_judgement_dead():
     usable = [c for c in DATA_PART_CASES if c["trust"] == "usable_as_source"]
     assert usable, "清单里至少要有一条正面用例，否则这条自检没有意义"
     for case in usable:
-        for verdict in _consume_all_transports(_load(f"fixtures/{case['file']}")):
+        for verdict in _consume_all_bearers(_load(f"fixtures/{case['file']}")):
             assert verdict.usable_as_source is True, f"{case['id']} 正例被判成了不可信"
 
 
@@ -232,7 +264,7 @@ def test_trust_verdict_matches_the_manifest(case):
     只断言"不可用"会把部分成功里那半份真数据一起扔掉，比现状更糟（§4.6.1）。
     """
     expected = case["trust"]
-    for verdict in _consume_all_transports(_load(f"fixtures/{case['file']}")):
+    for verdict in _consume_all_bearers(_load(f"fixtures/{case['file']}")):
         if expected == "usable_as_source":
             assert verdict.usable_as_source is True, f"{case['id']}: {verdict.reasons}"
         elif expected == "not_usable":
@@ -253,14 +285,14 @@ def test_trust_verdict_matches_the_manifest(case):
 
 def test_truncated_result_forbids_total_statements():
     """§4.6.3：截断之后任何"共有 N 条 / 全部 / 一共"的说法都不成立。"""
-    verdict = _consume_all_transports(_load("fixtures/data-part/trust-negative/05-truncated.json"))[0]
+    verdict = _consume_all_bearers(_load("fixtures/data-part/trust-negative/05-truncated.json"))[0]
     assert verdict.truncated is True
     assert any("总量表述" in c for c in verdict.caveats)
 
 
 def test_partial_success_keeps_the_half_that_worked():
     """§4.6.1：`partial_success` 不能并进 `failed`，那会把真数据一起扔掉。"""
-    verdict = _consume_all_transports(
+    verdict = _consume_all_bearers(
         _load("fixtures/data-part/trust-negative/02-partial-success.json")
     )[0]
     assert verdict.execution_status == "partial_success"
@@ -285,7 +317,7 @@ def test_failed_step_verdict_comes_from_the_server_not_from_our_own_reduce():
     服务端定义"查询算不算成功"，而服务端那边 `queried_database` 的定义只有
     一行 `pipeline_result is not None`，两边的口径迟早会分开。
     """
-    verdict = _consume_all_transports(
+    verdict = _consume_all_bearers(
         _load("fixtures/data-part/trust-negative/01-failed-step.json")
     )[0]
     assert verdict.execution_status == "failed"
@@ -317,7 +349,7 @@ def test_unlisted_identifier_is_the_normal_path_not_an_error_path():
     就判不可信，中文映射退化为显示原始标识符即可。
     """
     payload = _load("fixtures/data-part/valid/04-unlisted-database.json")
-    for verdict in _consume_all_transports(payload):
+    for verdict in _consume_all_bearers(payload):
         assert verdict.usable_as_source is True, "不认识的库不是不可信的理由"
 
     label = progress_label("execution", "hr_db")

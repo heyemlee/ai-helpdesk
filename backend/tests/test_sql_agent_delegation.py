@@ -196,21 +196,67 @@ class TestClient:
         assert out["selected_databases"] == ["erp_db", "mes_db"]
         assert out["trace_id"] == "t-123"
 
-    async def test_step_logs_are_normalized_to_steps(self, monkeypatch):
+    @pytest.mark.parametrize("shape", ["legacy", "transitional", "renamed"])
+    async def test_step_logs_and_steps_are_both_accepted(self, shape):
         """
-        `/query` 叫 `step_logs`，A2A 的 data part 叫 `steps`——名字必须在
-        客户端这一层就对齐，之后信任判定才可能是同一套。
+        改名过渡期**两个名字都要认**（契约 §4.4.1，v1.8）。
 
-        对不齐的后果不是报错，是**静默降级**：`steps` 取不到 → 按缺失处置 →
-        execution_status=failed → 每一次直连查询都不再是出处，而链路看起来
-        完全正常。回滚（契约 §6.2）正好会把流量切到这条路上。
+        `/query` 历史上把同一个 StepLogResponse 序列化成 `step_logs`，
+        A2A 那两条叫 `steps`。v1.8 的处置是服务端改名、过渡期两个同时发，
+        所以三种形态都必须走通：
+
+        - `legacy`（只有 `step_logs`，也就是今天）；
+        - `transitional`（两个都发，过渡期契约要求的形态）；
+        - `renamed`（只有 `steps`，弃用旧名之后）。
+
+        只认一个名字的实现会在过渡的某一端**静默失效**：`steps` 取不到就按
+        「缺失即不可信」处置，execution_status=failed，**每一次直连查询都不再
+        是出处，而链路看起来完全正常**——没有报错、没有降级事件。
+        回滚（契约 §6.2）正好会把流量切到这条路上。
         """
+        from core.evidence import assess, normalize_delegation_result
+
+        steps = OK_PAYLOAD["steps"]
+        payload = {k: v for k, v in OK_PAYLOAD.items() if k != "steps"}
+        if shape in ("legacy", "transitional"):
+            payload["step_logs"] = steps
+        if shape in ("transitional", "renamed"):
+            payload["steps"] = steps
+
+        out = normalize_delegation_result(payload)
+        assert out["steps"] == steps, f"{shape} 形态下取不到逐步骤日志"
+        assert assess(out).execution_status == "success"
+        assert assess(out).usable_as_source is True
+
+    async def test_steps_wins_when_both_names_are_present(self, caplog):
+        """
+        两个都在时以 `steps` 为准（契约 §4.4.1 指定的优先级）。
+
+        两者内容不一致说明服务端把同一份数据序列化出了两个结果——那是它那边的
+        bug，而且**没有任何症状**，不主动记一条告警就永远发现不了。
+        """
+        import logging
+
+        from core.evidence import assess, normalize_delegation_result
+
+        good = OK_PAYLOAD["steps"]
+        bad = [dict(good[0], success=False, row_count=0, error="boom")]
+        payload = dict(OK_PAYLOAD, steps=good, step_logs=bad)
+
+        with caplog.at_level(logging.WARNING, logger="core.evidence"):
+            out = normalize_delegation_result(payload)
+        assert out["steps"] == good
+        assert assess(out).execution_status == "success"
+        assert any("step_logs" in r.message for r in caplog.records), \
+            "两个字段不一致必须留下告警，否则下游的序列化 bug 永远不会被发现"
+
+    async def test_query_client_normalizes_todays_shape(self, monkeypatch):
+        """走真实的 /query 客户端确认今天那条路（只有 `step_logs`）通。"""
         _patch_httpx(monkeypatch, OK_PAYLOAD_QUERY_SHAPE)
         out = await SQLAgentClient(base_url="http://x:8000").query("q", session_id="s")
         assert out["steps"] == OK_PAYLOAD_QUERY_SHAPE["step_logs"]
 
         from core.evidence import assess
-        assert assess(out).execution_status == "success"
         assert assess(out).usable_as_source is True
 
     async def test_trust_booleans_are_not_coerced_by_the_client(self, monkeypatch):
@@ -516,6 +562,27 @@ class TestCurrencyIsDeclared:
         text, _ = await m._build_order_data_context("q", intent="order_status")
         assert "EUR" in text and "随数据一同返回" in text
         assert "SQL_AGENT_CURRENCY" not in text
+
+    def test_currency_source_is_the_machine_readable_half(self):
+        """
+        `currency_source` 是给机器看的那一半（契约 §4.6.5，v1.8）。
+
+        句子里写来源是给 Agent 看的；这个字段是给我们自己看的——
+        它让"部署配置的币种被当成事实报出去"这件事可以被断言、可以进日志，
+        而不是只能靠人读那段中文。与 `status_source` 同构。
+        """
+        from core.evidence import (
+            CURRENCY_CONTRACT,
+            CURRENCY_DEPLOYMENT_CONFIG,
+            CURRENCY_UNKNOWN,
+            resolve_currency,
+        )
+        assert resolve_currency({"currency": "EUR"}, "USD") == ("EUR", CURRENCY_CONTRACT)
+        assert resolve_currency({}, "USD") == ("USD", CURRENCY_DEPLOYMENT_CONFIG)
+        assert resolve_currency({}, "") == ("", CURRENCY_UNKNOWN)
+        # 不是合法 ISO 4217 的就不算数据声明，退到配置那一档
+        assert resolve_currency({"currency": "usd"}, "USD") == ("USD", CURRENCY_DEPLOYMENT_CONFIG)
+        assert resolve_currency({"currency": None}, "") == ("", CURRENCY_UNKNOWN)
 
     def test_from_env_picks_the_declaration_up(self, monkeypatch):
         monkeypatch.setenv("SQL_AGENT_URL", "http://x:8000")

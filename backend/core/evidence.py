@@ -4,10 +4,14 @@
 **为什么要单独一个模块。** 这个判断原先散在三个地方各写一遍：
 `tools/sql_agent_client.py` 的 `/query` 归一、`tools/a2a_client.py` 的 A2A
 归一、`api/main.py` 里那段决定进不进 `grounding_sources` 的分支。三份实现
-各自漂了一点，合起来的效果是**两条路径对同一份载荷给出不同的信任结论**，
+各自漂了一点，合起来的效果是**不同承载者对同一份载荷给出不同的信任结论**，
 而回滚恰恰会让流量从一条路换到另一条路（契约 §6.2）。判定只能有一份。
 
-判据出自 a2a-contract v1.6 的 §4.6「业务终态语义」与 §4.6.7「缺失 = 不可信」。
+判据出自 a2a-contract v1.8 的 §4.4.1「载荷与承载者是两件事」、
+§4.6「业务终态语义」与 §4.6.7「缺失 = 不可信」。**承载者有三个**：
+`message/stream`、`message/send`、直连 `POST /query`——第三个是
+`SQL_AGENT_TRANSPORT` 的默认值，也是整条 A2A 关掉时的落点，
+v1.8 之前它一直在契约的保护范围之外。
 下面三条是这个模块存在的全部理由，改之前请先读懂它们：
 
 1. **缺一个降低信任的信号，不等于可以信任。** `has_risk` / `degraded` /
@@ -25,18 +29,22 @@
    `execution_status`（§4.6.1）。
 
 **关于 `execution_status` 今天还没有。** 服务端尚未下发这个字段（契约标 🔨）。
-契约 §4.6.8 的表明写着这一档"今天只能自己 reduce `steps[].success`"，所以
-本模块在字段缺席时按 §4.6.1 给的判据从 `steps[]` 推导，并把推导来源记在
-`status_source` 上。**推导不等于缺口关闭**：§4.6.2 提醒过自己 reduce 的口径
+契约 §4.6.7 的过渡判据（v1.7 提级为**规范**）就是三档：服务端下发了就采信；
+没下发但 `steps[]` 在，按 §4.6.1 的判据推导；`steps[]` 也拿不到才 `failed`。
+推导来源记在 `status_source` 上——这个名字两侧独立实现时都自发用了同一个，
+v1.7 已收进契约。**推导不等于缺口关闭**：§4.6.2 提醒过自己 reduce 的口径
 会漂，真正关闭的判据是 `status_source == "contract"`，测试里有一条 xfail
 用例专门盯着它（`tests/test_contract_fixtures.py`）。`steps[]` 也拿不到时
 按 `failed` 处置，回到第 1 条。
 """
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+
+logger = logging.getLogger(__name__)
 
 # ── 契约 §4.6.1 的闭集 ────────────────────────────────────────────────────────
 SUCCESS = "success"
@@ -212,8 +220,8 @@ def assess(data: Mapping | None) -> Verdict:
     """
     对一份归一后的委派结果给出信任结论。
 
-    入参是 `/query` 与 A2A 两条路径归一之后的同一种 dict——**两条路径必须
-    走这一个函数**，否则回滚（契约 §6.2）会变成静默的信任口径切换。
+    入参是三个承载者归一之后的同一种 dict——**三个都必须走这一个函数**
+    （契约 §4.4.1），否则回滚（§6.2）会变成静默的信任口径切换。
     """
     data = data if isinstance(data, Mapping) else {}
 
@@ -273,26 +281,54 @@ def assess(data: Mapping | None) -> Verdict:
     )
 
 
+def _steps_field(data: Mapping) -> object:
+    """
+    取逐步骤日志。**两个名字都认，`steps` 优先**（契约 §4.4.1，v1.8）。
+
+    契约面是 data part 本身，与谁承载无关；但直连 `/query` 历史上把同一个
+    `StepLogResponse` 序列化成 **`step_logs`**，A2A 那两条叫 **`steps`**。
+    v1.8 的处置是让服务端改名，**过渡期两个同时发**——所以这里不能只认一个：
+
+    - 只认 `steps` → 今天（服务端还没改名）每一次直连查询都取不到，
+      按"缺失即不可信"处置，**每一次都不作出处，而链路看起来完全正常**；
+    - 只认 `step_logs` → 服务端改完名、撤掉旧字段的那天，同样的静默失效。
+
+    过渡期两个都在时以 `steps` 为准（契约指定的优先级）。两者不一致说明服务端
+    把同一份数据序列化出了两个结果——那是它那边的 bug，记一条告警：
+    这种事没有症状，不主动看就永远发现不了。
+    """
+    steps, legacy = data.get("steps"), data.get("step_logs")
+    if isinstance(steps, list):
+        if isinstance(legacy, list) and legacy != steps:
+            logger.warning(
+                "服务端同时下发了 steps 与 step_logs 且内容不一致（steps=%d 项，"
+                "step_logs=%d 项）。按契约 §4.4.1 以 steps 为准，但这是下游的序列化 bug。",
+                len(steps), len(legacy),
+            )
+        return steps
+    return legacy
+
+
 def normalize_delegation_result(
     data: Mapping | None,
     *,
     answer: str = "",
-    steps_key: str = "steps",
     trace_id_fallback: str = "",
 ) -> dict:
     """
-    把两条 transport 的载荷归一成同一种 dict，供 `assess()` 与上层消费。
+    把三个承载者的载荷归一成同一种 dict，供 `assess()` 与上层消费。
 
-    `steps_key` 存在是因为两条路径给这个数组起的名字不同：A2A 的 data part
-    叫 `steps`（契约 §4.4），直连 `/query` 的响应叫 `step_logs`
-    （`ai_sql_api/app.py` 的 `QueryResponse`）。**只有名字不同**，元素形状
-    是同一个 `StepLogResponse`——所以归一到 `steps` 之后，下游判定完全一致。
+    契约 §4.4.1（v1.8）：契约面是 data part 本身，**与谁承载无关**——
+    `message/stream`、`message/send`、直连 `POST /query` 三个承载者共用
+    §4.4 / §4.6 / §9.1。所以归一之后，下游的判定看不出走了哪一条。
+
+    逐步骤日志的取法见 `_steps_field()`：过渡期两个名字都认。
 
     三个信任布尔在这里**不做转换**，原样带过去：转换发生在 `assess()` 里，
     只有一处。提前 `bool()` 一下正是原来那个 fail-open 缺口的形态。
     """
     data = data if isinstance(data, Mapping) else {}
-    steps = data.get(steps_key)
+    steps = _steps_field(data)
     out = {
         "answer": (answer or str(data.get("answer", "") or "")).strip(),
         "queried_database": data.get("queried_database"),
@@ -312,13 +348,48 @@ def normalize_delegation_result(
     return out
 
 
+# 币种的来源（契约 §4.6.5，v1.8）。与 `status_source` 同构：
+# 值本身不够，**值从哪来**才决定能不能把它说成事实。
+CURRENCY_CONTRACT = "contract"
+CURRENCY_DEPLOYMENT_CONFIG = "deployment_config"
+CURRENCY_UNKNOWN = "unknown"
+
+
 def declared_currency(data: Mapping | None) -> str | None:
     """
     数据自己声明的币种（契约 §4.6.5），没有就是 `None`。
 
-    只接受 ISO 4217 三字母大写。**不要在这里回退到部署配置**——那个回退是
-    §4.6.5 点名的反例，它让一个配置值伪装成从数据库查出来的事实。回退的
-    去留由调用点决定，并且必须在措辞里说明来源。
+    只接受 ISO 4217 三字母大写。**不要在这里回退到部署配置**——回退本身不是
+    问题（见 `resolve_currency`），但它必须发生在知道来源的地方。
     """
     value = (data or {}).get("currency")
     return value if isinstance(value, str) and _ISO_4217.match(value) else None
+
+
+def resolve_currency(data: Mapping | None, configured: str = "") -> tuple[str, str]:
+    """
+    定出这轮金额的币种，返回 `(currency, currency_source)`（契约 §4.6.5，v1.8）。
+
+    v1.6/v1.7 这里写的是「**不得**回退到自己的全局常量」。**那条禁令过头了**，
+    照它执行会退回它想防的那次事故：全局常量当初就是为了堵住"下游只返回数字，
+    中文回答默认写成「元」，接美国厂的库时报给 builder 的金额带错币种"。
+    删掉常量不会让语言的默认值消失，只会让它变回隐式。
+
+    v1.8 改成按来源三分——**危险的不是"用了配置值"，是"把配置值说成系统核实
+    过的事实"**：
+
+    | 情况 | `currency_source` | 能不能当事实 |
+    | --- | --- | --- |
+    | 数据自己声明了 `currency` | `contract` | 能 |
+    | 数据没声明、部署配了 | `deployment_config` | 不能，但可以用，必须写明来源 |
+    | 两者都没有 | `unknown` | 只写数字，且**主动禁止**语言默认值 |
+
+    第三档不是沉默。沉默正是事故的形态。措辞见 `api/main.py::_currency_note`。
+    """
+    declared = declared_currency(data)
+    if declared:
+        return declared, CURRENCY_CONTRACT
+    configured = (configured or "").strip()
+    if configured:
+        return configured, CURRENCY_DEPLOYMENT_CONFIG
+    return "", CURRENCY_UNKNOWN
