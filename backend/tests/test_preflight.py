@@ -11,15 +11,18 @@ import pytest
 from fastapi.testclient import TestClient
 
 from core.preflight import (
+    TOKEN_ISSUER_CIDRS_VAR,
     ContractViolationError,
     InsecureDeploymentError,
     a2a_send_budget_s,
     check_security_config,
     check_timeout_budgets,
+    check_token_issuer_binding,
     is_production,
     outer_tool_timeout_s,
     run_startup_checks,
     security_config_problems,
+    token_issuer_networks,
 )
 
 COMPLETE = {
@@ -27,6 +30,7 @@ COMPLETE = {
     "AI_HELPDESK_API_KEY": "k",
     "AI_HELPDESK_AUTH_SECRET": "s",
     "AI_HELPDESK_PROTECT_CHAT": "true",
+    TOKEN_ISSUER_CIDRS_VAR: "10.0.0.0/8",
 }
 
 
@@ -40,7 +44,7 @@ class TestProductionRequiresCompleteAuthConfig:
     @pytest.mark.parametrize(
         "missing",
         ["AI_HELPDESK_API_KEY", "AI_HELPDESK_AUTH_SECRET", "AI_HELPDESK_PROTECT_CHAT"],
-    )
+    )  # 来源白名单是独立的一条检查，见 TestAuthTokenIsBoundToTheGateway
     def test_each_missing_item_fails_startup(self, missing):
         env = {k: v for k, v in COMPLETE.items() if k != missing}
         assert security_config_problems(env), f"{missing} 缺失应当被检出"
@@ -96,6 +100,7 @@ class TestAuthTokenNeverFailsOpen:
         monkeypatch.setenv("AI_HELPDESK_FRONTEND_DIST", "/nonexistent")
         monkeypatch.setenv("AI_HELPDESK_API_KEY", env.get("AI_HELPDESK_API_KEY", ""))
         monkeypatch.setenv("APP_ENV", env.get("APP_ENV", "development"))
+        monkeypatch.setenv(TOKEN_ISSUER_CIDRS_VAR, env.get(TOKEN_ISSUER_CIDRS_VAR, ""))
         sys.modules.pop("api.main", None)
         return importlib.import_module("api.main")
 
@@ -134,6 +139,114 @@ class TestAuthTokenNeverFailsOpen:
         m = self._load(monkeypatch, AI_HELPDESK_API_KEY="", APP_ENV="development")
         resp = TestClient(m.app).post("/skills/reload")
         assert "AI_HELPDESK_API_KEY" not in resp.text, "demo 模式应当越过鉴权"
+
+
+class TestAuthTokenSourceIsCheckedAtRequestTime:
+    """
+    来源白名单在请求路径上真的生效——启动断言只保证它**配了**。
+
+    TestClient 的对端是 127.0.0.1，所以白名单里有没有 127.0.0.1 就决定放不放行。
+    """
+
+    @staticmethod
+    def _post(monkeypatch, cidrs: str, peer: str | None = "192.168.1.7", **headers):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        monkeypatch.setenv("AI_HELPDESK_FRONTEND_DIST", "/nonexistent")
+        monkeypatch.setenv("AI_HELPDESK_API_KEY", "s3cret")
+        monkeypatch.setenv("APP_ENV", "development")
+        monkeypatch.setenv(TOKEN_ISSUER_CIDRS_VAR, cidrs)
+        sys.modules.pop("api.main", None)
+        m = importlib.import_module("api.main")
+        # TestClient 默认把对端报成字符串 "testclient"，不是 IP——
+        # 显式给一个地址，这一层测的才是真的地址判定
+        client = TestClient(m.app, client=(peer, 33333)) if peer else TestClient(m.app)
+        return client.post(
+            "/auth/token",
+            json={"user_id": "u"},
+            headers={"X-API-Key": "s3cret", **headers},
+        )
+
+    def test_source_outside_the_allowlist_is_refused(self, monkeypatch):
+        resp = self._post(monkeypatch, "10.0.0.0/8", peer="203.0.113.9")
+        assert resp.status_code == 403
+        assert "token" not in resp.text
+
+    def test_source_inside_the_allowlist_reaches_the_handler(self, monkeypatch):
+        """在白名单里就越过这一层，落到业务层（未配 AUTH_SECRET → 409）。"""
+        resp = self._post(monkeypatch, "192.168.1.0/24", peer="192.168.1.7")
+        assert resp.status_code == 409
+
+    def test_x_forwarded_for_cannot_get_past_it(self, monkeypatch):
+        """
+        **XFF 不作数。** 它是一个请求头，任何人都能写；拿它当来源判据，
+        等于把白名单交给调用方自己填。判的必须是直连对端。
+        """
+        resp = self._post(
+            monkeypatch, "10.0.0.0/8", peer="203.0.113.9",
+            **{"X-Forwarded-For": "10.0.0.5"},
+        )
+        assert resp.status_code == 403, "伪造 X-Forwarded-For 不该能绕过来源检查"
+
+    def test_unresolvable_peer_is_refused(self, monkeypatch):
+        """
+        拿不到对端地址时**拒绝**，不是放行。
+
+        "无法确认来源"和"确认了来源不合法"，对一个签发身份的端点是同一件事。
+        """
+        resp = self._post(monkeypatch, "10.0.0.0/8", peer=None)
+        assert resp.status_code == 403
+
+    def test_empty_allowlist_is_unrestricted_in_dev(self, monkeypatch):
+        """demo 模式保持旧行为：不配 = 不限制（生产模式下根本起不来）。"""
+        resp = self._post(monkeypatch, "", peer="203.0.113.9")
+        assert resp.status_code == 409
+
+
+class TestAuthTokenIsBoundToTheGateway:
+    """
+    `/auth/token` 只应该被网关调到——这条**不是文档约定，是启动断言**。
+
+    上一轮把它写进了 README 和部署文档。那是对的做法，但它是**说明**不是
+    **修复**：约定不会在配错的时候报错。真正的修复是把签发接到登录系统，
+    而本仓库里不存在那个组件（对接方案见 docs/auth-token-integration.md），
+    所以在它出现之前，先把"可达范围"这一条做成代码层面的强制。
+    """
+
+    def test_production_without_an_allowlist_refuses_to_start(self):
+        env = {k: v for k, v in COMPLETE.items() if k != TOKEN_ISSUER_CIDRS_VAR}
+        with pytest.raises(InsecureDeploymentError) as ex:
+            check_token_issuer_binding(env)
+        assert "/auth/token" in str(ex.value)
+
+    @pytest.mark.parametrize("wildcard", ["0.0.0.0/0", "::/0", "10.0.0.0/8,0.0.0.0/0"])
+    def test_a_wildcard_allowlist_is_rejected(self, wildcard):
+        """
+        允许一切等于没有约束——而且**比不配还糟**：配置文件里看起来是有的。
+
+        这是"为了让启动校验闭嘴"最容易被写出来的那个值，所以要单独拦。
+        """
+        with pytest.raises(InsecureDeploymentError) as ex:
+            check_token_issuer_binding(dict(COMPLETE, **{TOKEN_ISSUER_CIDRS_VAR: wildcard}))
+        assert "没有约束" in str(ex.value)
+
+    def test_a_real_allowlist_passes(self):
+        check_token_issuer_binding(dict(COMPLETE, **{
+            TOKEN_ISSUER_CIDRS_VAR: "10.0.0.0/8, 127.0.0.1, 192.168.1.0/24",
+        }))
+
+    def test_a_typo_is_an_error_not_a_silently_dropped_entry(self):
+        """
+        拼错的 CIDR 不能被忽略。忽略 = 白名单被悄悄放宽，而配置看起来是对的
+        ——和这个模块要防的其它几条是同一个错误模式。
+        """
+        with pytest.raises(InsecureDeploymentError) as ex:
+            token_issuer_networks({TOKEN_ISSUER_CIDRS_VAR: "10.0.0.0/8,10.0.0.0/99"})
+        assert "10.0.0.0/99" in str(ex.value)
+
+    def test_non_production_stays_unrestricted(self):
+        """本地联调不配这个变量也要能起来。"""
+        check_token_issuer_binding({"APP_ENV": "development"})
+        assert token_issuer_networks({}) == []
 
 
 class TestTimeoutBudgetInterlock:
@@ -193,9 +306,12 @@ class TestTimeoutBudgetInterlock:
         warnings = check_timeout_budgets(env)
         assert warnings and "承接流量" in warnings[0]
 
-    def test_run_startup_checks_wires_both(self):
+    def test_run_startup_checks_wires_all_of_them(self):
         with pytest.raises(InsecureDeploymentError):
             run_startup_checks(dict(COMPLETE, AI_HELPDESK_API_KEY=""))
+        with pytest.raises(InsecureDeploymentError):
+            run_startup_checks({k: v for k, v in COMPLETE.items()
+                                if k != TOKEN_ISSUER_CIDRS_VAR})
         with pytest.raises(ContractViolationError):
             run_startup_checks(dict(COMPLETE, SQL_AGENT_A2A_SEND_TIMEOUT_S="90"))
         run_startup_checks(COMPLETE)  # 不抛

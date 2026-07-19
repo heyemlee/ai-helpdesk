@@ -54,6 +54,31 @@ def test_check_threshold_appends_alert():
     assert len(m._alerts) == 1
 
 
+def _can_bind_wildcard() -> bool:
+    """
+    这台机器允不允许绑 0.0.0.0。
+
+    单独探一次是因为**沙箱里绑不上**（macOS seatbelt 的网络策略会把
+    `bind(0.0.0.0)` 直接拒成 EPERM）。没有这个探测的话，下面那条用例在沙箱下
+    必然红，而它红的原因和被测代码毫无关系——于是"这条挂了是正常的"就变成了
+    一条口口相传的知识，换个人接手就丢了，而且会顺手掩盖掉一次真实的回归。
+    """
+    import socket
+
+    probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        probe.bind(("0.0.0.0", 0))
+        return True
+    except (PermissionError, OSError):
+        return False
+    finally:
+        probe.close()
+
+
+@pytest.mark.skipif(
+    not _can_bind_wildcard(),
+    reason="本环境不允许 bind(0.0.0.0)（沙箱网络策略）——这条用例需要真的占住一个端口",
+)
 def test_busy_prometheus_port_does_not_kill_startup():
     """
     端口被占时 __init__ 必须活着回来。之前 start_http_server 的 OSError 一路冒到
