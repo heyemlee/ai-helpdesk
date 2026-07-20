@@ -104,6 +104,7 @@ _recognizer   = None
 _user_auth    = None
 _rate_limiter = None
 _ticket_store = None
+_ticket_notifier = None
 _shared_state = None
 _infra_redis  = None
 _conv_log     = None
@@ -164,13 +165,14 @@ async def lifespan(app: FastAPI):
     from storage.conversation_log import ConversationLog, PgConversationLog
     from storage.pg import Database
     from storage.vector_store import LocalStore, PgStore
+    from tickets.notifier import TicketNotifier
     from tickets.ticket_store import PgTicketStore, TicketStore
     from tools.knowledge_base import KnowledgeBase
     from tools.sql_agent_client import SQLAgentClient
     from tools.tool_manager import Tool, ToolManager
 
     global _user_auth, _rate_limiter, _ticket_store, _shared_state, _infra_redis
-    global _conv_log, _pg_database, _reranker
+    global _conv_log, _pg_database, _reranker, _ticket_notifier
 
     cfg = resolve_llm_config()
     logger.info(
@@ -222,6 +224,22 @@ async def lifespan(app: FastAPI):
             db_path=os.getenv("CONVERSATION_LOG_DB_PATH", str(pathlib.Path(_ROOT) / "data" / "conversations.db"))
         )
         logger.warning("存储后端: SQLite 本地兜底（未配置 POSTGRES_DSN，仅适用于 demo/联调）")
+
+    # 工单通知：outbox 投递器。先落待发送记录再发，失败按退避重试，
+    # 到上限则升级（ERROR + ticket_notify_failures_total）。
+    # 后台循环负责把进程重启前积压的 pending 捡回来——没有它，
+    # "记录落下了但没人再去发"和原来的丢通知没有区别。
+    _ticket_notifier = TicketNotifier(
+        _ticket_store,
+        os.getenv("TICKET_WEBHOOK_URL", ""),
+        failures_counter=TICKET_NOTIFY_FAILURES,
+        pending_gauge=TICKET_NOTIFY_PENDING,
+    )
+    if _ticket_notifier.enabled:
+        _spawn_background(_ticket_notifier.run_forever())
+        logger.info("工单通知已启用（outbox 投递，失败重试并升级）")
+    else:
+        logger.info("工单通知未配置（TICKET_WEBHOOK_URL 为空），转人工只落库")
 
     # 意图识别器：Orchestrator 和 Evaluator 共用同一个实例，
     # 这样 /health 里的规则通道命中率统计反映的是线上真实流量。
@@ -437,7 +455,12 @@ app.add_middleware(
 )
 
 
-from core.metrics import RATE_LIMIT_HITS, observe_http  # noqa: E402
+from core.metrics import (  # noqa: E402
+    RATE_LIMIT_HITS,
+    TICKET_NOTIFY_FAILURES,
+    TICKET_NOTIFY_PENDING,
+    observe_http,
+)
 from core.telemetry import setup_telemetry  # noqa: E402
 from tools.knowledge_base import should_use_knowledge  # noqa: E402
 
@@ -649,19 +672,12 @@ async def _create_handoff_ticket(result, user_id: str, conv_id: str, message: st
     except Exception:
         logger.exception("转人工工单创建失败")
         return None
-    webhook = os.getenv("TICKET_WEBHOOK_URL", "").strip()
-    if webhook:
-        _spawn_background(_notify_ticket_webhook(webhook, ticket))
+    if _ticket_notifier is not None and _ticket_notifier.enabled:
+        # **先落待发送记录再发**（TicketNotifier.enqueue 内部做的第一件事）。
+        # 反过来的话，发送与落记录之间进程挂掉，这次通知就没有任何痕迹——
+        # 那正是原来的形态：一个 fire-and-forget task，连 HTTP 状态都不看。
+        _spawn_background(_ticket_notifier.enqueue(ticket))
     return ticket.id
-
-
-async def _notify_ticket_webhook(url: str, ticket) -> None:
-    import httpx
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            await client.post(url, json={"type": "ticket.created", "ticket": ticket.to_dict()})
-    except Exception as ex:
-        logger.warning(f"工单 webhook 通知失败: {ex}")
 
 
 # ── 请求/响应模型 ─────────────────────────────────────────────────────────────
@@ -714,6 +730,11 @@ async def health():
         "agents": _orchestrator.get_stats(),
         "routing": _orchestrator.routing_config(),
         "tickets": tickets,
+        # 投递状态要能被看见：`failed` 不为零意味着有客户被告知转人工、
+        # 而值班的人没收到通知——这是"工单落库了"看不出来的那一半。
+        "ticket_notifications": (
+            await _ticket_store.notify_stats() if _ticket_store else {}
+        ),
         "conversations": conversations,
         "storage_backend": _knowledge_base.backend if _knowledge_base else "unknown",
         "retrieval": {

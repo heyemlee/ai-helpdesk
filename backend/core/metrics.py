@@ -10,7 +10,7 @@ Prometheus 业务指标（Grafana 面板的数据源）。
   LLM token 花费   ← llm_tokens_total{agent, direction}
   限流命中         ← rate_limit_hits_total
 """
-from prometheus_client import Counter, Histogram
+from prometheus_client import Counter, Gauge, Histogram
 
 HTTP_REQUESTS = Counter(
     "http_requests_total",
@@ -30,6 +30,19 @@ LLM_TOKENS = Counter(
     "llm_tokens_total",
     "LLM token 用量（成本核算）",
     ["agent", "direction"],  # direction: input / output
+)
+
+TICKET_NOTIFY_FAILURES = Counter(
+    "ticket_notify_failures_total",
+    "工单通知最终投递失败的次数（已重试到上限，或状态码表明重试无意义）。"
+    "**这个数不为零意味着有客户被告知转人工、而值班的人没收到通知**——"
+    "适合直接配成告警，不需要再看别的指标。",
+)
+
+TICKET_NOTIFY_PENDING = Gauge(
+    "ticket_notify_pending",
+    "待投递的工单通知条数。持续不降说明接收端在拒收或不可达；"
+    "接收端恢复之后它会自己回到 0（后台补投循环会把积压捡回来）。",
 )
 
 RATE_LIMIT_HITS = Counter(

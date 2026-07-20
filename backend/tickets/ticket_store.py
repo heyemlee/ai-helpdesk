@@ -54,7 +54,46 @@ CREATE TABLE IF NOT EXISTS tickets (
 );
 CREATE INDEX IF NOT EXISTS idx_tickets_status  ON tickets (status, created_at);
 CREATE INDEX IF NOT EXISTS idx_tickets_conv    ON tickets (conv_id);
+
+-- 待发送记录（outbox）。工单落库和"通知出去了"是两件事，原先第二件没有任何
+-- 记录：`_notify_ticket_webhook` 发一次、异常吞掉、连 HTTP 状态都不看。
+-- 于是「客户被告知已转人工」和「值班的人真的收到了」之间没有任何东西连着。
+--
+-- `id` 同时是**幂等键**（随 Idempotency-Key 发出去），`ticket_id` 上的唯一索引
+-- 保证同一个工单只入队一次——重试重发的是同一条记录，不是新造一条。
+CREATE TABLE IF NOT EXISTS ticket_notifications (
+    id              TEXT PRIMARY KEY,
+    ticket_id       TEXT NOT NULL,
+    url             TEXT NOT NULL,
+    payload         TEXT NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'pending',
+    attempts        INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at REAL NOT NULL,
+    last_error      TEXT NOT NULL DEFAULT '',
+    created_at      REAL NOT NULL,
+    updated_at      REAL NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_notif_ticket ON ticket_notifications (ticket_id);
+CREATE INDEX IF NOT EXISTS idx_notif_due ON ticket_notifications (status, next_attempt_at);
 """
+
+NOTIFY_STATUSES = ("pending", "delivered", "failed")
+
+
+@dataclass
+class Delivery:
+    """一条待发送/已发送的工单通知。`id` 同时是发给接收方的幂等键。"""
+
+    id:              str
+    ticket_id:       str
+    url:             str
+    payload:         str
+    status:          str = "pending"
+    attempts:        int = 0
+    next_attempt_at: float = 0.0
+    last_error:      str = ""
+    created_at:      float = field(default_factory=time.time)
+    updated_at:      float = field(default_factory=time.time)
 
 
 @dataclass
@@ -227,6 +266,73 @@ class TicketStore:
         result["total"] = sum(result.values())
         return result
 
+    # ── 通知 outbox ───────────────────────────────────────────────────────────
+
+    async def notify_enqueue(self, ticket_id: str, url: str, payload: str) -> Delivery | None:
+        """
+        登记一条待发送通知。已经登记过就返回 `None`——**去重靠唯一索引，
+        不靠调用方记得只调一次**。
+        """
+        return await asyncio.to_thread(self._notify_enqueue, ticket_id, url, payload)
+
+    def _notify_enqueue(self, ticket_id: str, url: str, payload: str) -> Delivery | None:
+        d = Delivery(id=f"nt_{uuid.uuid4().hex[:12]}", ticket_id=ticket_id,
+                     url=url, payload=payload, next_attempt_at=time.time())
+        with self._lock:
+            try:
+                self._conn().execute(
+                    "INSERT INTO ticket_notifications (id, ticket_id, url, payload, status,"
+                    " attempts, next_attempt_at, last_error, created_at, updated_at)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (d.id, d.ticket_id, d.url, d.payload, d.status, d.attempts,
+                     d.next_attempt_at, d.last_error, d.created_at, d.updated_at),
+                )
+                self._conn().commit()
+            except sqlite3.IntegrityError:
+                return None
+        return d
+
+    async def notify_due(self, now: float, limit: int = 20) -> list[Delivery]:
+        """到期该发的那些。进程重启后靠它把积压捡回来。"""
+        return await asyncio.to_thread(self._notify_due, now, limit)
+
+    def _notify_due(self, now: float, limit: int) -> list[Delivery]:
+        with self._lock:
+            rows = self._conn().execute(
+                "SELECT * FROM ticket_notifications WHERE status = 'pending'"
+                " AND next_attempt_at <= ? ORDER BY next_attempt_at LIMIT ?",
+                (now, limit),
+            ).fetchall()
+        return [Delivery(**{k: r[k] for k in r.keys()}) for r in rows]
+
+    async def notify_mark(self, delivery_id: str, status: str, *, attempts: int,
+                          next_attempt_at: float = 0.0, last_error: str = "") -> None:
+        await asyncio.to_thread(self._notify_mark, delivery_id, status,
+                                attempts, next_attempt_at, last_error)
+
+    def _notify_mark(self, delivery_id: str, status: str, attempts: int,
+                     next_attempt_at: float, last_error: str) -> None:
+        with self._lock:
+            self._conn().execute(
+                "UPDATE ticket_notifications SET status = ?, attempts = ?,"
+                " next_attempt_at = ?, last_error = ?, updated_at = ? WHERE id = ?",
+                (status, attempts, next_attempt_at, last_error[:500], time.time(), delivery_id),
+            )
+            self._conn().commit()
+
+    async def notify_stats(self) -> dict[str, int]:
+        return await asyncio.to_thread(self._notify_stats)
+
+    def _notify_stats(self) -> dict[str, int]:
+        with self._lock:
+            rows = self._conn().execute(
+                "SELECT status, COUNT(*) AS n FROM ticket_notifications GROUP BY status"
+            ).fetchall()
+        result = {s: 0 for s in NOTIFY_STATUSES}
+        for row in rows:
+            result[row["status"]] = row["n"]
+        return result
+
     @staticmethod
     def _row_to_ticket(row: sqlite3.Row) -> Ticket:
         return Ticket(**{k: row[k] for k in row.keys()})
@@ -307,6 +413,48 @@ class PgTicketStore:
                 "SELECT * FROM tickets ORDER BY created_at DESC LIMIT $1", limit
             )
         return [Ticket(**dict(r)) for r in rows]
+
+    # ── 通知 outbox（与 SQLite 版同构，说明见那边）──────────────────────────
+
+    async def notify_enqueue(self, ticket_id: str, url: str, payload: str) -> Delivery | None:
+        d = Delivery(id=f"nt_{uuid.uuid4().hex[:12]}", ticket_id=ticket_id,
+                     url=url, payload=payload, next_attempt_at=time.time())
+        # ON CONFLICT DO NOTHING + RETURNING：冲突时不返回行，等价于 SQLite 那边
+        # 的 IntegrityError 分支。去重靠 ticket_id 的唯一索引，不靠调用方自觉。
+        row = await self._db.fetchrow(
+            "INSERT INTO ticket_notifications (id, ticket_id, url, payload, status,"
+            " attempts, next_attempt_at, last_error, created_at, updated_at)"
+            " VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)"
+            " ON CONFLICT (ticket_id) DO NOTHING RETURNING id",
+            d.id, d.ticket_id, d.url, d.payload, d.status, d.attempts,
+            d.next_attempt_at, d.last_error, d.created_at, d.updated_at,
+        )
+        return d if row else None
+
+    async def notify_due(self, now: float, limit: int = 20) -> list[Delivery]:
+        rows = await self._db.fetch(
+            "SELECT * FROM ticket_notifications WHERE status = 'pending'"
+            " AND next_attempt_at <= $1 ORDER BY next_attempt_at LIMIT $2",
+            now, limit,
+        )
+        return [Delivery(**dict(r)) for r in rows]
+
+    async def notify_mark(self, delivery_id: str, status: str, *, attempts: int,
+                          next_attempt_at: float = 0.0, last_error: str = "") -> None:
+        await self._db.execute(
+            "UPDATE ticket_notifications SET status = $1, attempts = $2,"
+            " next_attempt_at = $3, last_error = $4, updated_at = $5 WHERE id = $6",
+            status, attempts, next_attempt_at, last_error[:500], time.time(), delivery_id,
+        )
+
+    async def notify_stats(self) -> dict[str, int]:
+        rows = await self._db.fetch(
+            "SELECT status, COUNT(*) AS n FROM ticket_notifications GROUP BY status"
+        )
+        result = {s: 0 for s in NOTIFY_STATUSES}
+        for row in rows:
+            result[row["status"]] = row["n"]
+        return result
 
     async def stats(self) -> dict[str, int]:
         rows = await self._db.fetch(
