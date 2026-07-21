@@ -139,6 +139,9 @@ class MemoryManager:
 
     COMPRESS_AT   = 15    # 达到此条数时压缩，保留摘要 + 最近 KEEP_RECENT 条
     KEEP_RECENT   = 5     # 压缩后保留的最近消息条数
+    # 压缩锁的 TTL。压缩里要等一次模型（几秒），取 60s 留足余量；
+    # 它的作用是进程在压缩中途崩掉时锁能自己过期，不至于这个会话再也压不了。
+    COMPRESS_LOCK_TTL_S = 60
     HISTORY_TOP_K = 5     # 情景记忆检索返回条数
 
     def __init__(
@@ -196,6 +199,20 @@ class MemoryManager:
         从当前工作记忆中提炼用户偏好，更新用户画像。
         用 LLM 提炼偏好，然后按 user_id 覆盖写入向量库——每用户单条，
         避免多条并存时取不到最新画像。
+
+        > **已知问题（未修）：这里也是一次读-改-写，写是整条覆盖。**
+        > 每轮对话都会派一个后台任务跑它（`api/main.py` 的
+        > `_spawn_background(_memory.update_profile(...))`），同一用户两轮挨得近时
+        > 两个任务会重叠，后完成的那个用**它自己那份旧快照**整条覆盖，
+        > 中间那次提炼就丢了。
+        >
+        > 没有跟着 `_compress` 一起修，是因为两者的严重程度不同：画像是**派生**
+        > 数据，下一轮会重新提炼一遍，丢一次的后果是"这一轮的偏好晚一轮才生效"；
+        > 而工作记忆丢的是**客户刚说的原话**，不会自己回来。
+        >
+        > 真要修，需要给 `profile_set` 加版本/CAS（两个存储后端各改一处），
+        > 或者按 user_id 串行化——不是这里加一把锁能解决的，因为覆盖发生在
+        > 存储层。留给下一轮，不要当成已经修好了。
         """
         user_id = self._safe_text(user_id)
         conv_id = self._safe_text(conv_id)
@@ -265,16 +282,42 @@ class MemoryManager:
         """
         工作记忆压缩：
           1. 用 LLM 对旧消息生成摘要
-          2. 摘要存 Redis（覆盖旧摘要）
+          2. 摘要追加进 Redis
           3. 旧消息存入情景记忆（向量库）供跨会话检索
-          4. 工作记忆只保留最近 5 条
+          4. 工作记忆裁掉刚被摘要走的那些
+
+        **这个函数中间要等模型好几秒，期间同一个会话完全可能又来了新消息。**
+        原来的写法是「读全部 → 等模型 → `DEL` 整个 key → 把读到的最后 5 条推回去」，
+        这中间有两个丢数据的口子，两个都没有症状：
+
+        1. **`DEL` 会连等待期间新到的消息一起删掉。** 它们既没进摘要也没留在
+           工作记忆里，就这么没了——用户看到的是"客服突然不记得我刚说的话"。
+        2. **两个压缩并发跑**（同一会话两条请求几乎同时到）时，后一个会按自己
+           那份旧快照重建列表，把前一个的结果盖掉。
+
+        所以改两处：加一把压缩锁（口子 2），以及**不再 DEL 重建、改成只裁掉
+        真正被摘要走的那一段**（口子 1）——等待期间新到的消息原样留在列表里。
         """
+        key = self._wm_key(user_id, conv_id)
+        lock_key = f"{key}:compressing"
+        # SET NX EX：同一会话同时只有一个压缩在跑。抢不到就直接返回——
+        # 别的进程正在压，这一轮不压不会有任何损失（还超阈值的话下一条消息
+        # 会再触发一次）。TTL 是为了进程崩了之后锁能自己过期。
+        if not await self._redis.set(lock_key, "1", nx=True, ex=self.COMPRESS_LOCK_TTL_S):
+            logger.debug("工作记忆压缩已有其它进程在跑，跳过: %s/%s", user_id, conv_id)
+            return
+        try:
+            await self._compress_locked(user_id, conv_id, key)
+        finally:
+            await self._redis.delete(lock_key)
+
+    async def _compress_locked(self, user_id: str, conv_id: str, key: str) -> None:
+        # 拿到锁之后再读，读到的才是最新状态
         messages = await self._get_working_memory(user_id, conv_id)
         if len(messages) < self.COMPRESS_AT:
             return
 
         to_compress = messages[:-self.KEEP_RECENT]
-        keep        = messages[-self.KEEP_RECENT:]
 
         # LLM 摘要
         text = self._safe_text("\n".join(f"{m.role.value}: {m.content}" for m in to_compress))
@@ -289,25 +332,29 @@ class MemoryManager:
         except Exception:
             summary = f"对话包含 {len(to_compress)} 条消息（摘要生成失败）"
 
-        # 存摘要到 Redis
+        # 摘要用 APPEND 追加，不是"读出来拼一下再写回去"——后者同样是一次
+        # 读改写，两个压缩交错时会丢掉一份摘要。APPEND 是原子的。
         skey = self._summary_key(user_id, conv_id)
-        old_summary = await self._redis.get(skey) or ""
-        new_summary = self._safe_text(f"{old_summary}\n{summary}").strip()
-        await self._redis.setex(skey, 86400, new_summary)
+        await self._redis.append(skey, self._safe_text(f"\n{summary}"))
+        await self._redis.expire(skey, 86400)
 
         # 旧消息存入情景记忆
         await self._store_episodic(user_id, conv_id, text, summary)
 
-        # 重置工作记忆为最近 KEEP_RECENT 条
-        key = self._wm_key(user_id, conv_id)
-        await self._redis.delete(key)
-        for m in reversed(keep):
-            await self._redis.lpush(key, json.dumps({
-                "role": m.role.value, "content": m.content,
-                "ts": m.timestamp.isoformat(), "metadata": m.metadata,
-            }))
+        # 裁掉刚被摘要走的那一段。**不是 DEL 重建**：列表是 lpush 的（新的在前），
+        # 被摘要的那些正好在尾部，所以按当前长度算一个下标 LTRIM 掉尾巴就行——
+        # 等待模型期间新到的消息在头部，原样留下。
+        #
+        # LLEN 与 LTRIM 之间又来了一条的话，下标会偏一格，结果是**多留一条**
+        # 已经进过摘要的消息。往"多留"这边偏是安全的：重复一句话，
+        # 比丢一句话轻得多。
+        current_len = await self._redis.llen(key)
+        keep_upto = current_len - len(to_compress) - 1
+        if keep_upto >= 0:
+            await self._redis.ltrim(key, 0, keep_upto)
         await self._redis.expire(key, 86400)
-        logger.info(f"工作记忆压缩完成: {user_id}/{conv_id}，摘要 {len(summary)} 字")
+        logger.info(f"工作记忆压缩完成: {user_id}/{conv_id}，摘要 {len(summary)} 字，"
+                    f"裁掉 {len(to_compress)} 条")
 
     # ── 内部辅助 ──────────────────────────────────────────────────────────────
 
