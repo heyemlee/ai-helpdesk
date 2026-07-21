@@ -459,6 +459,7 @@ from core.metrics import (  # noqa: E402
     RATE_LIMIT_HITS,
     TICKET_NOTIFY_FAILURES,
     TICKET_NOTIFY_PENDING,
+    UNMATCHED_PATH,
     observe_http,
 )
 from core.telemetry import setup_telemetry  # noqa: E402
@@ -481,15 +482,45 @@ async def request_id_middleware(request: HttpRequest, call_next):
     token = request_id_var.set(rid)
     t0 = _time.monotonic()
     status = 500
+    observed = False
+
+    def _observe(path_template: str) -> None:
+        nonlocal observed
+        if observed or path_template in ("/metrics", "/health"):  # 探活不计入业务指标
+            return
+        observed = True
+        observe_http(request.method, path_template, status, _time.monotonic() - t0)
+
     try:
         response = await call_next(request)
         status = response.status_code
     finally:
         request_id_var.reset(token)
         route = request.scope.get("route")
-        path_template = getattr(route, "path", request.url.path)
-        if path_template not in ("/metrics", "/health"):  # 探活不计入业务指标
-            observe_http(request.method, path_template, status, _time.monotonic() - t0)
+        # **没匹配到路由时不能退回原始 URL。** 那是无界的：扫描器打一串不存在的
+        # 路径就能让时序数量无限增长（`path` 是标签，标签值不回收）。
+        path_template = getattr(route, "path", None) or UNMATCHED_PATH
+
+    # 流式响应（/chat/stream）到这里**还一个字节都没发**：call_next 返回的是
+    # 一个 StreamingResponse 对象，body 要等下面这个迭代器被消费才产生。
+    # 在这里记时间，量到的是"把响应对象造出来花了多久"（毫秒级），
+    # 不是这条 SSE 跑完花了多久（十几秒）——p95 面板上那条线看着漂亮，
+    # 其实测的是另一件事，而且把 /chat/stream 的真实延迟整个藏了起来。
+    # 所以把 body 迭代器包一层，在它真正结束时才观测。
+    body_iterator = getattr(response, "body_iterator", None)
+    if body_iterator is not None:
+        async def _timed_body():
+            try:
+                async for chunk in body_iterator:
+                    yield chunk
+            finally:
+                # 客户端中途断开也会走到这里：那一段时间也是真的花掉了
+                _observe(path_template)
+
+        response.body_iterator = _timed_body()
+    else:
+        _observe(path_template)
+
     response.headers["X-Request-ID"] = rid
     return response
 
@@ -650,7 +681,10 @@ async def resolve_user_id(req: "ChatRequest", user_token: str | None) -> str:
     except AuthError as exc:
         raise HTTPException(401, str(exc)) from exc
     if _rate_limiter is not None and not await _rate_limiter.check(user_id):
-        RATE_LIMIT_HITS.labels(user_id=user_id).inc()
+        # 计数器不带 user_id（无界标签会炸时序基数，见 core/metrics.py），
+        # "是谁"记进日志——日志有轮转，指标没有。
+        RATE_LIMIT_HITS.inc()
+        logger.warning("限流拦截: user_id=%s 每分钟上限 %s", user_id, _rate_limiter.limit)
         raise HTTPException(429, f"请求过于频繁：每分钟最多 {_rate_limiter.limit} 次")
     return user_id
 
