@@ -206,6 +206,20 @@ services:
       - ai-helpdesk-network
 
   # ── Promtail（采集容器 JSON 日志推给 Loki）──────────────────────────────────
+  #
+  # ⚠️ **Promtail 已于 2026-03-02 EOL，不再有安全更新。** 这一条还没换，
+  # 原因写在这里免得被当成没人注意到：
+  #
+  # - Grafana 官方的替代是 **Alloy**（`grafana/alloy`），它不是同一套配置——
+  #   `backend/config/promtail.yml` 要重写成 Alloy 的 river 配置，
+  #   `scrape_configs` 那套 relabel 规则得逐条翻译；
+  # - 换完必须实跑验证"日志真的还在进 Loki"。**这类改动最典型的失败形态
+  #   就是静默的**：容器起来了、面板还在、只是没有新日志进来，
+  #   而没人会盯着一个"本来就不常看"的面板。
+  #
+  # 也就是说这是一次需要能跑起来整栈才能做的改动。当时这台机器
+  # 拉不动 Docker Hub（3MB 的 alpine 三分钟都下不来），验证不了，所以**没动**。
+  # 换的时候按上面两条走，别只改镜像名。
   promtail:
     image: grafana/promtail:3.3.2
     container_name: ai-helpdesk-promtail
