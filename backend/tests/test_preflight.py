@@ -11,10 +11,14 @@ import pytest
 from fastapi.testclient import TestClient
 
 from core.preflight import (
+    DEPLOYMENT_SCOPE_VAR,
+    SCOPE_MULTI_TENANT,
+    SCOPE_SINGLE_TENANT,
     TOKEN_ISSUER_CIDRS_VAR,
     ContractViolationError,
     InsecureDeploymentError,
     a2a_send_budget_s,
+    check_deployment_scope,
     check_security_config,
     check_timeout_budgets,
     check_token_issuer_binding,
@@ -31,6 +35,9 @@ COMPLETE = {
     "AI_HELPDESK_AUTH_SECRET": "s",
     "AI_HELPDESK_PROTECT_CHAT": "true",
     TOKEN_ISSUER_CIDRS_VAR: "10.0.0.0/8",
+    # 部署范围是"完整的生产配置"的一部分——加这一行的时候，末尾那条
+    # `run_startup_checks(COMPLETE)  # 不抛` 会先红一次，那正是断言接上了的证据。
+    DEPLOYMENT_SCOPE_VAR: SCOPE_SINGLE_TENANT,
 }
 
 
@@ -312,6 +319,67 @@ class TestTimeoutBudgetInterlock:
         with pytest.raises(InsecureDeploymentError):
             run_startup_checks({k: v for k, v in COMPLETE.items()
                                 if k != TOKEN_ISSUER_CIDRS_VAR})
+        with pytest.raises(InsecureDeploymentError):
+            run_startup_checks({k: v for k, v in COMPLETE.items()
+                                if k != DEPLOYMENT_SCOPE_VAR})
         with pytest.raises(ContractViolationError):
             run_startup_checks(dict(COMPLETE, SQL_AGENT_A2A_SEND_TIMEOUT_S="90"))
         run_startup_checks(COMPLETE)  # 不抛
+
+
+class TestDeploymentScopeIsDeclaredNotAssumed:
+    """
+    部署范围必须显式声明，且与其它配置**双向**校验。
+
+    这一组守的是一个"没有症状"的失效：第一次上线定的试点范围
+    （同权限内部人员 / 只读）让三条硬阻断降级为可接受——`/auth/token` 没接
+    登录系统、下游最小授权没落到真实库、行范围不启用。**那三条降级只在系统
+    确实跑在这个范围里时才成立**，而在这条检查之前，"这是单租户部署"只写在
+    README 和 .env.example 里。文档不会在配错的时候报错。
+    """
+
+    def test_production_without_a_declared_scope_refuses_to_start(self):
+        env = {k: v for k, v in COMPLETE.items() if k != DEPLOYMENT_SCOPE_VAR}
+        with pytest.raises(InsecureDeploymentError) as exc:
+            check_deployment_scope(env)
+        assert DEPLOYMENT_SCOPE_VAR in str(exc.value)
+
+    def test_there_is_no_default_on_purpose(self):
+        """
+        漏配和"想清楚了配成单租户"必须能区分——所以不给默认值。
+
+        同样的理由下游用过一次：`predicate: "*"` 是**显式声明**"这张表不做
+        行隔离"，与"没配"是两回事。默认值会把这两件事合并成同一个状态。
+        """
+        env = {k: v for k, v in COMPLETE.items() if k != DEPLOYMENT_SCOPE_VAR}
+        with pytest.raises(InsecureDeploymentError):
+            check_deployment_scope(env)
+        check_deployment_scope(dict(env, **{DEPLOYMENT_SCOPE_VAR: SCOPE_SINGLE_TENANT}))
+
+    def test_an_unknown_scope_value_is_rejected(self):
+        with pytest.raises(InsecureDeploymentError):
+            check_deployment_scope(dict(COMPLETE, **{DEPLOYMENT_SCOPE_VAR: "prod-ish"}))
+
+    def test_single_tenant_rejects_impersonation(self):
+        """
+        声明单租户却打开 impersonation ⇒ 有人**以为**这套系统在做数据隔离。
+
+        那个误解本身就是风险：它会让人把系统用在范围之外，而系统照常工作。
+        """
+        with pytest.raises(InsecureDeploymentError) as exc:
+            check_deployment_scope(dict(COMPLETE, SQL_AGENT_IMPERSONATE="true"))
+        assert "SQL_AGENT_IMPERSONATE" in str(exc.value)
+
+    def test_multi_tenant_requires_impersonation(self):
+        """
+        反方向同样要拦：声明多租户却不传最终用户身份，所有查询都以服务身份
+        发出，隔离根本不成立——**而链路看起来完全正常**。
+        """
+        env = dict(COMPLETE, **{DEPLOYMENT_SCOPE_VAR: SCOPE_MULTI_TENANT})
+        with pytest.raises(InsecureDeploymentError) as exc:
+            check_deployment_scope(env)
+        assert "SQL_AGENT_IMPERSONATE" in str(exc.value)
+        check_deployment_scope(dict(env, SQL_AGENT_IMPERSONATE="true"))  # 不抛
+
+    def test_non_production_is_not_policed(self):
+        check_deployment_scope({"APP_ENV": "development"})
