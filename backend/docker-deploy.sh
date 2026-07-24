@@ -230,6 +230,14 @@ cleanup() {
 # 函数：备份数据
 backup_data() {
     local backup_dir="$ROOT/backups/$(date +%Y%m%d_%H%M%S)"
+    # 目录名只到秒。同一秒跑两次备份会撞车，而撞车不是"覆盖"——
+    # 下面的 docker cp 会把第二份**嵌套**进第一份里（见那里的注释），
+    # 恢复时读到的是第一份的陈旧数据。撞了就换个名字，别合并。
+    if [ -e "$backup_dir" ]; then
+        local suffix=1
+        while [ -e "${backup_dir}_$suffix" ]; do suffix=$((suffix + 1)); done
+        backup_dir="${backup_dir}_$suffix"
+    fi
 
     print_info "备份数据到 $backup_dir..."
 
@@ -237,10 +245,42 @@ backup_data() {
 
     # 备份 Redis 数据
     compose exec -T redis redis-cli --no-auth-warning -a "$REDIS_PASSWORD" SAVE
-    docker cp ai-helpdesk-redis:/data/dump.rdb "$backup_dir/"
+    # 拷**整个 /data**，不是 dump.rdb。
+    #
+    # 原先是 `docker cp …:/data/dump.rdb`。这个 Redis 跑的是
+    # `--appendonly yes`（docker-compose.yml 的 command），**权威数据在 AOF 里**：
+    # 恢复演练实测 /data/appendonlydir/appendonly.aof.1.incr.aof 是 9.7MB，
+    # 而 dump.rdb 是 **89 字节**——空 RDB 的大小。
+    #
+    # 也就是说旧写法两个方向都是空操作：备份拷走 89 字节的空文件，
+    # 恢复把它拷回去而 Redis 在 AOF 模式下**根本不读它**。
+    # 而 `docker cp` 会成功，脚本会打印"备份完成"——**没有任何症状**。
+    #
+    # 不先做 BGREWRITEAOF 是有意的：AOF 默认 appendfsync everysec，
+    # 直接拷最多丢 1 秒的写入，而那 1 秒就是这套备份的 RPO 下限；
+    # 为省这 1 秒去调 redis-cli 会把备份和「拿得到密码」耦在一起。
+    # 注意写法：`mkdir` + 源路径带 `/.`。
+    #
+    # `docker cp src dest` 的语义**取决于 dest 存不存在**：不存在就把 src 拷成
+    # dest，存在就把 src 拷**进** dest。写成 `cp …:/data "$dir/redis-data"` 时，
+    # 只要 redis-data 已经存在（同秒撞车、重跑、手工试过一次），就会变成
+    # redis-data/data/…——多一层，恢复时按老路径读到的是陈旧数据，
+    # **而且两次 cp 都成功，没有任何报错**。恢复演练踩到过一次。
+    #
+    # 带 `/.` 是"拷贝内容"，配合先 mkdir，两种情况下结果一样。
+    mkdir -p "$backup_dir/redis-data"
+    docker cp ai-helpdesk-redis:/data/. "$backup_dir/redis-data"
 
     # 备份 Postgres 数据
-    docker exec ai-helpdesk-postgres pg_dump -U "${POSTGRES_USER:-aihelpdesk}" "${POSTGRES_DB:-aihelpdesk}" > "$backup_dir/postgres.sql"
+    # `--clean --if-exists` 不是可选项。
+    #
+    # 原先是裸 `pg_dump`：产出的 SQL 只有 CREATE，没有 DROP。往**非空**库里灌
+    # 会在第一张表就撞上 `relation "conversation_log" already exists`，
+    # 配合 ON_ERROR_STOP=1 直接中止——恢复演练实测到这一条，
+    # 也就是说这条恢复路径**只在空库上成立**，而真实恢复场景恰恰是库非空。
+    docker exec ai-helpdesk-postgres pg_dump --clean --if-exists \
+        -U "${POSTGRES_USER:-aihelpdesk}" "${POSTGRES_DB:-aihelpdesk}" \
+        > "$backup_dir/postgres.sql"
 
     # 备份配置
     cp "$ENV_FILE" "$backup_dir/"
@@ -310,13 +350,57 @@ restore_data() {
                  -d "${POSTGRES_DB:-aihelpdesk}" -v ON_ERROR_STOP=1 \
                  < "$backup_dir/postgres.sql"; then
             print_error "Postgres 恢复失败，未继续（请检查 $backup_dir/postgres.sql）"
+            # 把应用拉回来，并**明说**当前是什么状态。
+            #
+            # 原先这条路径直接 return，应用留在 stopped——恢复演练实测：
+            # 恢复因为一个技术原因失败，服务就那么停着，而屏幕上只有一句
+            # "请检查 postgres.sql"。真实事故里这是最坏的形态：**你以为你在恢复，
+            # 实际上你刚把服务停了，而且没人告诉你**。
+            print_warn "数据未改动。正在把应用拉回原状态..."
+            compose start ai-helpdesk frontend nginx
+            print_error "恢复未完成，服务已按原样拉起。旧格式备份（无 --clean 的 "
+            print_error "pg_dump）无法恢复到非空库，请用新备份或先清空目标库。"
             return 1
         fi
 
         print_info "3/3 恢复 Redis..."
         compose stop redis
-        if ! docker cp "$backup_dir/dump.rdb" ai-helpdesk-redis:/data/dump.rdb; then
-            print_error "Redis dump.rdb 拷入失败"
+        if [ -d "$backup_dir/redis-data" ]; then
+            # 先清空再灌：AOF 是**目录**（appendonlydir/ 里有 manifest + base + incr），
+            # 只往里拷不删旧的，会留下一份和 manifest 对不上的残留分片，
+            # Redis 起来时按 manifest 读，等于恢复没生效——又是一个没有症状的形态。
+            #
+            # 清空必须用**挂同一个卷的临时容器**，不能 `docker exec` 到 redis 上：
+            # 此刻 redis 已经 stop 了，exec 要求容器在跑。
+            # （恢复演练里这一版就是这么写错的，和它上面那段注释在骂的
+            # 原始缺陷是同一类错误——所以留在这里当个记号。）
+            local redis_volume
+            redis_volume="$(docker inspect ai-helpdesk-redis \
+                --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Name}}{{end}}{{end}}' 2>/dev/null)"
+            if [ -z "$redis_volume" ]; then
+                print_error "找不到 Redis 的 /data 卷，恢复中止"
+                compose start redis ai-helpdesk frontend nginx
+                return 1
+            fi
+            if ! docker run --rm -v "$redis_volume:/data" alpine:3.20 \
+                    sh -c 'rm -rf /data/appendonlydir /data/dump.rdb'; then
+                print_error "清空 Redis 数据目录失败"
+                compose start redis ai-helpdesk frontend nginx
+                return 1
+            fi
+            if ! docker cp "$backup_dir/redis-data/." ai-helpdesk-redis:/data; then
+                print_error "Redis 数据目录拷入失败"
+                compose start redis ai-helpdesk frontend nginx
+                return 1
+            fi
+        elif [ -f "$backup_dir/dump.rdb" ]; then
+            # 兼容改成整目录备份之前的旧备份：它们只有 dump.rdb。
+            # **明确警告**——AOF 模式下 Redis 不读这个文件，恢复不会生效。
+            print_warn "这是旧格式备份（只有 dump.rdb）。当前 Redis 以 appendonly 模式运行，"
+            print_warn "不会加载 dump.rdb —— Redis 的数据**不会**被恢复，只有 Postgres 会。"
+            docker cp "$backup_dir/dump.rdb" ai-helpdesk-redis:/data/dump.rdb || true
+        else
+            print_error "备份里既没有 redis-data/ 也没有 dump.rdb"
             compose start redis
             return 1
         fi
