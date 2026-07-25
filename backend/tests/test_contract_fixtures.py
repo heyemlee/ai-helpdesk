@@ -43,7 +43,7 @@ REQUIRED = os.getenv("A2A_CONTRACT_REQUIRED", "").strip().lower() in _TRUE
 
 # 契约仓库钉在 tag 上，不跟 main（附录 B）。CI 里 checkout 哪个 tag 见
 # .github/workflows/ci.yml 的 contract job；改 tag 是一次要过评审的改动。
-PINNED_TAG = "v1.8"
+PINNED_TAG = "v1.11"
 
 
 def _contract_dir() -> pathlib.Path | None:
