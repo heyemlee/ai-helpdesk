@@ -1,0 +1,43 @@
+server {
+    listen 80;
+    # 官方 entrypoint 的 10-listen-on-ipv6-by-default.sh 在渲染模板之前就跑完了，
+    # 它给存量 default.conf 加的 IPv6 监听会被这个模板覆盖掉。
+    # 容器内的 localhost 先解析成 ::1，缺了这行健康检查会一直 connection refused。
+    listen [::]:80;
+    server_name _;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    client_max_body_size 10M;
+
+    # 用容器内置 DNS 在「请求时」解析后端地址，而不是启动时解析一次。
+    # nginx 默认对 proxy_pass 里的字面主机名只在启动时解析：
+    #   - 后端还没就绪时，前端容器会直接 [emerg] host not found 启动失败；
+    #   - 后端重启换了 IP 之后，前端会一直打到旧地址。
+    # 把地址放进变量并配 resolver，就变成每次请求按 TTL 重新解析，
+    # 后端不可用时返回 502，而不是让整个前端起不来。
+    resolver ${NGINX_LOCAL_RESOLVERS} valid=10s ipv6=off;
+
+    # SPA 路由：任何未命中静态文件的路径都回落到 index.html
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    location /api/ {
+        set $api_upstream "${API_UPSTREAM}";
+        # proxy_pass 用变量时 nginx 不会自动剥掉 location 前缀，必须手动 rewrite
+        rewrite ^/api/(.*)$ /$1 break;
+        proxy_pass http://$api_upstream;
+
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # 评测和多 Agent 并行链路可能跑得比较久，超时放宽到 120s
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 120s;
+        proxy_read_timeout 120s;
+    }
+}
