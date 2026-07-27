@@ -9,10 +9,10 @@ import uuid
 
 import pytest
 
-from core.embedder import Embedder, cosine
-from core.lexical import index_text, query_tokens
-from storage.vector_store import LocalStore
-from tools.knowledge_base import KnowledgeBase
+from app.core.embedder import Embedder, cosine
+from app.core.lexical import index_text, query_tokens
+from app.storage.vector_store import LocalStore
+from app.tools.knowledge_base import KnowledgeBase
 
 TEST_PG_DSN = os.getenv("TEST_POSTGRES_DSN", "").strip()
 
@@ -122,8 +122,8 @@ async def test_local_store_contract(tmp_path):
 
 @pytest.mark.skipif(not TEST_PG_DSN, reason="未设置 TEST_POSTGRES_DSN")
 async def test_pg_store_contract():
-    from storage.pg import Database
-    from storage.vector_store import PgStore
+    from app.storage.pg import Database
+    from app.storage.vector_store import PgStore
 
     embedder = Embedder()
     db = Database(TEST_PG_DSN)
@@ -137,9 +137,9 @@ async def test_pg_store_contract():
 @pytest.mark.skipif(not TEST_PG_DSN, reason="未设置 TEST_POSTGRES_DSN")
 async def test_pg_ticket_and_convlog_contract():
     """PG 版工单 + 审计日志跑与 SQLite 版相同的核心断言。"""
-    from storage.conversation_log import PgConversationLog
-    from storage.pg import Database
-    from tickets.ticket_store import PgTicketStore
+    from app.storage.conversation_log import PgConversationLog
+    from app.storage.pg import Database
+    from app.tickets.ticket_store import PgTicketStore
 
     db = Database(TEST_PG_DSN)
     await db.connect(embedding_dim=Embedder().dim)

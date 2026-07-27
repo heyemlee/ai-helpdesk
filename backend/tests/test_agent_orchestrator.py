@@ -2,13 +2,13 @@
 import pytest
 from conftest import make_request, stub_agents
 
-from agents.agent_orchestrator import (
+from app.agents.agent_orchestrator import (
     _HANDOFF_NOTICE,
     SPECIALIST_AGENTS,
     AgentOrchestrator,
     AgentType,
 )
-from core.intent_recognizer import IntentCategory
+from app.core.intent_recognizer import IntentCategory
 
 # ── 专家阵容 ──────────────────────────────────────────────────────────────────
 
@@ -147,7 +147,7 @@ async def test_explicit_handoff_intent_skips_llm_agents(orchestrator):
 
 
 async def test_critical_urgency_goes_straight_to_human(orchestrator):
-    from core.intent_recognizer import UrgencyLevel
+    from app.core.intent_recognizer import UrgencyLevel
 
     stub_agents(orchestrator)
     req = make_request("紧急！系统全挂了", IntentCategory.TECHNICAL, urgency=UrgencyLevel.CRITICAL)
@@ -687,7 +687,7 @@ def test_handoff_notice_follows_the_customer_language(
     转人工通知是客户读的正文。写死中文时，一整段英文回答的结尾会突然接上
     一段中文——实测就是这样。
     """
-    from agents.agent_orchestrator import _customer_text
+    from app.agents.agent_orchestrator import _customer_text
 
     assert forbidden not in _customer_text(message, "handoff_notice")
     assert expected in _customer_text(message, "handoff_notice")
@@ -699,7 +699,7 @@ def test_handoff_notice_follows_the_customer_language(
 ])
 def test_every_customer_string_exists_in_both_languages(key):
     """漏一条就是一段中文掉进英文回复里，加新文案时这条会拦住。"""
-    from agents.agent_orchestrator import _CUSTOMER_TEXT
+    from app.agents.agent_orchestrator import _CUSTOMER_TEXT
 
     for lang in ("zh", "en"):
         assert _CUSTOMER_TEXT[lang].get(key), f"{lang} 缺少文案 {key}"
@@ -710,7 +710,7 @@ def test_english_asks_are_stripped_before_the_handoff_notice():
     转人工前要摘掉"让客户补资料"的表述，否则同一条回复一边要资料、一边说
     已经转交人工。_ASK_RE 原本一条英文规则都没有，英文回复必然自相矛盾。
     """
-    from agents.agent_orchestrator import _strip_customer_asks
+    from app.agents.agent_orchestrator import _strip_customer_asks
 
     answer = (
         "A deep scratch is usually a transit issue.\n"
@@ -869,7 +869,7 @@ async def test_streaming_never_leaks_the_trailer(orchestrator, monkeypatch):
     流式路径：标记可能被 \\n 当成一句放出来，也可能留在 flush 的尾巴里，
     两种情况都不能出现在 delta 事件里，最终 content 里也不能有。
     """
-    from agents.agent_orchestrator import Request
+    from app.agents.agent_orchestrator import Request
     agent = orchestrator._pool[AgentType.GENERAL][0]
 
     async def fake_stream(req, skill_prompt=""):

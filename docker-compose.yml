@@ -61,8 +61,8 @@ services:
       - '--storage.tsdb.retention.time=200h'
       - '--web.enable-lifecycle'
     volumes:
-      - ./backend/config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./backend/config/alerts:/etc/prometheus/alerts:ro
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/prometheus/alerts:/etc/prometheus/alerts:ro
       - prometheus-data:/prometheus
     restart: unless-stopped
     networks:
@@ -149,7 +149,7 @@ services:
     ports:
       - "80:80"
     volumes:
-      - ./backend/config/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - nginx-logs:/var/log/nginx
     depends_on:
       ai-helpdesk:
@@ -172,7 +172,7 @@ services:
     container_name: ai-helpdesk-otel
     command: ["--config=/etc/otelcol/config.yml"]
     volumes:
-      - ./backend/config/otel-collector.yml:/etc/otelcol/config.yml:ro
+      - ./deploy/otel/otel-collector.yml:/etc/otelcol/config.yml:ro
     ports:
       - "4318:4318"   # OTLP HTTP（后端 SDK 上报）
     depends_on:
@@ -187,7 +187,7 @@ services:
     container_name: ai-helpdesk-tempo
     command: ["-config.file=/etc/tempo/tempo.yml"]
     volumes:
-      - ./backend/config/tempo.yml:/etc/tempo/tempo.yml:ro
+      - ./deploy/tempo/tempo.yml:/etc/tempo/tempo.yml:ro
       - tempo-data:/var/tempo
     restart: unless-stopped
     networks:
@@ -199,7 +199,7 @@ services:
     container_name: ai-helpdesk-loki
     command: ["-config.file=/etc/loki/loki.yml"]
     volumes:
-      - ./backend/config/loki.yml:/etc/loki/loki.yml:ro
+      - ./deploy/loki/loki.yml:/etc/loki/loki.yml:ro
       - loki-data:/loki
     restart: unless-stopped
     networks:
@@ -211,7 +211,7 @@ services:
   # 原因写在这里免得被当成没人注意到：
   #
   # - Grafana 官方的替代是 **Alloy**（`grafana/alloy`），它不是同一套配置——
-  #   `backend/config/promtail.yml` 要重写成 Alloy 的 river 配置，
+  #   `deploy/promtail/promtail.yml` 要重写成 Alloy 的 river 配置，
   #   `scrape_configs` 那套 relabel 规则得逐条翻译；
   # - 换完必须实跑验证"日志真的还在进 Loki"。**这类改动最典型的失败形态
   #   就是静默的**：容器起来了、面板还在、只是没有新日志进来，
@@ -225,7 +225,7 @@ services:
     container_name: ai-helpdesk-promtail
     command: ["-config.file=/etc/promtail/promtail.yml"]
     volumes:
-      - ./backend/config/promtail.yml:/etc/promtail/promtail.yml:ro
+      - ./deploy/promtail/promtail.yml:/etc/promtail/promtail.yml:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:
@@ -245,8 +245,8 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-aihelpdesk123}
       - GF_USERS_DEFAULT_THEME=dark
     volumes:
-      - ./backend/config/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./backend/config/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana-data:/var/lib/grafana
     depends_on:
       - prometheus

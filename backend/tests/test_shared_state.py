@@ -5,7 +5,7 @@ SharedState 的熔断器验证——这正是多实例共享的最小模型。
 """
 import time
 
-from core.shared_state import DistributedCircuitBreaker, SharedState
+from app.core.shared_state import DistributedCircuitBreaker, SharedState
 
 # ── SharedState 进程内退化 ────────────────────────────────────────────────────
 

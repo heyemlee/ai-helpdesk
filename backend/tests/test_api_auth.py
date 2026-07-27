@@ -13,8 +13,8 @@ def _load_app(monkeypatch, api_key: str = "", protect_chat: str = "false"):
     monkeypatch.setenv("AI_HELPDESK_PROTECT_CHAT", protect_chat)
     # 避免挂载前端产物干扰路由断言
     monkeypatch.setenv("AI_HELPDESK_FRONTEND_DIST", "/nonexistent")
-    sys.modules.pop("api.main", None)
-    return importlib.import_module("api.main")
+    sys.modules.pop("app.api.main", None)
+    return importlib.import_module("app.api.main")
 
 
 # 这些端点会改变服务行为或产生真实成本，必须受保护

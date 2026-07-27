@@ -3,7 +3,7 @@ import asyncio
 import json
 import logging
 
-from core.request_context import (
+from app.core.request_context import (
     JsonFormatter,
     RequestIdFilter,
     current_request_id,

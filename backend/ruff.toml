@@ -3,7 +3,7 @@ line-length = 120
 # 本地 venv 是 3.11、CI 和镜像是 3.12，按最低的来
 target-version = "py311"
 
-exclude = [".venv", ".venv.arm64-broken", "data", "wiki"]
+exclude = [".venv", ".venv.arm64-broken", "data"]
 
 [lint]
 select = [
@@ -21,6 +21,6 @@ ignore = [
 
 [lint.per-file-ignores]
 "tests/*" = ["B011"]
-# 这两个文件必须先把项目根塞进 sys.path 才能 import 业务模块
-"api/main.py" = ["E402"]
+# 这两个文件的第一条可执行语句必须是 httpx2.alias_httpx()，其余 import 只能排在它后面
+"app/api/main.py" = ["E402"]
 "tests/conftest.py" = ["E402"]

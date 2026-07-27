@@ -3,7 +3,7 @@ import time
 
 import pytest
 
-from storage.conversation_log import ConversationLog
+from app.storage.conversation_log import ConversationLog
 
 
 @pytest.fixture

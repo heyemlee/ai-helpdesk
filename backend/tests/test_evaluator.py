@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from evaluation.evaluator import (
+from app.evaluation.evaluator import (
     EndToEndEvaluator,
     IntentEvaluator,
     IntentTestCase,

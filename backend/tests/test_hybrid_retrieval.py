@@ -6,11 +6,11 @@
 """
 import pytest
 
-from core.lexical import bm25_scores, index_text, query_tokens, tokenize
-from core.reranker import Reranker
-from storage.vector_store import LocalStore
-from tools.knowledge_base import KnowledgeBase, rrf_fuse
-from tools.tool_manager import RerankOutcome, RerankPayload, Tool, ToolManager
+from app.core.lexical import bm25_scores, index_text, query_tokens, tokenize
+from app.core.reranker import Reranker
+from app.storage.vector_store import LocalStore
+from app.tools.knowledge_base import KnowledgeBase, rrf_fuse
+from app.tools.tool_manager import RerankOutcome, RerankPayload, Tool, ToolManager
 
 # ── 分词 ──────────────────────────────────────────────────────────────────────
 
@@ -98,7 +98,7 @@ def test_rrf_truncates_to_top_k():
 @pytest.fixture
 async def kb(tmp_path):
     store = LocalStore(db_path=str(tmp_path / "kb.db"))
-    from core.embedder import Embedder
+    from app.core.embedder import Embedder
     yield KnowledgeBase(store=store, embedder=Embedder())
     await store.close()
 

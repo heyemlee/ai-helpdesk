@@ -14,7 +14,7 @@ import sys
 
 import pytest
 
-from tools.sql_agent_client import (
+from app.tools.sql_agent_client import (
     DEFAULT_DATA_INTENTS,
     SQLAgentClient,
     should_query_business_data,
@@ -63,7 +63,7 @@ class _FakeAsyncClient:
 
 
 def _patch_httpx(monkeypatch, payload, status_code=200):
-    import tools.sql_agent_client as mod
+    import app.tools.sql_agent_client as mod
     fake = _FakeAsyncClient(payload, status_code)
     monkeypatch.setattr(mod.httpx, "AsyncClient", fake)
     _FakeAsyncClient.last_call = {}
@@ -214,7 +214,7 @@ class TestClient:
         是出处，而链路看起来完全正常**——没有报错、没有降级事件。
         回滚（契约 §6.2）正好会把流量切到这条路上。
         """
-        from core.evidence import assess, normalize_delegation_result
+        from app.core.evidence import assess, normalize_delegation_result
 
         steps = OK_PAYLOAD["steps"]
         payload = {k: v for k, v in OK_PAYLOAD.items() if k != "steps"}
@@ -237,13 +237,13 @@ class TestClient:
         """
         import logging
 
-        from core.evidence import assess, normalize_delegation_result
+        from app.core.evidence import assess, normalize_delegation_result
 
         good = OK_PAYLOAD["steps"]
         bad = [dict(good[0], success=False, row_count=0, error="boom")]
         payload = dict(OK_PAYLOAD, steps=good, step_logs=bad)
 
-        with caplog.at_level(logging.WARNING, logger="core.evidence"):
+        with caplog.at_level(logging.WARNING, logger="app.core.evidence"):
             out = normalize_delegation_result(payload)
         assert out["steps"] == good
         assert assess(out).execution_status == "success"
@@ -256,7 +256,7 @@ class TestClient:
         out = await SQLAgentClient(base_url="http://x:8000").query("q", session_id="s")
         assert out["steps"] == OK_PAYLOAD_QUERY_SHAPE["step_logs"]
 
-        from core.evidence import assess
+        from app.core.evidence import assess
         assert assess(out).usable_as_source is True
 
     async def test_trust_booleans_are_not_coerced_by_the_client(self, monkeypatch):
@@ -271,7 +271,7 @@ class TestClient:
         out = await SQLAgentClient(base_url="http://x:8000").query("q", session_id="s")
         assert out["has_risk"] == "false", "客户端不该把它变成布尔"
 
-        from core.evidence import assess
+        from app.core.evidence import assess
         assert assess(out).has_risk is True, "字符串布尔按不可信处置"
         assert assess(out).usable_as_source is False
 
@@ -351,8 +351,8 @@ class TestDownstreamSessionIsolation:
 def _load_main(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     monkeypatch.setenv("AI_HELPDESK_FRONTEND_DIST", "/nonexistent")
-    sys.modules.pop("api.main", None)
-    return importlib.import_module("api.main")
+    sys.modules.pop("app.api.main", None)
+    return importlib.import_module("app.api.main")
 
 
 class _StubToolManager:
@@ -363,7 +363,7 @@ class _StubToolManager:
 
     async def call(self, name, params, context=None, **kwargs):
         self.calls.append((name, params))
-        from tools.tool_manager import ToolResult
+        from app.tools.tool_manager import ToolResult
         return ToolResult(success=self._success, data=self._data, tool_name=name)
 
 
@@ -571,7 +571,7 @@ class TestCurrencyIsDeclared:
         它让"部署配置的币种被当成事实报出去"这件事可以被断言、可以进日志，
         而不是只能靠人读那段中文。与 `status_source` 同构。
         """
-        from core.evidence import (
+        from app.core.evidence import (
             CURRENCY_CONTRACT,
             CURRENCY_DEPLOYMENT_CONFIG,
             CURRENCY_UNKNOWN,
@@ -604,7 +604,7 @@ class TestA2ATransport:
         assert SQLAgentClient.from_env().transport == "query"
 
     async def test_prestream_32004_falls_back_to_send(self, monkeypatch):
-        from tools.a2a_client import StreamUnsupported
+        from app.tools.a2a_client import StreamUnsupported
         c = SQLAgentClient(base_url="http://x:8000", transport="a2a")
         calls = []
 
@@ -626,7 +626,7 @@ class TestA2ATransport:
         assert calls == ["stream", "send"] and out["answer"] == "ok"
 
     async def test_midstream_failure_does_not_resend(self, monkeypatch):
-        from tools.a2a_client import A2AError
+        from app.tools.a2a_client import A2AError
         c = SQLAgentClient(base_url="http://x:8000", transport="a2a")
         calls = []
 

@@ -10,7 +10,7 @@ import sys
 import pytest
 from fastapi.testclient import TestClient
 
-from core.preflight import (
+from app.core.preflight import (
     DEPLOYMENT_SCOPE_VAR,
     SCOPE_MULTI_TENANT,
     SCOPE_SINGLE_TENANT,
@@ -108,8 +108,8 @@ class TestAuthTokenNeverFailsOpen:
         monkeypatch.setenv("AI_HELPDESK_API_KEY", env.get("AI_HELPDESK_API_KEY", ""))
         monkeypatch.setenv("APP_ENV", env.get("APP_ENV", "development"))
         monkeypatch.setenv(TOKEN_ISSUER_CIDRS_VAR, env.get(TOKEN_ISSUER_CIDRS_VAR, ""))
-        sys.modules.pop("api.main", None)
-        return importlib.import_module("api.main")
+        sys.modules.pop("app.api.main", None)
+        return importlib.import_module("app.api.main")
 
     def test_no_admin_key_means_no_token_issuing(self, monkeypatch):
         """审查实测拿到 HTTP 200 的那条请求，现在必须拿不到令牌。"""
@@ -162,8 +162,8 @@ class TestAuthTokenSourceIsCheckedAtRequestTime:
         monkeypatch.setenv("AI_HELPDESK_API_KEY", "s3cret")
         monkeypatch.setenv("APP_ENV", "development")
         monkeypatch.setenv(TOKEN_ISSUER_CIDRS_VAR, cidrs)
-        sys.modules.pop("api.main", None)
-        m = importlib.import_module("api.main")
+        sys.modules.pop("app.api.main", None)
+        m = importlib.import_module("app.api.main")
         # TestClient 默认把对端报成字符串 "testclient"，不是 IP——
         # 显式给一个地址，这一层测的才是真的地址判定
         client = TestClient(m.app, client=(peer, 33333)) if peer else TestClient(m.app)

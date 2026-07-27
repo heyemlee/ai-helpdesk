@@ -33,8 +33,8 @@ import pathlib
 
 import pytest
 
-from core.evidence import assess, normalize_delegation_result
-from tools.a2a_client import A2AClient, progress_label
+from app.core.evidence import assess, normalize_delegation_result
+from app.tools.a2a_client import A2AClient, progress_label
 
 # ── 定位契约仓库 ─────────────────────────────────────────────────────────────
 
@@ -334,7 +334,7 @@ def test_chinese_labels_cover_every_known_identifier():
     里还会出现。**但不要拿 `known` 去断言运行时会发出什么**——那两个不会
     出现在任何部署里。
     """
-    from tools.a2a_client import DATABASE_LABEL
+    from app.tools.a2a_client import DATABASE_LABEL
     known = _load("schema/database-id.schema.json")["$defs"]["known"]["enum"]
     missing = [db for db in known if db not in DATABASE_LABEL]
     assert not missing, f"这些标识符没有中文映射: {missing}"

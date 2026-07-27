@@ -10,8 +10,8 @@ import time
 
 import pytest
 
-from tickets.notifier import MAX_ATTEMPTS, TicketNotifier, backoff_delay, is_permanent
-from tickets.ticket_store import TicketStore
+from app.tickets.notifier import MAX_ATTEMPTS, TicketNotifier, backoff_delay, is_permanent
+from app.tickets.ticket_store import TicketStore
 
 
 @pytest.fixture
@@ -118,7 +118,7 @@ class TestRetryAndEscalation:
         import logging
         http = fake_http([404])
         n = TicketNotifier(store, "http://hooks.example/t")
-        with caplog.at_level(logging.ERROR, logger="tickets.notifier"):
+        with caplog.at_level(logging.ERROR, logger="app.tickets.notifier"):
             await n.enqueue(await _ticket(store))
 
         assert len(http.calls) == 1, "永久失败不该继续重试"
@@ -139,7 +139,7 @@ class TestRetryAndEscalation:
         n = TicketNotifier(store, "http://hooks.example/t")
         await n.enqueue(await _ticket(store))
 
-        with caplog.at_level(logging.ERROR, logger="tickets.notifier"):
+        with caplog.at_level(logging.ERROR, logger="app.tickets.notifier"):
             for _ in range(MAX_ATTEMPTS):
                 due = await store.notify_due(time.time() + 86400)
                 if not due:

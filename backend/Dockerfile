@@ -42,8 +42,8 @@ COPY --from=dependencies /usr/local/bin /usr/local/bin
 COPY --chown=aihelpdesk:aihelpdesk . .
 
 # 创建必要目录，只调整运行期需要写入的目录权限，避免递归 chown 整个应用。
-RUN mkdir -p /app/data /app/logs /app/config && \
-    chown aihelpdesk:aihelpdesk /app/data /app/logs /app/config
+RUN mkdir -p /app/data /app/logs && \
+    chown aihelpdesk:aihelpdesk /app/data /app/logs
 USER aihelpdesk
 
 EXPOSE 8000
@@ -51,16 +51,16 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-CMD ["python", "-m", "uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "-m", "uvicorn", "app.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 # ── 阶段 4：开发镜像 ──────────────────────────────────────────────────────────
 FROM dependencies AS development
 
 COPY . .
 
-RUN mkdir -p /app/data /app/logs /app/config /app/tests && \
+RUN mkdir -p /app/data /app/logs /app/tests && \
     chmod -R 777 /app/data /app/logs
 
 EXPOSE 8000
 
-CMD ["python", "-m", "uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["python", "-m", "uvicorn", "app.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

@@ -21,11 +21,11 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parents[2]
-SCRIPT = REPO / "backend" / "docker-deploy.sh"
+SCRIPT = REPO / "scripts" / "docker-deploy.sh"
 
 pytestmark = pytest.mark.skipif(
     not SCRIPT.is_file() or shutil.which("bash") is None,
-    reason="需要 bash 和 backend/docker-deploy.sh",
+    reason="需要 bash 和 scripts/docker-deploy.sh",
 )
 
 # 假 docker：把每次调用的参数追加进日志，然后成功返回。
@@ -45,17 +45,21 @@ exit ${FAKE_DOCKER_EXIT:-0}
 def fake_repo(tmp_path):
     """
     在临时目录里搭一个仓库形状，**绝不能对真仓库跑 restore**——
-    它会 `cp` 覆盖 backend/.env 和 backend/config。
+    它会 `cp` 覆盖 backend/.env 和 deploy/。
     """
     root = tmp_path / "repo"
     backend = root / "backend"
-    (backend / "config").mkdir(parents=True)
+    backend.mkdir(parents=True)
+    (root / "deploy" / "nginx").mkdir(parents=True)
     (root / "docker-compose.yml").write_text("services: {}\n")
     (backend / ".env").write_text("APP_ENV=development\n")
-    shutil.copy(SCRIPT, backend / "docker-deploy.sh")
+    script = root / "scripts" / "docker-deploy.sh"
+    script.parent.mkdir()
+    shutil.copy(SCRIPT, script)
 
     backup = tmp_path / "backup"
-    (backup / "config").mkdir(parents=True)
+    (backup / "deploy" / "prometheus").mkdir(parents=True)
+    (backup / "deploy" / "prometheus" / "prometheus.yml").write_text("restored: true\n")
     (backup / "postgres.sql").write_text("-- dump\n")
     (backup / "dump.rdb").write_bytes(b"redis")
     (backup / ".env").write_text("APP_ENV=production\n")
@@ -67,7 +71,7 @@ def fake_repo(tmp_path):
     docker.chmod(0o755)
 
     return {"root": root, "backend": backend, "backup": backup, "bin": bindir,
-            "cmdlog": tmp_path / "cmds.log"}
+            "script": script, "cmdlog": tmp_path / "cmds.log"}
 
 
 def _run_restore(fake_repo) -> list[str]:
@@ -75,8 +79,7 @@ def _run_restore(fake_repo) -> list[str]:
     env["PATH"] = f"{fake_repo['bin']}:{env['PATH']}"
     env["CMDLOG"] = str(fake_repo["cmdlog"])
     proc = subprocess.run(
-        ["bash", str(fake_repo["backend"] / "docker-deploy.sh"),
-         "restore", str(fake_repo["backup"])],
+        ["bash", str(fake_repo["script"]), "restore", str(fake_repo["backup"])],
         input="y\n", capture_output=True, text=True, env=env, timeout=120,
     )
     assert proc.returncode == 0, f"恢复脚本退出码 {proc.returncode}\n{proc.stdout}\n{proc.stderr}"
@@ -132,10 +135,36 @@ class TestRestoreOrdering:
         assert stop_redis < copy < start_redis
 
     def test_config_and_env_land_inside_the_repo(self, fake_repo):
-        """恢复出来的配置要真的落到 backend/ 下，别只在日志里说了一句。"""
+        """恢复出来的配置要真的落到仓库里，别只在日志里说了一句：.env 进 backend/，基础设施配置整体替换 deploy/。"""
         _run_restore(fake_repo)
         assert (fake_repo["backend"] / ".env").read_text() == "APP_ENV=production\n"
-        assert (fake_repo["backend"] / "config").is_dir()
+        deploy = fake_repo["root"] / "deploy"
+        assert (deploy / "prometheus" / "prometheus.yml").read_text() == "restored: true\n"
+        # 整体替换，不是叠加：恢复前就有、备份里没有的文件不该留下来
+        assert not (deploy / "nginx").exists()
+
+    def test_legacy_backup_with_flat_config_dir_restores_env_but_not_deploy(self, fake_repo):
+        """
+        目录重整之前的备份把配置存在 config/（扁平布局，当时在 backend/config/）。
+        它和 deploy/ 的按服务分目录布局对不上，脚本必须**不动 deploy/**、只恢复 .env，
+        并且说清楚——而不是把旧布局整个盖上去。
+        """
+        backup = fake_repo["backup"]
+        shutil.rmtree(backup / "deploy")
+        (backup / "config").mkdir()
+        (backup / "config" / "prometheus.yml").write_text("legacy: true\n")
+        env = dict(os.environ)
+        env["PATH"] = f"{fake_repo['bin']}:{env['PATH']}"
+        env["CMDLOG"] = str(fake_repo["cmdlog"])
+        proc = subprocess.run(
+            ["bash", str(fake_repo["script"]), "restore", str(backup)],
+            input="y\n", capture_output=True, text=True, env=env, timeout=120,
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert (fake_repo["backend"] / ".env").read_text() == "APP_ENV=production\n"
+        assert (fake_repo["root"] / "deploy" / "nginx").is_dir(), "deploy/ 不该被旧布局覆盖"
+        assert not (fake_repo["root"] / "deploy" / "prometheus.yml").exists()
+        assert "旧格式备份" in proc.stdout
 
     def test_it_says_it_finished(self, fake_repo):
         """跑通的那条路要有明确结束标志——半途失败时不该出现。"""
@@ -143,8 +172,7 @@ class TestRestoreOrdering:
         env["PATH"] = f"{fake_repo['bin']}:{env['PATH']}"
         env["CMDLOG"] = str(fake_repo["cmdlog"])
         proc = subprocess.run(
-            ["bash", str(fake_repo["backend"] / "docker-deploy.sh"),
-             "restore", str(fake_repo["backup"])],
+            ["bash", str(fake_repo["script"]), "restore", str(fake_repo["backup"])],
             input="y\n", capture_output=True, text=True, env=env, timeout=120,
         )
         assert "恢复完成" in proc.stdout
@@ -207,7 +235,7 @@ class TestRedisIsBackedUpAsAWholeDirectory:
         env["PATH"] = f"{fake_repo['bin']}:{env['PATH']}"
         env["CMDLOG"] = str(fake_repo["cmdlog"])
         proc = subprocess.run(
-            ["bash", str(fake_repo["backend"] / "docker-deploy.sh"),
+            ["bash", str(fake_repo["script"]),
              "restore", str(fake_repo["backup"])],
             input="y\n", capture_output=True, text=True, env=env, timeout=120,
         )
@@ -236,7 +264,7 @@ class TestRestoreStopsOnFailure:
         env["PATH"] = f"{fake_repo['bin']}:{env['PATH']}"
         env["CMDLOG"] = str(fake_repo["cmdlog"])
         proc = subprocess.run(
-            ["bash", str(fake_repo["backend"] / "docker-deploy.sh"),
+            ["bash", str(fake_repo["script"]),
              "restore", str(fake_repo["backup"])],
             input="y\n", capture_output=True, text=True, env=env, timeout=120,
         )

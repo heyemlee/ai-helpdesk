@@ -18,8 +18,8 @@ def app_module(monkeypatch):
     monkeypatch.setenv("AI_HELPDESK_FRONTEND_DIST", "/nonexistent")
     monkeypatch.setenv("AI_HELPDESK_API_KEY", "")
     monkeypatch.setenv("APP_ENV", "development")
-    sys.modules.pop("api.main", None)
-    return importlib.import_module("api.main")
+    sys.modules.pop("app.api.main", None)
+    return importlib.import_module("app.api.main")
 
 
 def _paths_seen() -> set[str]:
@@ -63,7 +63,7 @@ class TestLabelCardinalityIsBounded:
         被限流的往往正是刷接口的调用方，它们制造的 user_id 最多——
         把它当标签等于让攻击者决定时序数量。要知道是谁就去看日志。
         """
-        from core.metrics import RATE_LIMIT_HITS
+        from app.core.metrics import RATE_LIMIT_HITS
         assert RATE_LIMIT_HITS._labelnames == (), \
             f"限流计数器还带着标签 {RATE_LIMIT_HITS._labelnames}"
         RATE_LIMIT_HITS.inc()  # 不带标签也要能直接 inc

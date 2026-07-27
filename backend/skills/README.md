@@ -54,7 +54,7 @@ enabled: true
 ## Skill 与出站策略的关系
 
 Skill 是注入 prompt 的**软约束**，模型可能违反。真正的硬约束在
-`core/answer_policy.py`：Agent 回复生成后会逐句扫描，把没有出处的价格承诺和
+`app/core/answer_policy.py`：Agent 回复生成后会逐句扫描，把没有出处的价格承诺和
 时效承诺替换成保守表述，记录结构化违规项，并拉低本轮置信度触发转人工。
 
 "有出处"的判定依据是本轮的 RAG 检索结果和注入的 Skill 正文——所以
