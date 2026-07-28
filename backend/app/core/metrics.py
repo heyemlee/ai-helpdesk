@@ -5,7 +5,7 @@ Prometheus 业务指标（Grafana 面板的数据源）。
 模块级读取的），如果指标定义在 main.py 里，第二次 import 会因为
 重复注册同名时序直接抛错。core/metrics.py 只会被 Python 缓存一次。
 
-面板对应关系（backend/config/grafana/dashboards/ai-helpdesk.json）：
+面板对应关系（deploy/grafana/dashboards/ai-helpdesk.json）：
   QPS / p95 延迟   ← http_requests_total / http_request_duration_seconds
   LLM token 花费   ← llm_tokens_total{agent, direction}
   限流命中         ← rate_limit_hits_total

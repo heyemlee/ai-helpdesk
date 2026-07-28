@@ -48,7 +48,7 @@
   <text x="655" y="201" class="step-title">Intent and context</text>
   <line x1="610" y1="226" x2="990" y2="226" stroke="#ddd6fe" stroke-width="2"/>
   <text x="610" y="267" class="body">• 18 intents + entities + urgency</text>
-  <text x="610" y="305" class="body">• Fast path: 53 anchors, 0 network</text>
+  <text x="610" y="305" class="body">• Fast path: 128 anchors, 0 network</text>
   <text x="610" y="343" class="body">• Fusion: LLM 70% / vec 20% / rule 10%</text>
   <text x="610" y="381" class="body">• Reads working + episodic memory</text>
 

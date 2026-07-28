@@ -17,11 +17,11 @@ safety, escalate to a human, and regress on quality — each one observable and 
 one able to degrade on its own.
 
 - **Fine-grained intent recognition with a zero-latency path.** Requests are split
-  into 18 intents, fused from three signals: LLM (70%), embeddings (20%) and rules
+  into 19 intents (18 named classes plus an `other` bucket), fused from three signals: LLM (70%), embeddings (20%) and rules
   (10%). The recognizer emits an intent, a confidence, per-source scores, an urgency
   level, and structured entities such as order numbers, amounts and part numbers.
-  For 9 high-frequency deterministic classes, 53 high-precision anchor phrases
-  short-circuit the whole thing: on a hit there is no network call at all, and the
+  For 9 high-frequency deterministic classes, 128 high-precision anchor phrases
+  (Chinese and English) short-circuit the whole thing: on a hit there is no network call at all, and the
   LLM round trips for one ticket drop from four to one.
 - **Hybrid retrieval, gated by intent.** The knowledge base is only queried for
   business intents. Retrieval runs two ways in parallel — pgvector cosine similarity
@@ -46,8 +46,8 @@ one able to degrade on its own.
   extra LLM round trips are zero.
 - **Multi-agent orchestration with a human backstop.** Three specialists — product
   and installation, quoting and billing, order fulfillment — plus a general showroom
-  agent as fallback. Routing picks the primary agent from the intent, 40-odd keyword
-  anchors and the extracted entities; cross-domain questions that clear the
+  agent as fallback. Routing picks the primary agent from the intent, 34 domain anchors plus 33
+  weaker keywords, and the extracted entities; cross-domain questions that clear the
   threshold get a supporting agent working in parallel. Unclear intent triggers a
   follow-up question, and any weak confidence signal opens a ticket and escalates.
 - **Answer safety as a hard constraint, not a prompt.** Outbound answers pass
@@ -60,7 +60,10 @@ one able to degrade on its own.
   identity is derived server-side from an HMAC-signed token, so a client cannot forge
   a `user_id` and read someone else's memory. Redis holds per-user rate limits and
   24-hour working memory; pgvector holds episodic memory and user profiles; tickets
-  and conversation audit logs are persisted and replayable. This isolates *memory*
+  and conversation audit logs are persisted and replayable. Ticket webhook
+  notifications go through an outbox: the record is written first, then delivered
+  with status checks, retries and escalation, so an expired Slack or WeCom URL no
+  longer fails silently. This isolates *memory*
   between users. It does **not** isolate *business data* — read
   [Security boundary](#security-boundary-single-tenant-by-design) before pointing this
   at more than one customer's data.
@@ -68,7 +71,7 @@ one able to degrade on its own.
   seconds from agent success rate and latency, shared across instances through
   Redis. LLM-as-Judge replays evaluations on four dimensions — relevance, accuracy,
   completeness, helpfulness — and detects regressions against a baseline that is
-  only updated on an explicit promote. 461 backend tests, 46 frontend tests, an
+  only updated on an explicit promote. 687 backend tests, 48 frontend tests, an
   11-service Docker Compose environment, and metrics, logs and traces via
   Prometheus, Grafana, Tempo, Loki and OpenTelemetry.
 
@@ -113,12 +116,18 @@ the end user. Verified with two customer identities: same key, same visible data
   the database itself. That is not implemented here.
 - `POST /auth/token` mints identities and is gated by the shared admin key
   (`AI_HELPDESK_API_KEY`), which proves "the caller is our infrastructure", not "this
-  user logged in". Expose it to your gateway only, never to the public internet. The
-  long-term fix is for a real login system to issue these tokens.
+  user logged in". In production it is additionally bound to a source allowlist
+  (`AI_HELPDESK_TOKEN_ISSUER_CIDRS`, checked against the direct peer, not
+  `X-Forwarded-For`), so only your gateway can reach it; wildcards like `0.0.0.0/0`
+  are rejected. The long-term fix is for a real login system to issue these tokens —
+  what that integration needs is written down in `docs/auth-token-integration.md`.
 
 In production mode (`APP_ENV=production`) the process refuses to start unless
 `AI_HELPDESK_API_KEY`, `AI_HELPDESK_AUTH_SECRET` and `AI_HELPDESK_PROTECT_CHAT` are
-all set — a missing one used to mean "this endpoint needs no auth".
+all set — a missing one used to mean "this endpoint needs no auth". The same
+preflight also requires `AI_HELPDESK_TOKEN_ISSUER_CIDRS` and
+`AI_HELPDESK_DEPLOYMENT_SCOPE` (see above); all five required variables are enforced in
+`backend/app/core/preflight.py`.
 
 ## How one request flows
 
@@ -182,7 +191,7 @@ backend/skills/   Per-agent SOPs, hot-reloaded at runtime
 frontend/         React admin console
 deploy/           Nginx / Prometheus / Grafana / Loki / Tempo / OTel config, mounted read-only by docker-compose
 scripts/          dev.sh (run both halves locally), docker-deploy.sh (compose lifecycle + backup/restore), ci-local.sh
-docs/             Architecture, code guide, integration notes, ops records
+docs/             Architecture, code guide, auth-token integration, integration notes, ops records (restore drill, pilot readiness)
 ```
 
 Redis holds short-lived state — rate limits, recent conversation. PostgreSQL +
@@ -197,9 +206,12 @@ cd backend && pytest && ruff check .
 cd frontend && npm test && npm run typecheck
 ```
 
-Currently **461 passed / 2 skipped** on the backend and **46 passed** on the
-frontend. CI runs in 3 stages; one of them brings up a pgvector service container
-so the Postgres path is exercised for real rather than falling back to SQLite.
+Currently **687 passed / 2 skipped / 1 xfailed** on the backend and **48 passed**
+on the frontend. The backend figure includes the cross-repo contract cases, which
+need a checkout of a2a-contract at the pinned tag; without it they skip and the
+count drops to 612. CI runs 4 jobs; the backend one brings up a pgvector service
+container so the Postgres path is exercised for real rather than falling back to
+SQLite, and a separate job replays the contract fixtures.
 
 ## Performance
 

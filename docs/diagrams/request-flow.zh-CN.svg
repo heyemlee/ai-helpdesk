@@ -48,7 +48,7 @@
   <text x="655" y="201" class="step-title">意图识别与上下文</text>
   <line x1="610" y1="226" x2="990" y2="226" stroke="#ddd6fe" stroke-width="2"/>
   <text x="610" y="267" class="body">• 18 类意图 + 实体 + 紧急度</text>
-  <text x="610" y="305" class="body">• 快路径：53 个锚点 / 零网络调用</text>
+  <text x="610" y="305" class="body">• 快路径：128 个锚点 / 零网络调用</text>
   <text x="610" y="343" class="body">• 融合：LLM 70% / 向量 20% / 规则 10%</text>
   <text x="610" y="381" class="body">• 读取工作记忆、情景记忆与画像</text>
 
