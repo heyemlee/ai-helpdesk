@@ -1,0 +1,128 @@
+{
+  "generator": "tt-a1i/archify",
+  "revision": "5289f6867f048a7450ec5718f58459613a84cf41",
+  "artifacts": [
+    {
+      "diagram_type": "architecture",
+      "output": "docs/diagrams/architecture.html",
+      "specification": {
+        "path": "docs/diagrams/architecture.archify.json",
+        "sha256": "4374b5adf092be042e25b07dbabeb818c2461bdf0278aa0cf47a3793b3480b4a",
+        "bytes": 5014
+      },
+      "artifact": {
+        "sha256": "031396965355179b0bf098cdefab12c5e93735dd2f48e9eb98d401689cd3c5a8",
+        "bytes": 811543
+      },
+      "validation": {
+        "checksPassed": 9,
+        "checkCount": 9,
+        "compositionProfile": "showcase",
+        "compositionStatus": "pass",
+        "errors": 0,
+        "warnings": 0
+      },
+      "browser_evidence": "pass",
+      "viewports": [
+        {
+          "width": 1440,
+          "height": 900,
+          "overflowX": false,
+          "overflowY": false,
+          "readabilityOk": true
+        },
+        {
+          "width": 1600,
+          "height": 1000,
+          "overflowX": false,
+          "overflowY": false,
+          "readabilityOk": true
+        },
+        {
+          "width": 1920,
+          "height": 1080,
+          "overflowX": false,
+          "overflowY": false,
+          "readabilityOk": true
+        },
+        {
+          "width": 2048,
+          "height": 1320,
+          "overflowX": false,
+          "overflowY": false,
+          "readabilityOk": true
+        }
+      ],
+      "visual_review": "passed",
+      "visual_review_scope": "Light and dark desktop screenshots: legible node labels, no overlaps or crossings, balanced composition. Export reviewed separately in README preview.",
+      "correction_rounds": 2,
+      "svg": {
+        "path": "docs/diagrams/architecture.svg",
+        "sha256": "fdedbaf480a449144bed7ced26b9e74b9986cfdff94e848e2e7f6e514bd49ebd",
+        "bytes": 153178,
+        "canonical_export": true
+      }
+    },
+    {
+      "diagram_type": "architecture",
+      "output": "docs/diagrams/architecture.en.html",
+      "specification": {
+        "path": "docs/diagrams/architecture.en.archify.json",
+        "sha256": "4f39aa3522264386084260ded74d9a7e207358645dfce69e208b4bf372820579",
+        "bytes": 4898
+      },
+      "artifact": {
+        "sha256": "fa8a476cf319da7677f092a0e03420b8eebc7708f134bc650de210522d884531",
+        "bytes": 811906
+      },
+      "validation": {
+        "checksPassed": 9,
+        "checkCount": 9,
+        "compositionProfile": "showcase",
+        "compositionStatus": "pass",
+        "errors": 0,
+        "warnings": 0
+      },
+      "browser_evidence": "pass",
+      "viewports": [
+        {
+          "width": 1440,
+          "height": 900,
+          "overflowX": false,
+          "overflowY": false,
+          "readabilityOk": true
+        },
+        {
+          "width": 1600,
+          "height": 1000,
+          "overflowX": false,
+          "overflowY": false,
+          "readabilityOk": true
+        },
+        {
+          "width": 1920,
+          "height": 1080,
+          "overflowX": false,
+          "overflowY": false,
+          "readabilityOk": true
+        },
+        {
+          "width": 2048,
+          "height": 1320,
+          "overflowX": false,
+          "overflowY": false,
+          "readabilityOk": true
+        }
+      ],
+      "visual_review": "passed",
+      "visual_review_scope": "Light and dark desktop screenshots: legible node labels, no overlaps or crossings, balanced composition. Export reviewed separately in README preview.",
+      "correction_rounds": 0,
+      "svg": {
+        "path": "docs/diagrams/architecture.en.svg",
+        "sha256": "73e0c92dd4336e0b14322d3e8b4518c8111c4b87c10b2296f6b0212b70b8333c",
+        "bytes": 153229,
+        "canonical_export": true
+      }
+    }
+  ]
+}

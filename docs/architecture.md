@@ -1,7 +1,7 @@
 # 架构图
 
-用 Mermaid 而不是导出的 SVG：GitHub 原生渲染，改代码时能顺手改图，
-不会出现"图里画着三个 Agent、文字写着四个"这种图文不一致。
+README 使用 [Archify 总览图](diagrams/README.md)，保留可编辑 JSON、交互 HTML 和静态 SVG。
+本页以 GitHub 原生支持的 Mermaid 补充请求链路、路由、存储与部署细节；修改架构时需同步更新两处。
 
 ## 1. 总体架构
 

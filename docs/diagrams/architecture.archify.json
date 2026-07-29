@@ -1,0 +1,245 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "AI Helpdesk · 系统架构",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1360,
+      760
+    ]
+  },
+  "components": [
+    {
+      "id": "support-console",
+      "type": "frontend",
+      "label": "客服控制台",
+      "sublabel": "React · TypeScript · SSE",
+      "pos": [
+        40,
+        330
+      ],
+      "size": [
+        220,
+        84
+      ]
+    },
+    {
+      "id": "helpdesk-api",
+      "type": "backend",
+      "label": "FastAPI 接入层",
+      "sublabel": "身份校验 · 按用户限流",
+      "pos": [
+        340,
+        330
+      ],
+      "size": [
+        240,
+        84
+      ]
+    },
+    {
+      "id": "agent-runtime",
+      "type": "backend",
+      "label": "意图识别与 Agent 编排",
+      "sublabel": "3 个专家 + 1 个通用 Agent",
+      "pos": [
+        690,
+        330
+      ],
+      "size": [
+        260,
+        84
+      ]
+    },
+    {
+      "id": "answer-gate",
+      "type": "security",
+      "label": "回答守卫与置信度闸门",
+      "sublabel": "逐句校验 · 低置信度转人工",
+      "pos": [
+        1060,
+        330
+      ],
+      "size": [
+        270,
+        84
+      ]
+    },
+    {
+      "id": "session-state",
+      "type": "database",
+      "label": "Redis",
+      "sublabel": "工作记忆 · 限流 · 共享状态",
+      "pos": [
+        340,
+        100
+      ],
+      "size": [
+        240,
+        84
+      ]
+    },
+    {
+      "id": "hybrid-rag",
+      "type": "backend",
+      "label": "混合检索 RAG",
+      "sublabel": "RRF 融合 · 重排 · 一轮补检",
+      "pos": [
+        690,
+        100
+      ],
+      "size": [
+        260,
+        84
+      ]
+    },
+    {
+      "id": "durable-store",
+      "type": "database",
+      "label": "PostgreSQL + pgvector",
+      "sublabel": "知识 · 长期记忆 · 工单 · 审计",
+      "pos": [
+        1060,
+        100
+      ],
+      "size": [
+        270,
+        84
+      ]
+    },
+    {
+      "id": "telemetry-stack",
+      "type": "backend",
+      "label": "可观测性",
+      "sublabel": "指标 · 日志 · 分布式追踪",
+      "pos": [
+        340,
+        600
+      ],
+      "size": [
+        240,
+        84
+      ]
+    },
+    {
+      "id": "model-provider",
+      "type": "external",
+      "label": "模型服务",
+      "sublabel": "Anthropic / OpenAI 兼容接口",
+      "pos": [
+        690,
+        600
+      ],
+      "size": [
+        260,
+        84
+      ]
+    },
+    {
+      "id": "human-handoff",
+      "type": "backend",
+      "label": "人工工单与通知",
+      "sublabel": "持久化 · Outbox · 重试投递",
+      "pos": [
+        1060,
+        600
+      ],
+      "size": [
+        270,
+        84
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "console-api",
+      "from": "support-console",
+      "to": "helpdesk-api",
+      "label": "HTTP / SSE",
+      "variant": "emphasis"
+    },
+    {
+      "id": "api-orchestrator",
+      "from": "helpdesk-api",
+      "to": "agent-runtime",
+      "label": "请求上下文",
+      "variant": "emphasis"
+    },
+    {
+      "id": "orchestrator-guard",
+      "from": "agent-runtime",
+      "to": "answer-gate",
+      "label": "候选答案",
+      "variant": "emphasis"
+    },
+    {
+      "id": "api-redis",
+      "from": "helpdesk-api",
+      "to": "session-state",
+      "label": "读写状态"
+    },
+    {
+      "id": "orchestrator-rag",
+      "from": "agent-runtime",
+      "to": "hybrid-rag",
+      "label": "按需检索"
+    },
+    {
+      "id": "rag-postgres",
+      "from": "hybrid-rag",
+      "to": "durable-store",
+      "label": "向量 + 关键词"
+    },
+    {
+      "id": "api-observability",
+      "from": "helpdesk-api",
+      "to": "telemetry-stack",
+      "label": "遥测采集",
+      "variant": "dashed",
+      "labelDy": 100
+    },
+    {
+      "id": "orchestrator-llm",
+      "from": "agent-runtime",
+      "to": "model-provider",
+      "label": "生成 / 推理",
+      "labelDy": 100
+    },
+    {
+      "id": "guard-human",
+      "from": "answer-gate",
+      "to": "human-handoff",
+      "label": "升级处理",
+      "variant": "security",
+      "labelDy": 100
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "一个服务，分层治理",
+      "items": [
+        "接入、RAG、编排、守卫均在 FastAPI 进程内。",
+        "规则快通道跳过意图模型调用及检索改写、重排。"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "存储与外部集成",
+      "items": [
+        "持久化数据统一落 PostgreSQL；本地可回退 SQLite。",
+        "业务查询可委派 ai-sql-agent；SOP 按 Agent 注入。"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "部署与质量边界",
+      "items": [
+        "单租户；用户记忆隔离不等于业务数据权限隔离。",
+        "Prometheus / Grafana / Tempo / Loki；独立回归评测。"
+      ]
+    }
+  ]
+}

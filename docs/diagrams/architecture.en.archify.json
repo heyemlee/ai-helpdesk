@@ -1,0 +1,245 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "AI Helpdesk · System Architecture",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1360,
+      760
+    ]
+  },
+  "components": [
+    {
+      "id": "support-console",
+      "type": "frontend",
+      "label": "Support console",
+      "sublabel": "React · TypeScript · SSE",
+      "pos": [
+        40,
+        330
+      ],
+      "size": [
+        220,
+        84
+      ]
+    },
+    {
+      "id": "helpdesk-api",
+      "type": "backend",
+      "label": "FastAPI gateway",
+      "sublabel": "Identity · Per-user rate limits",
+      "pos": [
+        340,
+        330
+      ],
+      "size": [
+        240,
+        84
+      ]
+    },
+    {
+      "id": "agent-runtime",
+      "type": "backend",
+      "label": "Intent & orchestration",
+      "sublabel": "3 specialists + 1 generalist",
+      "pos": [
+        690,
+        330
+      ],
+      "size": [
+        260,
+        84
+      ]
+    },
+    {
+      "id": "answer-gate",
+      "type": "security",
+      "label": "Answer policy & confidence",
+      "sublabel": "Sentence guard · Human handoff",
+      "pos": [
+        1060,
+        330
+      ],
+      "size": [
+        270,
+        84
+      ]
+    },
+    {
+      "id": "session-state",
+      "type": "database",
+      "label": "Redis",
+      "sublabel": "Working memory · Shared state",
+      "pos": [
+        340,
+        100
+      ],
+      "size": [
+        240,
+        84
+      ]
+    },
+    {
+      "id": "hybrid-rag",
+      "type": "backend",
+      "label": "Hybrid RAG",
+      "sublabel": "RRF · Rerank · One retry",
+      "pos": [
+        690,
+        100
+      ],
+      "size": [
+        260,
+        84
+      ]
+    },
+    {
+      "id": "durable-store",
+      "type": "database",
+      "label": "PostgreSQL + pgvector",
+      "sublabel": "Knowledge · Memory · Tickets · Audit",
+      "pos": [
+        1060,
+        100
+      ],
+      "size": [
+        270,
+        84
+      ]
+    },
+    {
+      "id": "telemetry-stack",
+      "type": "backend",
+      "label": "Observability",
+      "sublabel": "Metrics · Logs · Traces",
+      "pos": [
+        340,
+        600
+      ],
+      "size": [
+        240,
+        84
+      ]
+    },
+    {
+      "id": "model-provider",
+      "type": "external",
+      "label": "Model providers",
+      "sublabel": "Anthropic / OpenAI-compatible",
+      "pos": [
+        690,
+        600
+      ],
+      "size": [
+        260,
+        84
+      ]
+    },
+    {
+      "id": "human-handoff",
+      "type": "backend",
+      "label": "Tickets & notifications",
+      "sublabel": "Persistence · Outbox · Retries",
+      "pos": [
+        1060,
+        600
+      ],
+      "size": [
+        270,
+        84
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "console-api",
+      "from": "support-console",
+      "to": "helpdesk-api",
+      "label": "HTTP / SSE",
+      "variant": "emphasis"
+    },
+    {
+      "id": "api-orchestrator",
+      "from": "helpdesk-api",
+      "to": "agent-runtime",
+      "label": "Context",
+      "variant": "emphasis"
+    },
+    {
+      "id": "orchestrator-guard",
+      "from": "agent-runtime",
+      "to": "answer-gate",
+      "label": "Answer",
+      "variant": "emphasis"
+    },
+    {
+      "id": "api-redis",
+      "from": "helpdesk-api",
+      "to": "session-state",
+      "label": "Read / write"
+    },
+    {
+      "id": "orchestrator-rag",
+      "from": "agent-runtime",
+      "to": "hybrid-rag",
+      "label": "Retrieve"
+    },
+    {
+      "id": "rag-postgres",
+      "from": "hybrid-rag",
+      "to": "durable-store",
+      "label": "Hybrid search"
+    },
+    {
+      "id": "api-observability",
+      "from": "helpdesk-api",
+      "to": "telemetry-stack",
+      "label": "Telemetry",
+      "variant": "dashed",
+      "labelDy": 100
+    },
+    {
+      "id": "orchestrator-llm",
+      "from": "agent-runtime",
+      "to": "model-provider",
+      "label": "Inference",
+      "labelDy": 100
+    },
+    {
+      "id": "guard-human",
+      "from": "answer-gate",
+      "to": "human-handoff",
+      "label": "Handoff",
+      "variant": "security",
+      "labelDy": 100
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "One service, explicit stages",
+      "items": [
+        "API, RAG, agents and guards share one FastAPI process.",
+        "Fast path skips intent model calls, query rewrite and rerank."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "State & integrations",
+      "items": [
+        "PostgreSQL persists state; SQLite supports local fallback.",
+        "Optional ai-sql-agent delegation; scoped SOP injection."
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Deployment & quality",
+      "items": [
+        "Single tenant: memory isolation is not data authorization.",
+        "Prometheus / Grafana / Tempo / Loki; regression evaluation."
+      ]
+    }
+  ]
+}
