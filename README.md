@@ -146,6 +146,14 @@ scripts/dev.sh
 
 Open [localhost:5173](http://localhost:5173). The backend defaults to port `8000`; `API_PORT` changes it and the frontend proxy follows.
 
+To run together with [ai-sql-agent](https://github.com/heyemlee/ai-sql-agent) using the local setup from [a2a-contract](https://github.com/heyemlee/a2a-contract#2-enable-a2a-collaboration), check out ai-sql-agent as a sibling directory (or set `SQL_AGENT_DIR`) and run:
+
+```bash
+scripts/dev-all.sh
+```
+
+The script starts ai-sql-agent on `127.0.0.1:8000` (its own `AI_SQL_PORT`), waits for `/health` and the Agent Card, then runs `scripts/dev.sh` with `SQL_AGENT_URL=http://127.0.0.1:8000`. Put `API_PORT` on another port such as `8080`; the script refuses to start when both use the same port. Ctrl-C stops all three processes, and running it again first stops the previous copies.
+
 </details>
 
 ## Evaluation and current limits

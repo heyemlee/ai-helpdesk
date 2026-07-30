@@ -11,9 +11,10 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      // 前端统一请求 /api/*，dev 阶段由 Vite 转发到本地 FastAPI
+      // 前端统一请求 /api/*，dev 阶段由 Vite 转发到本地 FastAPI。
+      // 默认 8080 与 backend/.env.example 的 API_PORT 一致；8000 是同机 ai-sql-agent 的端口。
       '/api': {
-        target: process.env.VITE_API_URL || 'http://localhost:8000',
+        target: process.env.VITE_API_URL || 'http://localhost:8080',
         changeOrigin: true,
         rewrite: (p) => p.replace(/^\/api/, ''),
       },
@@ -23,7 +24,7 @@ export default defineConfig({
       // 报 "Failed to load API definition"。所以规格文件本身也要转发。
       // 生产侧的同一处修复在 docker/templates/default.conf.template。
       '/openapi.json': {
-        target: process.env.VITE_API_URL || 'http://localhost:8000',
+        target: process.env.VITE_API_URL || 'http://localhost:8080',
         changeOrigin: true,
       },
     },
