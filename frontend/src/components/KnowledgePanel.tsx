@@ -95,6 +95,7 @@ const SAMPLE_KEYS = ['kb.sample.1', 'kb.sample.2', 'kb.sample.3', 'kb.sample.4']
  */
 export function KnowledgePanel({ base }: { base: string }) {
   const { t } = useT()
+  const [submittedQuery, setSubmittedQuery] = useState('')
   const [query, setQuery] = useState('')
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
@@ -108,8 +109,9 @@ export function KnowledgePanel({ base }: { base: string }) {
 
   const runSearch = (q: string) => {
     const text = q.trim()
-    if (!text) return
+    if (!text || search.isPending) return
     setQuery(text)
+    setSubmittedQuery(text)
     search.mutate({ query: text })
   }
 
@@ -134,14 +136,14 @@ export function KnowledgePanel({ base }: { base: string }) {
   return (
     <div className="page scroll">
       <div className="page-inner">
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+        <div className="page-heading">
           <div style={{ flex: 1, minWidth: 0 }}>
             <h2 className="page-title">{t('kb.pageTitle')}</h2>
             <p className="page-lede">
               {t('kb.lede')}
             </p>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          <div className="page-heading-actions">
             {/* 拿不到统计就说拿不到，不拿占位符冒充数据 */}
             {stats.isError
               ? <Chip tone="danger" dot title={stats.error instanceof Error ? stats.error.message : undefined}>
@@ -156,26 +158,29 @@ export function KnowledgePanel({ base }: { base: string }) {
           </div>
         </div>
 
-        <div className="searchbar">
+        <form className="searchbar" onSubmit={(e) => { e.preventDefault(); runSearch(query) }}>
           <Icon name="search" />
           <label className="sr-only" htmlFor="kb-q">{t('kb.searchLabel')}</label>
           <input
-            id="kb-q" value={query} autoFocus
+            id="kb-q" value={query}
             placeholder={t('kb.searchLabel')}
             onChange={(e) => setQuery(e.target.value)}
             // 同 ChatPanel：组合态的 Enter 是上屏确认，不是检索
-            onKeyDown={(e) => !e.nativeEvent.isComposing && e.key === 'Enter' && runSearch(query)}
+            onKeyDown={(e) => { if (e.nativeEvent.isComposing && e.key === 'Enter') e.preventDefault() }}
           />
-          {search.isPending
-            ? <span className="hint">{t('kb.searching')}</span>
-            : query.trim() && <span className="hint">{t('kb.enterHint')}</span>}
-        </div>
+          <button className="btn btn-primary" type="submit" disabled={search.isPending || !query.trim()} aria-busy={search.isPending}>
+            {search.isPending ? t('kb.searching') : t('kb.search')}
+          </button>
+        </form>
 
         <ErrorNote error={search.error} />
 
         {/* 还没搜过：给邀请，不给空白。空白会被读成"搜过了没结果"。 */}
         {!searched && !search.error && (
-          <section>
+          <section className="knowledge-welcome">
+            <div className="welcome-mark"><Icon name="book" size={28} /></div>
+            <h3>{t('kb.welcome')}</h3>
+            <p>{t('kb.welcome.body')}</p>
             <p className="section-label">{t('kb.try')}</p>
             <div className="suggestions">
               {SAMPLE_KEYS.map((k) => (
@@ -210,7 +215,7 @@ export function KnowledgePanel({ base }: { base: string }) {
                           )}
                         </div>
                         <p className="hit-text">
-                          {highlightParts(item.content ?? '', query).map((p, j) =>
+                          {highlightParts(item.content ?? '', submittedQuery).map((p, j) =>
                             p.hit ? <mark key={j}>{p.t}</mark> : <span key={j}>{p.t}</span>,
                           )}
                         </p>
@@ -222,7 +227,7 @@ export function KnowledgePanel({ base }: { base: string }) {
           </section>
         )}
 
-        <dialog className="modal" ref={dialogRef} onClose={closeImport}>
+        <dialog className="modal" ref={dialogRef} aria-label={t('kb.import')}>
           <Card
             title={t('kb.import')}
             actions={

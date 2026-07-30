@@ -37,6 +37,17 @@ const wrap = ({ children }: { children: React.ReactNode }) => (
 )
 
 describe('录制的 /monitor', () => {
+  it('保留空筛选下的切回入口', async () => {
+    const agents = Object.fromEntries(Object.entries(monitor.agent_stats).map(([key, stat]) => [key, { ...stat, monitor_penalty: 0 }]))
+    mocks.monitor.mockResolvedValue({ ...monitor, agent_stats: agents })
+    render(<MonitorPanel base="/api" />, { wrapper: wrap })
+    await screen.findByRole('tab', { name: '仅劣化实例' })
+    await userEvent.click(screen.getByRole('tab', { name: '仅劣化实例' }))
+    expect(screen.getByText('当前没有劣化实例，可切回「全部实例」查看。')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('tab', { name: '全部实例' }))
+    expect(screen.getByText(Object.keys(agents)[0]!)).toBeInTheDocument()
+  })
+
   it('策略校验标的是校验次数，不是回复条数', async () => {
     mocks.monitor.mockResolvedValue(monitor)
     render(<MonitorPanel base="/api" />, { wrapper: wrap })
@@ -94,6 +105,19 @@ describe('录制的 /monitor', () => {
 })
 
 describe('录制的 /search', () => {
+  it('输入下一次查询时不会改变当前结果的高亮', async () => {
+    mocks.knowledgeStats.mockResolvedValue({ total_chunks: 6 })
+    mocks.search.mockResolvedValue({ results: [{ title: '售后说明', content: '门板可以补件' }], reranked: true })
+    render(<KnowledgePanel base="/api" />, { wrapper: wrap })
+    await userEvent.type(screen.getByRole('textbox', { name: '检索知识库' }), '门板')
+    await userEvent.click(screen.getByRole('button', { name: '搜索' }))
+    await screen.findByText('售后说明')
+    expect(document.querySelector('.hit-text mark')).toHaveTextContent('门板')
+    await userEvent.clear(screen.getByRole('textbox', { name: '检索知识库' }))
+    await userEvent.type(screen.getByRole('textbox', { name: '检索知识库' }), '开票')
+    expect(document.querySelector('.hit-text mark')).toHaveTextContent('门板')
+  })
+
   it('五条命中五篇不同文档，逐条渲染，不出现重复', async () => {
     mocks.knowledgeStats.mockResolvedValue({ total_chunks: 6 } satisfies KnowledgeStats)
     mocks.search.mockResolvedValue(search)

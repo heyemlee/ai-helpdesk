@@ -44,11 +44,11 @@ export function EvalPanel({ base }: { base: string }) {
   return (
     <div className="page scroll">
       <div className="page-inner">
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+        <div className="page-heading">
           <div style={{ flex: 1, minWidth: 0 }}>
             <h2 className="page-title">{t('ev.pageTitle')}</h2>
             <p className="page-lede">
-              {t('ev.lede1')} <code className="mono">/chat</code>{t('ev.lede2')}
+              {t('ev.lede')}
             </p>
           </div>
           <button className="btn btn-primary" onClick={run}
@@ -143,6 +143,7 @@ export function EvalPanel({ base }: { base: string }) {
                 bodyStyle={{ padding: '8px 12px 12px' }}
               >
                 <div className="dl" style={{ gap: 4 }}>
+                  {results.length === 0 && <Empty>{t('ev.noFailed')}</Empty>}
                   {results.map((r) => (
                     <details className="raw" key={r.test_id} style={{ padding: '8px 10px', borderRadius: 'var(--radius-lg)' }}>
                       <summary style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--color-text)' }}>

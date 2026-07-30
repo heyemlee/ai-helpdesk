@@ -10,6 +10,7 @@ import { KnowledgePanel } from '@/components/KnowledgePanel'
 import { MonitorPanel } from '@/components/MonitorPanel'
 import { RoutingInspector } from '@/components/RoutingInspector'
 import { Sidebar, type View } from '@/components/Sidebar'
+import { InspectorDrawer } from '@/components/InspectorDrawer'
 import { Icon } from '@/components/Icon'
 
 const TITLE_KEYS: Record<View, 'nav.chat' | 'nav.monitor' | 'nav.eval' | 'nav.knowledge'> = {
@@ -27,11 +28,11 @@ export default function App() {
   // 讲解模式：默认关（保持干净的产品姿态），打开后每轮摊开完整编排解释
   const [explain, setExplain] = useState(() => localStorage.getItem('helpdesk.explain') === 'on')
   const [view, setView] = useState<View>('chat')
+  const [chatGeneration, setChatGeneration] = useState(0)
   const [pinned, setPinned] = useState<string | null>(null)
   const { theme, toggle } = useTheme()
   const { t } = useT()
 
-  // 窄屏首次进入默认收起：检查器是浮层，开着等于盖住整个对话区
   // 协作门槛的两个常量来自 /monitor 快照；搭 MonitorPanel 已有查询的便车，
   // 不额外轮询。取不到就不传，检查器那条门槛线索性不画。
   // 阈值在 MonitorSummary.routing 里，不在快照顶层。第 20 轮这里写成了顶层字段，
@@ -42,9 +43,10 @@ export default function App() {
     ? { minScore: routingCfg.supporting_min_score, minRatio: routingCfg.supporting_min_ratio }
     : undefined
 
+  // Keep the workspace focused; reopen only when the user previously chose it.
   const [inspectorOpen, setInspectorOpen] = useState(() => {
     const saved = localStorage.getItem(INSPECTOR_KEY)
-    return saved ? saved === 'open' : window.innerWidth > 1180
+    return saved === 'open'
   })
 
   const setInspector = useCallback((open: boolean) => {
@@ -79,6 +81,7 @@ export default function App() {
   // 服务端记忆还在，下一条消息接着上一个会话答——操作员以为是新客户，模型不这么认为。
   const startNewChat = useCallback(() => {
     clear()
+    setChatGeneration((generation) => generation + 1)
     setPinned(null)
     updateSettings({ conversationId: '' })
   }, [clear, updateSettings])
@@ -106,7 +109,7 @@ export default function App() {
   return (
     <div className="app" data-inspector={isChat && inspectorOpen ? 'open' : 'closed'}>
       <Sidebar
-        settings={settings} onChange={updateSettings}
+        settings={settings} onChange={updateSettings} busy={busy || restoring}
         view={view} onView={setView}
         onNewChat={() => { startNewChat(); setView('chat') }}
         theme={theme} onToggleTheme={toggle}
@@ -114,60 +117,59 @@ export default function App() {
 
       <main className="main">
         <header className="topbar">
-          <h1>{t(TITLE_KEYS[view])}</h1>
+          <div className="topbar-title"><span className="topbar-context">{t('shell.workspace')}</span><h1>{t(TITLE_KEYS[view])}</h1></div>
           <span className="spacer" />
           {isChat && (
             <>
-              <label className="switch">
-                <input type="checkbox" checked={streaming} onChange={(e) => setStreaming(e.target.checked)} />
-                <span className="track" />{t('cw.stream')}
-              </label>
-              <label className="switch" title={t('cw.explain.title')}>
-                <input
-                  type="checkbox" checked={explain}
-                  onChange={(e) => {
-                    setExplain(e.target.checked)
-                    localStorage.setItem('helpdesk.explain', e.target.checked ? 'on' : 'off')
-                  }}
-                />
-                <span className="track" />{t('cw.explain')}
-              </label>
-              <button className="icon-btn" title={t('shell.clear')} aria-label={t('shell.clear')}
-                      onClick={startNewChat}>
-                <Icon name="refresh" />
-              </button>
+              <button className="btn btn-secondary mobile-new-chat" onClick={startNewChat} disabled={busy || restoring} aria-label={t('shell.newChat')}><Icon name="plus" /></button>
+              <details className="chat-options" onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  e.currentTarget.open = false
+                  e.currentTarget.querySelector('summary')?.focus()
+                }
+              }} onBlur={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget)) e.currentTarget.open = false
+              }}>
+                <summary className="icon-btn" aria-label={t('shell.options')} title={t('shell.options')}><Icon name="settings" /></summary>
+                <div className="options-popover">
+                  <strong>{t('shell.options')}</strong>
+                  <label className="switch">
+                    <input type="checkbox" checked={streaming} onChange={(e) => setStreaming(e.target.checked)} />
+                    <span className="track" />{t('cw.stream')}
+                  </label>
+                  <label className="switch" title={t('cw.explain.title')}>
+                    <input type="checkbox" checked={explain} onChange={(e) => {
+                      setExplain(e.target.checked)
+                      localStorage.setItem('helpdesk.explain', e.target.checked ? 'on' : 'off')
+                    }} />
+                    <span className="track" />{t('cw.explain')}
+                  </label>
+                </div>
+              </details>
               <button
-                className="icon-btn" aria-pressed={inspectorOpen}
+                className="btn btn-secondary inspector-toggle" aria-pressed={inspectorOpen}
                 title={t('in.title')} aria-label={t('in.toggle')}
                 onClick={() => setInspector(!inspectorOpen)}
               >
-                <Icon name="panel" />
+                <Icon name="panel" /><span>{t('in.title')}</span>
               </button>
             </>
           )}
         </header>
 
-        {isChat && (
-          <ChatPanel
+        <div className="chat-view" hidden={!isChat}>
+          <ChatPanel key={chatGeneration}
             messages={messages} busy={busy} explain={explain} restoring={restoring}
             onSend={(text) => { setPinned(null); send(text, streaming) }}
             onInspect={(m) => { setPinned(m.id); setInspector(true) }}
           />
-        )}
+        </div>
         {view === 'monitor' && <MonitorPanel base={settings.apiBaseUrl} />}
         {view === 'eval' && <EvalPanel base={settings.apiBaseUrl} />}
         {view === 'knowledge' && <KnowledgePanel base={settings.apiBaseUrl} />}
       </main>
 
-      {isChat && (
-        <aside className="inspector" aria-label={t('in.title')}>
-          <div className="inspector-head">
-            <h2>{t('in.title')}</h2>
-            <span className="spacer" />
-            <button className="icon-btn" aria-label={t('in.close')} onClick={() => setInspector(false)}>
-              <Icon name="close" />
-            </button>
-          </div>
+      <InspectorDrawer open={isChat && inspectorOpen} onClose={() => setInspector(false)}>
           <div className="inspector-body scroll">
             {inspectedIsStale && (
               <p className="note caution" style={{ marginBottom: 12 }}>
@@ -176,8 +178,7 @@ export default function App() {
             )}
             <RoutingInspector message={inspected} thresholds={thresholds} />
           </div>
-        </aside>
-      )}
+      </InspectorDrawer>
     </div>
   )
 }
