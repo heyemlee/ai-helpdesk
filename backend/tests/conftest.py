@@ -70,3 +70,55 @@ def make_request(message: str, intent: IntentCategory, confidence: float = 0.9, 
         intent_confidence=confidence,
         **kwargs,
     )
+
+
+class FakeRedis:
+    """够用的假 Redis：list + string + SET NX EX。所有方法都是 async。"""
+
+    def __init__(self):
+        self.lists: dict[str, list[str]] = {}
+        self.strings: dict[str, str] = {}
+
+    async def lpush(self, key, value):
+        self.lists.setdefault(key, []).insert(0, value)
+        return len(self.lists[key])
+
+    async def lrange(self, key, start, end):
+        items = self.lists.get(key, [])
+        return items[start:] if end == -1 else items[start:end + 1]
+
+    async def llen(self, key):
+        return len(self.lists.get(key, []))
+
+    async def ltrim(self, key, start, end):
+        items = self.lists.get(key, [])
+        self.lists[key] = items[start:] if end == -1 else items[start:end + 1]
+        return True
+
+    async def delete(self, key):
+        self.lists.pop(key, None)
+        self.strings.pop(key, None)
+        return 1
+
+    async def expire(self, key, ttl):
+        return True
+
+    async def get(self, key):
+        return self.strings.get(key)
+
+    async def setex(self, key, ttl, value):
+        self.strings[key] = value
+        return True
+
+    async def append(self, key, value):
+        self.strings[key] = self.strings.get(key, "") + value
+        return len(self.strings[key])
+
+    async def set(self, key, value, nx=False, ex=None):
+        if nx and key in self.strings:
+            return None
+        self.strings[key] = value
+        return True
+
+    async def aclose(self):
+        return None

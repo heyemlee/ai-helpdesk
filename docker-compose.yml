@@ -85,7 +85,11 @@ services:
     ports:
       # 宿主机 8080 → 容器 8000。容器内固定 8000（Dockerfile 的 CMD 写死），
       # 换宿主机端口只改冒号左边。8000 让给同机的 ai-sql-agent。
-      - "${AI_HELPDESK_PORT:-8080}:8000"
+      #
+      # 只绑本机：这个实例没有 API key（控制台不发 X-API-Key），绑到所有网卡时
+      # 同一网络里的任何设备都能读工单、发起订单查询。要从别的电脑用，先在前面
+      # 加一层登录（例如 Cloudflare Tunnel + Access），不要把 127.0.0.1 去掉。
+      - "127.0.0.1:${AI_HELPDESK_PORT:-8080}:8000"
     env_file:
       - ./backend/.env
     environment:
@@ -121,13 +125,20 @@ services:
       start_period: 90s
 
   # ── 面向客户的实例（不接 ai-sql-agent）──────────────────────────────────────
-  # 和员工实例同一个镜像、同一套 Redis / Postgres，唯一的区别是 SQL_AGENT_URL
-  # 留空：未配置时委派整块不注册（backend/app/api/main.py 注册 order_data_query
-  # 的地方），订单类问题只走知识库，客户查不到任何订单数据。
+  # 和员工实例同一个镜像、同一套 Redis / Postgres，区别有两处。
+  #
+  # 一是 SQL_AGENT_URL 留空：未配置时委派整块不注册（backend/app/api/main.py
+  # 注册 order_data_query 的地方），订单类问题只走知识库，客户查不到任何订单数据。
   #
   # 委派闸门本身只看意图和实体，不分员工和客户（sql_agent_client.py 的
   # should_query_business_data），所以"客户拿不到订单数据"只靠这一层：
   # 客户流量必须进这个实例，不能进员工实例。
+  #
+  # 二是 ENABLE_CROSS_SESSION_MEMORY=false：两个实例共用记忆库，而情景记忆和
+  # 用户画像只按 user_id 区分，这个实例的 user_id 又取自请求体。开着的话，客户
+  # 填一个员工的 user_id（控制台默认是 u1001）就能把员工对话的摘要和画像带进
+  # 自己的上下文，等于绕过上面那一层；不填 user_id 的客户还会共用 anonymous
+  # 这一份记忆。关掉后这两级不读也不写，同一段对话内的记忆不受影响。
   #
   # backend/.env.customer 给这个实例单独配 AI_HELPDESK_API_KEY：工单、对话、
   # 知识库、评测等端点必须带 X-API-Key，/chat 仍然开放。没有这把钥匙时，
@@ -156,6 +167,8 @@ services:
       # 宿主机的同名变量。这里的空值会覆盖 env_file 里的值；镜像里没有 .env
       # （.dockerignore 排除了它），load_dotenv 也不覆盖已存在的变量。
       - SQL_AGENT_URL=
+      # 关掉跨会话记忆，理由见这个服务开头的说明。
+      - ENABLE_CROSS_SESSION_MEMORY=false
     volumes:
       - ./backend/data/eval:/app/data/eval
       - ./backend/skills:/app/skills
@@ -186,7 +199,8 @@ services:
       target: production
     container_name: ai-helpdesk-frontend
     ports:
-      - "5174:80"
+      # 只绑本机，理由同员工实例：控制台背后就是那个没有 API key 的实例。
+      - "127.0.0.1:5174:80"
     environment:
       - API_UPSTREAM=ai-helpdesk:8000
     depends_on:

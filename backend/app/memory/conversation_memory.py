@@ -135,6 +135,15 @@ class MemoryManager:
     三级记忆管理器。
 
     工作记忆存 Redis（TTL 24h），情景记忆和用户画像存向量库（pgvector / SQLite）。
+
+    `cross_session=False` 时只留工作记忆和当前会话的摘要，情景记忆和用户画像
+    **既不读也不写**。这两级只按 user_id 区分，而没开令牌鉴权时 user_id 取自
+    请求体——填谁就是谁。面向客户的实例因此要关掉它：那个实例还和员工实例共用
+    同一套存储，开着的话客户填一个员工的 user_id，就能把员工对话的摘要和画像
+    带进自己的上下文（见 docker-compose.yml 的 ai-helpdesk-customer）。
+
+    不写和不读同样要紧：只关读的话，客户仍能往别人的画像里写东西，再被开着
+    跨会话记忆的实例读进上下文。
     """
 
     COMPRESS_AT   = 15    # 达到此条数时压缩，保留摘要 + 最近 KEEP_RECENT 条
@@ -152,6 +161,7 @@ class MemoryManager:
         api_key:      str = "",
         base_url:     str | None = None,
         model: str = DEFAULT_ANTHROPIC_MODEL,
+        cross_session: bool = True,
     ):
         self._client = create_llm_client(api_key, base_url)
         self._model  = model
@@ -160,6 +170,12 @@ class MemoryManager:
         # 情景记忆 + 用户画像的存储后端（PgStore 或 LocalStore）与向量生成器
         self._store = store
         self._embedder = embedder
+        self._cross_session = cross_session
+
+    @property
+    def cross_session(self) -> bool:
+        """情景记忆和用户画像是否启用。关掉时这两级既不读也不写。"""
+        return self._cross_session
 
     # ── 写入 ──────────────────────────────────────────────────────────────────
 
@@ -214,6 +230,8 @@ class MemoryManager:
         > 或者按 user_id 串行化——不是这里加一把锁能解决的，因为覆盖发生在
         > 存储层。留给下一轮，不要当成已经修好了。
         """
+        if not self._cross_session:
+            return
         user_id = self._safe_text(user_id)
         conv_id = self._safe_text(conv_id)
         messages = await self._get_working_memory(user_id, conv_id)
@@ -375,6 +393,8 @@ class MemoryManager:
 
     async def _search_episodic(self, user_id: str, query: str) -> list[str]:
         """语义检索情景记忆：向量由 Embedder 生成，检索按 user_id 过滤。"""
+        if not self._cross_session:
+            return []
         query_text = self._safe_text(query).strip()
         if not query_text:
             return []
@@ -390,6 +410,8 @@ class MemoryManager:
 
     async def _store_episodic(self, user_id: str, conv_id: str, text: str, summary: str) -> None:
         """将压缩后的对话片段存入情景记忆，向量由 core/embedder.py 生成。"""
+        if not self._cross_session:
+            return
         try:
             user_id = self._safe_text(user_id)
             conv_id = self._safe_text(conv_id)
@@ -405,6 +427,8 @@ class MemoryManager:
 
     async def _get_profile(self, user_id: str) -> dict[str, Any]:
         """获取用户画像：user_id 主键直读。"""
+        if not self._cross_session:
+            return {}
         try:
             raw = await self._store.profile_get(self._safe_text(user_id))
             if raw:

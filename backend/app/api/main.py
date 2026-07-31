@@ -138,6 +138,16 @@ def _embedding_cfg() -> dict[str, Any]:
     }
 
 
+# 跨会话记忆（情景记忆 + 用户画像）的开关，默认开。这两级只按 user_id 区分，
+# 而没开令牌鉴权时 user_id 取自请求体，所以面向客户的实例要关掉
+# （docker-compose.yml 的 ai-helpdesk-customer）。
+# 关的写法不止认 "false"：这是个关着才安全的开关，把 0 / off 当成"开"会在
+# 没有任何报错的情况下放行。当前取值 /health 里看得到。
+_CROSS_SESSION_MEMORY = os.getenv("ENABLE_CROSS_SESSION_MEMORY", "true").strip().lower() not in {
+    "0", "false", "no", "off",
+}
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _orchestrator, _memory, _tool_manager, _monitor, _evaluator
@@ -289,7 +299,10 @@ async def lifespan(app: FastAPI):
         api_key=cfg["api_key"],
         base_url=cfg.get("base_url"),
         model=cfg["model"],
+        cross_session=_CROSS_SESSION_MEMORY,
     )
+    if not _CROSS_SESSION_MEMORY:
+        logger.info("跨会话记忆已关闭（ENABLE_CROSS_SESSION_MEMORY）：情景记忆和用户画像不读也不写，只留当前会话的记忆")
 
     # 工具管理器 + RAG 知识库（pgvector / SQLite 双后端的混合检索）
     _reranker = Reranker.from_env()
@@ -779,6 +792,10 @@ async def health():
         "auth": {
             "user_token": _user_auth.enabled if _user_auth else False,
             "rate_limit_per_minute": _rate_limiter.limit if _rate_limiter else 0,
+        },
+        # 面向客户的实例这里应当是 false，部署后看这一项核对。
+        "memory": {
+            "cross_session": _memory.cross_session if _memory else False,
         },
     }
 
