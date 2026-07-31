@@ -27,7 +27,7 @@ COPY --from=build /app/dist /usr/share/nginx/html
 # NGINX_ENTRYPOINT_LOCAL_RESOLVERS: 官方 entrypoint 里的 15-local-resolvers.envsh
 # 默认直接 return，不设这个开关就不会导出 NGINX_LOCAL_RESOLVERS，
 # 模板里的 resolver 指令会拿到未替换的字面量导致 nginx 启动失败。
-ENV API_UPSTREAM=host.docker.internal:8000 \
+ENV API_UPSTREAM=host.docker.internal:8080 \
     NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1 \
     NGINX_ENVSUBST_FILTER='^(API_|NGINX_LOCAL_RESOLVERS)'
 

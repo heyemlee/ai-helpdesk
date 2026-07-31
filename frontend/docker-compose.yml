@@ -9,7 +9,8 @@ services:
     ports:
       - "5174:80"
     environment:
-      - API_UPSTREAM=host.docker.internal:8000
+      # 宿主机上的 helpdesk 后端在 8080；8000 归同机的 ai-sql-agent。
+      - API_UPSTREAM=host.docker.internal:8080
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped

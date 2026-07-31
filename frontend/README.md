@@ -40,8 +40,8 @@ src/
 | 运行方式 | `/api/*` 转发到 | 配置位置 |
 |----------|-----------------|----------|
 | `npm run dev` | `http://localhost:8080` | `vite.config.ts`（可用 `VITE_API_URL` 覆盖） |
-| 前端容器单独跑 | `host.docker.internal:8000` | `API_UPSTREAM` 环境变量 |
-| 全栈 compose | `ai-helpdesk:8000` | 仓库根的 `docker-compose.yml` |
+| 前端容器单独跑 | `host.docker.internal:8080` | `API_UPSTREAM` 环境变量 |
+| 全栈 compose | `ai-helpdesk:8000`（Docker 内网里的员工实例） | 仓库根的 `docker-compose.yml` |
 
 页面侧边栏的「API 地址」输入框可以临时改成任意地址（例如直接填 `http://localhost:8080`
 绕过代理），改动存在 localStorage 里。
@@ -53,7 +53,7 @@ npm install
 npm run dev
 ```
 
-访问 http://localhost:5173 。后端需要另外起在 `:8000`，
+访问 http://localhost:5173 。后端需要另外起在 `:8080`（8000 归同机的 ai-sql-agent），
 或者直接用仓库根目录的 `scripts/dev.sh` 一条命令同时起前后端。
 
 ## 测试与类型检查

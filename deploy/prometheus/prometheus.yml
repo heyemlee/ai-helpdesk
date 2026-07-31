@@ -18,6 +18,14 @@ scrape_configs:
         labels:
           service: 'ai-helpdesk'
     scrape_interval: 10s
+
+  # 面向客户的实例（不接 ai-sql-agent），和员工实例分开看
+  - job_name: 'ai-helpdesk-customer'
+    static_configs:
+      - targets: ['ai-helpdesk-customer:8000']
+        labels:
+          service: 'ai-helpdesk-customer'
+    scrape_interval: 10s
     metrics_path: '/metrics'
 
   # Prometheus 自监控

@@ -286,6 +286,11 @@ backup_data() {
 
     # 备份配置：应用 .env + deploy/ 下整套基础设施配置
     cp "$ENV_FILE" "$backup_dir/"
+    # 面向客户实例的专用密钥（AI_HELPDESK_API_KEY）。compose 要求它存在，
+    # 漏备份的话，换机器恢复后客户实例起不来。
+    if [ -f "$BACKEND/.env.customer" ]; then
+        cp "$BACKEND/.env.customer" "$backup_dir/"
+    fi
     cp -r "$DEPLOY" "$backup_dir/deploy"
 
     print_info "备份完成: $backup_dir"
@@ -329,7 +334,9 @@ restore_data() {
         #      把它覆盖掉——照原样 cp 进去等于什么都没做）；
         #   3. 最后再把应用拉起来。
         print_info "1/3 停止应用（数据库保持运行）..."
-        compose stop ai-helpdesk frontend nginx
+        # 两个应用实例（员工 ai-helpdesk、客户 ai-helpdesk-customer）都写同一个库，
+        # 恢复期间都得停；只停一个，另一个会在恢复途中继续写。
+        compose stop ai-helpdesk ai-helpdesk-customer frontend nginx
 
         print_info "2/3 恢复 Postgres..."
         compose up -d postgres
@@ -345,7 +352,7 @@ restore_data() {
         done
         if [ "$ready" -ne 1 ]; then
             print_error "Postgres 未能就绪，恢复中止（数据未改动）"
-            compose start ai-helpdesk frontend nginx
+            compose start ai-helpdesk ai-helpdesk-customer frontend nginx
             return 1
         fi
         if ! compose exec -T postgres psql -U "${POSTGRES_USER:-aihelpdesk}" \
@@ -359,7 +366,7 @@ restore_data() {
             # "请检查 postgres.sql"。真实事故里这是最坏的形态：**你以为你在恢复，
             # 实际上你刚把服务停了，而且没人告诉你**。
             print_warn "数据未改动。正在把应用拉回原状态..."
-            compose start ai-helpdesk frontend nginx
+            compose start ai-helpdesk ai-helpdesk-customer frontend nginx
             print_error "恢复未完成，服务已按原样拉起。旧格式备份（无 --clean 的 "
             print_error "pg_dump）无法恢复到非空库，请用新备份或先清空目标库。"
             return 1
@@ -381,18 +388,18 @@ restore_data() {
                 --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Name}}{{end}}{{end}}' 2>/dev/null)"
             if [ -z "$redis_volume" ]; then
                 print_error "找不到 Redis 的 /data 卷，恢复中止"
-                compose start redis ai-helpdesk frontend nginx
+                compose start redis ai-helpdesk ai-helpdesk-customer frontend nginx
                 return 1
             fi
             if ! docker run --rm -v "$redis_volume:/data" alpine:3.20 \
                     sh -c 'rm -rf /data/appendonlydir /data/dump.rdb'; then
                 print_error "清空 Redis 数据目录失败"
-                compose start redis ai-helpdesk frontend nginx
+                compose start redis ai-helpdesk ai-helpdesk-customer frontend nginx
                 return 1
             fi
             if ! docker cp "$backup_dir/redis-data/." ai-helpdesk-redis:/data; then
                 print_error "Redis 数据目录拷入失败"
-                compose start redis ai-helpdesk frontend nginx
+                compose start redis ai-helpdesk ai-helpdesk-customer frontend nginx
                 return 1
             fi
         elif [ -f "$backup_dir/dump.rdb" ]; then
@@ -410,6 +417,9 @@ restore_data() {
 
         # 恢复配置
         cp "$backup_dir/.env" "$ENV_FILE"
+        if [ -f "$backup_dir/.env.customer" ]; then
+            cp "$backup_dir/.env.customer" "$BACKEND/.env.customer"
+        fi
         if [ -d "$backup_dir/deploy" ]; then
             rm -rf "$DEPLOY"
             cp -r "$backup_dir/deploy" "$DEPLOY"
@@ -426,7 +436,7 @@ restore_data() {
         fi
 
         # 启动服务
-        compose start ai-helpdesk frontend nginx
+        compose start ai-helpdesk ai-helpdesk-customer frontend nginx
 
         print_info "恢复完成"
     else

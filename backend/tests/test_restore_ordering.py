@@ -122,6 +122,15 @@ class TestRestoreOrdering:
 
         assert stop_app < psql < start_app
 
+    def test_the_customer_instance_is_stopped_and_started_too(self, fake_repo):
+        """面向客户的实例也写同一个库：只停员工实例，恢复途中它还会继续写。"""
+        cmds = _run_restore(fake_repo)
+        stop_customer = _index_of(cmds, "stop", "ai-helpdesk-customer")
+        psql = _index_of(cmds, "psql")
+        start_customer = _index_of(cmds, "start", "ai-helpdesk-customer")
+
+        assert stop_customer < psql < start_customer
+
     def test_redis_is_stopped_around_the_rdb_copy(self, fake_repo):
         """
         跑着的 Redis 不读磁盘上的 rdb，退出时还会用内存里的数据把它覆盖掉
@@ -142,6 +151,12 @@ class TestRestoreOrdering:
         assert (deploy / "prometheus" / "prometheus.yml").read_text() == "restored: true\n"
         # 整体替换，不是叠加：恢复前就有、备份里没有的文件不该留下来
         assert not (deploy / "nginx").exists()
+
+    def test_customer_instance_key_is_restored_when_backed_up(self, fake_repo):
+        """面向客户实例的密钥文件在备份里就要恢复：compose 要求它存在，缺了客户实例起不来。"""
+        (fake_repo["backup"] / ".env.customer").write_text("AI_HELPDESK_API_KEY=k\n")
+        _run_restore(fake_repo)
+        assert (fake_repo["backend"] / ".env.customer").read_text() == "AI_HELPDESK_API_KEY=k\n"
 
     def test_legacy_backup_with_flat_config_dir_restores_env_but_not_deploy(self, fake_repo):
         """
