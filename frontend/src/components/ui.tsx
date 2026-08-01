@@ -86,7 +86,32 @@ export function Empty({ children }: { children: ReactNode }) {
 
 export function ErrorNote({ error }: { error: unknown }) {
   if (!error) return null
-  return <p className="note danger">{error instanceof Error ? error.message : String(error)}</p>
+  return <p className="note danger" role="alert">{error instanceof Error ? error.message : String(error)}</p>
+}
+
+/**
+ * 整块的状态占位：加载中、空、没匹配上、出错。
+ *
+ * 这四种必须长得不一样、说得不一样——"库是空的""没搜到""接口坏了"在用户那里
+ * 是三个完全不同的下一步。标题说发生了什么，正文说接下来能做什么，
+ * 出错时把后端的原话留在 detail 里，报障时用得上。
+ */
+export function StateBlock({ tone = 'neutral', title, children, detail, action, busy }: {
+  tone?: 'neutral' | 'danger'
+  title: ReactNode
+  children?: ReactNode
+  detail?: ReactNode
+  action?: ReactNode
+  busy?: boolean
+}) {
+  return (
+    <div className={`state-block ${tone}`} role={tone === 'danger' ? 'alert' : 'status'} aria-busy={busy || undefined}>
+      <p className="state-title">{busy && <span className="pulse" />}{title}</p>
+      {children && <p className="state-body">{children}</p>}
+      {detail && <p className="state-detail mono">{detail}</p>}
+      {action && <div className="state-action">{action}</div>}
+    </div>
+  )
 }
 
 export function SectionLabel({ children }: { children: ReactNode }) {

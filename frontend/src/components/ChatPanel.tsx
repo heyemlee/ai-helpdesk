@@ -1,19 +1,55 @@
 import { useEffect, useRef, useState } from 'react'
 import { MessageBubble } from './MessageBubble'
-import { Icon } from './Icon'
+import { Icon, type IconName } from './Icon'
 import type { ChatMessage } from '@/hooks/useChatStream'
+import type { HealthResponse, RoutingConfig } from '@/api/types'
 import { useT } from '@/i18n'
+import type { Key } from '@/i18n/catalog'
 
-/** 内置示例问题，覆盖规则快通道、跨域主辅协作、答案策略拦截三条典型链路。 */
-/* 建议问句跟着界面语言走：夹具的匹配在演示原型里，真实后端不依赖问句语种。 */
-const SAMPLES = [
+/**
+ * 示例问题：知识问答、订单查询两类各有代表。点一下只填进输入框，不直接发——
+ * 订单那条带着占位的单号，本来就得先改成真的。
+ */
+const SAMPLES: Array<{ question: Key; title: Key; icon: IconName }> = [
   { question: 'cw.sample.1', title: 'cw.category.1', icon: 'pulse' },
-  { question: 'cw.sample.2', title: 'cw.category.2', icon: 'shield' },
-  { question: 'cw.sample.3', title: 'cw.category.3', icon: 'checklist' },
+  { question: 'cw.sample.2', title: 'cw.category.2', icon: 'checklist' },
+  { question: 'cw.sample.3', title: 'cw.category.3', icon: 'arrow' },
   { question: 'cw.sample.4', title: 'cw.category.4', icon: 'book' },
-] as const
+]
 
-export function ChatPanel({ messages, busy, onSend, onInspect, explain, restoring }: {
+/**
+ * 「可以查询什么」：三类问题各自从哪里得到答案。
+ *
+ * 订单数据那一条照 /health 的 capabilities 说话——这个工作台接没接业务数据
+ * 是部署决定的，写死"可以查订单"的话，没接的那套环境里员工会白等一个查不到的答案。
+ * 后端没报（老版本）就说没报，不替它猜。
+ */
+export function ScopeGuide({ capabilities }: { capabilities?: HealthResponse['capabilities'] }) {
+  const { t } = useT()
+  const dataKey: Key = capabilities === undefined ? 'cw.scope.data.unknown'
+    : capabilities.business_data ? 'cw.scope.data.on' : 'cw.scope.data.off'
+  return (
+    <div className="scope">
+      <dl className="scope-list">
+        <div className="scope-item">
+          <dt><Icon name="book" size={16} />{t('cw.scope.kb.title')}</dt>
+          <dd>{t('cw.scope.kb.body')}</dd>
+        </div>
+        <div className="scope-item">
+          <dt><Icon name="pulse" size={16} />{t('cw.scope.data.title')}</dt>
+          <dd>{t(dataKey)}</dd>
+        </div>
+        <div className="scope-item">
+          <dt><Icon name="person" size={16} />{t('cw.scope.human.title')}</dt>
+          <dd>{t('cw.scope.human.body')}</dd>
+        </div>
+      </dl>
+      <p className="scope-limits"><Icon name="shield" size={14} />{t('cw.scope.limits')}</p>
+    </div>
+  )
+}
+
+export function ChatPanel({ messages, busy, onSend, onInspect, explain, restoring, capabilities, routingConfig, base }: {
   messages: ChatMessage[]
   busy: boolean
   onSend: (text: string) => void
@@ -21,6 +57,9 @@ export function ChatPanel({ messages, busy, onSend, onInspect, explain, restorin
   explain?: boolean
   /** 正在从服务端拉刷新前的历史 */
   restoring?: boolean
+  capabilities?: HealthResponse['capabilities']
+  routingConfig?: RoutingConfig
+  base?: string
 }) {
   const { t } = useT()
   const [draft, setDraft] = useState('')
@@ -68,21 +107,24 @@ export function ChatPanel({ messages, busy, onSend, onInspect, explain, restorin
           </div>
         ) : messages.length === 0 ? (
           <div className="thread-empty">
-            <span className="eyebrow">{t('cw.eyebrow')}</span>
             <h2>{t('cw.empty.title')}</h2>
             <p>{t('cw.empty.body')}</p>
-            <div className="starter-section">
-              <p className="starter-label">{t('cw.examples')}</p>
+            <section className="starter-section" aria-labelledby="scope-title">
+              <h3 className="starter-label" id="scope-title">{t('cw.scope.title')}</h3>
+              <ScopeGuide capabilities={capabilities} />
+            </section>
+            <section className="starter-section" aria-labelledby="starter-title">
+              <h3 className="starter-label" id="starter-title">{t('cw.examples')}</h3>
               <div className="starter-grid">
                 {SAMPLES.map((sample) => (
                   <button key={sample.question} className="starter-card" disabled={busy || restoring}
                     onClick={() => { setDraft(t(sample.question)); areaRef.current?.focus(); requestAnimationFrame(grow) }}>
-                    <span className="starter-card-head"><Icon name={sample.icon} /><strong>{t(sample.title)}</strong><Icon name="arrow" size={16} /></span>
+                    <span className="starter-card-head"><Icon name={sample.icon} /><strong>{t(sample.title)}</strong></span>
                     <span>{t(sample.question)}</span>
                   </button>
                 ))}
               </div>
-            </div>
+            </section>
           </div>
         ) : (
           <div className="thread-inner">
@@ -92,7 +134,8 @@ export function ChatPanel({ messages, busy, onSend, onInspect, explain, restorin
               </p>
             )}
             {messages.map((m) => (
-              <MessageBubble key={m.id} message={m} explain={explain} onInspect={() => onInspect(m)} />
+              <MessageBubble key={m.id} message={m} explain={explain} base={base}
+                             routingConfig={routingConfig} onInspect={() => onInspect(m)} />
             ))}
           </div>
         )}
@@ -120,7 +163,7 @@ export function ChatPanel({ messages, busy, onSend, onInspect, explain, restorin
             }}
           />
           <div className="composer-bar">
-            <span className="composer-caption"><Icon name="spark" size={14} />{t('cw.ready')}</span><span className="composer-keyboard">{t('cw.keyboard')}</span>
+            <span className="composer-keyboard">{busy ? t('cw.busy') : t('cw.keyboard')}</span>
             <button className="send" type="submit" disabled={busy || restoring || !draft.trim()} aria-label={t('cw.send')}>
               <Icon name="send" size={18} />
             </button>

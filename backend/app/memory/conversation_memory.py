@@ -28,6 +28,7 @@ from typing import Any
 import redis.asyncio as redis
 from pydantic import BaseModel
 
+from app.core.llm_guard import log_model_failure
 from app.core.llm_utils import (
     DEFAULT_ANTHROPIC_MODEL,
     create_llm_client,
@@ -151,6 +152,10 @@ class MemoryManager:
     # 压缩锁的 TTL。压缩里要等一次模型（几秒），取 60s 留足余量；
     # 它的作用是进程在压缩中途崩掉时锁能自己过期，不至于这个会话再也压不了。
     COMPRESS_LOCK_TTL_S = 60
+    # 摘要失败后的冷却。失败时历史原样留着（见 _compress_locked），列表仍然超阈值——
+    # 不加冷却的话之后每一条消息都会再试一次摘要，而压缩是在请求路径上等的：模型
+    # 一直超时的时候，就是每轮对话白等两次。冷却期内不压缩不会丢任何东西。
+    SUMMARY_RETRY_COOLDOWN_S = 120
     HISTORY_TOP_K = 5     # 情景记忆检索返回条数
 
     def __init__(
@@ -257,7 +262,7 @@ class MemoryManager:
             await self._store.profile_set(user_id, conv_id, doc_text)
             logger.info(f"用户画像已更新: {user_id}")
         except Exception as ex:
-            logger.warning(f"更新用户画像失败: {ex}")
+            log_model_failure(logger, "更新用户画像失败", ex)
 
     # ── 读取 ──────────────────────────────────────────────────────────────────
 
@@ -317,6 +322,9 @@ class MemoryManager:
         真正被摘要走的那一段**（口子 1）——等待期间新到的消息原样留在列表里。
         """
         key = self._wm_key(user_id, conv_id)
+        if await self._redis.get(self._summary_cooldown_key(key)):
+            logger.debug("工作记忆摘要刚失败过，冷却期内不重试: %s/%s", user_id, conv_id)
+            return
         lock_key = f"{key}:compressing"
         # SET NX EX：同一会话同时只有一个压缩在跑。抢不到就直接返回——
         # 别的进程正在压，这一轮不压不会有任何损失（还超阈值的话下一条消息
@@ -347,8 +355,18 @@ class MemoryManager:
                 messages=[{"role": "user", "content": prompt}],
             )
             summary = self._safe_text(extract_text_content(resp.content)).strip()
-        except Exception:
-            summary = f"对话包含 {len(to_compress)} 条消息（摘要生成失败）"
+        except Exception as ex:
+            summary = ""
+            log_model_failure(logger, "工作记忆摘要生成失败，保留原历史", ex)
+        if not summary:
+            # 摘要没生成出来就**什么都不动**。以前这里拿一句"对话包含 N 条消息
+            # （摘要生成失败）"顶替摘要，然后照样把那 N 条原话裁掉——客户说过的话
+            # 换成了一句不含任何信息的占位，而且没有症状。原话留着，冷却期过后下一条
+            # 消息进来时还超阈值，会再试一次；模型一直不可用的话列表会继续变长，
+            # 由 24h TTL 兜底。
+            await self._redis.set(self._summary_cooldown_key(key), "1",
+                                  ex=self.SUMMARY_RETRY_COOLDOWN_S)
+            return
 
         # 摘要用 APPEND 追加，不是"读出来拼一下再写回去"——后者同样是一次
         # 读改写，两个压缩交错时会丢掉一份摘要。APPEND 是原子的。
@@ -448,6 +466,10 @@ class MemoryManager:
     @staticmethod
     def _summary_key(user_id: str, conv_id: str) -> str:
         return f"summary:{user_id}:{conv_id}"
+
+    @staticmethod
+    def _summary_cooldown_key(wm_key: str) -> str:
+        return f"{wm_key}:summary_cooldown"
 
     @staticmethod
     def _safe_text(value: Any) -> str:

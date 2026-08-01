@@ -36,6 +36,7 @@ from typing import Any
 
 from app.core.answer_policy import AnswerPolicy, PolicyStreamGuard, PolicyViolation, split_sentences
 from app.core.intent_recognizer import IntentCategory, IntentRecognizer, UrgencyLevel
+from app.core.llm_guard import REASON_MODEL_ERROR, unavailable_reason
 from app.core.llm_utils import (
     ANSWER_MAX_TOKENS,
     DEFAULT_ANTHROPIC_MODEL,
@@ -58,6 +59,7 @@ class AgentType(Enum):
     BILLING   = "billing"    # 专家：报价与账款
     ORDER     = "order"      # 专家：订单、改单、补件与交付
     HANDOFF   = "handoff"    # 转人工（不是 LLM Agent，由编排器直接产出）
+    SYSTEM    = "system"     # 编排器自己说的话：模型服务不可用时的提示，不是哪个 Agent 的回答
 
 
 # 三个专家 Agent —— 领域打分只在这三者之间比较，GENERAL 只做兜底。
@@ -71,6 +73,7 @@ AGENT_DISPLAY_NAMES: dict[AgentType, str] = {
     AgentType.BILLING:   "报价与账款 Agent",
     AgentType.ORDER:     "订单履约 Agent",
     AgentType.HANDOFF:   "运营升级通道",
+    AgentType.SYSTEM:    "系统提示",
 }
 
 
@@ -173,6 +176,9 @@ class AgentResponse:
     latency_ms:  float = 0.0
     escalate:    bool  = False   # 是否需要升级
     policy_violations: list[PolicyViolation] = field(default_factory=list)
+    # success=False 的原因若是"模型服务不可用"（凭证被拒、额度用尽、限流退避，
+    # 见 core/llm_guard），这里是原因；其它失败（超时、5xx、代码异常）为空串。
+    unavailable_reason: str = ""
 
 
 @dataclass
@@ -187,6 +193,9 @@ class Request:
     intent_group: str | None = None
     urgency:     UrgencyLevel | None   = None
     intent_confidence: float = 1.0
+    # 意图那一路模型没答上来，手里的 intent 是规则和向量凑出来的降级结果。
+    # 这时"意图不明 → 先追问"不成立：含糊的不是这句话，是模型没给信号。
+    intent_degraded: bool = False
     # 本轮回答允许引用的出处（RAG 检索结果等）。AnswerPolicy 用它判断
     # 回复里的价格/时效是否"有依据"。
     grounding_sources: list[str] = field(default_factory=list)
@@ -212,6 +221,10 @@ class OrchestratorResult:
     answer_confidence: float = 1.0
     needs_clarification: bool = False
     policy_violations: list[PolicyViolation] = field(default_factory=list)
+    # 模型服务不可用，这一轮没有产出回答。**不是转人工**：没有人判断过这件事需要
+    # 人来处理，所以 handoff 为 False、上层不建工单。原因见 core/llm_guard 的 REASON_*。
+    service_unavailable: bool = False
+    unavailable_reason: str = ""
 
 
 @dataclass
@@ -274,6 +287,24 @@ class BaseAgent:
         self.stats.record(ok=ok, ms=ms)
         record_agent_latency(self.key, ms)
 
+    def _record_failure(self, ex: Exception, ms: float, what: str) -> str:
+        """
+        一次失败的收尾：记统计、记日志，返回"模型服务不可用"的原因（不是就返回空串）。
+
+        模型服务不可用**不记到这个 Agent 头上**。Monitor 拿成功率给 Agent 降权，
+        凭证被停用时每个 Agent 的成功率都会掉到 0——恢复之后它们还要顶着这笔惩罚
+        慢慢爬回来，而它们什么都没做错。
+        """
+        reason = unavailable_reason(ex)
+        if reason:
+            # 保护已经在挡的调用没出网，不值得每条提问占一条 error
+            log = logger.error if getattr(ex, "sent", True) else logger.debug
+            log(f"{self.agent_type.value} {what}: {ex}")
+        else:
+            self._record(ok=False, ms=ms)
+            logger.error(f"{self.agent_type.value} {what}: {ex}")
+        return reason
+
     async def handle(self, req: Request) -> AgentResponse:
         with span("agent.handle", agent=self.agent_type.value):
             return await self._handle_inner(req)
@@ -319,14 +350,14 @@ class BaseAgent:
             )
         except Exception as ex:
             ms = (time.monotonic() - t0) * 1000
-            self._record(ok=False, ms=ms)
-            logger.error(f"{self.agent_type.value} 处理失败: {ex}")
+            reason = self._record_failure(ex, ms, "处理失败")
             return AgentResponse(
                 agent_type=self.agent_type,
                 content=_customer_text(req, "agent_error"),
                 success=False,
                 confidence=0.0,
                 latency_ms=ms,
+                unavailable_reason=reason,
             )
 
     async def stream(self, req: Request) -> AsyncIterator[dict[str, Any]]:
@@ -399,8 +430,7 @@ class BaseAgent:
             }
         except Exception as ex:
             ms = (time.monotonic() - t0) * 1000
-            self._record(ok=False, ms=ms)
-            logger.error(f"{self.agent_type.value} 流式处理失败: {ex}")
+            reason = self._record_failure(ex, ms, "流式处理失败")
             yield {
                 "type": "end",
                 "response": AgentResponse(
@@ -409,6 +439,7 @@ class BaseAgent:
                     success=False,
                     confidence=0.0,
                     latency_ms=ms,
+                    unavailable_reason=reason,
                 ),
             }
 
@@ -686,7 +717,12 @@ class OrderAgent(BaseAgent):
 # 一条自相矛盾的回复——前半段让用户补资料，后半段说已经转交人工。
 #
 # 所以转人工时先把索取信息的表述过滤掉，只留有信息量的部分，
-# 由固定文案给出唯一一条行动指引：等同事联系，同时把资料准备好。
+# 由固定文案给出唯一一条行动指引：这件事交给人工处理，同时把资料准备好。
+#
+# 固定文案**不说"稍后会有同事联系您"**。编排器走到这一步时只知道"判了转人工"：
+# 工单这时还没建（建单在上层，可能失败），通知有没有配、发没发出去、有没有人
+# 接手，它一概不知道。原来那句话在没配通知接收方的部署上是一句没有任何依据的
+# 承诺——工单静静躺在库里，客户却被告知有人会来联系。能如实说的只有"需要人工"。
 
 # 所有会进到 response 正文、被客户读到的固定文案。集中在这里分语种，
 # 是因为它们散落时全是中文硬编码：回复语言跟客户走之后，一段英文回答的结尾
@@ -698,15 +734,22 @@ class OrderAgent(BaseAgent):
 _CUSTOMER_TEXT = {
     "zh": {
         "handoff_notice": (
-            "这个问题我已经转交人工客服跟进，稍后会有同事联系您。"
+            "这个问题需要由人工客服来处理。"
             "为了加快处理，请准备好订单号或柜号、以及现场照片等相关资料。"
         ),
         # 流式下草稿已经逐句发出去了，收不回来——只能明确作废掉刚才的追问，
         # 而不是当它没发生过。
-        "handoff_after_ask": "上面需要您补充的信息就不用回复我了——",
+        "handoff_after_ask": "上面需要您补充的信息就不用回复我了。",
         "agent_error": "抱歉，处理您的请求时出现问题，请稍后重试。",
         "all_failed": "抱歉，所有 Agent 均处理失败。",
         "unavailable": "服务暂时不可用，请稍后重试。",
+        # 模型服务不可用时的整条回复。只说三件事实：这一条没答、没有建工单、
+        # 要人工就明说。给出的那句口令（"转人工"）是规则通道的锚点短语，不经模型
+        # 就能识别，所以模型不可用的时候它照样建得了单。
+        "service_unavailable": (
+            "抱歉，智能助手暂时无法回答，这个问题没有得到解答，系统也没有为它创建工单。"
+            "请稍后再试；如果需要人工处理，请直接回复“转人工”。"
+        ),
         "clarify": (
             "我还不能确定您要处理的是哪类问题。请补充一下是订单交付、报价账款，"
             "还是产品安装方面的问题？"
@@ -716,14 +759,19 @@ _CUSTOMER_TEXT = {
     },
     "en": {
         "handoff_notice": (
-            "I've passed this to a human colleague, who will follow up with you shortly. "
+            "This needs to be handled by a member of our team. "
             "To speed things up, please have your order or cabinet number and any "
             "on-site photos ready."
         ),
-        "handoff_after_ask": "You don't need to reply with the details I asked for above — ",
+        "handoff_after_ask": "You don't need to reply with the details I asked for above. ",
         "agent_error": "Sorry, something went wrong handling your request. Please try again shortly.",
         "all_failed": "Sorry, none of the agents were able to handle this request.",
         "unavailable": "The service is temporarily unavailable. Please try again shortly.",
+        "service_unavailable": (
+            "Sorry, the assistant can't answer right now. This question was not answered and "
+            "no ticket was created for it. Please try again later; if you need a person, "
+            "reply \"talk to a person\"."
+        ),
         "clarify": (
             "I'm not yet sure which kind of issue this is. Could you tell me whether it's "
             "about order delivery, quoting and billing, or product and installation?"
@@ -984,6 +1032,9 @@ class AgentOrchestrator:
     ):
         client = create_llm_client(api_key, base_url)
         self._model = model
+        # 这份模型配置的不可用保护（core/llm_guard）。意图、改写、重排、摘要用的
+        # 是同一份配置，所以它们任何一处被拒，这里都看得到。
+        self._llm_guard = getattr(client, "guard", None)
 
         self._intent_recognizer = recognizer or IntentRecognizer(
             api_key=api_key, base_url=base_url, model=model
@@ -1047,41 +1098,50 @@ class AgentOrchestrator:
 
         # 1. 意图识别（如果调用方已识别则跳过）
         if req.intent is None:
-            intent_result = await self._intent_recognizer.recognize(req.message, history=req.history)
-            req.intent  = intent_result.intent
-            req.intent_group = intent_result.intent_group
-            req.urgency = intent_result.urgency
-            req.intent_confidence = intent_result.confidence
+            await self._recognize_into(req)
 
-        # 2. 低置信度澄清：意图没定性时先追问，不猜着路由
+        # 2. 模型服务不可用：不追问、不调 Agent。明确要求人工的仍然照常转——
+        #    那条路是规则判的，本来就不经模型。
+        unavailable = self._unavailable_before_answer(req)
+        if unavailable:
+            decision = self._route_decision(req)
+            if decision.primary_agent == AgentType.HANDOFF:
+                return self._handoff_result(req, decision, decision.reason, t0)
+            return self._unavailable_result(req, None, unavailable, t0)
+
+        # 3. 低置信度澄清：意图没定性时先追问，不猜着路由
         if self._needs_clarification(req):
             return self._clarification_result(req, t0)
 
         decision = self._route_decision(req)
 
-        # 3. 明确要求转人工 / CRITICAL 紧急度：直接产出转人工结果，不走 LLM
+        # 4. 明确要求转人工 / CRITICAL 紧急度：直接产出转人工结果，不走 LLM
         if decision.primary_agent == AgentType.HANDOFF:
             return self._handoff_result(req, decision, decision.reason, t0)
 
-        # 4. 跨域问题并行协作，例如同一句同时涉及登录故障和重复扣款
+        # 5. 跨域问题并行协作，例如同一句同时涉及登录故障和重复扣款
         if decision.multi_agent:
             return await self.run_parallel(req, decision)
 
-        # 5. 执行主 Agent（失败时降级到 GeneralAgent）
+        # 6. 执行主 Agent（失败时降级到 GeneralAgent）
         response = await self._execute(req, decision.primary_agent)
 
-        # 6. 置信度转人工：三路信号各自对齐阈值
+        # 没有任何 Agent 答上来：这是模型故障，不是这件事需要人来处理。
+        # 以前这里走转人工，于是停机期间每一条提问都会开一张业务工单。
+        if not response.success:
+            return self._unavailable_result(
+                req, decision, response.unavailable_reason or REASON_MODEL_ERROR, t0)
+
+        # 7. 置信度转人工：三路信号各自对齐阈值
         answer_confidence = self._answer_confidence(req, decision, [response])
         handoff_reasons = self._handoff_signals(req, decision, [response])
         if handoff_reasons:
             return self._handoff_result(
                 req, decision, "；".join(handoff_reasons), t0,
-                answer=response.content if response.success else "",
+                answer=response.content,
                 answer_confidence=answer_confidence,
                 policy_violations=response.policy_violations,
-                # 执行失败时文案完全由编排器产出，agent_type 就该是 handoff，
-                # 不能挂在那个没能给出回答的 Agent 头上。
-                executed_agent=response.agent_type if response.success else None,
+                executed_agent=response.agent_type,
             )
 
         return OrchestratorResult(
@@ -1110,6 +1170,12 @@ class AgentOrchestrator:
         tasks = [self._execute(req, at) for at in agent_types]
         responses = await asyncio.gather(*tasks, return_exceptions=True)
         ok = [r for r in responses if isinstance(r, AgentResponse) and r.success]
+
+        if not ok:
+            # 一个都没答上来，同 run()：模型故障，不建工单
+            reason = next((r.unavailable_reason for r in responses
+                           if isinstance(r, AgentResponse) and r.unavailable_reason), "")
+            return self._unavailable_result(req, decision, reason or REASON_MODEL_ERROR, t0)
 
         # 合并：主 Agent 在前，辅助 Agent 在后。
         parts = []
@@ -1165,11 +1231,26 @@ class AgentOrchestrator:
         t0 = time.monotonic()
 
         if req.intent is None:
-            intent_result = await self._intent_recognizer.recognize(req.message, history=req.history)
-            req.intent  = intent_result.intent
-            req.intent_group = intent_result.intent_group
-            req.urgency = intent_result.urgency
-            req.intent_confidence = intent_result.confidence
+            await self._recognize_into(req)
+
+        # 与 run() 同一个判断、同一个位置：模型不可用时不追问、不调 Agent，
+        # 明确要求人工的照常转。
+        unavailable = self._unavailable_before_answer(req)
+        if unavailable:
+            decision = self._route_decision(req)
+            if decision.primary_agent == AgentType.HANDOFF:
+                result = self._handoff_result(req, decision, decision.reason, t0)
+                yield {"type": "routing", "primary_agent": decision.primary_agent.value,
+                       "supporting_agents": [], "reason": decision.reason,
+                       "confidence": decision.confidence}
+            else:
+                result = self._unavailable_result(req, None, unavailable, t0)
+                yield {"type": "routing", "primary_agent": result.primary_agent.value,
+                       "supporting_agents": [], "reason": result.routing_reason,
+                       "confidence": result.routing_confidence}
+            yield {"type": "delta", "text": result.response}
+            yield {"type": "result", "result": result}
+            return
 
         if self._needs_clarification(req):
             result = self._clarification_result(req, t0)
@@ -1206,26 +1287,28 @@ class AgentOrchestrator:
         # 单 Agent：逐句流式
         agent = self._best_agent(decision.primary_agent) or self._best_agent(AgentType.GENERAL)
         if agent is None:
-            result = self._handoff_result(req, decision, "没有可用的 Agent 实例", t0)
+            # 池里一个实例都没有是装配问题，同样不是"这件事需要人工"
+            result = self._unavailable_result(req, decision, REASON_MODEL_ERROR, t0)
             yield {"type": "delta", "text": result.response}
             yield {"type": "result", "result": result}
             return
 
         response: AgentResponse | None = None
+        sent_text = False
         async for event in agent.stream(req):
             if event["type"] == "delta":
+                sent_text = True
                 yield event
             else:
                 response = event["response"]
 
-        # 流式失败无法重放已发出的内容，因此这里不做"降级到 General 重跑"，
-        # 而是直接转人工——重跑会让用户看到两段互相矛盾的回答。
+        # 流式失败无法重放已发出的内容，因此这里不做"降级到 General 重跑"——重跑会让
+        # 用户看到两段互相矛盾的回答。也不转人工：没答上来是模型的故障，不是判断出
+        # 这件事需要人来处理，照实说没答完、没建工单。
         if response is None or not response.success:
-            result = self._handoff_result(
-                req, decision, "Agent 流式执行失败", t0,
-                answer_confidence=0.0, executed_agent=decision.primary_agent,
-            )
-            yield {"type": "delta", "text": "\n\n" + result.response}
+            reason = (response.unavailable_reason if response else "") or REASON_MODEL_ERROR
+            result = self._unavailable_result(req, decision, reason, t0)
+            yield {"type": "delta", "text": ("\n\n" if sent_text else "") + result.response}
             yield {"type": "result", "result": result}
             return
 
@@ -1263,6 +1346,81 @@ class AgentOrchestrator:
                 policy_violations=response.policy_violations,
             ),
         }
+
+    # ── 模型服务不可用 ────────────────────────────────────────────────────────
+
+    async def _recognize_into(self, req: Request) -> None:
+        """调用方没先做意图识别时在这里做，结果写回请求。"""
+        intent_result = await self._intent_recognizer.recognize(req.message, history=req.history)
+        req.intent = intent_result.intent
+        req.intent_group = intent_result.intent_group
+        req.urgency = intent_result.urgency
+        req.intent_confidence = intent_result.confidence
+        req.intent_degraded = bool(getattr(intent_result, "llm_failed", False))
+
+    def llm_unavailable_reason(self) -> str:
+        """这份模型配置此刻是不是被保护挡着。是就返回原因，否则空串。不出网。"""
+        guard = self._llm_guard
+        return guard.blocked_reason() if guard is not None else ""
+
+    def llm_status(self) -> dict[str, Any]:
+        """给 /health 用：模型服务可不可用、为什么、有限退避还剩多久。不含地址和凭证。"""
+        guard = self._llm_guard
+        if guard is None:
+            return {"available": True, "unavailable_reason": "", "retry_after_s": None}
+        return guard.status()
+
+    def _unavailable_before_answer(self, req: Request) -> str:
+        """
+        动手作答之前就知道答不了的两种情况，返回原因；都不是返回空串。
+
+        1. 保护正挡着这份配置——Agent 一调就会被挡回来，不必去调；
+        2. 意图那一路模型没答上来，而剩下两路凑出的结果又落到了"意图不明"。
+           这时去追问"您问的是哪类问题"是把模型的故障说成客户没讲清楚。
+        """
+        blocked = self.llm_unavailable_reason()
+        if blocked:
+            return blocked
+        if req.intent_degraded and self._needs_clarification(req):
+            return REASON_MODEL_ERROR
+        return ""
+
+    def _unavailable_result(
+        self,
+        req: Request,
+        decision: "RoutingDecision | None",
+        reason: str,
+        t0: float,
+    ) -> OrchestratorResult:
+        """
+        模型服务不可用时的结果：一段固定文案，标明没答、没建工单。
+
+        和转人工是两件事。转人工是"判断过了，这件事需要人来处理"，会落工单；
+        这里是"没能判断"。把它也算成转人工，停机期间每一条提问都会开一张业务
+        工单，工单队列里全是故障的回声，真正需要人处理的那几张被淹掉。
+
+        `decision` 只在**真的调过 Agent**（它没答上来）时传：那次路由是算数的，
+        选中过谁照实报。作答之前就知道答不了的（保护在挡、意图降级）传 None——
+        那时手里的意图是规则和向量凑出来的，按它算出的"主 Agent"不该当成一次
+        路由结论报出去，所以主 Agent 报 system、路由置信度报 0。
+        """
+        logger.warning("请求 %s 未作答：模型服务不可用（%s）", req.request_id, reason)
+        return OrchestratorResult(
+            request_id=req.request_id,
+            response=_customer_text(req, "service_unavailable"),
+            agent_type=AgentType.SYSTEM,
+            intent=req.intent,
+            latency_ms=(time.monotonic() - t0) * 1000,
+            agent_types=[AgentType.SYSTEM],
+            primary_agent=decision.primary_agent if decision else AgentType.SYSTEM,
+            supporting_agents=decision.supporting_agents if decision else [],
+            routing_reason=(decision.reason if decision
+                            else f"模型服务不可用（{reason}），未调用任何 Agent"),
+            routing_confidence=decision.confidence if decision else 0.0,
+            answer_confidence=0.0,
+            service_unavailable=True,
+            unavailable_reason=reason,
+        )
 
     # ── 转人工 ────────────────────────────────────────────────────────────────
 
@@ -1569,8 +1727,16 @@ class AgentOrchestrator:
 
         response = await agent.handle(req)
 
-        # 专家 Agent 失败时降级到 GeneralAgent
+        # 专家 Agent 失败时降级到 GeneralAgent——**模型服务不可用时除外**。
+        # 通用 Agent 用的是同一个客户端、同一把凭证：专家被拒，它也只会被拒，
+        # 降级这一下除了再打一次明知不行的请求，什么也换不来。
         if not response.success and agent_type != AgentType.GENERAL:
+            if response.unavailable_reason:
+                logger.warning(
+                    "%s 因模型服务不可用（%s）未作答，不用同一凭证降级到 GeneralAgent",
+                    agent_type.value, response.unavailable_reason,
+                )
+                return response
             logger.warning(f"{agent_type.value} 失败，降级到 GeneralAgent")
             fallback = self._best_agent(AgentType.GENERAL)
             if fallback:

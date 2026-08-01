@@ -16,6 +16,7 @@ ai-helpdesk 是一个企业级智能客服系统，核心链路为：
        ├─ 辅助 Agent：跨域工单里达到门槛的其他专家，与主 Agent 并行执行
        ├─ 意图落到 OTHER 且置信度不足 → 先澄清追问
        └─ 专家执行失败 → 降级到 GeneralAgent 重试
+          （模型服务不可用时不降级、不转人工、不建工单：回一句"没有作答"，见 5.3）
   -> Agent 生成回复（注入对应 agent 类型的 Markdown SOP，支持热加载）
   -> AnswerPolicy 出站校验：拦截无依据的价格/时效承诺
   -> 综合置信度（意图 / 路由 / Agent 自评取最弱一环）低于阈值 → 转人工
@@ -134,6 +135,7 @@ pip install -r requirements.txt && pytest
 | 低置信度澄清 | `AgentOrchestrator._needs_clarification` | `test_low_confidence_other_intent_asks_for_clarification` |
 | 置信度转人工 | `_handoff_signals`，三路各自对齐阈值 | `test_low_intent_confidence_triggers_handoff` |
 | 专家失败降级到通用 Agent | `AgentOrchestrator._execute` | `test_specialist_failure_falls_back_to_general` |
+| 模型凭证不可用保护：被拒之后同一份配置不再出网；没答上来不算转人工 | `app/core/llm_guard.py`（套在 `create_llm_client` 上）；`AgentOrchestrator._unavailable_result` | `tests/test_llm_guard.py`、`tests/test_model_outage.py`（全部离线） |
 | 按 Agent 类型注入的热加载 SOP | `app/core/skill_loader.py` + `skills/*/SKILL.md` | `POST /skills/reload` 后 `GET /skills` |
 | 拦截无依据的价格/时效承诺 | `app/core/answer_policy.py` | `tests/test_answer_policy.py`；响应里的 `policy_violations` |
 | 四维 LLM-as-Judge | `app/evaluation/evaluator.py::LLMJudge` | `test_judge_prompt_names_all_four_dimensions` |
@@ -257,15 +259,24 @@ REDIS_URL=redis://localhost:6379/0
 **没有隔离的是业务数据。** 订单/生产/库存/账款的答案来自 `ai-sql-agent`，
 默认所有查询都以同一个服务身份发出（`SQL_AGENT_USER_ID`），
 能查到什么由**那把 key 的角色策略**决定，不由提问的客户决定。
-打开 `SQL_AGENT_IMPERSONATE` 只是把 `user_id` 换掉，下游仍保留服务密钥的
-角色和策略，**不会为最终用户重新解析权限**（两个客户身份实测：可见数据相同）。
+打开 `SQL_AGENT_IMPERSONATE` 是把可信的 `user_id` 传给下游——**传身份，不等于隔离了数据**。
+
+"按客户隔离业务数据"是三件互不代表的事（只读核对过 `ai-sql-agent` 当时的代码，
+没有重新联调；细节和依据见 [docs/deployment-boundaries.zh-CN.md](../docs/deployment-boundaries.zh-CN.md)）：
+
+- **服务权限 ∩ 最终用户权限**：下游代码里已经有（按最终用户再解析策略并取交集，没声明的用户全拒绝），
+  但要下游 key 标 `can_impersonate`、下游配置有 `users` 段、本系统开 `SQL_AGENT_IMPERSONATE`
+  三者同时成立才生效。本系统这一侧没有启用，也没有复测——早先那次"两个客户身份、
+  可见数据相同"的实测是在下游加上这一步之前做的。
+- **客户身份接入**：没有。令牌里只有 `user_id`，没接登录系统，也没有客户到下游角色/租户的映射。
+- **行级隔离**：没有启用。下游有行范围的模型和生成 RLS 的工具，但要在真实业务库（仅 PostgreSQL）
+  上执行过才算数。
 
 因此：
 
 1. 下游那把 key 的策略按**能接触到本客服系统的最不受信任的访客**来配；
-2. 不要把一个实例放在多个客户的数据前面并称之为隔离——真正的按客户隔离
-   需要服务权限与最终用户权限取交集，并把租户/行范围下沉到数据库本身，
-   这两件事本系统都没做；
+2. 不要把一个实例放在多个客户的数据前面并称之为隔离——那需要上面三项**同时**成立并复测过，
+   完成其中一项不算；今天只有第一项存在于下游的代码里；
 3. 首期只面向同权限内部人员是可以的，但这条边界要写进对外材料，不要含糊过去。
 
 ### 2.3 全栈部署和 run 开发模式的区别
@@ -484,12 +495,15 @@ http://localhost/docs
 | `GET` | `/health` | 无 | 健康检查，返回服务状态和 Agent 统计 | 启动后确认服务可用 |
 | `POST` | `/chat` | JSON Body | 主对话接口，完成记忆读取、意图识别、Agent 路由、回复生成、记忆写入 | 业务主链路 |
 | `GET` | `/monitor` | 无 | 查看 Agent/工具统计、告警和优化建议 | 观察在线表现 |
-| `POST` | `/search` | JSON Body | 执行知识库检索优化链路：查询改写、并行召回、合并去重、LLM 重排 | 测试 RAG 检索 |
+| `POST` | `/search` | JSON Body | 执行知识库检索优化链路：查询改写、并行召回、合并去重、LLM 重排；命中片段带 `doc_id` / `doc_title`。配了 `AI_HELPDESK_API_KEY` 时需要 `X-API-Key` | 测试 RAG 检索 |
 | `GET` | `/skills` | 无 | 查看当前加载的 Skills、匹配关键词和解析错误 | 确认动态能力是否生效 |
-| `POST` | `/skills/reload` | 无 | 运行时重新扫描 Skill 目录 | 修改业务规则后热加载 |
+| `GET` | `/sops` | 无 | SOP（即加载的 Skills）全文，只读；需要 `X-API-Key` | 工作台的 SOP 只读入口 |
+| `POST` | `/skills/reload` | 无 | 运行时重新扫描 Skill 目录；同时解除模型凭证不可用保护 | 修改业务规则后热加载；凭证或额度修好后不重启恢复 |
 | `POST` | `/knowledge/add` | JSON Body | 批量导入文档到 Postgres(pgvector) 知识库 | 程序化导入文档 |
 | `POST` | `/knowledge/upload` | Form File | 上传 `.txt`、`.md`、`.json` 文件导入知识库 | 手动上传知识库文件 |
-| `GET` | `/knowledge/stats` | 无 | 查看知识库文档片段总数 | 确认知识库是否有数据 |
+| `GET` | `/knowledge/stats` | 无 | 文档数、片段数，以及其中由历史分片归档的文档数 | 确认知识库是否有数据 |
+| `GET` | `/knowledge/documents` | Query `q` / `limit` / `offset` | 文档列表；`q` 按空白拆词，每个词都要出现在标题或正文里。需要 `X-API-Key` | 浏览知识库里有什么 |
+| `GET` | `/knowledge/documents/{doc_id}` | Path | 单篇文档的正文、来源、导入时间和检索片段。需要 `X-API-Key` | 阅读原文、核对回答依据 |
 | `POST` | `/eval/run` | 无 | 运行内置意图识别和端到端对话评测 | 四维 LLM-as-Judge + 回归检测 |
 | `GET` | `/eval/baseline` | 无 | 查看当前对比基线 | 回归结论都是相对这份数据得出的 |
 | `POST` | `/eval/promote` | 无 | 把最近一次评测提升为新基线 | 人工确认分数可接受后调用 |
@@ -566,6 +580,29 @@ curl http://localhost:8080/health
   }
 }
 ```
+
+响应里的 `llm` 一项除了供应商和模型名，还带模型服务此刻可不可用：
+
+| 字段 | 说明 |
+|------|------|
+| `available` | `false` 表示这份模型配置（供应商 + 地址 + 凭证）正被保护挡着，模型调用不再出网 |
+| `unavailable_reason` | `credential_rejected`（401）、`permission_denied`（403 且错误体明说不被允许）、`quota_exhausted`（402 或错误体明说额度用尽）、`rate_limited`（普通 429）、`forbidden`（403 但没说原因） |
+| `retry_after_s` | 有限退避还剩几秒；`null` 表示不会自己恢复 |
+| `blocked_calls` | 保护期间挡下、没有发出去的模型调用数 |
+
+读的是进程里记下的状态，这个接口本身不调模型。前三种原因要等人处理：修好凭证或额度后
+**重启后端**，或调一次受保护的 `POST /skills/reload`，下一条真实请求会重新出网去试。
+`rate_limited` / `forbidden` 是有限退避（5s 起、最长 60s / 30s 起、最长 600s，服务端给了
+`retry-after` 就听它的），到期自动放行。**没有定时探测。** 状态只在单个进程里，
+多实例各记各的。
+
+保护期间 `/chat` 和 `/chat/stream` 照常返回 200，但 `service_unavailable=true`、
+`handoff=false`、不建工单，`agent_type` 是 `system`，`response` 是一句"没有作答"的提示。
+客户明确要求人工（"转人工" / "talk to a person"）走规则通道，这时仍然照常转人工并建单。
+"不建工单"只限模型或基础设施故障；置信度阈值、策略拦截这些原有的升级条件没有变。
+
+已知限制和尚未完成的验证（真实中继下的表现、两项目联调等）记在
+[docs/ops/model-outage-handling.md](../docs/ops/model-outage-handling.md)。
 
 ### 5.4 `/chat`
 
@@ -713,6 +750,7 @@ curl -X POST http://localhost:8080/eval/run
 | `regressions` | 回归检测结果 |
 | `recommendations` | 优化建议 |
 | `results` | 每条评测结果 |
+| `incomplete` / `incomplete_reason` / `planned` | 模型服务不可用时评测会中止：`results` 是中止前完成的那些，`planned` 是本来要跑的项数。未完成的一轮不做回归对比、不写基线，也不能提升（`/eval/promote` 返回 409）；已完成的结果另存在基线旁边的 `baseline.incomplete.json` |
 
 ## 6. 使用项目
 

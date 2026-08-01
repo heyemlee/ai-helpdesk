@@ -30,6 +30,7 @@ from typing import Any, Literal
 import httpx
 from pydantic import BaseModel
 
+from app.core.llm_guard import log_model_failure, unavailable_reason
 from app.core.llm_utils import (
     DEFAULT_ANTHROPIC_MODEL,
     STRUCTURED_MAX_TOKENS,
@@ -113,6 +114,12 @@ class IntentResult:
     source_scores: dict[str, float] = field(default_factory=dict)
     # 本次识别走的通道：fast_path（纯规则，零网络调用）或 ensemble（三路融合）
     strategy:   str = "ensemble"
+    # LLM 那一路这次没答上来（超时、5xx、凭证被拒……）：结果是另外两路凑出来的
+    # 降级结果，不是这句话本来的意图。这种结果**不进缓存**，调用方也据此区分
+    # "这句话确实含糊"和"模型没答上来"。
+    llm_failed: bool = False
+    # 没答上来的原因若是"模型服务不可用"（core/llm_guard），这里是原因，否则空串
+    llm_unavailable: str = ""
 
     @property
     def fast_path(self) -> bool:
@@ -410,8 +417,13 @@ class IntentRecognizer:
             latency_ms=(time.monotonic() - t0) * 1000,
             source_scores=source_scores,
             strategy="ensemble",
+            llm_failed=bool(llm.get("failed")),
+            llm_unavailable=str(llm.get("unavailable") or ""),
         )
-        self._remember(key, result)
+        # 基础设施故障凑出来的降级结果不进缓存。缓存没有过期时间：模型停机时记下的
+        # "other / 0.15"会在恢复之后继续被同一句话命中，直到进程重启。
+        if not result.llm_failed:
+            self._remember(key, result)
         return result
 
     def _remember(self, key: str, result: IntentResult) -> None:
@@ -534,8 +546,9 @@ confidence 表示你对该判断的把握，0 到 1 之间。
                 "reasoning": payload.reasoning,
             }
         except Exception as ex:
-            logger.warning(f"LLM 识别失败: {ex}")
-            return {"intent": IntentCategory.OTHER, "confidence": 0.0, "reasoning": "LLM 失败", "failed": True}
+            log_model_failure(logger, "LLM 识别失败", ex)
+            return {"intent": IntentCategory.OTHER, "confidence": 0.0, "reasoning": "LLM 失败",
+                    "failed": True, "unavailable": unavailable_reason(ex)}
 
     async def _embedding_recognize(self, message: str) -> dict[str, Any]:
         """策略 2：Embedding 向量相似度匹配。"""

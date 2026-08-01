@@ -1,0 +1,32 @@
+{
+  "tickets": [
+    {
+      "id": "tk_000000000001",
+      "conv_id": "conv-outage",
+      "user_id": "u1001",
+      "request_id": "0a1b2c3d4e03",
+      "reason": "意图为 human_handoff，用户明确要求人工",
+      "intent": "human_handoff",
+      "urgency": "",
+      "answer_confidence": 0.0,
+      "last_message": "转人工",
+      "status": "open",
+      "created_at": 1759636800.0,
+      "updated_at": 1759636800.0,
+      "allowed_transitions": [
+        "assigned",
+        "resolved",
+        "cancelled"
+      ],
+      "notification": null
+    }
+  ],
+  "stats": {
+    "open": 1,
+    "assigned": 0,
+    "resolved": 0,
+    "cancelled": 0,
+    "total": 1
+  },
+  "notifications_enabled": false
+}

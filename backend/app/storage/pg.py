@@ -10,6 +10,9 @@ Postgres 库（pgvector 扩展做向量检索），替换掉 chromadb 容器和
 tsvector 用 'simple' 配置——中文分词由 core/lexical.py 在写入前完成
 （字符二元组），不依赖 zhparser/pg_bigm 这类需要单独编译的扩展。
 
+片段之上还有一张文档表（kb_documents）：存导入时的原文、来源和时间，
+片段用 doc_id 指回去。它不参与检索，只回答"知识库里到底有哪些文档"。
+
 维度契约：向量列的维度在建表时由当前 Embedder 决定。启动时校验现有
 表的维度与配置一致，不一致直接抛错——静默把 256 维向量塞进 1536 维列
 （或反过来）产生的是无意义的检索结果，宁可 fail fast 逼运维重建向量表。
@@ -82,12 +85,33 @@ CREATE TABLE IF NOT EXISTS kb_chunks (
     total_chunks INTEGER NOT NULL DEFAULT 1,
     ingested_at  DOUBLE PRECISION NOT NULL,
     embedding    vector({dim}) NOT NULL,
-    tokens       tsvector
+    tokens       tsvector,
+    doc_id       TEXT NOT NULL DEFAULT ''
 );
 -- 稀疏检索列。对已存在的老表补列（CREATE TABLE IF NOT EXISTS 不会改已有表），
 -- 老数据的 tokens 为 NULL，由 KnowledgeBase.backfill_lexical 在启动时回填。
 ALTER TABLE kb_chunks ADD COLUMN IF NOT EXISTS tokens tsvector;
 CREATE INDEX IF NOT EXISTS idx_kb_tokens ON kb_chunks USING GIN (tokens);
+
+-- 文档：人读的单位。与 storage/vector_store.py 的 SQLite 版同构，说明见那边。
+-- 分片用 doc_id 指回来；老分片补出来的 doc_id 是空串，表示"还不知道属于哪篇"，
+-- 由 KnowledgeBase.ensure_documents 在启动时归档。带常量默认值的 ADD COLUMN
+-- 不重写表（PG 11+），已有的分片、向量和关键词索引一行不动。
+ALTER TABLE kb_chunks ADD COLUMN IF NOT EXISTS doc_id TEXT NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS idx_kb_chunks_doc ON kb_chunks (doc_id);
+CREATE TABLE IF NOT EXISTS kb_documents (
+    id           TEXT PRIMARY KEY,
+    title        TEXT NOT NULL DEFAULT '',
+    content      TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    origin       TEXT NOT NULL DEFAULT 'original',
+    source_type  TEXT NOT NULL DEFAULT '',
+    source_name  TEXT NOT NULL DEFAULT '',
+    chunk_count  INTEGER NOT NULL DEFAULT 0,
+    created_at   DOUBLE PRECISION NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_kb_docs_hash ON kb_documents (content_hash);
+CREATE INDEX IF NOT EXISTS idx_kb_docs_created ON kb_documents (created_at);
 
 CREATE TABLE IF NOT EXISTS memory_episodic (
     id        TEXT PRIMARY KEY,

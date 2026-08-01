@@ -1,6 +1,7 @@
 import { Icon } from './Icon'
 import { Chip, Empty, KV, MeterRow, SectionLabel } from './ui'
 import { agentLabel, confidenceTone, ms, num } from '@/lib/format'
+import { llmReasonKey } from '@/lib/llm'
 import { useT } from '@/i18n'
 import type { ChatMessage } from '@/hooks/useChatStream'
 
@@ -128,7 +129,8 @@ export function RoutingInspector({ message, thresholds }: {
               {t('in.combined')} {num(result.answer_confidence)}
             </Chip>
           )}
-          {result?.handoff && <Chip tone="danger">{t('cw.handedOff')}</Chip>}
+          {result?.service_unavailable && <Chip tone="danger">{t('cw.unavailable')}</Chip>}
+          {result?.handoff && <Chip tone="caution">{t('cw.handoff')}</Chip>}
           {result?.needs_clarification && <Chip tone="caution">{t('in.clarify')}</Chip>}
           {result?.escalated && !result.handoff && <Chip tone="caution">{t('cw.escalated')}</Chip>}
           {meta?.knowledge_used && <Chip tone="info">RAG</Chip>}
@@ -140,6 +142,12 @@ export function RoutingInspector({ message, thresholds }: {
         </dl>
         {result?.handoff_reason && (
           <p className="note danger" style={{ marginTop: 10 }}>{result.handoff_reason}</p>
+        )}
+        {result?.service_unavailable && (
+          <p className="note danger" style={{ marginTop: 10 }}>
+            {t('cw.unavailable.title')}{' '}
+            {t('cw.unavailable.cause', { reason: t(llmReasonKey(result.unavailable_reason)) })}
+          </p>
         )}
       </section>
 

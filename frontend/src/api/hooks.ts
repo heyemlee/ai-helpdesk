@@ -27,30 +27,6 @@ export function useMonitor(base: string, enabled = true) {
   })
 }
 
-/**
- * 编排器阈值（协作门槛等）。复用 ['monitor', base] 这个键——MonitorPanel 打开时
- * 已经在轮询它，这里只是搭个便车读缓存，不额外制造请求，也不轮询。
- * 拿不到就返回 undefined：前端**不写死**后端常量，宁可不画那条线，
- * 也不要一个会跟着后端悄悄漂移的数字。
- */
-export function useOrchestratorConfig(base: string) {
-  return useQuery({
-    queryKey: ['monitor', base],
-    queryFn: () => api.monitor(base),
-    refetchInterval: false,
-    staleTime: 60_000,
-    retry: false,
-  })
-}
-
-export function useKnowledgeStats(base: string) {
-  return useQuery({
-    queryKey: ['knowledge-stats', base],
-    queryFn: () => api.knowledgeStats(base),
-    retry: false,
-  })
-}
-
 export function useSearch(base: string) {
   return useMutation({
     mutationFn: ({ query, topK }: { query: string; topK?: number }) =>
@@ -97,18 +73,112 @@ export function useRunEval(base: string) {
   }
 }
 
-export function useAddKnowledge(base: string) {
+/**
+ * 知识库的文档列表。query 为空是浏览全部；非空时由后端按字面筛选
+ * （每个词都要在标题或正文里出现）。
+ *
+ * placeholderData 保留上一次的结果：筛选框每敲一个字就换一次 queryKey，
+ * 不留着的话列表会在每次按键之间闪成"加载中"。
+ */
+export function useDocuments(base: string, query: string) {
+  return useQuery({
+    queryKey: ['knowledge-documents', base, query],
+    queryFn: () => api.documents(base, query),
+    placeholderData: (previous) => previous,
+    retry: false,
+  })
+}
+
+export function useDocument(base: string, docId: string | undefined) {
+  return useQuery({
+    queryKey: ['knowledge-document', base, docId],
+    queryFn: () => api.document(base, docId!),
+    enabled: !!docId,
+    retry: false,
+  })
+}
+
+/** 导入成功后列表和统计都要重新取——"进去了没有"得当场看得见。 */
+function useInvalidateKnowledge(base: string) {
   const qc = useQueryClient()
+  return () => Promise.all([
+    qc.invalidateQueries({ queryKey: ['knowledge-stats', base] }),
+    qc.invalidateQueries({ queryKey: ['knowledge-documents', base] }),
+  ])
+}
+
+export function useAddKnowledge(base: string) {
+  const invalidate = useInvalidateKnowledge(base)
   return useMutation({
     mutationFn: (docs: Array<{ title: string; content: string }>) => api.addKnowledge(base, docs),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['knowledge-stats', base] }),
+    onSuccess: invalidate,
   })
 }
 
 export function useUploadKnowledge(base: string) {
-  const qc = useQueryClient()
+  const invalidate = useInvalidateKnowledge(base)
   return useMutation({
     mutationFn: (file: File) => api.uploadKnowledge(base, file),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['knowledge-stats', base] }),
+    onSuccess: invalidate,
+  })
+}
+
+export function useSops(base: string) {
+  return useQuery({
+    queryKey: ['sops', base],
+    queryFn: () => api.sops(base),
+    retry: false,
+  })
+}
+
+// ── 工单 ────────────────────────────────────────────────────────────────────
+
+export function useTickets(base: string, status: string) {
+  return useQuery({
+    queryKey: ['tickets', base, status],
+    queryFn: () => api.tickets(base, status),
+    placeholderData: (previous) => previous,
+    // 工单是别人的对话建出来的，开着页面也要能看到新来的
+    refetchInterval: 20_000,
+    retry: false,
+  })
+}
+
+export function useTicket(base: string, ticketId: string | undefined) {
+  return useQuery({
+    queryKey: ['ticket', base, ticketId],
+    queryFn: () => api.ticket(base, ticketId!),
+    enabled: !!ticketId,
+    retry: false,
+  })
+}
+
+/**
+ * 流转工单状态。**不做乐观更新**：状态机在后端，合不合法由后端说了算；
+ * 失败时界面上还是原来的状态，错误交给调用方显示。
+ */
+export function useSetTicketStatus(base: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ ticketId, status }: { ticketId: string; status: string }) =>
+      api.setTicketStatus(base, ticketId, status),
+    onSuccess: (ticket) => {
+      qc.setQueryData(['ticket', base, ticket.id], ticket)
+      return Promise.all([
+        qc.invalidateQueries({ queryKey: ['tickets', base] }),
+        qc.invalidateQueries({ queryKey: ['health', base] }),
+      ])
+    },
+    // 被拒多半是因为这张工单已经被别人流转过了：重新取一次，让页面显示它现在真正的状态
+    onError: (_error, { ticketId }) => qc.invalidateQueries({ queryKey: ['ticket', base, ticketId] }),
+  })
+}
+
+export function useConversation(base: string, convId: string | undefined) {
+  return useQuery({
+    queryKey: ['conversation', base, convId],
+    queryFn: () => api.conversation(base, convId!),
+    enabled: !!convId,
+    retry: false,
   })
 }

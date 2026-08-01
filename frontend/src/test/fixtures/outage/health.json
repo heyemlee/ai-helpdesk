@@ -1,0 +1,140 @@
+{
+  "status": "ok",
+  "agents": {
+    "general_0": {
+      "total": 0,
+      "success_rate": 1.0,
+      "avg_ms": 0.0,
+      "monitor_penalty": 0.0,
+      "routing_score": 1.0,
+      "specialist": false,
+      "display_name": "展厅接待 Agent",
+      "model": "claude-sonnet-5"
+    },
+    "technical_0": {
+      "total": 0,
+      "success_rate": 1.0,
+      "avg_ms": 0.0,
+      "monitor_penalty": 0.0,
+      "routing_score": 1.0,
+      "specialist": true,
+      "display_name": "产品与安装 Agent",
+      "model": "claude-sonnet-5"
+    },
+    "billing_0": {
+      "total": 0,
+      "success_rate": 1.0,
+      "avg_ms": 0.0,
+      "monitor_penalty": 0.0,
+      "routing_score": 1.0,
+      "specialist": true,
+      "display_name": "报价与账款 Agent",
+      "model": "claude-sonnet-5"
+    },
+    "order_0": {
+      "total": 0,
+      "success_rate": 1.0,
+      "avg_ms": 0.0,
+      "monitor_penalty": 0.0,
+      "routing_score": 1.0,
+      "specialist": true,
+      "display_name": "订单履约 Agent",
+      "model": "claude-sonnet-5"
+    }
+  },
+  "routing": {
+    "specialists": [
+      "technical",
+      "billing",
+      "order"
+    ],
+    "fallback_agent": "general",
+    "display_names": {
+      "general": "展厅接待 Agent",
+      "technical": "产品与安装 Agent",
+      "billing": "报价与账款 Agent",
+      "order": "订单履约 Agent",
+      "handoff": "运营升级通道",
+      "system": "系统提示"
+    },
+    "replicas_per_type": 1,
+    "handoff_thresholds": {
+      "intent": 0.45,
+      "routing": 0.35,
+      "agent": 0.7
+    },
+    "clarify_confidence_threshold": 0.5,
+    "supporting_min_score": 0.45,
+    "supporting_min_ratio": 0.55,
+    "answer_policy": {
+      "enabled": true,
+      "checked_total": 0,
+      "blocked_total": 0,
+      "block_rate": 0.0,
+      "blocked_by_rule": {},
+      "mojibake_dropped_chars": 0,
+      "mojibake_events": 0
+    },
+    "intent": {
+      "fine_grained_intents": 18,
+      "vote_weights": {
+        "llm": 0.7,
+        "embedding": 0.2,
+        "rules": 0.1
+      },
+      "embedding_backend": "local_ngram",
+      "cache": {
+        "size": 1,
+        "hits": 0,
+        "misses": 3,
+        "hit_rate": 0.0
+      },
+      "fast_path_hits": 1,
+      "ensemble_hits": 2,
+      "fast_path_rate": 0.3333,
+      "llm_calls_saved": 1,
+      "llm_failures": 2,
+      "llm_failure_rate": 1.0
+    }
+  },
+  "tickets": {
+    "open": 1,
+    "assigned": 0,
+    "resolved": 0,
+    "cancelled": 0,
+    "total": 1
+  },
+  "ticket_notifications": {
+    "pending": 0,
+    "delivered": 0,
+    "failed": 0
+  },
+  "conversations": {
+    "messages": 6,
+    "conversations": 1
+  },
+  "storage_backend": "unknown",
+  "retrieval": {
+    "mode": "hybrid_dense_lexical_rrf",
+    "rerank": "llm_listwise"
+  },
+  "auth": {
+    "user_token": false,
+    "rate_limit_per_minute": 0
+  },
+  "memory": {
+    "cross_session": true
+  },
+  "llm": {
+    "provider": "anthropic",
+    "model": "claude-test",
+    "available": false,
+    "unavailable_reason": "credential_rejected",
+    "retry_after_s": null,
+    "blocked_calls": 2
+  },
+  "capabilities": {
+    "business_data": false,
+    "ticket_notifications": false
+  }
+}

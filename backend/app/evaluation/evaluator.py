@@ -27,6 +27,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from app.core.intent_recognizer import IntentRecognizer
+from app.core.llm_guard import log_model_failure
 from app.core.llm_utils import (
     DEFAULT_ANTHROPIC_MODEL,
     STRUCTURED_MAX_TOKENS,
@@ -114,6 +115,11 @@ class EvalReport:
     baseline_release: str = ""           # 对比基线的版本号
     baseline_timestamp: str = ""
     promoted:         bool = False       # 本次报告是否被提升为新基线
+    # 评测没跑完就中止了（模型服务不可用）。results 里是中止前已经完成的那些；
+    # 这样的报告不做回归对比、不能当基线——半套用例的平均分和整套的不可比。
+    incomplete:       bool = False
+    incomplete_reason: str = ""
+    planned:          int = 0            # 本来要跑的测试项数（意图评测算 1 项，对话每轮 1 项）
 
 
 # ── LLM-as-Judge ─────────────────────────────────────────────────────────────
@@ -202,7 +208,7 @@ completeness 和 helpfulness 都应给高分——不要因为"没有直接给�
                 helpfulness=_clamp01(payload.helpfulness),
             )
         except Exception as ex:
-            logger.warning(f"LLM Judge 失败: {ex}")
+            log_model_failure(logger, "LLM Judge 失败", ex)
             return QualityScores(
                 0.5, 0.5, 0.5, 0.5,
                 judge_failed=True,
@@ -228,21 +234,37 @@ class IntentEvaluator:
         self._recognizer = recognizer
         self._concurrency = max(1, concurrency or _default_concurrency())
 
-    async def evaluate(self, cases: list[IntentTestCase]) -> dict[str, Any]:
+    async def evaluate(
+        self, cases: list[IntentTestCase], abort: "RunAbort | None" = None,
+    ) -> dict[str, Any]:
         # 用例之间互不相干，串行跑纯粹是在排队等网络。gather 保序，
         # 下面按下标 zip 出 predictions/ground_truth 的口径不受影响。
         sem = asyncio.Semaphore(self._concurrency)
 
         async def recognize(case: IntentTestCase):
             async with sem:
-                return await self._recognizer.recognize(case.message)
+                # 模型服务不可用就停：不再出网，也不拿规则和向量凑出来的降级结果
+                # 充当"这条用例的识别结果"——那测的不是模型。
+                if abort is not None and abort.tripped():
+                    return None
+                result = await self._recognizer.recognize(case.message)
+                if abort is not None and getattr(result, "llm_unavailable", ""):
+                    abort.trip(result.llm_unavailable)
+                    return None
+                return result
 
-        results = await asyncio.gather(*[recognize(c) for c in cases])
+        # 第一条单独跑完再放开并发。凭证在开跑之前就已经不可用的话，这样只打出去
+        # 一次；一上来就并发，同时在途的那几条会在第一个拒绝回来之前全都撞上去。
+        results = [await recognize(c) for c in cases[:1]]
+        results += await asyncio.gather(*[recognize(c) for c in cases[1:]])
+        skipped = sum(1 for r in results if r is None)
 
         predictions, ground_truth = [], []
         case_details: list[dict[str, Any]] = []
 
         for case, result in zip(cases, results):
+            if result is None:
+                continue
             predicted = result.intent.value
             predictions.append(predicted)
             ground_truth.append(case.expected_intent)
@@ -276,10 +298,35 @@ class IntentEvaluator:
             "accuracy":   round(accuracy, 4),
             "macro_f1":   round(macro_f1, 4),
             "per_class":  per_class,
-            "total":      len(cases),
+            "total":      len(predictions),
             "correct":    correct,
             "cases":      case_details,
+            "skipped":    skipped,       # 因模型服务不可用没跑的用例数
         }
+
+
+class RunAbort:
+    """
+    一轮评测里"要不要停"的共享标记，并发的用例看同一个。
+
+    评测是整个系统里唯一会**成批**调模型的地方：凭证被停用时，几十条用例每条
+    6～7 次调用照跑不误，全部失败，最后还交出一份全是 0.5 默认分的报告。
+    所以这里一旦确认模型服务不可用就停——不再开始新的用例，已完成的结果留下。
+    """
+
+    def __init__(self, probe: Callable[[], str] | None = None):
+        self.reason = ""
+        self._probe = probe
+
+    def trip(self, reason: str) -> None:
+        if not self.reason:
+            self.reason = reason or "model_unavailable"
+
+    def tripped(self) -> bool:
+        """已经中止，或者保护此刻正挡着这份模型配置（看的是进程内状态，不出网）。"""
+        if not self.reason and self._probe is not None:
+            self.reason = self._probe() or ""
+        return bool(self.reason)
 
 
 # ── 端到端评测器 ──────────────────────────────────────────────────────────────
@@ -325,6 +372,9 @@ class EndToEndEvaluator:
         concurrency: 同时在跑的用例数，默认取 EVAL_CONCURRENCY（4）。
         """
         client = create_llm_client(api_key, base_url)
+        # 这份模型配置的不可用保护：编排器、意图识别、判分用的是同一份配置，
+        # 所以它们任何一处被拒，这里都看得到（core/llm_guard）。
+        self._llm_guard = getattr(client, "guard", None)
 
         self._orchestrator     = orchestrator
         self._judge            = LLMJudge(client, model)
@@ -360,26 +410,39 @@ class EndToEndEvaluator:
         all_scores: dict[str, list[float]] = {
             "relevance": [], "accuracy": [], "completeness": [], "helpfulness": []
         }
+        # 模型服务不可用时整轮中止（见 RunAbort）。本来要跑多少项先数出来，
+        # 报告里才说得清"完成了几项、没跑的有几项"。
+        abort = RunAbort(self._llm_guard.blocked_reason if self._llm_guard else None)
+        planned = (1 if intent_cases else 0) + sum(
+            len(self._dialog_turns(case)) for case in (dialog_cases or []))
 
         # 1. 意图识别评测
         intent_metrics: dict[str, Any] = {}
         if intent_cases:
-            intent_metrics = await self._intent_evaluator.evaluate(intent_cases)
-            passed = intent_metrics["accuracy"] >= self.PASS_THRESHOLD
-            results.append(EvalResult(
-                test_id="intent_recognition",
-                passed=passed,
-                scores={"accuracy": intent_metrics["accuracy"], "macro_f1": intent_metrics["macro_f1"]},
-                detail=f"准确率 {intent_metrics['accuracy']:.1%}，Macro-F1 {intent_metrics['macro_f1']:.3f}",
-                metadata={
-                    "total": intent_metrics.get("total", 0),
-                    "correct": intent_metrics.get("correct", 0),
-                    "cases": intent_metrics.get("cases", []),
-                },
-            ))
+            intent_metrics = await self._intent_evaluator.evaluate(intent_cases, abort=abort)
+            skipped = intent_metrics.get("skipped", 0)
+            if not intent_metrics.get("total"):
+                intent_metrics = {}          # 一条都没跑成：没有可报的准确率，不放一个 0% 进去
+            else:
+                passed = intent_metrics["accuracy"] >= self.PASS_THRESHOLD
+                detail = f"准确率 {intent_metrics['accuracy']:.1%}，Macro-F1 {intent_metrics['macro_f1']:.3f}"
+                if skipped:
+                    detail = f"未跑完：只完成 {intent_metrics['total']} 条，{skipped} 条没跑。{detail}"
+                results.append(EvalResult(
+                    test_id="intent_recognition",
+                    passed=passed,
+                    scores={"accuracy": intent_metrics["accuracy"], "macro_f1": intent_metrics["macro_f1"]},
+                    detail=detail,
+                    metadata={
+                        "total": intent_metrics.get("total", 0),
+                        "correct": intent_metrics.get("correct", 0),
+                        "cases": intent_metrics.get("cases", []),
+                        "skipped": skipped,
+                    },
+                ))
 
         # 2. 对话质量评测（调用 orchestrator 产出回复，再用 LLM Judge 评分）
-        if dialog_cases:
+        if dialog_cases and not abort.tripped():
             # 用例之间各有各的 conv_id，互不影响，可以并发；**一个用例内部的
             # 多轮必须留在同一个协程里串行**——后一轮要读前一轮的历史。
             # 并发的是"几个用户同时说话"，这本来就是线上的常态。
@@ -387,12 +450,17 @@ class EndToEndEvaluator:
 
             async def run_case(idx: int, case: dict[str, Any]) -> list[EvalResult]:
                 async with sem:
-                    return await self._evaluate_dialog_case(case, idx)
+                    if abort.tripped():      # 排队等到的时候已经中止了：不再开始
+                        return []
+                    return await self._evaluate_dialog_case(case, idx, abort)
 
+            # 第一个用例单独跑完再放开并发，理由同意图评测。
             # gather 保序：结果排列和串行时一致，报告和基线才能逐条对上
-            for case_results in await asyncio.gather(
-                *[run_case(i, c) for i, c in enumerate(dialog_cases)]
-            ):
+            per_case = [await run_case(0, dialog_cases[0])]
+            per_case += await asyncio.gather(
+                *[run_case(i, c) for i, c in enumerate(dialog_cases) if i > 0]
+            )
+            for case_results in per_case:
                 results.extend(case_results)
                 for r in case_results:
                     for k in all_scores:
@@ -409,11 +477,24 @@ class EndToEndEvaluator:
         passed_count = sum(1 for r in results if r.passed)
         pass_rate    = passed_count / len(results) if results else 0.0
 
-        # 4. 回归检测：始终对比磁盘上的基线，而不是本进程上一次的结果
-        regressions = self._detect_regressions(avg_scores)
+        incomplete = abort.tripped()
+        if incomplete:
+            # 没跑完的一轮不做回归对比、不给调优建议：半套用例的平均分和基线不可比，
+            # 拿它得出"退化了"或"都达标"都是错的。
+            regressions = []
+            recommendations = [
+                f"评测未完成：模型服务不可用（{abort.reason}），已中止。"
+                f"计划 {planned} 项，完成 {len(results)} 项，结果已保留。"
+                "处理好凭证或额度后重新运行；这份结果不能作为基线。"
+            ]
+            logger.error("评测中止：模型服务不可用（%s），计划 %d 项，完成 %d 项",
+                         abort.reason, planned, len(results))
+        else:
+            # 4. 回归检测：始终对比磁盘上的基线，而不是本进程上一次的结果
+            regressions = self._detect_regressions(avg_scores)
 
-        # 5. 优化建议
-        recommendations = self._recommendations(avg_scores, intent_metrics)
+            # 5. 优化建议
+            recommendations = self._recommendations(avg_scores, intent_metrics)
 
         report = EvalReport(
             timestamp=datetime.now().isoformat(),
@@ -427,8 +508,17 @@ class EndToEndEvaluator:
             release=self._release,
             baseline_release=self._baseline.release if self._baseline else "",
             baseline_timestamp=self._baseline.timestamp if self._baseline else "",
+            incomplete=incomplete,
+            incomplete_reason=abort.reason if incomplete else "",
+            planned=planned,
         )
         self._history.append(report)
+
+        if incomplete:
+            # 已完成的结果另存一份，**不碰基线**——哪怕调用方传了 promote、哪怕
+            # 仓库里还没有基线。恢复的办法是重启，只留在内存里的话一重启就没了。
+            self._save_incomplete(report)
+            return report
 
         # 只有显式提升，或者仓库里还没有基线时，才写基线文件
         if promote or self._baseline is None:
@@ -437,9 +527,9 @@ class EndToEndEvaluator:
         return report
 
     def promote_baseline(self, report: EvalReport | None = None) -> EvalReport | None:
-        """把指定报告（默认最近一次）提升为新基线。"""
+        """把指定报告（默认最近一次）提升为新基线。没跑完的报告不能提升。"""
         target = report or (self._history[-1] if self._history else None)
-        if target is None:
+        if target is None or target.incomplete:
             return None
         target.promoted = True
         self._save_baseline(target)
@@ -453,8 +543,17 @@ class EndToEndEvaluator:
     def concurrency(self) -> int:
         return self._concurrency
 
-    async def _evaluate_dialog_case(self, case: dict[str, Any], case_idx: int) -> list[EvalResult]:
-        """评测单轮或多轮对话用例。"""
+    async def _evaluate_dialog_case(
+        self, case: dict[str, Any], case_idx: int, abort: RunAbort | None = None,
+    ) -> list[EvalResult]:
+        """
+        评测单轮或多轮对话用例。
+
+        每一步调完模型都看一眼 abort：模型服务不可用就停在这一轮之前，
+        这一轮**不记结果**——它的回答是一句故障提示、判分是失败时的默认分，
+        都不是对系统的测量。
+        """
+        abort = abort or RunAbort()
         from app.agents.agent_orchestrator import Request as OrcReq
 
         questions = self._dialog_turns(case)
@@ -467,6 +566,8 @@ class EndToEndEvaluator:
         results: list[EvalResult] = []
 
         for turn_idx, question in enumerate(questions):
+            if abort.tripped():
+                break
             context = self._history_context(history)
             turn_history = history[-6:] if history else None
             orch_req = OrcReq(
@@ -488,6 +589,7 @@ class EndToEndEvaluator:
                 orch_req.intent_group = intent_result.intent_group
                 orch_req.urgency = intent_result.urgency
                 orch_req.intent_confidence = intent_result.confidence
+                orch_req.intent_degraded = bool(getattr(intent_result, "llm_failed", False))
                 # 只有检索到的知识才算出处，历史和记忆不能作为价格/时效的依据
                 orch_req.grounding_sources = [knowledge] if knowledge else []
                 if knowledge:
@@ -495,8 +597,12 @@ class EndToEndEvaluator:
 
             orch_result = await self._orchestrator.run(orch_req)
             actual_answer = orch_result.response
+            if abort.tripped():
+                break
 
             scores = await self._judge.judge(question, actual_answer, context=context or None)
+            if abort.tripped():
+                break
             passed = scores.overall >= self.PASS_THRESHOLD
 
             history.append({"role": "user", "content": question})
@@ -529,6 +635,9 @@ class EndToEndEvaluator:
                     "judge_error": scores.error,
                     # 答案策略拦截情况：评测报告里能直接看到哪条回复说了无依据的承诺
                     "handoff": orch_result.handoff,
+                    # 这一轮模型没答上来（超时、5xx 之类，凭证问题走的是整轮中止）：
+                    # 回答是一句故障提示，分数低不代表回答质量差
+                    "service_unavailable": bool(getattr(orch_result, "service_unavailable", False)),
                     "answer_confidence": orch_result.answer_confidence,
                     "policy_violations": [v.to_dict() for v in orch_result.policy_violations],
                 },
@@ -618,6 +727,23 @@ class EndToEndEvaluator:
         except Exception as ex:
             logger.warning(f"保存评测基线失败: {ex}")
 
+    @property
+    def incomplete_path(self) -> pathlib.Path | None:
+        """中止的那一轮存到哪：和基线同目录、另一个文件。没配基线路径就不落盘。"""
+        if not self._baseline_path:
+            return None
+        return self._baseline_path.with_name(f"{self._baseline_path.stem}.incomplete.json")
+
+    def _save_incomplete(self, report: EvalReport) -> None:
+        path = self.incomplete_path
+        if path is None:
+            return
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(asdict(report), ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception as ex:
+            logger.warning(f"保存未完成的评测结果失败: {ex}")
+
     @staticmethod
     def _report_from_dict(data: dict[str, Any]) -> EvalReport:
         return EvalReport(
@@ -632,6 +758,9 @@ class EndToEndEvaluator:
             baseline_release=str(data.get("baseline_release", "")),
             baseline_timestamp=str(data.get("baseline_timestamp", "")),
             promoted=bool(data.get("promoted", False)),
+            incomplete=bool(data.get("incomplete", False)),
+            incomplete_reason=str(data.get("incomplete_reason", "")),
+            planned=int(data.get("planned", 0)),
             results=[
                 EvalResult(
                     test_id=r.get("test_id", ""),

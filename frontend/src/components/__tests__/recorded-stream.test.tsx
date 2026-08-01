@@ -37,20 +37,23 @@ describe('录制的 /chat/stream 回放', () => {
     expect(screen.getByText(pricing.routing!.reason)).toBeInTheDocument()
   })
 
-  it('抽到订单号时只渲染有值的那一个 chip，转人工连工单一起显示', () => {
+  it('抽到订单号时只渲染有值的那一个 chip，转人工连工单号一起显示', () => {
     render(<RoutingInspector message={order} />)
     expect(screen.getByText('order_id: SO-2026-0912')).toBeInTheDocument()
     expect(screen.queryByText(/^product:\s*$/)).not.toBeInTheDocument()
-    expect(screen.getByText('已转人工')).toBeInTheDocument()
+    expect(screen.getByText('需要人工跟进')).toBeInTheDocument()
     expect(screen.getByText(order.result!.ticket_id!)).toBeInTheDocument()
   })
 
   it('消息气泡按真事件序列渲染出身份、正文和讲解行', () => {
     render(<MessageBubble message={pricing} explain />)
     expect(screen.getByText('报价与账款 Agent')).toBeInTheDocument()
-    for (const row of ['意图', '路由', '出站', '处置', '耗时']) {
+    for (const row of ['意图识别', '知识检索', '专家选择', '订单数据', '回答检查', '转人工']) {
       expect(screen.getByText(row)).toBeInTheDocument()
     }
+    // 这份夹具是老后端录的：没有 knowledge / business_data 字段。
+    // 讲解照实说"没有报告"，不从别的现象倒推这一轮有没有查库。
+    expect(screen.getByText('服务端没有报告本轮是否查询了订单数据。')).toBeInTheDocument()
     // 正文来自 result.response（流式 delta 拼出来的和它一致）
     const firstLine = pricing.result!.response!.split('\n')[0]!.replace(/[*_`]/g, '').slice(0, 12)
     expect(screen.getByText(new RegExp(firstLine))).toBeInTheDocument()
@@ -73,11 +76,11 @@ describe('录制的 /conversations/{conv_id} 恢复', () => {
     expect(restoreMessages(shuffled).map((m) => m.id)).toEqual(restored.map((m) => m.id))
   })
 
-  it('恢复的助手消息不走「正在编排」，显示 Agent 名和「历史」标记', () => {
+  it('恢复的助手消息不走「正在处理」，显示 Agent 名和「之前」标记', () => {
     render(<MessageBubble message={restored[1]!} />)
     expect(screen.getByText('报价与账款 Agent')).toBeInTheDocument()
-    expect(screen.getByText('历史')).toBeInTheDocument()
-    expect(screen.queryByText(/正在编排/)).not.toBeInTheDocument()
+    expect(screen.getByText('之前')).toBeInTheDocument()
+    expect(screen.queryByText(/正在处理/)).not.toBeInTheDocument()
   })
 
   it('检查器对历史消息说清楚没有决策可看', () => {

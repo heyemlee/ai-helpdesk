@@ -9,6 +9,17 @@ export const ms = (v: number | undefined): string =>
 export const num = (v: number | undefined, digits = 2): string =>
   v === undefined ? '-' : v.toFixed(digits)
 
+/**
+ * 后端的时间戳（Unix 秒）→ 本地日期时间。按界面语言选格式，按浏览器所在时区显示。
+ * 拿不到合法时间就返回空串——宁可不显示，也不显示一个 1970 年。
+ */
+export function dateTime(seconds: number | null | undefined, lang: 'en' | 'zh'): string {
+  if (!seconds || !Number.isFinite(seconds) || seconds <= 0) return ''
+  return new Intl.DateTimeFormat(lang === 'zh' ? 'zh-CN' : 'en-US', {
+    dateStyle: 'medium', timeStyle: 'short',
+  }).format(new Date(seconds * 1000))
+}
+
 /** 置信度配色：越低越危险。阈值和后端的转人工门槛对齐。 */
 export function confidenceTone(v: number): 'success' | 'caution' | 'danger' {
   if (v >= 0.7) return 'success'
@@ -49,6 +60,8 @@ const AGENT_TYPES = ['general', 'technical', 'billing', 'order'] as const
 
 export const agentIdentity = (type: string | undefined, t: T): { name: string; mark: string } => {
   if (type === 'handoff') return { name: t('agent.handoff'), mark: t('agent.mark.handoff') }
+  // 不是哪个 Agent 的回答：模型服务不可用时编排器自己给的那句提示
+  if (type === 'system') return { name: t('agent.system'), mark: '!' }
   if (type && (AGENT_TYPES as readonly string[]).includes(type)) {
     return { name: `${t(`agent.${type}` as Key)} Agent`, mark: t(`agent.mark.${type}` as Key) }
   }
@@ -63,6 +76,6 @@ export const agentIdentity = (type: string | undefined, t: T): { name: string; m
  * 那时显示一个中文名，也好过显示裸的 key。
  */
 export const agentDisplayName = (type: string, t: T, backend?: string): string =>
-  (AGENT_TYPES as readonly string[]).includes(type) || type === 'handoff'
+  (AGENT_TYPES as readonly string[]).includes(type) || type === 'handoff' || type === 'system'
     ? agentIdentity(type, t).name
     : backend ?? type

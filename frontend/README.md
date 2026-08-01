@@ -1,36 +1,51 @@
 # ai-helpdesk Console
 
-ai-helpdesk 的调试控制台（React 18 + TypeScript + Vite）。除了普通对话，它把后端每一轮的
-**路由决策过程**摊开显示：走的是规则快通道还是三路融合、主 Agent 和辅助 Agent 分别是谁、
-综合置信度多少、有没有触发答案策略拦截或转人工。
+ai-helpdesk 的员工工作台（React 18 + TypeScript + Vite）。主导航只有三项——**对话、知识库、
+工单**——是客服员工每天做的三件事；监控、评测、编排检查器、模型信息、SOP 和连接配置都收在
+「管理与诊断」里。
+
+这是给员工用的界面，不是客户入口：知识文档、SOP、工单接口都要员工钥匙（`X-API-Key`，
+后端配了 `AI_HELPDESK_API_KEY` 时生效），谁能看什么由后端判，界面上没有"切换成客户视角"
+这种开关。
 
 技术栈：React 18 · TypeScript 5 · Vite 6 · TanStack Query 5 · Tailwind v4 · Vitest 3
 
 ## 功能
 
-- 对话调试，每条回复带路由元信息徽章（意图通道 / 主辅 Agent / 置信度 / 策略拦截 / 转人工）
+- **对话**：消息流、新建对话、刷新后恢复历史。每条回复下面列出本轮用到的知识片段
+  （能点回原文）、订单数据是不是实时查到的；需要人工时显示工单号、状态和通知是否送达
+- **知识库**：打开就列出库里的文档（标题、摘要、来源、导入时间，文档数与片段数分开报），
+  点开读正文；按标题和正文筛选；「按问题检索」走和对话相同的检索链路；导入后直接能打开
+- **工单**：编号、问题、状态、创建时间；按状态筛选；详情里看转人工原因和关联对话，
+  状态流转走后端的状态机，失败时保留原状态并提示
+- **学习模式**（默认关）：逐步讲这一轮实际发生的事——意图识别、知识检索、专家选择、
+  SQL 委派、回答检查、转人工——每一句都只转述后端在响应里报告的内容
+- **管理与诊断**：服务与模型信息、连接配置、SOP 只读、Monitor、端到端评测、编排检查器
 - 按句流式接收 —— 后端的答案策略守卫必须看到完整句子才能判断，所以流式粒度是句不是 token
-- 健康检查与 Monitor 摘要
-- 知识库检索、文档导入、文件上传
-- 一键跑端到端评测
+- 中英文切换，默认英文；键盘可达，窄屏用底部导航
 
 ## 源码结构
 
 ```text
 src/
-├── App.tsx
+├── App.tsx                    # 外壳：三项主导航 + 管理与诊断
 ├── components/
-│   ├── ChatPanel.tsx          # 对话主面板
-│   ├── RoutingInspector.tsx   # 把路由决策过程摊开显示
-│   ├── MessageBubble.tsx
+│   ├── Sidebar.tsx            # 导航、待处理工单数、服务状态
+│   ├── ChatPanel.tsx          # 对话主面板、「可以查询什么」
+│   ├── MessageBubble.tsx      # 回复 + 知识依据 + 订单数据提示 + 工单卡
+│   ├── TurnExplanation.tsx    # 学习模式的逐步讲解
+│   ├── KnowledgePanel.tsx     # 文档列表 / 筛选 / 按问题检索 / 导入
+│   ├── KnowledgeDocument.tsx  # 单篇文档正文与检索片段
+│   ├── TicketsPanel.tsx       # 工单列表与详情
+│   ├── AdminPanel.tsx         # 管理与诊断：概览、连接、SOP，内嵌下面三个
 │   ├── MonitorPanel.tsx       # Monitor 摘要
-│   ├── KnowledgePanel.tsx     # 知识库检索 / 导入 / 上传
 │   ├── EvalPanel.tsx          # 端到端评测
-│   ├── Sidebar.tsx            # 健康状态 + API 地址设置
-│   └── ui.tsx                 # 基础组件
+│   ├── RoutingInspector.tsx   # 编排检查器
+│   └── ui.tsx                 # 基础组件（含加载 / 空 / 出错的状态块）
 ├── api/                       # client / hooks（TanStack Query）/ types
 ├── hooks/useChatStream.ts     # 按句流式接收
-└── lib/format.ts
+├── i18n/                      # 文案目录（英文为基准）
+└── lib/                       # route（hash 路由）/ format / highlight / errors
 ```
 
 ## API 地址
@@ -43,8 +58,12 @@ src/
 | 前端容器单独跑 | `host.docker.internal:8080` | `API_UPSTREAM` 环境变量 |
 | 全栈 compose | `ai-helpdesk:8000`（Docker 内网里的员工实例） | 仓库根的 `docker-compose.yml` |
 
-页面侧边栏的「API 地址」输入框可以临时改成任意地址（例如直接填 `http://localhost:8080`
-绕过代理），改动存在 localStorage 里。
+默认配置打开就能用，不需要先填用户 ID、会话 ID 或 API 地址。要把工作台指向另一套后端时，
+到「管理与诊断 → 概览 → 连接」里改：API 地址和用户 ID 存在 localStorage；员工钥匙只存在
+sessionStorage，关掉标签页即失效。
+
+页面位置在 URL 的 hash 里（`#/knowledge/doc/<id>`、`#/tickets/<id>`、`#/admin/sops`），
+刷新和浏览器后退都能回到原处，不需要给代理或后端加路由回落。
 
 ## 本地运行
 
@@ -63,8 +82,8 @@ npm test           # vitest run
 npm run typecheck  # tsc -b --noEmit
 ```
 
-测试覆盖 API client 的地址解析、MessageBubble 渲染和 RoutingInspector 的路由元信息展示，
-不需要后端在跑。
+测试覆盖 API client、对话气泡（知识依据 / 工单卡 / 学习模式）、知识库与工单各页的
+加载 / 空 / 无匹配 / 出错状态，以及用真后端录制的事件流回放，不需要后端在跑。
 
 ## Docker
 
@@ -85,6 +104,6 @@ docker compose up -d --build
 统一放在 `src/workspace.css`，由 `index.css` 在基础层之后引入。修改应用设计时请编辑
 `workspace.css`，避免被 `predev` / `prebuild` 的原型同步覆盖。
 
-桌面使用侧栏导航，手机使用底部导航；连接配置在设置弹窗保存后生效。路由检查器
-默认收起，窄屏打开时使用原生模态对话框，支持焦点约束与 Esc 关闭。对话示例先填入
-草稿，确认发送后才发起请求；切换页面保留草稿，新建对话清除草稿。
+桌面使用侧栏导航，手机使用底部导航；连接配置在「管理与诊断」里保存后生效。编排检查器
+只在学习模式里从某一轮打开，窄屏时使用原生模态对话框，支持焦点约束与 Esc 关闭。对话示例
+先填入草稿，确认发送后才发起请求；切换页面保留草稿，新建对话清除草稿。

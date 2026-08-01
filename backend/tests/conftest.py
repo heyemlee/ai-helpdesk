@@ -15,6 +15,20 @@ from app.agents.agent_orchestrator import AgentOrchestrator, Request  # noqa: E4
 from app.core.intent_recognizer import IntentCategory, IntentRecognizer  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def _fresh_llm_guards():
+    """
+    模型凭证不可用保护的状态是进程级的（core/llm_guard），按"地址 + 凭证"登记。
+    测试里到处用同一把 "test-key"，一个用例把它判成不可用，后面所有用例的
+    模型调用都会被挡——所以每个用例开始前清空登记表。
+    """
+    from app.core import llm_guard
+
+    llm_guard.forget_all()
+    yield
+    llm_guard.forget_all()
+
+
 @pytest.fixture
 def recognizer() -> IntentRecognizer:
     """不带远端 Embedding 配置的识别器，Embedding 走本地向量。"""
@@ -122,3 +136,86 @@ class FakeRedis:
 
     async def aclose(self):
         return None
+
+
+# ── 假的模型中继 ──────────────────────────────────────────────────────────────
+
+RELAY_OK_BODY = {
+    "id": "msg_test", "type": "message", "role": "assistant", "model": "claude-test",
+    "content": [{"type": "text", "text": "好的"}],
+    "stop_reason": "end_turn", "stop_sequence": None,
+    "usage": {"input_tokens": 1, "output_tokens": 1},
+}
+# 中继停用 Key 之后实际回的那个错误体：没有标准的 error.type 字段
+RELAY_DISABLED_BODY = {"error": "Invalid API key", "message": "API key is disabled"}
+
+
+class FakeRelay:
+    """
+    接在 SDK 传输层上的假中继：SDK 走完自己的全套流程（拼请求、判状态码、决定
+    重不重试、抛它自己的异常类），但不开任何套接字。
+
+    `sent()` 数的是**真的发出去了**的请求——被凭证保护挡下的调用到不了这里，
+    所以"后续环节不再出网"可以直接用这个数来断言。
+
+    回什么按"主机 + 凭证"定，一个中继能同时扮演被停用的 Key 和还能用的 Key。
+    """
+
+    def __init__(self):
+        self.requests: list[tuple[str, str]] = []            # (主机, 凭证)
+        self.max_retries = 0                                 # SDK 自带的重试次数
+        self._rules: list[tuple[str | None, str | None, int, object, dict]] = []
+
+    def reject(self, key: str | None = None, *, host: str | None = None, status: int = 401,
+               body: object = None, headers: dict | None = None) -> None:
+        """之后匹配 key/host 的请求回这个状态。key、host 留空表示不限。后加的规则优先。"""
+        self._rules.insert(0, (host, key, status,
+                               RELAY_DISABLED_BODY if body is None else body, headers or {}))
+
+    def allow(self, key: str | None = None, *, host: str | None = None,
+              text: str | None = None) -> None:
+        """之后匹配的请求回 200。`text` 是模型的正文——结构化调用要的是一段 JSON。"""
+        body = RELAY_OK_BODY if text is None else {
+            **RELAY_OK_BODY, "content": [{"type": "text", "text": text}]}
+        self._rules.insert(0, (host, key, 200, body, {}))
+
+    def sent(self, key: str | None = None, host: str | None = None) -> int:
+        return sum(1 for h, k in self.requests
+                   if (key is None or k == key) and (host is None or h == host))
+
+    def __call__(self, request):
+        key = request.headers.get("x-api-key") or \
+            request.headers.get("authorization", "").removeprefix("Bearer ")
+        host = request.url.host
+        self.requests.append((host, key))
+        for rule_host, rule_key, status, body, headers in self._rules:
+            if rule_host in (None, host) and rule_key in (None, key):
+                if isinstance(body, (dict, list)):
+                    return _httpx2.Response(status, json=body, headers=headers)
+                return _httpx2.Response(status, text=str(body), headers=headers)
+        return _httpx2.Response(200, json=RELAY_OK_BODY)
+
+
+@pytest.fixture
+def relay(monkeypatch) -> FakeRelay:
+    """
+    把之后造出来的所有模型客户端都接到一个 FakeRelay 上。
+
+    换的是 `llm_utils.anthropic_client_kwargs`——所有客户端都从
+    `create_llm_client` 出来，而它的参数只从这一个函数来。SDK 自带的重试设成 0：
+    429/5xx 的用例不该为了 SDK 的退避真的睡上几秒（401/403 它本来就不重试，
+    有单独一条用例在默认重试次数下确认这一点）。
+    """
+    from app.core import llm_utils
+
+    fake = FakeRelay()
+    original = llm_utils.anthropic_client_kwargs
+
+    def _kwargs(api_key, base_url=None):
+        kwargs = original(api_key, base_url)
+        kwargs["http_client"] = _httpx2.AsyncClient(transport=_httpx2.MockTransport(fake))
+        kwargs["max_retries"] = fake.max_retries
+        return kwargs
+
+    monkeypatch.setattr(llm_utils, "anthropic_client_kwargs", _kwargs)
+    return fake

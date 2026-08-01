@@ -337,14 +337,21 @@ async def test_specialist_failure_falls_back_to_general(orchestrator):
     assert "抱歉" not in result.response
 
 
-async def test_total_failure_hands_off_to_human(orchestrator):
+async def test_total_failure_is_reported_as_unavailable_not_as_a_handoff(orchestrator):
+    """
+    专家和兜底都没答上来，是模型的故障，不是"判断过了、这件事需要人来处理"。
+    以前这里算转人工，上层就会开一张业务工单——停机期间每条提问一张。
+    """
     stub_agents(orchestrator, fail_types=(AgentType.BILLING, AgentType.GENERAL))
     req = make_request("这套报价多少", IntentCategory.QUOTE_PRICING)
 
     result = await orchestrator.run(req)
 
-    assert result.handoff is True
-    assert "均执行失败" in result.handoff_reason
+    assert result.service_unavailable is True and result.unavailable_reason == "model_error"
+    assert result.handoff is False and result.escalated is False     # 上层据此不建工单
+    assert result.agent_type == AgentType.SYSTEM                      # 不挂在哪个 Agent 头上
+    assert result.primary_agent == AgentType.BILLING                  # 路由决策照实留着
+    assert "没有为它创建工单" in result.response and "转人工" in result.response
 
 
 # ── 答案策略接入 ──────────────────────────────────────────────────────────────
@@ -677,8 +684,8 @@ def test_chinese_question_keeps_chinese_scaffolding(orchestrator):
 
 
 @pytest.mark.parametrize("message,forbidden,expected", [
-    ("The door arrived damaged.", "转交人工客服", "passed this to a human colleague"),
-    ("送来的门板有划痕。", "human colleague", "转交人工客服"),
+    ("The door arrived damaged.", "人工客服", "handled by a member of our team"),
+    ("送来的门板有划痕。", "member of our team", "需要由人工客服来处理"),
 ])
 def test_handoff_notice_follows_the_customer_language(
     orchestrator, message, forbidden, expected,
@@ -693,9 +700,24 @@ def test_handoff_notice_follows_the_customer_language(
     assert expected in _customer_text(message, "handoff_notice")
 
 
+@pytest.mark.parametrize("message", ["The door arrived damaged.", "送来的门板有划痕。"])
+def test_handoff_notice_promises_nothing_the_orchestrator_cannot_know(message):
+    """
+    固定文案只能说"需要人工"。编排器产出它的时候工单还没建、通知有没有配也不知道，
+    "已转交""会联系您""马上回电"这类话在没配通知的部署上就是一句空头承诺。
+    """
+    from app.agents.agent_orchestrator import _customer_text
+
+    notice = _customer_text(message, "handoff_notice")
+    for claim in ("联系您", "回电", "已转交", "已经转交", "已通知", "收到",
+                  "shortly", "follow up with you", "contact you", "call you", "passed this",
+                  "has been notified"):
+        assert claim not in notice, f"转人工文案里出现了没有依据的说法: {claim}"
+
+
 @pytest.mark.parametrize("key", [
     "handoff_notice", "handoff_after_ask", "agent_error",
-    "all_failed", "unavailable", "clarify", "role_primary", "role_supporting",
+    "all_failed", "unavailable", "service_unavailable", "clarify", "role_primary", "role_supporting",
 ])
 def test_every_customer_string_exists_in_both_languages(key):
     """漏一条就是一段中文掉进英文回复里，加新文案时这条会拦住。"""

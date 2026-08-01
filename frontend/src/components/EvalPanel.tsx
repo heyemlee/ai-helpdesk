@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useRunEval } from '@/api/hooks'
 import { Card, Chip, Empty, ErrorNote } from './ui'
 import { num, pct } from '@/lib/format'
+import { llmReasonKey } from '@/lib/llm'
 import { useT } from '@/i18n'
 
 const DIMENSIONS = [
@@ -40,6 +41,9 @@ export function EvalPanel({ base }: { base: string }) {
   const [onlyFailed, setOnlyFailed] = useState(false)
 
   const results = (data?.results ?? []).filter((r) => !onlyFailed || !r.passed)
+  // 中止时一项都没跑完：没有通过率，也没有分数。照常画的话是一排 0.00 和"通过率 0%"，
+  // 读起来像"跑了，全挂"，而实际是没跑。
+  const nothingRan = !!data?.incomplete && data.total === 0
 
   return (
     <div className="page scroll">
@@ -83,15 +87,30 @@ export function EvalPanel({ base }: { base: string }) {
 
         {data && !isPending && (
           <>
+            {/* 没跑完的一轮先说清楚：下面的通过率和分数只来自中止前完成的那几项 */}
+            {data.incomplete && (
+              <p className="note danger" role="alert">
+                {t(nothingRan ? 'ev.incomplete.none' : 'ev.incomplete.note', {
+                  reason: t(llmReasonKey(data.incomplete_reason)),
+                  done: data.total, planned: data.planned ?? data.total,
+                })}
+              </p>
+            )}
             <div className="chip-row">
-              <Chip tone={data.pass_rate >= 0.8 ? 'success' : data.pass_rate >= 0.6 ? 'caution' : 'danger'}>
-                {t('ev.passRate')} {pct(data.pass_rate, 1)}
-              </Chip>
-              <Chip>{data.passed}/{data.total} {t('ev.casesUnit')}</Chip>
+              {data.incomplete && <Chip tone="danger">{t('ev.incomplete')}</Chip>}
+              {!nothingRan && (
+                <>
+                  <Chip tone={data.pass_rate >= 0.8 ? 'success' : data.pass_rate >= 0.6 ? 'caution' : 'danger'}>
+                    {t('ev.passRate')} {pct(data.pass_rate, 1)}
+                  </Chip>
+                  <Chip>{data.passed}/{data.total} {t('ev.casesUnit')}</Chip>
+                </>
+              )}
               {data.release && <Chip tone="info" mono>{data.release}</Chip>}
               {data.promoted && <Chip tone="success">{t('ev.promoted')}</Chip>}
             </div>
 
+            {!nothingRan && (
             <div style={{ display: 'grid', gap: 20, gridTemplateColumns: 'repeat(auto-fit,minmax(min(320px,100%),1fr))' }}>
               <Card title={t('ev.axes')} actions={<Chip>0–1</Chip>}>
                 <dl className="dl">
@@ -125,11 +144,15 @@ export function EvalPanel({ base }: { base: string }) {
                   <span className="topbar-sub mono">{t('ev.vsBaseline')} {data.baseline.release}</span>
                 )}
               >
-                {data.regressions.length === 0
+                {data.incomplete
+                  // 半套用例没有和基线比过，不能显示成"没有退化"
+                  ? <p className="note neutral">{t('ev.incomplete.noCompare')}</p>
+                  : data.regressions.length === 0
                   ? <p className="note success">{t('ev.noRegress')}</p>
                   : <div className="dl">{data.regressions.map((r, i) => <p className="note danger" key={i}>{r}</p>)}</div>}
               </Card>
             </div>
+            )}
 
             {data.results.length > 0 && (
               <Card
@@ -173,7 +196,8 @@ export function EvalPanel({ base }: { base: string }) {
               </Card>
             )}
 
-            {data.recommendations.length > 0 && (
+            {/* 未完成时后端只给一句"评测未完成"，上面已经说过了 */}
+            {data.recommendations.length > 0 && !data.incomplete && (
               <Card title={t('ev.sugg')}>
                 <div className="dl">
                   {data.recommendations.map((r, i) => <p className="note neutral" key={i}>{r}</p>)}

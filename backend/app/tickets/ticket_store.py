@@ -37,6 +37,12 @@ _TRANSITIONS: dict[str, set[str]] = {
     "cancelled": set(),
 }
 
+
+def allowed_transitions(status: str) -> list[str]:
+    """从某个状态能流转到哪些状态，按 VALID_STATUSES 的顺序。界面按它出按钮。"""
+    targets = _TRANSITIONS.get(status, set())
+    return [s for s in VALID_STATUSES if s in targets]
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS tickets (
     id                TEXT PRIMARY KEY,
@@ -320,6 +326,18 @@ class TicketStore:
             )
             self._conn().commit()
 
+    async def notify_for(self, ticket_ids: list[str]) -> dict[str, Delivery]:
+        """工单 id → 它的通知记录。没有记录的工单不在返回里（通知没配，或没入队）。"""
+        return await asyncio.to_thread(self._notify_for, ticket_ids) if ticket_ids else {}
+
+    def _notify_for(self, ticket_ids: list[str]) -> dict[str, Delivery]:
+        marks = ",".join("?" * len(ticket_ids))
+        with self._lock:
+            rows = self._conn().execute(
+                f"SELECT * FROM ticket_notifications WHERE ticket_id IN ({marks})", ticket_ids
+            ).fetchall()
+        return {r["ticket_id"]: Delivery(**{k: r[k] for k in r.keys()}) for r in rows}
+
     async def notify_stats(self) -> dict[str, int]:
         return await asyncio.to_thread(self._notify_stats)
 
@@ -446,6 +464,14 @@ class PgTicketStore:
             " next_attempt_at = $3, last_error = $4, updated_at = $5 WHERE id = $6",
             status, attempts, next_attempt_at, last_error[:500], time.time(), delivery_id,
         )
+
+    async def notify_for(self, ticket_ids: list[str]) -> dict[str, Delivery]:
+        if not ticket_ids:
+            return {}
+        rows = await self._db.fetch(
+            "SELECT * FROM ticket_notifications WHERE ticket_id = ANY($1::text[])", ticket_ids
+        )
+        return {r["ticket_id"]: Delivery(**dict(r)) for r in rows}
 
     async def notify_stats(self) -> dict[str, int]:
         rows = await self._db.fetch(

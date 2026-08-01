@@ -188,7 +188,8 @@ async def test_provider_switch_picks_client(monkeypatch):
 
     cfg = resolve_llm_config()
     assert cfg["model"] == "gpt-test" and cfg["base_url"] == "https://gateway.example/v1"
-    assert isinstance(create_llm_client(cfg["api_key"], cfg.get("base_url")), AsyncOpenAICompat)
+    # 工厂返回的是带凭证保护的包装，真正出网的客户端在 .unguarded 上。
+    assert isinstance(create_llm_client(cfg["api_key"], cfg.get("base_url")).unguarded, AsyncOpenAICompat)
 
     monkeypatch.setenv("LLM_PROVIDER", "anthropic")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
@@ -196,7 +197,7 @@ async def test_provider_switch_picks_client(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_MODEL", raising=False)
     cfg = resolve_llm_config()
     assert cfg["provider"] == "anthropic" and "base_url" not in cfg
-    assert not isinstance(create_llm_client(cfg["api_key"]), AsyncOpenAICompat)
+    assert not isinstance(create_llm_client(cfg["api_key"]).unguarded, AsyncOpenAICompat)
 
 
 def test_unknown_provider_fails_loudly(monkeypatch):

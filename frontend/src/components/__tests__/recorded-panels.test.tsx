@@ -7,7 +7,7 @@ import { render, screen, within } from '@/test/render'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fixtureJson } from '@/test/fixtures'
-import type { KnowledgeStats, MonitorSummary, SearchResponse } from '@/api/types'
+import type { KnowledgeDocumentList, MonitorSummary, SearchResponse } from '@/api/types'
 
 const monitor = fixtureJson<MonitorSummary>('monitor.json')
 const search = fixtureJson<SearchResponse>('zh-search.json')
@@ -16,14 +16,14 @@ const health = fixtureJson<{ knowledge?: unknown }>('health.json')
 const mocks = vi.hoisted(() => ({
   monitor: vi.fn(),
   search: vi.fn(),
-  knowledgeStats: vi.fn(),
+  documents: vi.fn(),
 }))
 vi.mock('@/api/client', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/api/client')>()),
   api: {
     monitor: () => mocks.monitor(),
     search: () => mocks.search(),
-    knowledgeStats: () => mocks.knowledgeStats(),
+    documents: () => mocks.documents(),
   },
 }))
 
@@ -104,27 +104,36 @@ describe('录制的 /monitor', () => {
   })
 })
 
+const EMPTY_LIBRARY: KnowledgeDocumentList = {
+  query: '', documents: [], matched: 0, total_documents: 0, legacy_documents: 0, total_chunks: 0,
+}
+
+/** 「按问题检索」页：走的是和对话同一条检索链路，返回的是片段。 */
 describe('录制的 /search', () => {
+  const ask = () => render(
+    <KnowledgePanel base="/api" mode="ask" navigate={() => {}} />, { wrapper: wrap },
+  )
+
   it('输入下一次查询时不会改变当前结果的高亮', async () => {
-    mocks.knowledgeStats.mockResolvedValue({ total_chunks: 6 })
+    mocks.documents.mockResolvedValue(EMPTY_LIBRARY)
     mocks.search.mockResolvedValue({ results: [{ title: '售后说明', content: '门板可以补件' }], reranked: true })
-    render(<KnowledgePanel base="/api" />, { wrapper: wrap })
-    await userEvent.type(screen.getByRole('textbox', { name: '检索知识库' }), '门板')
-    await userEvent.click(screen.getByRole('button', { name: '搜索' }))
+    ask()
+    await userEvent.type(screen.getByRole('textbox', { name: '向知识库提问' }), '门板')
+    await userEvent.click(screen.getByRole('button', { name: '检索' }))
     await screen.findByText('售后说明')
     expect(document.querySelector('.hit-text mark')).toHaveTextContent('门板')
-    await userEvent.clear(screen.getByRole('textbox', { name: '检索知识库' }))
-    await userEvent.type(screen.getByRole('textbox', { name: '检索知识库' }), '开票')
+    await userEvent.clear(screen.getByRole('textbox', { name: '向知识库提问' }))
+    await userEvent.type(screen.getByRole('textbox', { name: '向知识库提问' }), '开票')
     expect(document.querySelector('.hit-text mark')).toHaveTextContent('门板')
   })
 
   it('五条命中五篇不同文档，逐条渲染，不出现重复', async () => {
-    mocks.knowledgeStats.mockResolvedValue({ total_chunks: 6 } satisfies KnowledgeStats)
+    mocks.documents.mockResolvedValue(EMPTY_LIBRARY)
     mocks.search.mockResolvedValue(search)
     const user = userEvent.setup()
-    render(<KnowledgePanel base="/api" />, { wrapper: wrap })
-    await user.click(screen.getByRole('button', { name: '门板缝隙不均能自己调吗' }))
-    expect(await screen.findByText(`${search.results.length} 条命中`)).toBeInTheDocument()
+    ask()
+    await user.click(screen.getByRole('button', { name: '柜门关不严怎么排查' }))
+    expect(await screen.findByText(`检索到 ${search.results.length} 个片段`)).toBeInTheDocument()
 
     const hits = document.querySelectorAll('.hit')
     expect(hits).toHaveLength(search.results.length)
@@ -132,6 +141,8 @@ describe('录制的 /search', () => {
     expect(new Set(bodies).size).toBe(bodies.length)
     // 夹具本身也得是去重后的形状，否则上面在测假的
     expect(new Set(search.results.map((r) => r.content)).size).toBe(search.results.length)
+    // 这份夹具是加文档表之前录的，片段没有 doc_id：标题照常显示，但不出一个点不开的链接
+    expect(document.querySelectorAll('.hit-head a')).toHaveLength(0)
     void health
   })
 })

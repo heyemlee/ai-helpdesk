@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, ApiError, streamChat, type Settings } from '@/api/client'
 import type {
-  ChatResponse, ConversationEntry, StreamEvent, StreamMetaEvent, StreamProgressEvent,
-  StreamRoutingEvent,
+  ChatResponse, ConversationEntry, RoutingConfig, StreamEvent, StreamMetaEvent, StreamProgressEvent,
+  StreamRoutingEvent, Ticket,
 } from '@/api/types'
 
 export interface ChatMessage {
@@ -13,6 +13,8 @@ export interface ChatMessage {
   streaming?: boolean
   /** 请求失败时的错误文案 */
   error?: string
+  /** 失败时的 HTTP 状态码；连不上服务端记 0，流中途报错没有状态码 */
+  errorStatus?: number
   /** 准备阶段的进度，按到达顺序累积；第一个字吐出来之前它就是全部可见反馈 */
   progress?: StreamProgressEvent[]
   meta?: Partial<StreamMetaEvent>
@@ -22,6 +24,8 @@ export interface ChatMessage {
   restored?: boolean
   /** 恢复的助手消息实际作答的 Agent（后端 agent_type 字段） */
   agentType?: string
+  /** 恢复的助手消息那一轮建出的工单（按 request_id 从工单列表对上的） */
+  ticketId?: string
 }
 
 const newId = () =>
@@ -43,17 +47,62 @@ export function applyStreamEvent(m: ChatMessage, evt: StreamEvent): ChatMessage 
 }
 
 /**
+ * 非流式 /chat 的响应 → 助手消息。
+ *
+ * 流式那边路由决策是单独一个 routing 事件；非流式的响应体里同样有主辅 Agent，
+ * 这里补成同一个形状。**不补的话回复永远显示不出来**：气泡靠 routing 判断
+ * "已经知道是谁在答了"，没有它就一直停在"正在处理"——关掉流式之后每一条
+ * 回复都是这样，而请求其实早就成功返回了。
+ */
+export function applyChatResponse(m: ChatMessage, res: ChatResponse): ChatMessage {
+  return {
+    ...m,
+    content: res.response,
+    result: res,
+    meta: res,
+    routing: {
+      primary_agent: res.primary_agent || res.agent_type,
+      supporting_agents: res.supporting_agents ?? [],
+      reason: res.routing_reason ?? '',
+      confidence: res.routing_confidence ?? 0,
+    },
+  }
+}
+
+/**
+ * 这一轮是不是兜底 Agent 替专家答的。是的话返回实际作答的 Agent，否则 undefined。
+ *
+ * 只认后端明说的那一种：路由选了某个专家，响应里的 agent_type 却是兜底 Agent，
+ * 而且这一轮既没转人工也不是澄清追问。多 Agent 协作里辅助 Agent 不算。
+ */
+export function fallbackAgent(
+  routing: ChatMessage['routing'], result: ChatMessage['result'], config?: Pick<RoutingConfig, 'fallback_agent'>,
+): string | undefined {
+  const answered = result?.agent_type
+  const primary = routing?.primary_agent
+  if (!answered || !primary || result?.handoff || result?.needs_clarification) return undefined
+  if (answered === primary || primary === 'handoff') return undefined
+  if ((routing?.supporting_agents ?? []).includes(answered)) return undefined
+  return answered === (config?.fallback_agent ?? 'general') ? answered : undefined
+}
+
+/**
  * 把 /conversations/{conv_id} 的审计日志变成对话流里的消息。
  * 按 seq 排序而不是信任返回顺序；只认 user/assistant 两种角色。
+ *
+ * 审计日志不记工单号。传了工单列表的话，按 request_id 把那一轮建出的工单对回去——
+ * 刷新之后，转人工的那条回复下面还能看到工单并点过去。对不上就不显示，不猜。
  */
-export function restoreMessages(entries: ConversationEntry[]): ChatMessage[] {
+export function restoreMessages(entries: ConversationEntry[], tickets: Ticket[] = []): ChatMessage[] {
+  const ticketOf = new Map(tickets.filter((t) => t.request_id).map((t) => [t.request_id, t.id]))
   return [...entries]
     .sort((a, b) => a.seq - b.seq)
     .filter((e) => e.role === 'user' || e.role === 'assistant')
     .map((e) => e.role === 'user'
       ? { id: `restored-${e.seq}`, role: 'user' as const, content: e.content, restored: true }
       : { id: `restored-${e.seq}`, role: 'assistant' as const, content: e.content,
-          restored: true, agentType: e.agent_type || undefined })
+          restored: true, agentType: e.agent_type || undefined,
+          ticketId: (e.request_id && ticketOf.get(e.request_id)) || undefined })
 }
 
 /**
@@ -95,10 +144,15 @@ export function useChatStream(
     if (!id || messagesRef.current.length > 0) return
     let cancelled = false
     setRestoring(true)
-    api.conversation(settings.apiBaseUrl, id)
-      .then((res) => {
+    Promise.all([
+      api.conversation(settings.apiBaseUrl, id),
+      // 工单只是给历史消息补一个链接：取不到（没有钥匙、老后端）不影响恢复对话本身
+      api.tickets(settings.apiBaseUrl).then((res) => res.tickets).catch(() => []),
+    ])
+      .then(([res, tickets]) => {
         if (cancelled) return
-        setMessages((prev) => (prev.length ? prev : restoreMessages(res.messages)))
+        const own = tickets.filter((t) => t.conv_id === id)
+        setMessages((prev) => (prev.length ? prev : restoreMessages(res.messages, own)))
       })
       .catch((err) => {
         if (cancelled) return
@@ -143,11 +197,14 @@ export function useChatStream(
         } else {
           const res = await api.chat(settings.apiBaseUrl, body)
           onConversationId(res.conv_id)
-          patch(assistantId, (m) => ({ ...m, content: res.response, result: res, meta: res }))
+          patch(assistantId, (m) => applyChatResponse(m, res))
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
-        patch(assistantId, (m) => ({ ...m, error: message }))
+        // 状态码留着：401 要告诉员工去哪填钥匙，光一句"401 Unauthorized"不知道下一步做什么
+        const errorStatus = err instanceof ApiError ? err.status
+          : err instanceof TypeError ? 0 : undefined
+        patch(assistantId, (m) => ({ ...m, error: message, errorStatus }))
       } finally {
         abortRef.current = null
         patch(assistantId, (m) => ({ ...m, streaming: false }))

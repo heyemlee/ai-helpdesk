@@ -88,13 +88,26 @@ class TestRunStream:
         deltas = "".join(e["text"] for e in events if e["type"] == "delta")
         assert "3个工作日" not in deltas
 
-    async def test_stream_failure_falls_back_to_handoff(self):
-        """流式已经吐出去的内容无法撤回，失败时应转人工而不是重跑出第二个答案。"""
+    async def test_stream_failure_is_reported_as_unavailable_without_a_second_answer(self):
+        """
+        流式已经吐出去的内容无法撤回，失败时不能重跑出第二个答案。
+        也不算转人工：没答完是模型的故障，上层不该为它开一张业务工单。
+        """
         orch = stub_stream(AgentOrchestrator(api_key="k"), [], fail=True)
+        general_calls = []
+
+        async def _general(req):
+            general_calls.append(req)
+            raise AssertionError("流式失败后不该再调通用 Agent")
+
+        orch._pool[AgentType.GENERAL][0].handle = _general
         events = await self._collect(orch, make_request("订单进度", IntentCategory.ORDER_STATUS))
         result = events[-1]["result"]
-        assert result.handoff is True
-        assert result.escalated is True
+        assert result.service_unavailable is True
+        assert result.handoff is False and result.escalated is False
+        assert general_calls == []
+        deltas = "".join(e["text"] for e in events if e["type"] == "delta")
+        assert deltas.strip() == result.response       # 发出去的就是那段"没答上来"的说明
 
     async def test_handoff_after_stream_voids_the_questions_already_sent(self):
         """

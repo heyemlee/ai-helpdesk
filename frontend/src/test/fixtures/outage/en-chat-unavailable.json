@@ -1,0 +1,58 @@
+{
+  "conv_id": "conv-outage",
+  "response": "Sorry, the assistant can't answer right now. This question was not answered and no ticket was created for it. Please try again later; if you need a person, reply \"talk to a person\".",
+  "intent": "other",
+  "intent_group": "other",
+  "agent_type": "system",
+  "agent_types": [
+    "system"
+  ],
+  "primary_agent": "system",
+  "supporting_agents": [],
+  "routing_reason": "模型服务不可用（credential_rejected），未调用任何 Agent",
+  "routing_confidence": 0.0,
+  "escalated": false,
+  "latency_ms": 0.0,
+  "knowledge_used": false,
+  "entities": {
+    "order_id": [],
+    "product": [],
+    "date": [],
+    "amount": [],
+    "item_code": []
+  },
+  "intent_confidence": 0.1598,
+  "intent_source_scores": {
+    "llm": 0.0,
+    "embedding": 0.15975241260567344,
+    "rules": 0.0
+  },
+  "intent_strategy": "ensemble",
+  "intent_latency_ms": 0.0,
+  "handoff": false,
+  "handoff_reason": "",
+  "needs_clarification": false,
+  "answer_confidence": 0.0,
+  "policy_violations": [],
+  "service_unavailable": true,
+  "unavailable_reason": "credential_rejected",
+  "request_id": "0a1b2c3d4e02",
+  "ticket_id": null,
+  "ticket_status": "",
+  "ticket_notification": "",
+  "knowledge_sources": [],
+  "knowledge": {
+    "attempted": false,
+    "mode": "",
+    "reranked": false,
+    "corrected": false,
+    "evidence_ok": null,
+    "degraded": false
+  },
+  "business_data": {
+    "enabled": false,
+    "attempted": false,
+    "outcome": "model_unavailable",
+    "reason": "credential_rejected"
+  }
+}

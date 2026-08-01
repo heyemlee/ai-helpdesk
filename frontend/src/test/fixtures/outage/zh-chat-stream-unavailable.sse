@@ -1,0 +1,15 @@
+event: progress
+data: {"stage": "helpdesk.understanding", "label": "正在理解问题"}
+
+event: meta
+data: {"conv_id": "conv-outage", "intent": "other", "intent_group": "other", "intent_confidence": 0.21, "intent_strategy": "ensemble", "intent_latency_ms": 0.0, "intent_source_scores": {"llm": 0.0, "embedding": 0.2100420126042015, "rules": 0.0}, "entities": {"order_id": [], "product": [], "date": [], "amount": [], "item_code": []}, "knowledge_used": false, "knowledge_sources": [], "knowledge": {"attempted": false, "mode": "", "reranked": false, "corrected": false, "evidence_ok": null, "degraded": false}, "business_data": {"enabled": false, "attempted": false, "outcome": "model_unavailable", "reason": "credential_rejected"}}
+
+event: routing
+data: {"primary_agent": "system", "supporting_agents": [], "reason": "模型服务不可用（credential_rejected），未调用任何 Agent", "confidence": 0.0}
+
+event: delta
+data: {"text": "抱歉，智能助手暂时无法回答，这个问题没有得到解答，系统也没有为它创建工单。请稍后再试；如果需要人工处理，请直接回复“转人工”。"}
+
+event: result
+data: {"conv_id": "conv-outage", "request_id": "0a1b2c3d4e01", "ticket_id": null, "ticket_status": "", "ticket_notification": "", "response": "抱歉，智能助手暂时无法回答，这个问题没有得到解答，系统也没有为它创建工单。请稍后再试；如果需要人工处理，请直接回复“转人工”。", "agent_type": "system", "agent_types": ["system"], "primary_agent": "system", "supporting_agents": [], "routing_reason": "模型服务不可用（credential_rejected），未调用任何 Agent", "routing_confidence": 0.0, "escalated": false, "handoff": false, "handoff_reason": "", "needs_clarification": false, "answer_confidence": 0.0, "policy_violations": [], "service_unavailable": true, "unavailable_reason": "credential_rejected", "latency_ms": 0.0}
+

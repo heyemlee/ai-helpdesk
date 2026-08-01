@@ -1,0 +1,21 @@
+{
+  "release": "outage-fixture",
+  "timestamp": "2026-10-04T21:00:00",
+  "pass_rate": 0.0,
+  "total": 0,
+  "passed": 0,
+  "avg_scores": {},
+  "regressions": [],
+  "recommendations": [
+    "评测未完成：模型服务不可用（credential_rejected），已中止。计划 6 项，完成 0 项，结果已保留。处理好凭证或额度后重新运行；这份结果不能作为基线。"
+  ],
+  "baseline": {
+    "release": "",
+    "timestamp": ""
+  },
+  "promoted": false,
+  "incomplete": true,
+  "incomplete_reason": "credential_rejected",
+  "planned": 6,
+  "results": []
+}

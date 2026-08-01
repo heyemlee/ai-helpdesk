@@ -25,8 +25,8 @@ flowchart LR
     class R,PG store
 ```
 
-对外接口：`/chat`、`/chat/stream`、`/auth/token`、`/search`、`/skills`、
-`/knowledge/*`、`/tickets`、`/eval/run`、`/eval/promote`、`/monitor`、`/metrics`。
+对外接口：`/chat`、`/chat/stream`、`/auth/token`、`/search`、`/skills`、`/sops`、
+`/knowledge/*`、`/tickets`、`/conversations/{conv_id}`、`/eval/run`、`/eval/promote`、`/monitor`、`/metrics`。
 
 ## 2. `/chat` 主链路
 

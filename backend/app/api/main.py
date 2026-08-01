@@ -61,7 +61,7 @@ from pydantic import BaseModel, Field
 
 load_dotenv()
 
-from app.core import evidence  # noqa: E402
+from app.core import evidence, llm_guard  # noqa: E402
 from app.core.evidence import assess  # noqa: E402
 from app.core.llm_utils import resolve_llm_config  # noqa: E402
 from app.core.preflight import (  # noqa: E402
@@ -111,6 +111,7 @@ _infra_redis  = None
 _conv_log     = None
 _pg_database  = None
 _reranker     = None
+_llm_info: dict[str, str] = {}
 
 # 后台任务引用集合。asyncio 只持有 Task 的弱引用，不留强引用的话
 # 任务可能在完成前被 GC 掉，用户画像会静默不更新。
@@ -190,6 +191,9 @@ async def lifespan(app: FastAPI):
         f"LLM 供应商: {cfg['provider']}  模型: {cfg['model']}  "
         f"base_url: {cfg.get('base_url', '(官方)')}"
     )
+    # /health 里给工作台"模型信息"用。只放供应商和模型名——base_url 是内部
+    # 网关地址，/health 在对外入口上是匿名可读的。
+    _llm_info.update(provider=cfg["provider"], model=cfg["model"])
 
     # 基础设施 Redis 连接：限流计数、熔断状态、路由惩罚共享。
     # 与 MemoryManager 的连接分开建，记忆和基础设施状态互不干扰。
@@ -318,9 +322,16 @@ async def lifespan(app: FastAPI):
     await kb.ensure_seeded()
     # 升级到混合检索前写入的片段没有关键词索引，启动时补一次（幂等，通常是空操作）
     await kb.backfill_lexical()
+    # 加文档表之前写入的片段没有文档归属，启动时归档一次（同样幂等）；
+    # 再把分片已被清空的文档记录收掉，免得列表里摆着检索不到的文档。
+    await kb.ensure_documents()
+    await kb.prune_empty_documents()
+    kb_stats = await kb.document_stats()
     logger.info(
-        f"知识库已加载: {await kb.doc_count_async()} 个文档片段"
-        f"（后端 {kb.backend}，混合检索 dense+lexical，重排 {_reranker.backend}）"
+        f"知识库已加载: {kb_stats['total_documents']} 篇文档 / {kb_stats['total_chunks']} 个片段"
+        + (f"（其中 {kb_stats['legacy_documents']} 篇由历史分片归档）"
+           if kb_stats["legacy_documents"] else "")
+        + f"（后端 {kb.backend}，混合检索 dense+lexical，重排 {_reranker.backend}）"
     )
 
     def knowledge_fallback(params: dict[str, Any], context: dict[str, Any] | None, error: str):
@@ -477,7 +488,7 @@ from app.core.metrics import (  # noqa: E402
     observe_http,
 )
 from app.core.telemetry import setup_telemetry  # noqa: E402
-from app.tools.knowledge_base import should_use_knowledge  # noqa: E402
+from app.tools.knowledge_base import document_excerpt, should_use_knowledge  # noqa: E402
 
 # OTel：配置 OTEL_EXPORTER_OTLP_ENDPOINT 后启用 FastAPI/httpx/redis/asyncpg
 # 自动埋点 + 业务 span；未配置时零开销。
@@ -728,6 +739,33 @@ async def _create_handoff_ticket(result, user_id: str, conv_id: str, message: st
     return ticket.id
 
 
+def _notifications_enabled() -> bool:
+    return _ticket_notifier is not None and _ticket_notifier.enabled
+
+
+def _ticket_fields(result, ticket_id: str | None) -> dict[str, Any]:
+    """
+    响应里和工单有关的三个字段。**落库和通知分开报**，工作台照着显示：
+
+    - `ticket_status`：`open` 表示工单真的建出来了；`not_created` 表示这一轮
+      判了转人工但工单没建成（存储故障），需要有人手工跟进；没转人工为空。
+    - `ticket_notification`：`queued` 表示通知已进待发送队列——**不等于送达**，
+      送没送到要看工单详情里的投递记录；`not_configured` 表示这个部署没配
+      通知接收方，除了这张工单没有任何人被告知。
+
+    "有同事收到了""会回电"这类说法在这里都没有依据，所以一个都不给。
+    """
+    if not result.handoff:
+        return {"ticket_id": None, "ticket_status": "", "ticket_notification": ""}
+    if not ticket_id:
+        return {"ticket_id": None, "ticket_status": "not_created", "ticket_notification": ""}
+    return {
+        "ticket_id": ticket_id,
+        "ticket_status": "open",
+        "ticket_notification": "queued" if _notifications_enabled() else "not_configured",
+    }
+
+
 # ── 请求/响应模型 ─────────────────────────────────────────────────────────────
 class ChatRequest(BaseModel):
     message:     str
@@ -761,9 +799,22 @@ class ChatResponse(BaseModel):
     needs_clarification: bool = False
     answer_confidence: float = 1.0
     policy_violations: list[dict[str, str]] = Field(default_factory=list)
+    # 模型服务不可用，这一轮没有作答。**不是转人工**：handoff 为 False、没有工单。
+    # unavailable_reason 取值见 core/llm_guard 的 REASON_*。
+    service_unavailable: bool = False
+    unavailable_reason: str = ""
     # 请求追踪 id（与响应头 X-Request-ID 一致）；转人工时创建的工单 id
     request_id: str = ""
     ticket_id: str | None = None
+    # 工单落没落库、通知进没进队列，见 _ticket_fields
+    ticket_status: str = ""
+    ticket_notification: str = ""
+    # 本轮真的放进上下文的知识片段，每条带文档和分片 id，可以追回原文。
+    # knowledge_used 只说"用没用"，这里说"用了哪几段"。
+    knowledge_sources: list[dict[str, Any]] = Field(default_factory=list)
+    # 检索和业务数据委派这一轮实际走了哪条路、结果如何（见 _prepare_request）
+    knowledge: dict[str, Any] = Field(default_factory=dict)
+    business_data: dict[str, Any] = Field(default_factory=dict)
 
 
 # ── 路由 ──────────────────────────────────────────────────────────────────────
@@ -797,6 +848,16 @@ async def health():
         "memory": {
             "cross_session": _memory.cross_session if _memory else False,
         },
+        # available / unavailable_reason 来自凭证不可用保护（core/llm_guard）：读的是
+        # 进程里记下的状态，不为了回答这个接口去调一次模型。
+        "llm": {**_llm_info, **_llm_status()},
+        # 这个实例接了什么。工作台据此说明"能查什么"：没接业务数据委派的实例，
+        # 订单和生产进度就只能答知识库里的规则，不能答某一单的实时状态；
+        # 没配通知接收方的实例，转人工只落工单、不会有人被通知。
+        "capabilities": {
+            "business_data": bool(_sql_agent is not None and _sql_agent.enabled),
+            "ticket_notifications": _notifications_enabled(),
+        },
     }
 
 
@@ -810,13 +871,71 @@ async def skills_summary():
 
 @app.post("/skills/reload", tags=["Skills"], dependencies=[Depends(require_api_key)])
 async def reload_skills():
-    """运行时重新扫描 Skill 目录，不需要重启服务。"""
+    """
+    运行时重新扫描 Skill 目录，不需要重启服务。
+
+    同时**解除模型凭证不可用保护**（core/llm_guard）：凭证或额度处理好之后，
+    调一次这个接口，下一条真实请求就会重新出网去试；还不行的话那一次调用会
+    重新触发保护。这是"不重启就恢复"的唯一入口，沿用这个已有的受保护接口，
+    不另开一个——也不做定时探测。
+    """
     if _skill_manager is None:
         raise HTTPException(503, "Skills 未初始化")
     _skill_manager.reload()
     if _orchestrator is not None:
         _orchestrator.set_skill_manager(_skill_manager)
-    return _skill_manager.summary()
+    return {**_skill_manager.summary(), "llm_guard_reset": llm_guard.reset_all()}
+
+
+def _llm_status() -> dict[str, Any]:
+    status = getattr(_orchestrator, "llm_status", None)
+    if not callable(status):
+        return {"available": True, "unavailable_reason": "", "retry_after_s": None}
+    return status()
+
+
+def _model_unavailable_reason() -> str:
+    """模型服务此刻是不是被保护挡着（不出网）。是就返回原因。"""
+    reason = getattr(_orchestrator, "llm_unavailable_reason", None)
+    return reason() if callable(reason) else ""
+
+
+# ── 准备阶段的进度 ────────────────────────────────────────────────────────────
+#
+# 意图识别、检索改写、重排各是一次模型往返，加起来十几秒到一分钟。这段时间流里
+# 以前什么都不发——只有委派查库走 A2A 时，下游的阶段才会透传上来。于是只问知识的
+# 问题（最常见的一类）在出第一个字之前，页面上只有一句不动的"正在处理"，
+# 看不出是在干活还是卡住了。
+#
+# 阶段名带 `helpdesk.` 前缀，和下游透传的阶段名（契约 §4.5）分开，两边各改各的
+# 不会撞。`label` 是给不认识这个阶段的旧前端看的；新前端按 stage 自己出文案，
+# 跟着界面语言走。
+STAGE_UNDERSTANDING = "helpdesk.understanding"
+STAGE_GATHERING = "helpdesk.gathering"
+_STAGE_LABEL = {
+    STAGE_UNDERSTANDING: "正在理解问题",
+    STAGE_GATHERING: "正在查找回答需要的资料",
+}
+
+
+def _report_stage(progress_cb, stage: str, **detail: Any) -> None:
+    """把"现在在做哪一步"放进进度队列。非流式没有队列（progress_cb 为 None），什么都不做。"""
+    if progress_cb is None:
+        return
+    try:
+        progress_cb({"stage": stage, "label": _STAGE_LABEL.get(stage, ""), **detail})
+    except Exception:
+        # 进度是增强项：报不出去不能连累这一轮回答
+        logger.debug("进度上报失败: %s", stage, exc_info=True)
+
+
+def _will_query_business_data(message: str, intent=None, entities=None) -> bool:
+    """这一轮会不会去委派查业务数据。和 `_build_order_data_context` 开头的三道门是同一套判断。"""
+    from app.tools.sql_agent_client import should_query_business_data
+
+    if _tool_manager is None or _sql_agent is None or not _sql_agent.enabled:
+        return False
+    return bool(should_query_business_data(message, intent=intent, entities=entities))
 
 
 async def _prepare_request(req: "ChatRequest", conv_id: str, user_id: str, progress_cb=None):
@@ -824,11 +943,18 @@ async def _prepare_request(req: "ChatRequest", conv_id: str, user_id: str, progr
     /chat 和 /chat/stream 共用的准备阶段：
       读取三级记忆 → 意图识别 → 按需 RAG → 组装编排请求
 
-    返回 (编排请求, 意图结果, 是否用到知识库)。
+    返回 (编排请求, 意图结果, 是否用到知识库, 依据记录)。
     抽出来是为了让流式和非流式共用同一套上下文构造——两条链路一旦漂移，
     就会出现"流式和非流式对同一个问题给出不同答案"的问题。
+
+    依据记录是 `{"knowledge": {...}, "business_data": {...}}`：这一轮检索到了
+    哪几段知识、业务数据委派有没有发起、结果算不算数。它们原样进响应，
+    工作台显示的"回答依据"和学习模式的讲解都只来自这里——前端自己推断不出
+    这一轮有没有查库，推断出来的也不能当事实显示。
     """
     from app.agents.agent_orchestrator import Request as OrcReq
+
+    _report_stage(progress_cb, STAGE_UNDERSTANDING)
 
     # 1. 读取记忆上下文
     mem_ctx = await _memory.get_context(user_id, conv_id, query=req.message)
@@ -841,25 +967,50 @@ async def _prepare_request(req: "ChatRequest", conv_id: str, user_id: str, progr
 
     intent_result = await _orchestrator.recognize_intent(req.message, history=history)
 
-    # 规则通道命中说明意图已经确定，检索这边也跟着走短链路：
-    # 直接检索，跳过"查询改写 + LLM 重排"两次额外的 LLM 往返。
-    # 知识检索和业务数据查询互不依赖，并发跑。串起来的话查库那 17.7s（契约 §2）
-    # 会整段叠在检索之后，用户等待时间白白多出一截。
-    (knowledge_text, knowledge_used), (order_text, order_is_evidence) = await asyncio.gather(
-        _build_knowledge_context(
-            req.message,
-            intent=intent_result.intent,
-            fast_path=intent_result.fast_path,
-        ),
-        _build_order_data_context(
-            req.message,
-            intent=intent_result.intent,
-            entities=intent_result.entities,
-            user_id=user_id,
-            conv_id=conv_id,
-            progress_cb=progress_cb,
-        ),
-    )
+    knowledge_trace: dict[str, Any] = {}
+    data_trace: dict[str, Any] = {}
+    outage = _model_unavailable_reason()
+    if outage:
+        # 模型服务不可用：这一轮作答不了（编排器会直接返回"不可用"，或按规则转人工），
+        # 检索和委派查库拿回来的东西没有人读。尤其是委派——它会让下游为一个注定
+        # 用不上的答案把自己的模型跑一遍。
+        knowledge_text, knowledge_used, order_text, order_is_evidence = "", False, "", False
+        knowledge_trace.update(attempted=False, mode="", sources=[], reranked=False,
+                               corrected=False, evidence_ok=None, degraded=False)
+        data_trace.update(enabled=bool(_sql_agent is not None and _sql_agent.enabled),
+                          attempted=False, outcome="model_unavailable", reason=outage)
+    else:
+        # 接下来要查什么，动手之前就定得下来：两个门控都是同步的纯判断，和下面两个
+        # 构建函数里用的是同一对函数。两路是并发跑的，所以合成一条进度报出去，
+        # 不拆成两条——拆开的话先报的那条会被界面当成"已经做完了"。
+        searching = _tool_manager is not None and should_use_knowledge(
+            req.message, intent=intent_result.intent)
+        querying = _will_query_business_data(
+            req.message, intent=intent_result.intent, entities=intent_result.entities)
+        if searching or querying:
+            _report_stage(progress_cb, STAGE_GATHERING, knowledge=searching, order_data=querying)
+
+        # 规则通道命中说明意图已经确定，检索这边也跟着走短链路：
+        # 直接检索，跳过"查询改写 + LLM 重排"两次额外的 LLM 往返。
+        # 知识检索和业务数据查询互不依赖，并发跑。串起来的话查库那 17.7s（契约 §2）
+        # 会整段叠在检索之后，用户等待时间白白多出一截。
+        (knowledge_text, knowledge_used), (order_text, order_is_evidence) = await asyncio.gather(
+            _build_knowledge_context(
+                req.message,
+                intent=intent_result.intent,
+                fast_path=intent_result.fast_path,
+                trace=knowledge_trace,
+            ),
+            _build_order_data_context(
+                req.message,
+                intent=intent_result.intent,
+                entities=intent_result.entities,
+                user_id=user_id,
+                conv_id=conv_id,
+                progress_cb=progress_cb,
+                trace=data_trace,
+            ),
+        )
     context_parts = [mem_ctx.to_prompt_text()]
     if knowledge_text:
         context_parts.append(knowledge_text)
@@ -880,6 +1031,8 @@ async def _prepare_request(req: "ChatRequest", conv_id: str, user_id: str, progr
         intent_group=intent_result.intent_group,
         urgency=intent_result.urgency,
         intent_confidence=intent_result.confidence,
+        # 意图那一路模型没答上来时，这个意图是降级凑出来的——编排器据此不去追问
+        intent_degraded=bool(getattr(intent_result, "llm_failed", False)),
         # 只有检索到的知识和**真的查回来的**业务数据才算"出处"，记忆和历史不能
         # 作为价格/时效的依据。业务数据必须在这里——否则真实交期会被答案策略
         # 当成无依据承诺替换掉。反过来，委派失败时那段降级提示进的是上下文而
@@ -889,7 +1042,18 @@ async def _prepare_request(req: "ChatRequest", conv_id: str, user_id: str, progr
             t for t in (knowledge_text, order_text if order_is_evidence else "") if t
         ],
     )
-    return orch_req, intent_result, knowledge_used
+    evidence_trace = {"knowledge": knowledge_trace, "business_data": data_trace}
+    return orch_req, intent_result, knowledge_used, evidence_trace
+
+
+def _evidence_fields(evidence_trace: dict[str, Any]) -> dict[str, Any]:
+    """依据记录 → 响应字段。/chat 的响应体和 /chat/stream 的 meta 事件用同一份。"""
+    knowledge = dict(evidence_trace.get("knowledge") or {})
+    return {
+        "knowledge_sources": knowledge.pop("sources", []),
+        "knowledge": knowledge,
+        "business_data": dict(evidence_trace.get("business_data") or {}),
+    }
 
 
 @app.post("/chat", response_model=ChatResponse, dependencies=[Depends(protect_chat)])
@@ -905,7 +1069,9 @@ async def chat(req: ChatRequest, x_user_token: str | None = Header(None, alias="
 
     user_id = await resolve_user_id(req, x_user_token)
     conv_id = req.conv_id or str(uuid.uuid4())
-    orch_req, intent_result, knowledge_used = await _prepare_request(req, conv_id, user_id)
+    orch_req, intent_result, knowledge_used, evidence_trace = await _prepare_request(
+        req, conv_id, user_id
+    )
 
     # 3. 执行
     result = await _orchestrator.run(orch_req)
@@ -919,13 +1085,16 @@ async def chat(req: ChatRequest, x_user_token: str | None = Header(None, alias="
     _spawn_background(_log_turn(conv_id, user_id, req.message, result.response,
                                 result.agent_type.value, current_request_id()))
 
-    # 6. 异步更新用户画像（不阻塞响应）
-    _spawn_background(_memory.update_profile(user_id, conv_id))
+    # 6. 异步更新用户画像（不阻塞响应）。没答上来的轮次不提炼：那一轮的"助手发言"
+    #    是一句故障提示，里面没有客户的任何偏好，提炼只是再花一次模型调用。
+    if not result.service_unavailable:
+        _spawn_background(_memory.update_profile(user_id, conv_id))
 
     return ChatResponse(
         conv_id=conv_id,
         request_id=current_request_id(),
-        ticket_id=ticket_id,
+        **_ticket_fields(result, ticket_id),
+        **_evidence_fields(evidence_trace),
         response=result.response,
         intent=result.intent.value if result.intent else "other",
         intent_group=intent_result.intent_group,
@@ -948,6 +1117,8 @@ async def chat(req: ChatRequest, x_user_token: str | None = Header(None, alias="
         needs_clarification=result.needs_clarification,
         answer_confidence=result.answer_confidence,
         policy_violations=[v.to_dict() for v in result.policy_violations],
+        service_unavailable=result.service_unavailable,
+        unavailable_reason=result.unavailable_reason,
     )
 
 
@@ -984,7 +1155,7 @@ async def chat_stream(req: ChatRequest, x_user_token: str | None = Header(None, 
             )
             async for frame in _pump_until_done(prep, progress_q, heartbeat_s=SSE_HEARTBEAT_S):
                 yield frame
-            orch_req, intent_result, knowledge_used = prep.result()
+            orch_req, intent_result, knowledge_used, evidence_trace = prep.result()
             yield _sse("meta", {
                 "conv_id": conv_id,
                 "intent": intent_result.intent.value,
@@ -995,6 +1166,7 @@ async def chat_stream(req: ChatRequest, x_user_token: str | None = Header(None, 
                 "intent_source_scores": intent_result.source_scores,
                 "entities": intent_result.entities,
                 "knowledge_used": knowledge_used,
+                **_evidence_fields(evidence_trace),
             })
 
             final = None
@@ -1016,12 +1188,13 @@ async def chat_stream(req: ChatRequest, x_user_token: str | None = Header(None, 
             await _memory.add_message(user_id, conv_id, MsgRole.ASSISTANT, final.response)
             _spawn_background(_log_turn(conv_id, user_id, req.message, final.response,
                                         final.agent_type.value, current_request_id()))
-            _spawn_background(_memory.update_profile(user_id, conv_id))
+            if not final.service_unavailable:      # 同 /chat：没答上来的轮次不提炼画像
+                _spawn_background(_memory.update_profile(user_id, conv_id))
 
             yield _sse("result", {
                 "conv_id": conv_id,
                 "request_id": current_request_id(),
-                "ticket_id": ticket_id,
+                **_ticket_fields(final, ticket_id),
                 "response": final.response,
                 "agent_type": final.agent_type.value,
                 "agent_types": [a.value for a in final.agent_types],
@@ -1035,6 +1208,8 @@ async def chat_stream(req: ChatRequest, x_user_token: str | None = Header(None, 
                 "needs_clarification": final.needs_clarification,
                 "answer_confidence": final.answer_confidence,
                 "policy_violations": [v.to_dict() for v in final.policy_violations],
+                "service_unavailable": final.service_unavailable,
+                "unavailable_reason": final.unavailable_reason,
                 "latency_ms": round(final.latency_ms, 1),
             })
         except Exception as ex:
@@ -1104,11 +1279,30 @@ async def _eval_grounding(message: str, intent_result) -> str:
     return text
 
 
+async def _label_sources(sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """
+    给知识片段补上所属文档的展示标题。
+
+    片段自带的 title 是导入时填的标题（常常只是文件名），文档正文里的标题行
+    才是人认得的名字。查不到（文档表读失败、片段还没归档）就退回片段标题——
+    标不上出处不该让这一轮对话失败。
+    """
+    if not sources or _knowledge_base is None:
+        return sources
+    try:
+        titles = await _knowledge_base.document_titles([s["doc_id"] for s in sources])
+    except Exception as ex:
+        logger.warning(f"读取知识片段所属文档失败，出处只显示片段标题: {ex}")
+        return sources
+    return [{**s, "doc_title": titles.get(s["doc_id"]) or s["title"]} for s in sources]
+
+
 async def _build_knowledge_context(
     message: str,
     intent=None,
     top_k: int = 3,
     fast_path: bool = False,
+    trace: dict[str, Any] | None = None,
 ) -> tuple[str, bool]:
     """
     为 /chat 主链路构建 RAG 知识上下文。
@@ -1120,11 +1314,20 @@ async def _build_knowledge_context(
     注意这里少掉的只是**改写和重排**这两次 LLM 往返。混合检索（稠密向量 +
     关键词双路 RRF 融合）发生在存储层，不花任何 LLM 调用，所以快通道同样
     享受到它带来的召回提升，零网络往返的承诺不受影响。
+
+    `trace` 传进来的话，这一轮检索的经过会记在里面：走的哪条路、放进上下文的
+    是哪几段（`sources`，每段带文档和分片 id）。**只记真的进了上下文的片段**
+    ——召回了但被重排挤掉的不算，降级占位的那一条（知识库不可用时的兜底）
+    也不算：它不是知识，不能被显示成"回答的依据"。
     """
+    info = trace if trace is not None else {}
+    info.update(attempted=False, mode="", sources=[], reranked=False,
+                corrected=False, evidence_ok=None, degraded=False)
     if _tool_manager is None:
         return "", False
     if not should_use_knowledge(message, intent=intent):
         return "", False
+    info.update(attempted=True, mode="direct" if fast_path else "rewrite_rerank")
     try:
         if fast_path:
             result = await _tool_manager.call(
@@ -1136,8 +1339,11 @@ async def _build_knowledge_context(
             )
         if not result.success or not isinstance(result.data, list) or not result.data:
             return "", False
+        info.update(reranked=result.reranked, corrected=result.corrected,
+                    evidence_ok=result.evidence_ok)
 
         parts = ["[知识库检索结果]"]
+        sources: list[dict[str, Any]] = []
         used = False
         for i, item in enumerate(result.data[:top_k], start=1):
             if not isinstance(item, dict):
@@ -1149,9 +1355,25 @@ async def _build_knowledge_context(
                 continue
             used = True
             parts.append(f"{i}. 标题: {title}\n   相关度: {score}\n   内容: {content[:600]}")
+            if item.get("fallback"):
+                info["degraded"] = True
+                continue
+            sources.append({
+                "doc_id": str(item.get("doc_id") or ""),
+                "chunk_id": str(item.get("chunk_id") or ""),
+                "title": title,
+                "passage": item.get("chunk", 0),
+                "score": score if isinstance(score, (int, float)) else None,
+                "retrieval": str(item.get("retrieval") or ""),
+                # 给人看的摘录去掉开头的标题行和 Markdown 记号；喂给模型的那份（上面的
+                # parts）不动。截断处带省略号——硬切在词中间（"…Curbsi"）读起来像
+                # 段落本身坏了，而被切掉的往往正是回答依据的那一句
+                "excerpt": document_excerpt(content, 240),
+            })
 
         if not used:
             return "", False
+        info["sources"] = await _label_sources(sources)
         parts.append("请优先依据以上知识库内容回答；如果知识库内容不足，再结合通用客服能力说明。")
         return "\n".join(parts), True
     except Exception as ex:
@@ -1210,6 +1432,7 @@ async def _build_order_data_context(
     user_id: str = "",
     conv_id: str = "",
     progress_cb=None,
+    trace: dict[str, Any] | None = None,
 ) -> tuple[str, bool]:
     """
     为 /chat 主链路构建业务数据上下文：把问题委派给 ai-sql-agent 查真实数据。
@@ -1251,13 +1474,26 @@ async def _build_order_data_context(
     真实数据不进 sources，客服说"您的柜体 9 月 15 日出厂"会被当成无依据承诺
     替换成安全话术，整条委派看起来就像没生效。所以这段文本必须进 sources；
     反过来，上面第 2 条那种"不是数据的文本"绝不能进。
+
+    `trace` 传进来的话，这次委派的结局会记在 `outcome` 里，供响应如实报告：
+    `not_configured`（这个实例没接业务数据）、`skipped`（这个问题不需要查）、
+    `model_unavailable`（本方模型服务不可用，这一轮根本没来委派——由 `_prepare_request`
+    直接记下，不经过这个函数）、
+    `evidence`（查到了，可作依据）、`unverified`（查到了，没过可信校验）、
+    `failed` / `unavailable` / `error`（没查成）、`not_applicable`（下游判断
+    不需要查库）、`empty`（查了，没有内容）。和上面的返回值是同一次判定的
+    两种说法——一个给 Agent 读，一个给工作台读，不许各判各的。
     """
     from app.tools.sql_agent_client import should_query_business_data
 
+    info = trace if trace is not None else {}
+    info.update(enabled=False, attempted=False, outcome="not_configured")
     if _tool_manager is None or _sql_agent is None or not _sql_agent.enabled:
         return "", False
+    info.update(enabled=True, outcome="skipped")
     if not should_query_business_data(message, intent=intent, entities=entities):
         return "", False
+    info.update(attempted=True, outcome="error")
 
     try:
         result = await _tool_manager.call(
@@ -1274,6 +1510,7 @@ async def _build_order_data_context(
         # 都分辨不出来。这里把失败明写进上下文，要求 Agent 说出来。
         if data.get("unavailable") or (not result.success and not data):
             reason = str(data.get("error") or result.error or "未知原因")
+            info.update(outcome="unavailable", reason=reason)
             return "\n".join([
                 "[业务系统查询未完成]",
                 f"本轮尝试查询订单/生产/库存/账款系统，但没有拿到结果（{reason}）。",
@@ -1292,9 +1529,15 @@ async def _build_order_data_context(
         # 下游自己判断这问题不需要查库（走了对话路径）。不是故障，不提示。
         # 那段 answer 是模型说的话不是数据，连上下文都不该进。
         if verdict.execution_status == evidence.NOT_APPLICABLE:
+            info.update(outcome="not_applicable")
             return "", False
 
         trace_id = str(data.get("trace_id", "") or "")
+        info.update(
+            trace_id=trace_id,
+            databases=[str(d) for d in data.get("selected_databases") or []],
+            execution_status=verdict.execution_status,
+        )
 
         # 查库路径但一步都没成。这里**必须**和"查到了但没有记录"分开：
         # `queried_database` 两种情况下都是 true（服务端定义只有一行
@@ -1305,6 +1548,7 @@ async def _build_order_data_context(
                 trace_id, verdict.execution_status, verdict.status_source,
                 "；".join(verdict.reasons) or "-",
             )
+            info.update(outcome="failed", reasons=list(verdict.reasons))
             return "\n".join([
                 "[业务系统查询未成功]",
                 f"本轮查询业务系统的每一个步骤都没有成功执行（trace_id: {trace_id or '未知'}）。",
@@ -1316,6 +1560,7 @@ async def _build_order_data_context(
 
         answer = str(data.get("answer", "")).strip()
         if not answer:
+            info.update(outcome="empty")
             return "", False
 
         # ai-sql-agent 的 answer 里嵌的是查询结果的 JSON 原文，行数多的时候
@@ -1362,9 +1607,16 @@ async def _build_order_data_context(
                 trace_id, verdict.execution_status, verdict.status_source,
                 "；".join(verdict.reasons) or "-",
             )
+        info.update(
+            outcome="evidence" if verdict.usable_as_source else "unverified",
+            has_risk=verdict.has_risk,
+            degraded=verdict.degraded,
+            reasons=list(verdict.reasons),
+        )
         return "\n".join(p for p in parts if p), verdict.usable_as_source
     except Exception as ex:
         logger.warning(f"构建业务数据上下文失败: {ex}")
+        info.update(outcome="error", reason=str(ex) or type(ex).__name__)
         return "", False
 
 
@@ -1388,13 +1640,45 @@ class TicketStatusRequest(BaseModel):
     status: str
 
 
+async def _ticket_payloads(tickets: list) -> list[dict[str, Any]]:
+    """
+    工单 → 接口里的样子：工单本身 + 能流转到哪些状态 + 通知投递记录。
+
+    `notification` 是 outbox 里那条记录的原样转述：`pending`（还在发 / 等重试）、
+    `delivered`（接收端回了 2xx）、`failed`（放弃了，需要人介入）。没有记录就是
+    `None`——通知没配，或者这张工单没入队。**`delivered` 只说明 webhook 收下了
+    这条消息，不说明有人读了、接了、会回电**；那些事这个系统不记录，也就不报。
+    """
+    from app.tickets.ticket_store import allowed_transitions
+
+    deliveries = await _ticket_store.notify_for([t.id for t in tickets])
+    payloads = []
+    for ticket in tickets:
+        delivery = deliveries.get(ticket.id)
+        payloads.append({
+            **ticket.to_dict(),
+            "allowed_transitions": allowed_transitions(ticket.status),
+            "notification": {
+                "status": delivery.status,
+                "attempts": delivery.attempts,
+                "last_error": delivery.last_error,
+                "updated_at": delivery.updated_at,
+            } if delivery else None,
+        })
+    return payloads
+
+
 @app.get("/tickets", tags=["Tickets"], dependencies=[Depends(require_api_key)])
 async def list_tickets(status: str | None = None, limit: int = 50):
     """工单列表（坐席/运维视角），可按状态过滤。"""
     if _ticket_store is None:
         raise HTTPException(503, "服务未就绪")
-    tickets = await _ticket_store.list(status=status, limit=min(limit, 200))
-    return {"tickets": [t.to_dict() for t in tickets], "stats": await _ticket_store.stats()}
+    tickets = await _ticket_store.list(status=status, limit=max(1, min(limit, 200)))
+    return {
+        "tickets": await _ticket_payloads(tickets),
+        "stats": await _ticket_store.stats(),
+        "notifications_enabled": _notifications_enabled(),
+    }
 
 
 @app.get("/tickets/{ticket_id}", tags=["Tickets"], dependencies=[Depends(require_api_key)])
@@ -1404,7 +1688,10 @@ async def get_ticket(ticket_id: str):
     ticket = await _ticket_store.get(ticket_id)
     if ticket is None:
         raise HTTPException(404, f"工单不存在: {ticket_id}")
-    return ticket.to_dict()
+    return {
+        **(await _ticket_payloads([ticket]))[0],
+        "notifications_enabled": _notifications_enabled(),
+    }
 
 
 async def _log_turn(
@@ -1441,7 +1728,10 @@ async def update_ticket_status(ticket_id: str, body: TicketStatusRequest):
         raise HTTPException(404, f"工单不存在: {ticket_id}") from exc
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
-    return ticket.to_dict()
+    return {
+        **(await _ticket_payloads([ticket]))[0],
+        "notifications_enabled": _notifications_enabled(),
+    }
 
 
 class SearchRequest(BaseModel):
@@ -1450,7 +1740,7 @@ class SearchRequest(BaseModel):
     top_k: int = 5
 
 
-@app.post("/search")
+@app.post("/search", dependencies=[Depends(require_api_key)])
 async def search(body: SearchRequest):
     """
     演示检索优化链路：
@@ -1459,15 +1749,32 @@ async def search(body: SearchRequest):
 
     响应里的 corrected 表示是否触发过自纠错，evidence_ok 是最终的证据充分性
     判定——这两个信号是排"为什么这个问题答得不好"时最先要看的东西。
+
+    每条结果带 `doc_id` 和 `doc_title`，能从片段追回它所在的文档。
+
+    **和知识库的其它接口一样要员工钥匙。** 它原样返回知识片段的正文——
+    内部的采购、成本规则也在里面——所以不能是匿名可读的。
     """
     if _tool_manager is None:
         raise HTTPException(503, "服务未就绪")
     result = await _tool_manager.search_with_rewrite(
         "knowledge_search", body.query, top_k=body.top_k
     )
+    results = result.data if isinstance(result.data, list) else []
+    if _knowledge_base is not None:
+        doc_ids = [r.get("doc_id", "") for r in results if isinstance(r, dict)]
+        try:
+            titles = await _knowledge_base.document_titles(doc_ids)
+        except Exception as ex:
+            logger.warning(f"读取检索结果所属文档失败: {ex}")
+            titles = {}
+        results = [
+            {**r, "doc_title": titles.get(r.get("doc_id", ""), "")} if isinstance(r, dict) else r
+            for r in results
+        ]
     return {
         "query": body.query,
-        "results": result.data,
+        "results": results,
         "reranked": result.reranked,
         "corrected": result.corrected,
         "evidence_ok": result.evidence_ok,
@@ -1534,9 +1841,11 @@ async def add_knowledge(body: BatchDocInput):
     ```
     """
     kb = _require_knowledge_base()
-    count = await kb.add_documents_async([{"title": d.title, "content": d.content} for d in body.documents])
-    total = await kb.doc_count_async()
-    return {"message": f"成功导入 {count} 个文档片段", "added_chunks": count, "total_chunks": total}
+    results = await kb.import_documents(
+        [{"title": d.title, "content": d.content} for d in body.documents],
+        source_type="manual",
+    )
+    return await _import_response(kb, results)
 
 
 @app.post("/knowledge/upload", tags=["知识库"], dependencies=[Depends(require_api_key)])
@@ -1557,35 +1866,115 @@ async def upload_knowledge(file: UploadFile = File(...)):
         raise HTTPException(413, "文件大小超过 10MB 限制")
 
     text = content.decode("utf-8", errors="ignore")
-    filename = file.filename or "unknown"
+    # 只留文件名本身：有的浏览器会把整条本地路径带上来，那不该进知识库的来源栏
+    filename = pathlib.PurePath((file.filename or "unknown").replace("\\", "/")).name
 
-    if filename.endswith(".json"):
+    if filename.lower().endswith(".json"):
         import json as _json
         try:
             docs = _json.loads(text)
-            if not isinstance(docs, list):
-                raise HTTPException(400, "JSON 文件应为数组格式: [{title, content}, ...]")
         except _json.JSONDecodeError as e:
             raise HTTPException(400, f"JSON 解析失败: {e}") from e
+        if not isinstance(docs, list) or not all(isinstance(d, dict) for d in docs):
+            raise HTTPException(400, "JSON 文件应为数组格式: [{title, content}, ...]")
     else:
         # txt / md：整个文件作为一篇文档
         title = filename.rsplit(".", 1)[0] if "." in filename else filename
         docs = [{"title": title, "content": text}]
 
-    count = await kb.add_documents_async(docs)
-    total = await kb.doc_count_async()
+    results = await kb.import_documents(docs, source_type="upload", source_name=filename)
+    return await _import_response(kb, results, f"文件 {filename} 导入成功")
+
+
+async def _import_response(
+    kb, results: list[dict[str, Any]], message: str | None = None
+) -> dict[str, Any]:
+    """
+    导入接口的响应。`documents` 逐篇说明落成了什么（新建 / 已存在 / 空），
+    带着文档 id——工作台导入完能直接打开那一篇，不用再去搜它进没进去。
+    """
+    chunks = sum(r["chunks"] for r in results if r["status"] == "created")
+    stats = await kb.document_stats()
     return {
-        "message": f"文件 {filename} 导入成功",
-        "added_chunks": count,
-        "total_chunks": total,
+        "message": message or f"成功导入 {chunks} 个文档片段",
+        "added_chunks": chunks,
+        "added_documents": sum(1 for r in results if r["status"] == "created"),
+        "documents": results,
+        **stats,
     }
 
 
 @app.get("/knowledge/stats", tags=["知识库"])
 async def knowledge_stats():
-    """查看知识库统计信息（文档片段总数）。"""
+    """知识库统计：文档数、片段数，以及其中有多少篇是由历史分片归档来的。"""
     kb = _require_knowledge_base()
-    return {"total_chunks": await kb.doc_count_async()}
+    return await kb.document_stats()
+
+
+@app.get("/knowledge/documents", tags=["知识库"], dependencies=[Depends(require_api_key)])
+async def list_knowledge_documents(q: str = "", limit: int = 100, offset: int = 0):
+    """
+    知识库里有哪些文档。不带 `q` 是浏览全部（新导入的在前）；带 `q` 时按空白
+    拆成词，每个词都要在标题或正文里出现，响应里说明是标题命中还是正文命中。
+
+    这是**按字面找文档**。"用一句问题找相关段落"是另一件事，走 `POST /search`
+    ——那条链路会改写问题、做语义召回和重排，对话里用的也是它。
+
+    每篇带 `origin`：`original` 是导入时存下的原文；`legacy` 是加文档表之前
+    导入的，正文由当时的分片拼回；`legacy_partial` 是分片不全的历史文档。
+    后两种没有来源和文件名可报——当时没记。
+    """
+    kb = _require_knowledge_base()
+    return await kb.list_documents(
+        query=q.strip()[:200], limit=max(1, min(limit, 500)), offset=max(0, offset)
+    )
+
+
+@app.get("/knowledge/documents/{doc_id}", tags=["知识库"],
+         dependencies=[Depends(require_api_key)])
+async def get_knowledge_document(doc_id: str):
+    """一篇文档的正文，以及它被切成的片段（检索用的就是这些片段）。"""
+    kb = _require_knowledge_base()
+    document = await kb.get_document(doc_id)
+    if document is None:
+        raise HTTPException(404, f"文档不存在: {doc_id}")
+    return document
+
+
+@app.get("/sops", tags=["Skills"], dependencies=[Depends(require_api_key)])
+async def list_sops():
+    """
+    业务 SOP 全文（只读）。SOP 就是加载进 Agent 的那些 Skill：它规定处理步骤
+    和升级条件，和知识库里说明业务事实的文档不是一回事，所以单独一个入口，
+    不混进知识检索结果。
+
+    `/skills` 只给摘要，这里给全文，因此要员工钥匙：SOP 里写的是内部的审批
+    边界和话术，不是给客户看的 FAQ。`source` 是相对 Skill 目录的路径，
+    不暴露服务器上的绝对路径。
+    """
+    if _skill_manager is None:
+        raise HTTPException(503, "Skills 未初始化")
+    root = _skill_manager.root_dir
+    sops = []
+    for skill in _skill_manager.skills:
+        path = pathlib.Path(skill.path)
+        try:
+            source = str(path.relative_to(root))
+            modified_at: float | None = path.stat().st_mtime
+        except (ValueError, OSError):
+            source, modified_at = path.name, None
+        sops.append({
+            "name": skill.name,
+            "description": skill.description,
+            "agents": skill.agents,
+            "keywords": skill.keywords,
+            "enabled": skill.enabled,
+            "content": skill.content,
+            "content_chars": len(skill.content),
+            "source": source,
+            "modified_at": modified_at,
+        })
+    return {"count": len(sops), "sops": sops, "errors": len(_skill_manager.errors)}
 
 
 @app.post("/eval/run", dependencies=[Depends(require_api_key)])
@@ -1638,6 +2027,10 @@ def _eval_report_payload(report) -> dict[str, Any]:
             "timestamp": report.baseline_timestamp,
         },
         "promoted":        report.promoted,
+        # 模型服务不可用时评测中途中止：results 是中止前完成的那些，planned 是本来要跑的项数
+        "incomplete":        report.incomplete,
+        "incomplete_reason": report.incomplete_reason,
+        "planned":           report.planned,
         "results": [
             {
                 "test_id": r.test_id,
@@ -1667,6 +2060,11 @@ async def promote_baseline():
     """把最近一次评测结果提升为新基线（人工确认分数可接受后调用）。"""
     if _evaluator is None:
         raise HTTPException(503, "服务未就绪")
+    history = _evaluator.history
+    if history and history[-1].incomplete:
+        raise HTTPException(
+            409, f"最近一次评测未完成（模型服务不可用：{history[-1].incomplete_reason}），不能提升为基线",
+        )
     report = _evaluator.promote_baseline()
     if report is None:
         raise HTTPException(400, "还没有可提升的评测结果，请先调用 /eval/run")

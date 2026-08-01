@@ -6,6 +6,8 @@ from typing import Any
 
 from anthropic import AsyncAnthropic
 
+from app.core.llm_guard import GuardedLLMClient, guard_for
+
 logger = logging.getLogger(__name__)
 
 # 全项目按 Anthropic 的 messages 形状调 LLM；OpenAI 兼容端点由
@@ -168,11 +170,16 @@ def create_llm_client(api_key: str, base_url: str | None = None) -> LLMClient:
     工具管理、记忆、评测）都走这一个入口，换供应商不需要改调用点。
     """
     kwargs = anthropic_client_kwargs(api_key, base_url)
-    if llm_provider() == "openai":
+    provider = llm_provider()
+    if provider == "openai":
         from app.core.openai_compat import AsyncOpenAICompat
 
-        return AsyncOpenAICompat(**kwargs)
-    return AsyncAnthropic(**kwargs)
+        client: Any = AsyncOpenAICompat(**kwargs)
+    else:
+        client = AsyncAnthropic(**kwargs)
+    # 凭证不可用保护套在这唯一的入口上：同一份配置（供应商 + 地址 + 凭证）的所有
+    # 客户端共用一份状态，一处被明确拒绝，其余调用点就不再拿同一把凭证出网。
+    return GuardedLLMClient(client, guard_for(provider, base_url, api_key))
 
 
 def resolve_llm_config() -> dict[str, Any]:

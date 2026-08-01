@@ -1,10 +1,12 @@
 import type {
   ChatRequest, ChatResponse, ConversationResponse, EvalReport, HealthResponse,
-  KnowledgeStats, MonitorSummary, SearchResponse, StreamEvent,
+  ImportResult, KnowledgeDocumentDetail, KnowledgeDocumentList,
+  MonitorSummary, SearchResponse, SopList, StreamEvent, TicketDetail, TicketList,
 } from './types'
 
 const DEFAULT_API_BASE = import.meta.env.VITE_API_BASE_URL || '/api'
 const STORAGE_KEY = 'ai-helpdesk.console.settings.v2'
+const STAFF_KEY_STORAGE = 'ai-helpdesk.console.staff-key'
 
 export interface Settings {
   userId: string
@@ -29,6 +31,29 @@ export function saveSettings(settings: Settings): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
 }
 
+/**
+ * 员工钥匙（X-API-Key）。只有配了 AI_HELPDESK_API_KEY 的后端才需要它；
+ * 本机联调的后端不校验，留空即可。
+ *
+ * 放 sessionStorage 而不是 localStorage：这是一把所有员工共用的钥匙，
+ * 关掉标签页就该失效，不该在一台共用电脑上留到下一个人来。权限是后端
+ * 判的——这里只负责把钥匙带上，界面上没有任何东西靠"前端认为你是谁"放行。
+ */
+let staffKey = ''
+try { staffKey = globalThis.sessionStorage?.getItem(STAFF_KEY_STORAGE) ?? '' } catch { /* 存储不可用就当没配 */ }
+
+export const getStaffKey = (): string => staffKey
+
+export function setStaffKey(value: string): void {
+  staffKey = value.trim()
+  try {
+    if (staffKey) globalThis.sessionStorage?.setItem(STAFF_KEY_STORAGE, staffKey)
+    else globalThis.sessionStorage?.removeItem(STAFF_KEY_STORAGE)
+  } catch { /* 存不下就只在这一页有效 */ }
+}
+
+const authHeaders = (): Record<string, string> => (staffKey ? { 'X-API-Key': staffKey } : {})
+
 const trimSlash = (v: string) => v.replace(/\/+$/, '')
 
 export class ApiError extends Error {
@@ -43,17 +68,24 @@ export class ApiError extends Error {
  * 否则界面上会出现 "500 Internal Server Error: null" 或结尾一个孤立冒号。
  */
 function errorMessage(status: number, statusText: string, detail: unknown): string {
+  // FastAPI 的错误体是 {"detail": "..."}：把那句话取出来，别把 JSON 外壳也显示给人看
+  const inner = detail && typeof detail === 'object' && 'detail' in detail
+    ? (detail as { detail: unknown }).detail
+    : detail
   const text =
-    typeof detail === 'string' ? detail
-      : detail === null || detail === undefined ? ''
-        : JSON.stringify(detail)
+    typeof inner === 'string' ? inner
+      : inner === null || inner === undefined ? ''
+        : JSON.stringify(inner)
   const head = `${status} ${statusText}`.trim()
   const body = text.trim()
   return body ? `${head}: ${body}` : head
 }
 
 async function request<T>(base: string, path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${trimSlash(base)}${path}`, init)
+  const response = await fetch(`${trimSlash(base)}${path}`, {
+    ...init,
+    headers: { ...authHeaders(), ...(init?.headers as Record<string, string> | undefined) },
+  })
   const text = await response.text()
   let data: unknown = null
   try {
@@ -67,49 +99,54 @@ async function request<T>(base: string, path: string, init?: RequestInit): Promi
   return data as T
 }
 
+const json = (body: unknown): RequestInit => ({
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(body),
+})
+
 export const api = {
   health: (base: string) => request<HealthResponse>(base, '/health'),
   monitor: (base: string) => request<MonitorSummary>(base, '/monitor'),
-  knowledgeStats: (base: string) => request<KnowledgeStats>(base, '/knowledge/stats'),
 
   search: (base: string, query: string, topK = 5) =>
-    request<SearchResponse>(base, '/search', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, top_k: topK }),
-    }),
+    request<SearchResponse>(base, '/search', json({ query, top_k: topK })),
 
   chat: (base: string, body: ChatRequest) =>
-    request<ChatResponse>(base, '/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    }),
+    request<ChatResponse>(base, '/chat', json(body)),
 
   conversation: (base: string, convId: string) =>
     request<ConversationResponse>(base, `/conversations/${encodeURIComponent(convId)}`),
 
-  runEval: (base: string) =>
-    request<EvalReport>(base, '/eval/run', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
-    }),
+  runEval: (base: string) => request<EvalReport>(base, '/eval/run', json({})),
+
+  documents: (base: string, query = '') =>
+    request<KnowledgeDocumentList>(
+      base, `/knowledge/documents?limit=200${query ? `&q=${encodeURIComponent(query)}` : ''}`,
+    ),
+
+  document: (base: string, docId: string) =>
+    request<KnowledgeDocumentDetail>(base, `/knowledge/documents/${encodeURIComponent(docId)}`),
 
   addKnowledge: (base: string, documents: Array<{ title: string; content: string }>) =>
-    request<{ message: string; added_chunks: number; total_chunks: number }>(base, '/knowledge/add', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ documents }),
-    }),
+    request<ImportResult>(base, '/knowledge/add', json({ documents })),
 
   uploadKnowledge: (base: string, file: File) => {
     const form = new FormData()
     form.append('file', file)
-    return request<{ message: string; added_chunks: number; total_chunks: number }>(
-      base, '/knowledge/upload', { method: 'POST', body: form },
-    )
+    return request<ImportResult>(base, '/knowledge/upload', { method: 'POST', body: form })
   },
+
+  sops: (base: string) => request<SopList>(base, '/sops'),
+
+  tickets: (base: string, status = '') =>
+    request<TicketList>(base, `/tickets?limit=200${status ? `&status=${encodeURIComponent(status)}` : ''}`),
+
+  ticket: (base: string, ticketId: string) =>
+    request<TicketDetail>(base, `/tickets/${encodeURIComponent(ticketId)}`),
+
+  setTicketStatus: (base: string, ticketId: string, status: string) =>
+    request<TicketDetail>(base, `/tickets/${encodeURIComponent(ticketId)}/status`, json({ status })),
 }
 
 /**
@@ -125,12 +162,15 @@ export async function* streamChat(
 ): AsyncGenerator<StreamEvent> {
   const response = await fetch(`${trimSlash(base)}/chat/stream`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(body),
     signal: signal ?? null,
   })
   if (!response.ok || !response.body) {
-    throw new ApiError(response.status, errorMessage(response.status, response.statusText, await response.text()))
+    const raw = await response.text()
+    let detail: unknown = raw
+    try { detail = raw ? JSON.parse(raw) : null } catch { /* 不是 JSON 就按原文显示 */ }
+    throw new ApiError(response.status, errorMessage(response.status, response.statusText, detail))
   }
 
   const reader = response.body.getReader()

@@ -18,14 +18,32 @@ RAG 知识库（pgvector / SQLite 双后端）的混合检索。
 重新标定权重，标完还会随文档增长失效。RRF 只用**名次**，不碰原始分数，
 因此无需标定——这是它成为工业界默认融合方式的原因。
 
-去重策略：片段 ID = md5(标题 + 完整片段内容)。同一份文档重复上传
-（运营误操作、定时同步任务重跑）产生完全相同的 ID，写入前先查已存在
-片段——导入幂等，同一段 SOP 不会在检索结果里出现两次。同一个 ID 也是
-RRF 融合的合并键：两路召回同一片段时按 ID 归并，而不是靠内容字符串比对。
+文档与分片。检索的单位是分片，人读的单位是文档：导入时把标题、原文、
+来源和时间记进文档表，分片用 doc_id 指回去，检索结果因此能说出"出自哪篇"。
+
+去重策略：文档按 sha256(标题 + 正文) 判重。同一份文档重复上传（运营
+误操作、定时同步任务重跑）命中同一个哈希，直接跳过——导入幂等。
+**标题相同、正文不同是两篇文档**，各自保留：只看标题就合并，会把
+"2025 版保修政策"和"2026 版保修政策"拼成一篇谁也没写过的东西。
+
+文档 ID 就取自那个哈希，分片 ID 再由文档 ID + 序号 + 内容得出——全都是内容
+算出来的，没有随机数。所以两个实例同时导同一篇，写的是同一批行，不会进去两份。
+分片 ID 同时是 RRF 融合的合并键：两路召回同一片段时按 ID 归并。
+
+同名文档的两个版本往往共用大段原文。分片各归各的文档，但**检索结果里同一段
+文字只出现一次**（按标题 + 片段内容去重，见 search_async）——不然两个版本
+各出一份，会白占掉回答上下文里的名额。
+
+历史分片。加文档表之前写入的分片没有 doc_id，也没有原文——长文档切片时
+换行被换成了句号，拼回去的不是原来那份。ensure_documents 把它们归档成
+"历史"文档并照实标注：能确定是同一次导入的整篇拼回去（origin=legacy），
+缺片的标成不完整（legacy_partial），分不清归属的每片单独成篇。归不出来的
+东西不硬凑——来源、版本、发布日期这些当时没记下来的，现在也不补。
 """
 import asyncio
 import hashlib
 import logging
+import re
 import time
 from typing import Any
 
@@ -33,6 +51,110 @@ from app.core.lexical import index_text, query_tokens
 from app.core.telemetry import span
 
 logger = logging.getLogger(__name__)
+
+# 文档原文的可信程度（kb_documents.origin）
+ORIGIN_ORIGINAL = "original"              # 导入时存下的原文
+ORIGIN_LEGACY = "legacy"                  # 历史分片齐全，正文由分片拼回
+ORIGIN_LEGACY_PARTIAL = "legacy_partial"  # 历史分片不全，正文只有找得到的那几片
+
+# 文档是怎么进来的（kb_documents.source_type）
+SOURCE_MANUAL = "manual"   # 在工作台里粘贴导入
+SOURCE_UPLOAD = "upload"   # 上传文件
+SOURCE_SEED = "seed"       # 空库时导入的内置示例
+SOURCE_LEGACY = "legacy"   # 加文档表之前导入的，来源当时没记
+
+CHUNK_SIZE = 500
+
+# 正文第一行多长以内才当标题用
+MAX_HEADING_CHARS = 120
+
+# 没有分片的文档记录多久之后才算空壳。导入是先登记文档再写分片，
+# 中间隔着几毫秒；另一个实例恰好在这时启动，不能把正在导的那篇清掉。
+EMPTY_DOC_GRACE_S = 600.0
+
+_HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$")
+# 摘要里去掉的 Markdown 记号：行首的 # 和 >，以及强调号、反引号、表格竖线。
+# **下划线不动**——它在这类资料里几乎都是字段名的一部分（on_hand_qty、
+# contract_amt），当成强调号剥掉会把字段名改成另一个词。
+_MD_LINE_PREFIX_RE = re.compile(r"^\s{0,3}(?:#{1,6}|>+)\s*")
+_MD_NOISE_RE = re.compile(r"[*`|]+")
+
+
+def document_hash(title: str, content: str) -> str:
+    """文档判重用的哈希。首尾空白和换行符风格不算差异。"""
+    body = (content or "").replace("\r\n", "\n").strip()
+    return hashlib.sha256(f"{(title or '').strip()}\n{body}".encode()).hexdigest()
+
+
+def split_heading(content: str) -> tuple[str, str]:
+    """
+    正文开头如果是 Markdown 标题行，拆成 (标题, 其余正文)；不是就返回 ("", 原文)。
+
+    历史分片有一种特殊形状：超过一片长度的文档在切片时换行被换成了句号，
+    标题和正文于是压在同一行里（`# 标题。第一句。第二句…`）。这时以第一个
+    句号为界——那正是原来换行的位置。太长的"标题"不认：那多半是一整段
+    恰好以 # 开头的正文，拿它当标题会把整篇文档显示成一个标题。
+    """
+    text = (content or "").lstrip()
+    first, _, rest = text.partition("\n")
+    match = _HEADING_RE.match(first)
+    if not match:
+        return "", content or ""
+    heading = match.group(1).strip()
+    if "。" in heading:
+        heading, _, tail = heading.partition("。")
+        rest = f"{tail}\n{rest}" if rest else tail
+    heading = heading.strip()
+    if not heading or len(heading) > MAX_HEADING_CHARS:
+        return "", content or ""
+    return heading, rest.lstrip("\n")
+
+
+def document_heading(content: str) -> str:
+    """正文第一行如果是 Markdown 标题，返回标题文字；否则返回空串。"""
+    return split_heading(content)[0]
+
+
+def plain_text(content: str) -> str:
+    """正文去掉标题行和 Markdown 记号、空白折成单个空格。摘要和命中片段都从它取。"""
+    lines = split_heading(content)[1].splitlines()
+    cleaned = (_MD_NOISE_RE.sub(" ", _MD_LINE_PREFIX_RE.sub("", line)) for line in lines)
+    return " ".join(" ".join(cleaned).split())
+
+
+def document_excerpt(content: str, limit: int = 200) -> str:
+    """
+    列表里那两行摘要：正文开头，去掉标题行和 Markdown 记号。
+
+    是**摘录**不是概括——不调模型，文档里没有的话这里一个字都不会多。
+    """
+    text = plain_text(content)
+    return text if len(text) <= limit else text[:limit].rstrip() + "…"
+
+
+def match_snippet(content: str, terms: list[str], before: int = 50, after: int = 110) -> str:
+    """
+    正文里命中处附近的一小段，给筛选结果说明"为什么是这篇"。
+
+    每个词取它第一次出现的位置，各截一段；挨得近的并成一段，最多给两段。
+    只在正文里找——标题命中的由列表上的标题高亮去说明，这里返回空串。
+    """
+    text = plain_text(content)
+    lowered = text.lower()
+    hits = sorted({at for at in (lowered.find(t.lower()) for t in terms) if at >= 0})
+    if not hits:
+        return ""
+    windows: list[list[int]] = []
+    for at in hits:
+        start, end = max(0, at - before), min(len(text), at + after)
+        if windows and start <= windows[-1][1]:
+            windows[-1][1] = max(windows[-1][1], end)
+        else:
+            windows.append([start, end])
+    parts = [text[start:end].strip() for start, end in windows[:2]]
+    return (("…" if windows[0][0] > 0 else "") + " … ".join(parts)
+            + ("…" if windows[min(len(windows), 2) - 1][1] < len(text) else ""))
+
 
 # RRF 的平滑常数。60 是 Cormack 原论文的取值，也是业界默认：它决定了
 # 排名靠前的结果领先多少——k 越小头部越陡峭（第 1 名相对第 5 名权重差距
@@ -125,64 +247,343 @@ class KnowledgeBase:
 
     # ── 文档管理 ──────────────────────────────────────────────────────────────
 
-    async def add_documents_async(self, documents: list[dict[str, str]]) -> int:
+    async def add_documents_async(
+        self,
+        documents: list[dict[str, str]],
+        source_type: str = SOURCE_MANUAL,
+        source_name: str = "",
+    ) -> int:
         """
         批量导入文档，按内容去重，返回新增片段数。
 
         documents 格式: [{"title": "...", "content": "..."}, ...]
-        长文档自动切片（每片 500 字）。
+        长文档自动切片（每片 500 字）。需要知道每篇各自落成了什么，用
+        import_documents。
         """
-        candidates: list[dict[str, Any]] = []
-        seen_in_batch: set[str] = set()
-        now = time.time()
+        results = await self.import_documents(
+            documents, source_type=source_type, source_name=source_name
+        )
+        return sum(r["chunks"] for r in results if r["status"] == "created")
 
+    async def import_documents(
+        self,
+        documents: list[dict[str, str]],
+        source_type: str = SOURCE_MANUAL,
+        source_name: str = "",
+    ) -> list[dict[str, Any]]:
+        """
+        批量导入文档，逐篇返回结果 [{id, title, status, chunks}]。
+
+        status:
+          created    新文档，已切片入库；
+          duplicate  标题和正文都与已有文档相同，没有重复写入，id 指向已有的那篇；
+          restored   与一篇历史文档逐片相同——把这份原文补给它，不另立一篇；
+          empty      正文为空，跳过（id 为 None）。
+        """
+        # 历史分片先归档：判重看的是文档表，升级后第一次导入时表里还是空的，
+        # 不先归档的话整个老知识库会被原样再导一遍。
+        await self.ensure_documents()
+
+        results: list[dict[str, Any]] = []
+        batch: dict[str, str] = {}  # 本批内已处理的哈希 → 文档 id
         for doc in documents:
-            title = doc.get("title", "")
-            content = doc.get("content", "")
-            chunks = self._chunk_text(content, chunk_size=500)
-            for i, chunk in enumerate(chunks):
-                doc_id = hashlib.md5(f"{title}\n{chunk}".encode()).hexdigest()
-                if doc_id in seen_in_batch:
-                    continue
-                seen_in_batch.add(doc_id)
-                candidates.append({
-                    "id": doc_id,
+            title = str(doc.get("title") or "").strip()
+            content = str(doc.get("content") or "")
+            chunks = self._chunk_text(content, chunk_size=CHUNK_SIZE)
+            if not chunks:
+                results.append({"id": None, "title": title, "status": "empty", "chunks": 0})
+                continue
+
+            digest = document_hash(title, content)
+            known_id = batch.get(digest)
+            if known_id is None:
+                known = await self._store.kb_doc_find_by_hash(digest)
+                if known and not known["chunks"]:
+                    # 记录还在、分片没了（有人直接在库里清过分片）。认它是"已有"
+                    # 的话这篇就再也导不回来，所以清掉空壳、按新文档重新导入。
+                    # 另一个实例此刻正好在导同一篇也没关系：文档和分片的 ID 都是
+                    # 内容算出来的，两边写的是同一批行，见下面 doc_id 的说明。
+                    await self._store.kb_doc_delete(known["id"])
+                    known = None
+                if known and known["origin"] == ORIGIN_LEGACY:
+                    # 历史文档原样再导入了一遍：正文一字不差，说明库里存着的就是原文，
+                    # 不必再挂着"由分片拼回"的标记。来源照旧不动——那次是从哪来的没记。
+                    await self._store.kb_doc_update(
+                        known["id"], {"content": content, "origin": ORIGIN_ORIGINAL}
+                    )
+                known_id = known["id"] if known else None
+            if known_id is not None:
+                results.append({"id": known_id, "title": title, "status": "duplicate", "chunks": 0})
+                continue
+
+            restored = await self._restore_legacy(title, content, chunks, digest)
+            if restored is not None:
+                batch[digest] = restored
+                results.append({"id": restored, "title": title, "status": "restored", "chunks": 0})
+                continue
+
+            # 文档 ID 由标题和正文算出来，不是随机数。导入因此在并发下也是幂等的：
+            # 两个实例同时导同一篇（空库启动时两边一起导默认文档就是这种情况），
+            # 算出的文档 ID 和分片 ID 完全相同，后到的插入落空，库里只有一份。
+            # 用随机 ID 的话，"先查有没有、再写"之间的那道缝会让同一篇进去两次。
+            doc_id = f"doc_{digest[:20]}"
+            now = time.time()
+            rows = [
+                {
+                    "id": hashlib.md5(f"{doc_id}\n{i}\n{chunk}".encode()).hexdigest(),
+                    "doc_id": doc_id,
                     "title": title,
                     "content": chunk,
                     "chunk_index": i,
                     "total_chunks": len(chunks),
                     "ingested_at": now,
                     "tokens": index_text(title, chunk),
-                })
+                    # 向量先算完再落库：这是导入里唯一慢的一步，放在登记文档之前，
+                    # 文档记录和它的分片之间就只隔着两次写入。
+                    "embedding": await self._embedder.embed(f"{title}\n{chunk}"),
+                }
+                for i, chunk in enumerate(chunks)
+            ]
+            inserted = await self._store.kb_doc_add({
+                "id": doc_id,
+                "title": title,
+                "content": content,
+                "content_hash": digest,
+                "origin": ORIGIN_ORIGINAL,
+                "source_type": source_type,
+                "source_name": source_name,
+                "chunk_count": len(rows),
+                "created_at": now,
+            })
+            try:
+                # 文档记录是别人刚写的也照样写分片：ID 相同，已有的不会重复，
+                # 缺的补上——两边谁先谁后，最后都是完整的一篇。
+                await self._store.kb_add(rows)
+            except Exception:
+                # 分片没写成：这篇文档检索不到，留着记录等于在列表里摆一篇假的
+                if inserted:
+                    await self._store.kb_doc_delete(doc_id)
+                raise
+            batch[digest] = doc_id
+            results.append({
+                "id": doc_id, "title": title,
+                # 记录不是这次写进去的 = 同一篇被并发导入抢先了一步，算重复
+                "status": "created" if inserted else "duplicate",
+                "chunks": len(rows) if inserted else 0,
+            })
 
-        if not candidates:
-            return 0
-
-        existing = await self._store.kb_existing_ids([c["id"] for c in candidates])
-        fresh = [c for c in candidates if c["id"] not in existing]
-        if not fresh:
-            logger.info(f"知识库导入: {len(candidates)} 个片段全部已存在，跳过")
-            return 0
-
-        for c in fresh:
-            c["embedding"] = await self._embedder.embed(f"{c['title']}\n{c['content']}")
-        await self._store.kb_add(fresh)
-
-        skipped = len(candidates) - len(fresh)
+        created = [r for r in results if r["status"] == "created"]
+        skipped = len(results) - len(created)
         logger.info(
-            f"知识库导入 {len(fresh)} 个新片段"
-            + (f"，跳过 {skipped} 个重复片段" if skipped else "")
+            f"知识库导入 {len(created)} 篇文档 / {sum(r['chunks'] for r in created)} 个片段"
+            + (f"，跳过 {skipped} 篇（重复或空）" if skipped else "")
         )
-        return len(fresh)
+        return results
+
+    async def _restore_legacy(
+        self, title: str, content: str, chunks: list[str], digest: str
+    ) -> str | None:
+        """
+        这次导入的如果正是某篇历史文档，把原文补给它，返回它的 id。
+
+        长文档的历史分片拼不回原文（切片时换行变成了句号），所以它的哈希和
+        重新导入的这份对不上，按文档判重会漏过去，老文档就在库里出现两次。
+        这里按老办法再认一遍：分片 ID 曾经是 md5(标题 + 片段)，同一份文档切出来
+        的 ID 必然逐片相同。全部对上、都归在同一篇历史文档名下、片数也一致，
+        才认定是同一篇——差一片都不算，那是另一个版本。
+        """
+        old_ids = [hashlib.md5(f"{title}\n{chunk}".encode()).hexdigest() for chunk in chunks]
+        owners = await self._store.kb_chunk_owners(old_ids)
+        if len(owners) != len(set(old_ids)) or len(set(owners.values())) != 1:
+            return None
+        doc = await self._store.kb_doc_get(next(iter(owners.values())))
+        if doc is None or doc["origin"] != ORIGIN_LEGACY or doc["chunks"] != len(set(old_ids)):
+            return None
+        # 只补原文。来源和导入时间不动：那次导入是从哪来的当时没记，
+        # 不能拿这一次的文件名去顶替。
+        await self._store.kb_doc_update(doc["id"], {
+            "content": content, "content_hash": digest, "origin": ORIGIN_ORIGINAL,
+        })
+        logger.info(f"历史文档 {doc['id']}（{title!r}）已由重新导入的原文补全")
+        return doc["id"]
+
+    async def ensure_documents(self) -> int:
+        """
+        给还没有文档归属的历史分片补建文档记录，返回新建的文档数。幂等。
+
+        分组依据是 (标题, 导入时间, 总片数)：同一次导入的同一篇文档，这三样
+        必然相同，而导入时间精确到微秒，两次导入撞上的可能可以忽略。
+        **不按标题单独分组**——同名不同文的两篇会被拼成一篇。组内：
+          - 序号 0..n-1 各出现一次 → 一篇完整的历史文档，正文按序拼回；
+          - 序号有缺 → 一篇不完整的历史文档，只有找得到的那几片；
+          - 序号有重复 → 同一批里有同名文档，分不清哪片跟哪片，每片单独成篇。
+
+        文档 ID 由分组内容算出来，不是随机数：两个实例同时启动会各算一遍，
+        得到同一个 ID，后到的那次插入落空，不会归出两套。顺序是先给分片
+        标上 doc_id 再登记文档——反过来的话，文档会有一瞬间名下没有分片，
+        正好被另一个实例当成空壳清掉。
+        """
+        rows = await self._store.kb_chunks_unfiled()
+        if not rows:
+            return 0
+
+        groups: dict[tuple, list[dict[str, Any]]] = {}
+        for row in rows:
+            key = (row["title"], row["ingested_at"], row["total_chunks"])
+            groups.setdefault(key, []).append(row)
+
+        created = 0
+        for (title, ingested_at, total), members in groups.items():
+            indexes = [m["chunk_index"] for m in members]
+            if len(set(indexes)) != len(indexes):
+                bundles = [(ORIGIN_LEGACY if total == 1 else ORIGIN_LEGACY_PARTIAL, [m])
+                           for m in members]
+            elif sorted(indexes) == list(range(total)):
+                bundles = [(ORIGIN_LEGACY, members)]
+            else:
+                bundles = [(ORIGIN_LEGACY_PARTIAL, members)]
+
+            for origin, chunks in bundles:
+                chunks = sorted(chunks, key=lambda c: (c["chunk_index"], c["id"]))
+                content = "\n\n".join(c["content"] for c in chunks)
+                seed = "\x1f".join([title, repr(ingested_at), str(total), chunks[0]["id"]])
+                doc_id = f"legacy_{hashlib.md5(seed.encode()).hexdigest()[:16]}"
+                await self._store.kb_assign_doc([c["id"] for c in chunks], doc_id)
+                if await self._store.kb_doc_add({
+                    "id": doc_id,
+                    "title": title,
+                    "content": content,
+                    "content_hash": document_hash(title, content),
+                    "origin": origin,
+                    "source_type": SOURCE_LEGACY,
+                    "source_name": "",
+                    "chunk_count": total,
+                    "created_at": ingested_at,
+                }):
+                    created += 1
+
+        if created:
+            logger.info(f"已把 {len(rows)} 个历史分片归档成 {created} 篇文档")
+        return created
+
+    async def prune_empty_documents(self) -> int:
+        """
+        清掉名下没有任何分片的文档记录，返回清掉的条数。
+
+        分片是检索的全部依据：一篇没有分片的文档答不了任何问题，留在列表里
+        只会让人以为它在起作用。出现这种记录通常是有人直接在库里删了分片
+        （按数据集版本整体替换知识库的脚本就是这么做的）。刚登记的不动，
+        见 EMPTY_DOC_GRACE_S。
+        """
+        stale = await self._store.kb_docs_without_chunks(time.time() - EMPTY_DOC_GRACE_S)
+        for doc_id in stale:
+            await self._store.kb_doc_delete(doc_id)
+        if stale:
+            logger.warning(f"清掉 {len(stale)} 条没有分片的文档记录: {', '.join(stale[:5])}"
+                           + ("…" if len(stale) > 5 else ""))
+        return len(stale)
+
+    # ── 文档浏览 ──────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _present(row: dict[str, Any]) -> dict[str, Any]:
+        """存储层的一行 → 接口里的文档摘要。display_title 优先用正文自己的标题行。"""
+        head = row.get("head") or row.get("content") or ""
+        return {
+            "id": row["id"],
+            "title": row["title"],
+            "display_title": document_heading(head) or row["title"],
+            "excerpt": document_excerpt(head),
+            "origin": row["origin"],
+            "source_type": row["source_type"],
+            "source_name": row["source_name"],
+            "chunk_count": row["chunk_count"],
+            "chunks": row.get("chunks", row["chunk_count"]),
+            "chars": row.get("chars", len(head)),
+            "created_at": row["created_at"],
+        }
+
+    async def list_documents(
+        self, query: str = "", limit: int = 100, offset: int = 0
+    ) -> dict[str, Any]:
+        """
+        文档列表。query 为空是浏览全部（新导入的在前）；非空时按空白拆成词，
+        每个词都要在标题或正文里出现，并说明是标题命中还是正文命中。
+        """
+        terms = [t for t in (query or "").split() if t][:8]
+        rows, matched = await self._store.kb_doc_list(
+            terms, limit=limit, offset=offset, with_content=bool(terms)
+        )
+        documents = []
+        for row in rows:
+            item = self._present(row)
+            if terms:
+                title_text = f"{row['title']} {item['display_title']}".lower()
+                item["match"] = {
+                    "title": all(t.lower() in title_text for t in terms),
+                    "snippet": match_snippet(row.get("content", ""), terms),
+                }
+            documents.append(item)
+        stats = await self._store.kb_doc_stats()
+        return {
+            "query": " ".join(terms),
+            "documents": documents,
+            "matched": matched,
+            "total_documents": stats["total"],
+            "legacy_documents": stats["legacy"],
+            "total_chunks": await self._store.kb_count(),
+        }
+
+    async def get_document(self, doc_id: str) -> dict[str, Any] | None:
+        """一篇文档的正文和它名下的分片。不存在返回 None。"""
+        row = await self._store.kb_doc_get(doc_id)
+        if row is None:
+            return None
+        passages = await self._store.kb_doc_chunks(doc_id)
+        return {
+            **self._present(row),
+            "content": row["content"],
+            # 去掉开头标题行的正文：标题已经作为 display_title 单独给了，
+            # 阅读页不用自己再解析一遍 Markdown 去找它
+            "body": split_heading(row["content"])[1],
+            "passages": [
+                {
+                    "id": p["id"],
+                    "index": p["chunk_index"],
+                    "chars": len(p["content"]),
+                    "content": p["content"],
+                    "indexed": p["indexed"],
+                    "ingested_at": p["ingested_at"],
+                }
+                for p in passages
+            ],
+        }
+
+    async def document_titles(self, doc_ids: list[str]) -> dict[str, str]:
+        """文档 id → 展示用标题。给检索结果和对话依据标出处用。"""
+        wanted = sorted({d for d in doc_ids if d})
+        briefs = await self._store.kb_doc_briefs(wanted)
+        return {b["id"]: document_heading(b["head"]) or b["title"] for b in briefs}
+
+    async def document_stats(self) -> dict[str, int]:
+        stats = await self._store.kb_doc_stats()
+        return {
+            "total_documents": stats["total"],
+            "legacy_documents": stats["legacy"],
+            "total_chunks": await self._store.kb_count(),
+        }
 
     async def search_async(self, query: str, top_k: int = 5) -> list[dict[str, Any]]:
         """
         混合检索：稠密向量 + 稀疏关键词并行召回，RRF 融合后取 Top-K。
 
-        返回 [{title, content, score, chunk, retrieval}]：
+        返回 [{title, content, score, chunk, retrieval, doc_id, chunk_id}]：
           - score     余弦相似度（两路口径一致，稀疏召回的片段也带真实向量分）；
           - retrieval 该片段由哪一路召回（dense / lexical / hybrid），
-                      排障时能直接看出"这条是关键词捞回来的"。
+                      排障时能直接看出"这条是关键词捞回来的"；
+          - doc_id / chunk_id  出处：哪篇文档的哪一片。回答的依据靠它追回原文。
+                      排在最后，是因为 LLM 重排只看每条候选序列化后的前 200 字，
+                      新字段插在前面会把正文挤出去。
 
         召回深度取 top_k 的 3 倍（下限 10）：RRF 融合的收益来自两路名次的
         交叉，如果每路只召回 top_k 条，交集之外的候选根本没机会进入融合，
@@ -204,7 +605,24 @@ class KnowledgeBase:
                 self._store.kb_search(embedding, recall_k),
                 self._store.kb_search_lexical(tokens, embedding, recall_k),
             )
-            fused = rrf_fuse({"dense": dense, "lexical": lexical}, top_k=top_k)
+            fused = rrf_fuse(
+                {"dense": dense, "lexical": lexical}, top_k=len(dense) + len(lexical)
+            )
+
+        # 同一段文字只留排名最靠前的那一条。同名文档的不同版本会各自带着相同的
+        # 段落，不去掉的话 top_k 里会有几条一模一样的内容。先融合全部候选再去重、
+        # 再截断：反过来做，被去掉的名额就补不回来了。
+        unique: list[dict[str, Any]] = []
+        seen: set[tuple[str, str]] = set()
+        for row in fused:
+            key = (row["title"], row["content"])
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(row)
+            if len(unique) == top_k:
+                break
+        fused = unique
 
         return [
             {
@@ -213,17 +631,20 @@ class KnowledgeBase:
                 "score": round(float(r.get("score", 0.0)), 4),
                 "chunk": r.get("chunk_index", 0),
                 "retrieval": r["retrieval"],
+                "doc_id": r.get("doc_id", ""),
+                "chunk_id": r.get("id", ""),
             }
             for r in fused
         ]
 
     async def doc_count_async(self) -> int:
+        """片段总数。名字是历史遗留的——文档数见 document_stats。"""
         return await self._store.kb_count()
 
     async def ensure_seeded(self) -> None:
         """知识库为空时导入默认客服文档（原 Chroma 版在构造函数里做，现改为显式调用）。"""
         if await self.doc_count_async() == 0:
-            count = await self.add_documents_async(_DEFAULT_DOCS)
+            count = await self.add_documents_async(_DEFAULT_DOCS, source_type=SOURCE_SEED)
             logger.info(f"已导入默认知识库: {count} 个片段")
 
     async def backfill_lexical(self, batch: int = 500) -> int:

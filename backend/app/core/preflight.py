@@ -310,7 +310,7 @@ def check_deployment_scope(env: Mapping[str, str] | None = None) -> None:
             "下游拿到的权限对每个用户都一样——多租户隔离根本不成立，"
             "而链路看起来完全正常。\n"
             "  - 打开它只是第一步：下游还必须按最终用户重新解析策略并与服务身份"
-            "取交集。本仓库校验不了那一侧，见 docs/sql-agent-identity-requirements.md。"
+            "取交集。本仓库校验不了那一侧，见 docs/integrations/sql-agent-identity-requirements.md。"
         )
 
     logger.info("启动检查: 部署范围 %s", scope)

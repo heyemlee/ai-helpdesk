@@ -42,6 +42,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from app.core.llm_guard import log_model_failure
 from app.core.llm_utils import (
     DEFAULT_ANTHROPIC_MODEL,
     STRUCTURED_MAX_TOKENS,
@@ -84,6 +85,20 @@ class QueryRewritePayload(BaseModel):
     queries: list[str]
 
 
+class RewrittenQueries(list):
+    """
+    `rewrite_query` 的返回值：还是一个子查询列表，多带一个 `failed`。
+
+    改写那次模型调用失败时，返回的是"只有原始查询"的降级列表——和模型正常返回
+    但只给了一条，在列表上看不出区别。`search_with_rewrite` 要分得清这两件事
+    （调用失败不能再补检一轮），所以把它标在返回值上。
+    """
+
+    def __init__(self, queries=(), failed: bool = False):
+        super().__init__(queries)
+        self.failed = failed
+
+
 class RerankPayload(BaseModel):
     """
     重排 + 证据充分性判定的返回形状，由结构化输出在服务端约束。
@@ -114,6 +129,10 @@ class RerankOutcome:
     reranked:   bool
     sufficient: bool | None = None
     missing:    str = ""           # 模型指出的证据缺口，用于定向补检索
+    # 重排那次模型调用本身失败了（超时、凭证被拒……）。和 sufficient=None 的另外
+    # 两种情况不同：那两种是"没去问模型"，可以退回分数阈值；这一种是"问了没问成"，
+    # 不能当成模型判了"证据不足"——见 search_with_rewrite。
+    failed:     bool = False
 
 
 @dataclass
@@ -428,10 +447,10 @@ class ToolManager:
             # 原始查询也保留，去重。补检索回合不再重复原始查询——它的结果
             # 已经在上一轮的候选池里了。
             base = [] if hint else [query]
-            return list(dict.fromkeys(base + queries))
+            return RewrittenQueries(dict.fromkeys(base + queries))
         except Exception as ex:
-            logger.warning(f"查询改写失败，使用原始查询: {ex}")
-            return [query]
+            log_model_failure(logger, "查询改写失败，使用原始查询", ex)
+            return RewrittenQueries([query], failed=True)
 
     async def search_with_rewrite(
         self,
@@ -456,11 +475,20 @@ class ToolManager:
         的置信度闸门），而不是让检索在这里空转。回路的作用是捞回"检索角度
         没选对"的那一类，不是无限逼近。
         """
-        candidates = await self._recall(tool_name, await self._rewritten(query), top_k, context)
+        queries, rewrite_failed = await self._rewritten(query)
+        candidates = await self._recall(tool_name, queries, top_k, context)
         if not candidates:
             return ToolResult(success=False, data=[], tool_name=tool_name, error="所有子查询均无结果")
 
         outcome = await self._rerank(query, candidates, top_k)
+        # **模型调用失败不是"模型判断证据不足"。** 改写或重排没调成的时候，这一轮
+        # 没有任何关于证据够不够的判断——以前这里会退回分数阈值、判成"不足"，然后
+        # 再跑一轮改写 + 重排：同一个故障打两遍（凭证被拒时就是 2 次 401 变 4 次），
+        # 回来还对外报一句"证据不足"。失败就如实报"没判"（None），不补检。
+        if rewrite_failed or outcome.failed:
+            return ToolResult(success=True, data=outcome.items, tool_name=tool_name,
+                              reranked=outcome.reranked, evidence_ok=None)
+
         evidence_ok = self._evidence_ok(outcome)
         if not self_correct or evidence_ok:
             return ToolResult(success=True, data=outcome.items, tool_name=tool_name,
@@ -469,9 +497,13 @@ class ToolManager:
         # 自纠错：围绕缺口补检一轮，与第一轮的候选合并后重排。
         # 合并而不是替换——第一轮的结果未必没用，只是不够。
         logger.info(f"检索自纠错触发: {query!r}（缺口: {outcome.missing or '相关度不足'}）")
-        extra = await self._recall(
-            tool_name, await self._rewritten(query, hint=outcome.missing), top_k, context
-        )
+        more, rewrite_failed = await self._rewritten(query, hint=outcome.missing)
+        if rewrite_failed:
+            # 补检这一轮的改写没调成：手里只有原始查询，再检一遍拿回来的还是第一轮
+            # 那批候选。第一轮的结论照旧算数，不为了一次失败的调用再重排一遍。
+            return ToolResult(success=True, data=outcome.items, tool_name=tool_name,
+                              reranked=outcome.reranked, evidence_ok=evidence_ok)
+        extra = await self._recall(tool_name, more, top_k, context)
         merged = self._merge_unique(candidates + extra)
         retry = await self._rerank(query, merged, top_k)
         return ToolResult(
@@ -480,13 +512,16 @@ class ToolManager:
             tool_name=tool_name,
             reranked=retry.reranked,
             corrected=True,
-            evidence_ok=self._evidence_ok(retry),
+            evidence_ok=None if retry.failed else self._evidence_ok(retry),
         )
 
-    async def _rewritten(self, query: str, hint: str = "") -> list[str]:
+    async def _rewritten(self, query: str, hint: str = "") -> tuple[list[str], bool]:
+        """改写，并说明那次模型调用成没成：`(子查询, 调用是否失败)`。"""
         queries = await self.rewrite_query(query, n=3, hint=hint)
-        logger.info(f"查询改写{'（补检索）' if hint else ''}: {query!r} → {queries}")
-        return queries
+        failed = bool(getattr(queries, "failed", False))
+        if not failed:
+            logger.info(f"查询改写{'（补检索）' if hint else ''}: {query!r} → {list(queries)}")
+        return list(queries), failed
 
     async def _recall(
         self,
@@ -659,8 +694,8 @@ missing 在 sufficient 为 false 时用一句话说明缺什么信息，充分�
             return RerankOutcome(items=reordered[:top_k], reranked=True,
                                  sufficient=sufficient, missing=missing)
         except Exception as ex:
-            logger.warning(f"重排失败，返回原始顺序: {ex}")
-            return RerankOutcome(items=items[:top_k], reranked=False)
+            log_model_failure(logger, "重排失败，返回原始顺序", ex)
+            return RerankOutcome(items=items[:top_k], reranked=False, failed=True)
 
     # ── 缓存 ──────────────────────────────────────────────────────────────────
 

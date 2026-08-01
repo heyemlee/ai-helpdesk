@@ -59,7 +59,12 @@ export function LangProvider({ children, initial }: {
     toggle: () => setLang(lang === 'zh' ? 'en' : 'zh'),
     t: (key, vars) => {
       const table = CATALOG[lang] as Record<string, string>
-      const raw = table[key] ?? (CATALOG[FALLBACK] as Record<string, string>)[key] ?? key
+      const text = table[key] ?? (CATALOG[FALLBACK] as Record<string, string>)[key] ?? key
+      // `单数|复数`：按 n 选一段（见 catalog.ts 顶部的约定）
+      const forms = text.split('|')
+      const raw = forms.length === 2 && typeof vars?.n === 'number'
+        ? forms[vars.n === 1 ? 0 : 1]!
+        : text
       return vars
         ? raw.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m))
         : raw

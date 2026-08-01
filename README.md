@@ -179,7 +179,7 @@ backend/.venv/bin/pip install ruff
 
 Load tests use `backend/scripts/load_test.py --unique-messages --requests 100 --concurrency 10`. Keep `--unique-messages` to avoid intent-cache hits from repeated questions. No production capacity or SLA is established by these checks.
 
-**Deployment scope:** this is a single-tenant system. Signed identities isolate user memory; a shared downstream service key still governs business-data access. Per-customer row-level authorization is not implemented, and enabling impersonation or declaring `multi_tenant` does not add it. Production startup requires the admin key, user-signing secret, protected chat, token-issuer source allowlist, and explicit deployment scope. See [deployment boundaries](docs/deployment-boundaries.md).
+**Deployment scope:** this is a single-tenant system. Signed identities isolate user memory; a shared downstream service key still governs business-data access. Isolating business data per customer takes three things at once: intersecting the service permission with the end user's, customer identity integration, and row-level isolation. Only the first exists, in the downstream code, and it is neither enabled nor re-tested from this side. Enabling impersonation or declaring `multi_tenant` does not add the other two. Production startup requires the admin key, user-signing secret, protected chat, token-issuer source allowlist, and explicit deployment scope. See [deployment boundaries](docs/deployment-boundaries.md).
 
 <details>
 <summary><strong>API reference</strong></summary>
@@ -187,9 +187,12 @@ Load tests use `backend/scripts/load_test.py --unique-messages --requests 100 --
 | Endpoint | Purpose |
 | --- | --- |
 | `POST /chat` · `POST /chat/stream` | Replies, routing metadata, policy findings, and handoff state; SSE includes preparation progress |
-| `GET /tickets` · `POST /tickets/{ticket_id}/status` | Inspect and advance human tickets |
-| `POST /knowledge/add` · `POST /knowledge/upload` | Ingest knowledge; identical chunks are deduplicated |
-| `GET /skills` · `POST /skills/reload` | Inspect and reload business SOPs |
+| `GET /tickets` · `GET /tickets/{ticket_id}` · `POST /tickets/{ticket_id}/status` | Inspect and advance human tickets; each ticket reports its allowed transitions and notification delivery record |
+| `GET /conversations/{conv_id}` | Full transcript behind a ticket |
+| `GET /knowledge/documents` · `GET /knowledge/documents/{doc_id}` | Browse documents (optional `q` filters title and text) and read one with its retrieval passages |
+| `POST /knowledge/add` · `POST /knowledge/upload` | Ingest knowledge as documents; re-importing identical text is a no-op |
+| `POST /search` | Question-based retrieval (rewrite, hybrid recall, rerank); hits name their source document |
+| `GET /skills` · `GET /sops` · `POST /skills/reload` | Inspect SOP metadata, read SOP text, and reload from disk |
 | `POST /eval/run` · `POST /eval/promote` | Run evaluations and explicitly promote the baseline |
 | `GET /health` · `GET /monitor` · `GET /metrics` | Health, agent/tool monitoring, and Prometheus metrics |
 | `POST /auth/token` | Issue a signed user identity through a trusted integration |

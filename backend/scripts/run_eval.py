@@ -190,6 +190,17 @@ async def main(promote: bool, force: bool, concurrency: int | None = None) -> No
         flag = "PASS" if r.passed else "FAIL"
         print(f"[{flag}] {r.test_id:<20} {r.detail[:70]}")
 
+    # 模型服务不可用、评测中途中止：上面打印的只是中止前完成的那几项。不往下走——
+    # 下面的分支会报"基线已写入""已提升为新基线"，而这一轮既没写基线也提升不了
+    # （evaluator 对没跑完的报告两样都不做）。
+    if report.incomplete:
+        print(f"\n评测未完成：模型服务不可用（{report.incomplete_reason}），已中止。"
+              f"计划 {report.planned} 项，完成 {report.total} 项。")
+        if evaluator.incomplete_path is not None:
+            print(f"已完成的结果保存在 {evaluator.incomplete_path}。基线没有改动，本次结果不能提升。")
+        print("处理好凭证或额度后重新运行；脚本不会自己重试。")
+        sys.exit(3)
+
     # 跑挂了就不许留基线。evaluator.run() 在没有基线文件时会自动落盘第一份，
     # 但如果这一跑本身是坏的（key 失效、网关不通、判官全挂），那份基线全是
     # judge 的失败默认值 0.5——它比"没有基线"更糟：后续每次跑都会拿真实分数

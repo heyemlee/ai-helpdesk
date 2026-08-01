@@ -93,7 +93,7 @@ describe('RoutingInspector', () => {
         message={{ ...base, result: { handoff: true, handoff_reason: '置信度不足' } as never }}
       />,
     )
-    expect(screen.getByText('已转人工')).toBeInTheDocument()
+    expect(screen.getByText('需要人工跟进')).toBeInTheDocument()
     expect(screen.getByText('置信度不足')).toBeInTheDocument()
   })
 })

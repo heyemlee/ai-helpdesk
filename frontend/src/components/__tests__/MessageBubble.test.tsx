@@ -25,10 +25,10 @@ describe('MessageBubble', () => {
     expect(screen.queryByText(/置信/)).not.toBeInTheDocument()
   })
 
-  it('routing 未到时不编造身份，只显示编排中', () => {
+  it('routing 未到时不编造身份，只显示处理中', () => {
     const m: ChatMessage = { id: '5', role: 'assistant', content: '', streaming: true }
     render(<MessageBubble message={m} />)
-    expect(screen.getByText(/正在编排/)).toBeInTheDocument()
+    expect(screen.getByText(/正在处理/)).toBeInTheDocument()
   })
 
   it('result 事件到达前不显示总耗时与综合置信度', () => {

@@ -32,7 +32,7 @@ def make_evaluator(baseline_path, release="v2.0.0") -> EndToEndEvaluator:
 
 
 def stub_intent_metrics(evaluator, accuracy: float):
-    async def _evaluate(cases):
+    async def _evaluate(cases, abort=None):
         return {
             "accuracy": accuracy,
             "macro_f1": accuracy,
@@ -244,8 +244,11 @@ async def test_dialog_cases_run_concurrently(baseline_path):
     orch = _TracingOrchestrator()
     evaluator = dialog_evaluator(baseline_path, orch, concurrency=4)
 
-    await evaluator.run(dialog_cases=[{"question": f"q{i}"} for i in range(4)])
+    await evaluator.run(dialog_cases=[{"question": f"q{i}"} for i in range(5)])
 
+    # 第一个用例单独跑完才放开并发（模型一上来就不可用时只撞一次，见 RunAbort），
+    # 其余四个同时在跑
+    assert orch.trace[:2] == [("enter", "eval_0"), ("exit", "eval_0")]
     assert orch.max_in_flight() == 4, f"用例没有并发起来: {orch.trace}"
 
 
@@ -284,10 +287,13 @@ async def test_results_keep_case_order_regardless_of_finish_order(baseline_path)
     orch = _TracingOrchestrator(delays={"慢": 0.05, "快": 0.0})
     evaluator = dialog_evaluator(baseline_path, orch, concurrency=4)
 
-    report = await evaluator.run(dialog_cases=[{"question": "慢"}, {"question": "快"}])
+    # 打头的那个用例是单独跑的，并发的是后两个：慢的先发起，快的先跑完
+    report = await evaluator.run(
+        dialog_cases=[{"question": "打头"}, {"question": "慢"}, {"question": "快"}])
 
-    assert [r.test_id for r in report.results] == ["dialog_0", "dialog_1"]
-    assert report.results[0].metadata["question"] == "慢"
+    assert orch.trace[-2:] == [("exit", "eval_2"), ("exit", "eval_1")]
+    assert [r.test_id for r in report.results] == ["dialog_0", "dialog_1", "dialog_2"]
+    assert [r.metadata["question"] for r in report.results] == ["打头", "慢", "快"]
 
 
 # ── 意图用例的并发 ────────────────────────────────────────────────────────────
@@ -315,7 +321,7 @@ async def test_intent_cases_run_concurrently_and_keep_order():
 
     metrics = await IntentEvaluator(recognizer, concurrency=3).evaluate(cases)
 
-    assert recognizer.peak == 3, "意图用例没有并发起来"
+    assert recognizer.peak == 3, "意图用例没有并发起来"    # 第一条单独跑，其余按并发度
     # 保序：predicted 是回显的用例内容，错位会直接把准确率打下来
     assert metrics["accuracy"] == 1.0
     assert [c["message"] for c in metrics["cases"]] == [c.message for c in cases]

@@ -179,7 +179,7 @@ backend/.venv/bin/pip install ruff
 
 压测使用 `backend/scripts/load_test.py --unique-messages --requests 100 --concurrency 10`。保留 `--unique-messages`，避免重复问题命中意图缓存，导致延迟偏低。以上检查尚不能证明真实生产容量或 SLA。
 
-**部署范围**：当前为单租户系统。签名身份用于隔离用户记忆，下游业务数据仍由共享服务密钥决定可见范围，尚未实现按客户的行级授权；开启 impersonation 或声明 `multi_tenant` 都不会补齐这一能力。生产启动要求管理密钥、用户签名密钥、对话鉴权、令牌签发来源白名单和明确的部署范围，详见[部署与安全边界](docs/deployment-boundaries.zh-CN.md)。
+**部署范围**：当前为单租户系统。签名身份用于隔离用户记忆，下游业务数据仍由共享服务密钥决定可见范围。按客户隔离业务数据需要三件事同时成立——服务权限与用户权限取交集、客户身份接入、行级隔离；下游代码里目前只有第一件，本系统没有启用也没有复测。开启 impersonation 或声明 `multi_tenant` 都不会补齐后两件。生产启动要求管理密钥、用户签名密钥、对话鉴权、令牌签发来源白名单和明确的部署范围，详见[部署与安全边界](docs/deployment-boundaries.zh-CN.md)。
 
 <details>
 <summary><strong>接口一览</strong></summary>
@@ -187,9 +187,12 @@ backend/.venv/bin/pip install ruff
 | 接口 | 用途 |
 | --- | --- |
 | `POST /chat` · `POST /chat/stream` | 回答、路由依据、策略违规与转人工状态；SSE 支持准备阶段的进度事件 |
-| `GET /tickets` · `POST /tickets/{ticket_id}/status` | 查看与推进人工工单 |
-| `POST /knowledge/add` · `POST /knowledge/upload` | 导入知识，相同切片去重 |
-| `GET /skills` · `POST /skills/reload` | 检查与热加载业务 SOP |
+| `GET /tickets` · `GET /tickets/{ticket_id}` · `POST /tickets/{ticket_id}/status` | 查看与推进人工工单；每张工单带可流转状态和通知投递记录 |
+| `GET /conversations/{conv_id}` | 工单背后的完整对话原文 |
+| `GET /knowledge/documents` · `GET /knowledge/documents/{doc_id}` | 浏览文档（可用 `q` 按标题和正文筛选），读取单篇正文及其检索片段 |
+| `POST /knowledge/add` · `POST /knowledge/upload` | 按文档导入知识，正文相同的重复导入不会写入 |
+| `POST /search` | 按问题检索（改写、混合召回、重排），命中片段标明所属文档 |
+| `GET /skills` · `GET /sops` · `POST /skills/reload` | 查看 SOP 摘要、读取 SOP 正文、热加载 |
 | `POST /eval/run` · `POST /eval/promote` | 运行评测、显式提升基线 |
 | `GET /health` · `GET /monitor` · `GET /metrics` | 健康检查、Agent/工具监控与 Prometheus 指标 |
 | `POST /auth/token` | 通过可信集成签发用户身份令牌 |

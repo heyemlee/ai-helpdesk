@@ -1,0 +1,14 @@
+{
+  "what": "模型凭证被停用（中继回 401）时后端实际发出去的东西：同一个会话里的三轮，以及随后的 /health、审计日志和工单列表。",
+  "generated_by": "backend/tests/test_model_outage.py::test_frontend_outage_fixtures_are_what_the_backend_sends",
+  "regenerate": "AI_HELPDESK_RECORD_FIXTURES=<repo>/frontend/src/test/fixtures/outage pytest tests/test_model_outage.py -k fixtures",
+  "offline": true,
+  "model": "没有模型参与：SDK 的传输层接的是一个固定回 401 的假中继（tests/conftest.py 的 FakeRelay），存储是假 Redis 和临时目录里的 SQLite。和上一层目录里用真后端、真模型录的夹具不是一回事。",
+  "normalised": ["latency_ms / intent_latency_ms 归零", "工单号换成固定值", "created_at / updated_at 换成固定时间戳"],
+  "turns": [
+    {"file": "zh-chat-stream-unavailable.sse", "message": "柜门装上去之后总是自己弹开一条缝，调了好几次都不行", "note": "意图那一次调用被拒，保护由此触发；流式"},
+    {"file": "en-chat-unavailable.json", "message": "The cabinet door keeps popping open a little after I close it", "note": "保护已经在挡；非流式 /chat"},
+    {"file": "zh-chat-stream-handoff.sse", "message": "转人工", "note": "规则通道，照常转人工并建单；流式"}
+  ],
+  "snapshots": ["health.json", "conversation.json", "tickets.json"]
+}

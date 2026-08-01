@@ -9,12 +9,12 @@ describe('conversation interactions', () => {
   it('lets the user edit a suggested question before sending', async () => {
     const onSend = vi.fn()
     render(<ChatPanel messages={[]} busy={false} onSend={onSend} onInspect={vi.fn()} />)
-    await userEvent.click(screen.getByRole('button', { name: /产品报价/ }))
+    await userEvent.click(screen.getByRole('button', { name: /安装排查/ }))
     expect(onSend).not.toHaveBeenCalled()
-    expect(screen.getByRole('textbox')).toHaveValue('石英石台面多少钱一米？')
+    expect(screen.getByRole('textbox')).toHaveValue('柜门关不严、门缝不齐，应该怎么排查？')
     expect(screen.getByRole('textbox')).toHaveFocus()
     await userEvent.click(screen.getByRole('button', { name: '发送' }))
-    expect(onSend).toHaveBeenCalledWith('石英石台面多少钱一米？')
+    expect(onSend).toHaveBeenCalledWith('柜门关不严、门缝不齐，应该怎么排查？')
     expect(screen.getByRole('textbox')).toHaveValue('')
   })
 
