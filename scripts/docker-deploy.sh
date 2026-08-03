@@ -28,6 +28,54 @@ ROOT_ENV_FILE="$ROOT/.env"
 # 这里用同一套取值规则，否则 redis-cli 会拿到 NOAUTH。
 REDIS_PASSWORD="${REDIS_PASSWORD:-aihelpdesk123}"
 
+# compose 给 ${VAR} 取值的顺序是：shell 环境变量 > 仓库根 .env > compose 文件里写的默认值。
+# 脚本里的 "${VAR:-默认值}" 只管得到第一层和第三层，这个函数补中间那层：
+# shell 里没有的变量，从仓库根 .env 读进来。少了它，按 .env.example 的写法在 .env 里
+# 改了端口，compose 跟着变，脚本却还在探默认端口。
+#
+# 只取点名的变量，不 source 整个文件——.env 不是 shell 脚本。认 KEY=VALUE 和
+# KEY: VALUE（可带 export、可加引号、未加引号时 " #" 之后算注释），这几种写法的取值
+# 拿 `docker compose config` 对照过，是一致的。不做值里的 ${VAR} 嵌套展开和引号内的
+# 转义，端口这类简单值用不到。
+load_compose_env() {
+    local name line value dq='"' sq="'"
+
+    [ -f "$ROOT_ENV_FILE" ] || return 0
+
+    for name in "$@"; do
+        # shell 里设置过（哪怕是空值）就以 shell 为准，compose 也是这个优先级
+        if [ -n "${!name+set}" ]; then
+            continue
+        fi
+
+        # 同一个变量写了多次时，compose 以最后一次为准
+        line="$(grep -E "^[[:space:]]*(export[[:space:]]+)?${name}[[:space:]]*[=:]" "$ROOT_ENV_FILE" | tail -n 1)"
+        if [ -z "$line" ]; then
+            continue
+        fi
+
+        value="${line#*[=:]}"
+        value="${value#"${value%%[![:space:]]*}"}"
+        case "$value" in
+            "$dq"*) value="${value#?}"; value="${value%%"$dq"*}" ;;
+            "$sq"*) value="${value#?}"; value="${value%%"$sq"*}" ;;
+            *)      value="${value%% #*}"; value="${value%"${value##*[![:space:]]}"}" ;;
+        esac
+
+        printf -v "$name" '%s' "$value"
+    done
+
+    return 0
+}
+
+# 两个应用实例发布到宿主机的端口，健康检查探的就是它们。
+# 变量名和默认值与 docker-compose.yml 的 ports 一字不差，改那边必须改这边
+# （backend/tests/test_restore_ordering.py 会拿两个文件对照）。
+# 容器内固定是 8000；宿主机的 8000 是同机 ai-sql-agent 的，不是这个项目的。
+load_compose_env AI_HELPDESK_PORT AI_HELPDESK_CUSTOMER_PORT
+AI_HELPDESK_PORT="${AI_HELPDESK_PORT:-8080}"
+AI_HELPDESK_CUSTOMER_PORT="${AI_HELPDESK_CUSTOMER_PORT:-8081}"
+
 # Compose v2 是 docker 的子命令，v1 是独立可执行文件，两者都接受。
 if docker compose version &> /dev/null; then
     COMPOSE_BIN=(docker compose)
@@ -185,11 +233,30 @@ health_check() {
     # 等待服务启动
     sleep 10
 
-    # 检查主应用
-    if curl -sf http://localhost:8000/health > /dev/null; then
+    # 检查主应用（员工实例 ai-helpdesk）
+    #
+    # 探的必须是 compose 发布到宿主机的那个端口。原先写死 8000：后来宿主机端口
+    # 挪到 8080 之后，8000 只剩容器**内**还在用，宿主机的 8000 是同机的 ai-sql-agent——
+    # 它活着这里就报"主应用健康"，和 ai-helpdesk 自己是死是活无关。
+    if curl -sf "http://localhost:${AI_HELPDESK_PORT}/health" > /dev/null; then
         print_info "✓ 主应用健康"
     else
         print_error "✗ 主应用不健康"
+    fi
+
+    # 检查客户实例（ai-helpdesk-customer，compose 只把它绑在 127.0.0.1 上）
+    if curl -sf "http://127.0.0.1:${AI_HELPDESK_CUSTOMER_PORT}/health" > /dev/null; then
+        print_info "✓ 客户实例健康"
+    else
+        print_error "✗ 客户实例不健康"
+    fi
+
+    # 检查 Nginx 入口：客户真正走的路是 80 → nginx → 客户实例。
+    # 上一条直连通了不代表这条通——nginx 挂了，客户照样进不来。
+    if curl -sf http://localhost:80/health > /dev/null; then
+        print_info "✓ Nginx 入口健康"
+    else
+        print_error "✗ Nginx 入口不健康"
     fi
 
     # 检查 Redis
@@ -199,8 +266,14 @@ health_check() {
         print_error "✗ Redis 不健康"
     fi
 
-    # 检查 Postgres
-    if curl -sf http://localhost:8001/api/v1/heartbeat > /dev/null; then
+    # 检查 Postgres：在容器里跑 pg_isready，不去猜宿主机端口。
+    #
+    # 原先是 `curl localhost:8001/api/v1/heartbeat`——那是 ChromaDB 的 HTTP 心跳。
+    # 存储收敛到 Postgres 时只把提示文字从 ChromaDB 改成了 Postgres，
+    # 探测没动：Postgres 不讲 HTTP，compose 里也没有任何服务发布 8001，
+    # 所以这一条从那天起**永远**报"不健康"。
+    if compose exec -T postgres pg_isready -U "${POSTGRES_USER:-aihelpdesk}" \
+           -d "${POSTGRES_DB:-aihelpdesk}" > /dev/null 2>&1; then
         print_info "✓ Postgres 健康"
     else
         print_error "✗ Postgres 不健康"

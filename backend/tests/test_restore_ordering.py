@@ -14,14 +14,18 @@ Redis 的 rdb 已经换掉了，Postgres 一行没进，配置没恢复，服务
 而顺序正是上一次出错的地方。
 """
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
+from typing import NamedTuple
+from urllib.parse import urlsplit
 
 import pytest
 
 REPO = Path(__file__).resolve().parents[2]
 SCRIPT = REPO / "scripts" / "docker-deploy.sh"
+COMPOSE = REPO / "docker-compose.yml"
 
 pytestmark = pytest.mark.skipif(
     not SCRIPT.is_file() or shutil.which("bash") is None,
@@ -37,7 +41,27 @@ echo "$@" >> "$CMDLOG"
 if [[ "$*" == *psql* ]]; then cat > /dev/null; fi
 # `docker inspect … --format` 要能给出卷名，否则脚本会判定"找不到 /data 卷"。
 if [[ "$1" == "inspect" ]]; then echo "fake_redis_volume"; fi
+# 健康检查：redis-cli ping 要回 PONG；FAKE_PG_DOWN 非空时 pg_isready 报"没有响应"。
+if [[ "$*" == *redis-cli*ping ]]; then echo PONG; fi
+if [[ "$*" == *pg_isready* && -n "$FAKE_PG_DOWN" ]]; then exit 2; fi
 exit ${FAKE_DOCKER_EXIT:-0}
+"""
+
+# 假 curl：把要探的地址记下来，一个请求都不发。一行一个参数——地址要**原样**落盘，
+# 拼坏了（比如端口后面带着空格和注释）得看得出来。
+# FAKE_CURL_DOWN 是空格分隔的若干片段，地址里含其中任何一个就当它连不上
+# （curl 连接被拒的退出码是 7）。
+_FAKE_CURL = """#!/bin/bash
+printf '%s\\n' "$@" >> "$CURLLOG"
+for down in $FAKE_CURL_DOWN; do
+    if [[ "$*" == *"$down"* ]]; then exit 7; fi
+done
+exit 0
+"""
+
+# 健康检查开头有一句 `sleep 10`（等服务起来），测试里不等。
+_FAKE_SLEEP = """#!/bin/bash
+exit 0
 """
 
 
@@ -285,3 +309,274 @@ class TestRestoreStopsOnFailure:
         )
         assert "恢复完成" not in proc.stdout, "Postgres 恢复失败了却报告成功"
         assert "恢复失败" in proc.stdout or proc.returncode != 0
+
+
+# ── 健康检查探的端口 ──────────────────────────────────────────────────────────
+
+# compose 的一条端口映射："[绑定地址:]宿主机端口:容器端口"。
+# 宿主机端口要么是数字，要么是 ${变量:-默认值}。
+_PORT_MAPPING = re.compile(
+    r'^\s*-\s*"(?:[\d.]+:)?(?P<host>\$\{(?P<var>\w+):-(?P<default>\d+)\}|(?P<literal>\d+)):\d+"',
+    re.MULTILINE,
+)
+
+
+class _Published(NamedTuple):
+    host: str         # compose 里的原文：${AI_HELPDESK_PORT:-8080} 或 80
+    var: str | None   # 变量名；端口写死时是 None
+    port: int         # 什么都不配时实际发布的宿主机端口
+
+
+def _mappings(text: str) -> list[_Published]:
+    return [
+        _Published(m["host"], m["var"], int(m["default"] or m["literal"]))
+        for m in _PORT_MAPPING.finditer(text)
+    ]
+
+
+def _published(service: str) -> _Published:
+    """docker-compose.yml 里这个服务发布到宿主机的端口。"""
+    compose = COMPOSE.read_text(encoding="utf-8")
+    block = re.search(
+        rf"^  {re.escape(service)}:\n(.*?)(?=^ {{0,2}}\S|\Z)", compose, re.MULTILINE | re.DOTALL
+    )
+    assert block, f"docker-compose.yml 里找不到服务 {service}"
+    ports = _mappings(block.group(1))
+    assert len(ports) == 1, f"docker-compose.yml 的 {service} 应该正好发布一个端口，实际: {ports}"
+    return ports[0]
+
+
+def _all_published_ports() -> set[int]:
+    """compose 发布到宿主机的全部端口。"""
+    return {p.port for p in _mappings(COMPOSE.read_text(encoding="utf-8"))}
+
+
+def _script_code() -> str:
+    """脚本里会执行的部分（整行注释去掉）。断言得落在代码上，不能被一句注释满足。"""
+    lines = SCRIPT.read_text(encoding="utf-8").splitlines()
+    return "\n".join(line for line in lines if not line.lstrip().startswith("#"))
+
+
+def _health_check_body() -> str:
+    body = re.search(r"^health_check\(\) \{\n(.*?)^\}", _script_code(), re.MULTILINE | re.DOTALL)
+    assert body, "脚本里找不到 health_check()"
+    return body.group(1)
+
+
+@pytest.fixture
+def fake_probes(fake_repo):
+    """
+    假 docker 旁边再放假 curl 和假 sleep。健康检查**不能真的去探跑测试的这台机器**：
+    生产就部署在开发机上，探到的会是真服务，测试结果就取决于那一刻谁活着。
+    """
+    for name, body in (("curl", _FAKE_CURL), ("sleep", _FAKE_SLEEP)):
+        exe = fake_repo["bin"] / name
+        exe.write_text(body)
+        exe.chmod(0o755)
+    fake_repo["curllog"] = fake_repo["cmdlog"].with_name("curl.log")
+    return fake_repo
+
+
+# 健康检查该探的地址只有这一种形状：本机、可选端口、一个路径。
+_PROBE_URL = re.compile(r"http://(?:localhost|127\.0\.0\.1)(?::(?P<port>\d+))?/\S*")
+
+
+class _HealthRun(NamedTuple):
+    returncode: int
+    output: str         # stdout + stderr
+    ports: list[int]    # curl 探过的宿主机端口，按先后
+    docker: list[str]   # docker 命令序列
+
+
+def _run_health(repo, command: str = "health", **env_overrides: str) -> _HealthRun:
+    env = dict(os.environ)
+    # 跑测试的 shell 里要是正好设了这两个变量，会盖掉要验的默认值
+    env.pop("AI_HELPDESK_PORT", None)
+    env.pop("AI_HELPDESK_CUSTOMER_PORT", None)
+    env["PATH"] = f"{repo['bin']}:{env['PATH']}"
+    env["CMDLOG"] = str(repo["cmdlog"])
+    env["CURLLOG"] = str(repo["curllog"])
+    env.update(env_overrides)
+    for log in (repo["cmdlog"], repo["curllog"]):
+        log.unlink(missing_ok=True)
+
+    proc = subprocess.run(
+        ["bash", str(repo["script"]), command],
+        capture_output=True, text=True, env=env, timeout=120,
+    )
+
+    ports = []
+    probed = repo["curllog"].read_text(encoding="utf-8").splitlines() if repo["curllog"].exists() else []
+    for arg in probed:
+        if arg.startswith("http"):
+            url = _PROBE_URL.fullmatch(arg)
+            assert url, f"健康检查探的地址不对: {arg!r}"
+            ports.append(int(url["port"] or 80))
+    docker = repo["cmdlog"].read_text().splitlines() if repo["cmdlog"].exists() else []
+    return _HealthRun(proc.returncode, proc.stdout + proc.stderr, ports, docker)
+
+
+class TestHealthCheckProbesWhatComposePublishes:
+    """
+    后来查出来的：`start` 末尾和 `health` 跑的健康检查，探的是两个过期端口。
+
+    - 主应用探 `localhost:8000`。宿主机端口后来挪到了 8080，8000 上现在是同机的
+      ai-sql-agent——它的 /health 是通的，所以 ai-helpdesk 挂没挂这里都报"主应用健康"。
+    - Postgres 探 `localhost:8001/api/v1/heartbeat`。那是 ChromaDB 的心跳，存储换成
+      Postgres 时只改了提示文字。compose 里没有任何服务发布 8001，所以永远报"不健康"。
+
+    两条都**不报错**：脚本照常跑完，只是一条恒真、一条恒假。
+
+    这一组的期望值都从 docker-compose.yml 读，**不在这里再写一遍 8080/8081**——
+    写了就是第三份，会跟着另外两份一起漂。
+    """
+
+    def test_port_variables_are_spelled_exactly_as_in_compose(self):
+        """变量名和默认值，脚本和 compose 必须一字不差：改了一边没改另一边，这条就红。"""
+        code = _script_code()
+        for service in ("ai-helpdesk", "ai-helpdesk-customer"):
+            port = _published(service)
+            assert port.var, f"compose 里 {service} 的宿主机端口不再是变量，脚本和这条测试要一起改"
+            assert f'{port.var}="{port.host}"' in code, (
+                f"compose 给 {service} 发布的宿主机端口是 {port.host}，脚本里的取值规则对不上"
+            )
+            assert f"${{{port.var}}}/health" in _health_check_body(), f"健康检查没有用 {port.var} 去探 {service}"
+
+    def test_every_http_probe_goes_to_a_port_compose_publishes(self):
+        """
+        health_check 里每一个 curl 的端口，都得是 compose 真的发布到宿主机的端口。
+        8000（只在容器内）和 8001（没有任何服务）都过不了这条。
+        """
+        defaults = {p.var: p.port for p in _mappings(COMPOSE.read_text(encoding="utf-8")) if p.var}
+        published = _all_published_ports()
+        urls = re.findall(r'http://[^\s"]+', _health_check_body())
+        assert urls, "health_check 里一个 HTTP 探测都没找到"
+        for url in urls:
+            for var in re.findall(r"\$\{(\w+)\}", url):
+                assert var in defaults, f"{url} 用了 compose 端口映射里没有的变量 {var}"
+            resolved = urlsplit(re.sub(r"\$\{(\w+)\}", lambda m: str(defaults[m[1]]), url))
+            assert resolved.hostname in ("localhost", "127.0.0.1"), url
+            assert (resolved.port or 80) in published, f"{url} 探的端口 compose 没有发布到宿主机"
+
+    def test_postgres_is_not_probed_over_http(self):
+        """Postgres 不讲 HTTP。在容器里跑 pg_isready，不猜宿主机端口。"""
+        assert "exec -T postgres pg_isready" in _health_check_body()
+        assert "heartbeat" not in _script_code()
+
+    def test_it_probes_the_published_ports_and_reports_everything_healthy(self, fake_probes):
+        """什么都不配时探的是 compose 的默认端口；全都应答时六行全绿。"""
+        run = _run_health(fake_probes)
+        assert run.returncode == 0, run.output
+        for service in ("ai-helpdesk", "ai-helpdesk-customer", "nginx"):
+            assert _published(service).port in run.ports, f"没有探 {service} 发布的端口，探的是 {run.ports}"
+        assert set(run.ports) <= _all_published_ports(), f"探了 compose 没有发布的端口: {run.ports}"
+        for line in ("✓ 主应用健康", "✓ 客户实例健康", "✓ Nginx 入口健康",
+                     "✓ Redis 健康", "✓ Postgres 健康", "✓ Prometheus 健康"):
+            assert line in run.output
+        assert "✗" not in run.output
+
+    @pytest.mark.parametrize("service, verdict", [
+        pytest.param("ai-helpdesk", "✗ 主应用不健康", id="staff"),
+        pytest.param("ai-helpdesk-customer", "✗ 客户实例不健康", id="customer"),
+        pytest.param("nginx", "✗ Nginx 入口不健康", id="nginx"),
+    ])
+    def test_each_line_reports_the_service_it_names(self, fake_probes, service, verdict):
+        """compose 里哪个服务的端口连不上，报不健康的就得正好是说它的那一行，别的不受牵连。"""
+        run = _run_health(fake_probes, FAKE_CURL_DOWN=f":{_published(service).port}/")
+        assert verdict in run.output
+        assert run.output.count("✗") == 1, run.output
+
+    def test_a_neighbour_answering_on_another_port_is_not_our_app(self, fake_probes):
+        """
+        **出事时的形态。** 让 compose 发布的端口全部连不上，其余端口照常应答
+        （本机 8000 上的 ai-sql-agent 就是这样一个"其余"）：三个入口都必须报不健康。
+        旧脚本在这里报"主应用健康"。
+        """
+        down = " ".join(f":{port}/" for port in _all_published_ports())
+        run = _run_health(fake_probes, FAKE_CURL_DOWN=down)
+        for line in ("✗ 主应用不健康", "✗ 客户实例不健康", "✗ Nginx 入口不健康"):
+            assert line in run.output
+        for line in ("✓ 主应用健康", "✓ 客户实例健康", "✓ Nginx 入口健康"):
+            assert line not in run.output
+
+    def test_postgres_verdict_follows_pg_isready(self, fake_probes):
+        """pg_isready 说行就报健康，说不行就报不健康。旧脚本两种情况都报不健康。"""
+        up = _run_health(fake_probes)
+        _index_of(up.docker, "exec -T postgres pg_isready")
+        assert "✓ Postgres 健康" in up.output
+
+        down = _run_health(fake_probes, FAKE_PG_DOWN="1")
+        assert "✗ Postgres 不健康" in down.output
+        assert "✓ Postgres 健康" not in down.output
+
+    def test_ports_exported_in_the_shell_are_honoured(self, fake_probes):
+        """compose 认 shell 里的 AI_HELPDESK_PORT / AI_HELPDESK_CUSTOMER_PORT，脚本也得认。"""
+        run = _run_health(fake_probes, AI_HELPDESK_PORT="18080", AI_HELPDESK_CUSTOMER_PORT="18081")
+        assert 18080 in run.ports and 18081 in run.ports
+        assert _published("ai-helpdesk").port not in run.ports
+        assert _published("ai-helpdesk-customer").port not in run.ports
+
+    def test_ports_set_in_the_root_env_file_are_honoured(self, fake_probes):
+        """
+        compose 做变量替换时还读仓库根的 .env，`.env.example` 教的也是在那里改端口。
+        只认 shell 的话，照文档改了端口，compose 换了地方发布，脚本还在探默认端口
+        ——同一个故障换个入口再来一次。
+        """
+        (fake_probes["root"] / ".env").write_text(
+            "REDIS_PASSWORD=aihelpdesk123\n"
+            "AI_HELPDESK_PORT=18080\n"
+            'AI_HELPDESK_CUSTOMER_PORT="18081"  # 客户实例\n',
+            encoding="utf-8",
+        )
+        run = _run_health(fake_probes)
+        assert 18080 in run.ports and 18081 in run.ports
+        assert _published("ai-helpdesk").port not in run.ports
+        assert _published("ai-helpdesk-customer").port not in run.ports
+
+    @pytest.mark.parametrize("line", [
+        pytest.param("AI_HELPDESK_PORT=18080", id="plain"),
+        pytest.param('AI_HELPDESK_PORT="18080"', id="double-quoted"),
+        pytest.param("AI_HELPDESK_PORT='18080'", id="single-quoted"),
+        pytest.param("export AI_HELPDESK_PORT=18080", id="export"),
+        pytest.param("AI_HELPDESK_PORT=18080  # 员工实例", id="inline-comment"),
+        pytest.param("AI_HELPDESK_PORT = 18080", id="spaces"),
+        pytest.param("AI_HELPDESK_PORT: 18080", id="yaml-colon"),
+        pytest.param("AI_HELPDESK_PORT=1\nAI_HELPDESK_PORT=18080", id="last-one-wins"),
+    ])
+    def test_root_env_file_spellings_that_compose_accepts(self, fake_probes, line):
+        """
+        这几种写法 compose 都认（拿 `docker compose config` 逐条对照过取值）。
+        脚本少认一种，就是 compose 换了端口而脚本没跟上。
+        """
+        (fake_probes["root"] / ".env").write_text(
+            f"REDIS_PASSWORD=aihelpdesk123\n{line}\nGRAFANA_USER=admin\n", encoding="utf-8"
+        )
+        run = _run_health(fake_probes)
+        assert 18080 in run.ports, f"探的是 {run.ports}"
+        assert _published("ai-helpdesk").port not in run.ports
+
+    def test_commented_out_and_lookalike_lines_in_the_root_env_file_do_not_count(self, fake_probes):
+        """注释掉的行和名字只是相像的变量，compose 不当回事，脚本也不能当回事。"""
+        (fake_probes["root"] / ".env").write_text(
+            "# AI_HELPDESK_PORT=18080\n"
+            "AI_HELPDESK_PORT_OLD=18081\n"
+            "MY_AI_HELPDESK_PORT=18082\n"
+        )
+        run = _run_health(fake_probes)
+        assert _published("ai-helpdesk").port in run.ports
+        assert not {18080, 18081, 18082} & set(run.ports)
+
+    def test_the_shell_wins_over_the_root_env_file(self, fake_probes):
+        """两边都设了，compose 以 shell 为准；脚本取反了就会探到 compose 没用的那个端口。"""
+        (fake_probes["root"] / ".env").write_text("AI_HELPDESK_PORT=18080\n")
+        run = _run_health(fake_probes, AI_HELPDESK_PORT="28080")
+        assert 28080 in run.ports
+        assert 18080 not in run.ports
+
+    def test_start_ends_with_the_same_checks(self, fake_probes):
+        """`start` 起完服务后跑的是同一套检查，不是另一份端口。"""
+        started = _run_health(fake_probes, command="start")
+        up = _index_of(started.docker, "up -d")
+        pg_isready = _index_of(started.docker, "exec -T postgres pg_isready")
+        assert up < pg_isready
+        assert started.ports == _run_health(fake_probes).ports
