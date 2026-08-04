@@ -35,6 +35,9 @@ logs/
 # 这里按**文件后缀**排而不是整个 `data/`：`data/demo_docs/` 和
 # `data/eval/baseline.json` 是进版本库的、镜像里要用的东西。
 data/chroma/
+# 控制台保存的模型连接（core/model_settings.py）：文件里有明文 Key，运行时由 compose
+# 挂进容器。不排除的话，在这台机器上构建镜像会把当时那份 Key 打进镜像层里。
+data/runtime/
 **/*.db
 **/*.db-journal
 **/*.db-wal

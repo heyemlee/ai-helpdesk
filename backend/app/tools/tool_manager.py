@@ -40,7 +40,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.core.llm_guard import log_model_failure
 from app.core.llm_utils import (
@@ -87,10 +87,12 @@ class ToolResult:
     evidence_ok:    bool | None = None  # 证据充分性判定；None = 未判定
 
 
+# 类的 docstring 和字段的 description 会写进 JSON Schema、随请求发给模型，
+# 所以那里只写模型需要知道的；给开发者看的来龙去脉放在注释里。
 class QueryRewritePayload(BaseModel):
-    """多角度改写的返回形状。"""
+    """把客户的问题改写成的几条检索子查询。"""
 
-    queries: list[str]
+    queries: list[str] = Field(description="改写后的子查询，每条从不同角度描述要找的内容")
 
 
 class RewrittenQueries(list):
@@ -107,21 +109,22 @@ class RewrittenQueries(list):
         self.failed = failed
 
 
+# 重排 + 证据充分性判定的返回形状，由结构化输出在服务端约束。
+#
+# 这个 schema 替掉了原来的 `_parse_rerank_payload`：那个函数要兼容"模型只返回
+# 了一个裸数组"的情况，此时充分性判定取 None（未判定）。schema 生效之后
+# sufficient 是必填布尔，那条兼容分支不再可能发生，跟着一起删了。
+#
+# 注意 RerankOutcome.sufficient 仍然保留 None——它现在只表示另外两种情况：
+# 走的是 cross-encoder 路径（压根没问模型），或候选太少没触发重排。
+#
+# docstring 和字段说明会发给模型，见 QueryRewritePayload 上面的说明。
 class RerankPayload(BaseModel):
-    """
-    重排 + 证据充分性判定的返回形状，由结构化输出在服务端约束。
+    """检索候选按相关性重新排好的顺序，以及这些候选够不够回答客户的问题。"""
 
-    这个 schema 替掉了原来的 `_parse_rerank_payload`：那个函数要兼容"模型只返回
-    了一个裸数组"的情况，此时充分性判定取 None（未判定）。schema 生效之后
-    sufficient 是必填布尔，那条兼容分支不再可能发生，跟着一起删了。
-
-    注意 RerankOutcome.sufficient 仍然保留 None——它现在只表示另外两种情况：
-    走的是 cross-encoder 路径（压根没问模型），或候选太少没触发重排。
-    """
-
-    order: list[int]
-    sufficient: bool
-    missing: str
+    order: list[int] = Field(description="候选的索引（方括号里的数字），按与问题的相关性从高到低排列")
+    sufficient: bool = Field(description="排在最前的内容能否直接支撑一个具体、有依据的回答")
+    missing: str = Field(description="不够回答时，用一句话说明还缺什么信息；够的话为空字符串")
 
 
 @dataclass
@@ -249,6 +252,11 @@ class ToolManager:
         # 实例 B 对同一工具的调用同样被拒绝。未传入时用进程内熔断器（单实例语义）。
         self._shared_state = shared_state
         self._dist_breakers: dict[str, Any] = {}
+
+    def reconfigure_llm(self, client: Any, model: str) -> None:
+        """换用另一份对话模型连接（查询改写和重排用它）。"""
+        self._client = client
+        self._model = model
 
     # ── 注册 / 注销 ───────────────────────────────────────────────────────────
 

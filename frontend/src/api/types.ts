@@ -489,3 +489,97 @@ export interface TicketList {
 export interface TicketDetail extends Ticket {
   notifications_enabled?: boolean
 }
+
+// ── 模型连接（/admin/model）────────────────────────────────────────────────────
+
+export type ModelProvider = 'openai' | 'anthropic'
+export type ModelSource = 'page' | 'env'
+/** 这个请求为什么不能改；空串表示能改。 */
+export type ModelEditReason = '' | 'disabled' | 'read_only_instance' | 'not_local' | 'cross_origin'
+
+export interface ChatModelStatus {
+  source: ModelSource
+  provider: ModelProvider
+  base_url: string
+  model: string
+  key_set: boolean
+  /** Key 的末四位；太短的 Key 不给 */
+  key_hint: string
+  saved_at: string
+  saved_by: string
+}
+
+export interface EmbeddingModelStatus {
+  source: ModelSource
+  backend: 'remote' | 'local_ngram'
+  /** 远端刚失败过、还在冷却期时为 false */
+  available: boolean
+  base_url: string
+  model: string
+  dim: number
+  query_prefix: string
+  key_set: boolean
+  key_hint: string
+  saved_at: string
+  saved_by: string
+}
+
+export interface EmbeddingSwitch {
+  state: 'idle' | 'running' | 'succeeded' | 'failed'
+  target_model: string
+  target_dim: number
+  restoring: boolean
+  total: number
+  done: number
+  error: string
+  started_at: string
+  finished_at: string
+}
+
+export interface ModelStatus {
+  enabled: boolean
+  editable: boolean
+  reason: ModelEditReason
+  chat: ChatModelStatus
+  embedding: EmbeddingModelStatus
+  switch: EmbeddingSwitch
+  problems: Record<string, string>
+  defaults: {
+    chat: Record<ModelProvider, { base_url: string; model: string }>
+    embedding: { base_url: string; model: string; dim: number }
+  }
+}
+
+export interface ModelCheck {
+  check: 'chat' | 'structured' | 'embedding'
+  outcome: string
+  status: number | null
+  /** 服务商自己的那句报错，已去掉 Key */
+  detail: string
+  latency_ms: number
+}
+
+export interface ModelTestResult {
+  ok: boolean
+  checks: ModelCheck[]
+  warnings: string[]
+  /** 向量测试才有：模型实际输出的维度 */
+  dim?: number
+}
+
+export interface ChatModelBody {
+  provider: ModelProvider
+  base_url: string
+  /** 留空 = 沿用现在这一把（只在协议和主机都没换时允许） */
+  api_key: string
+  model: string
+}
+
+export interface EmbeddingModelBody {
+  base_url: string
+  api_key: string
+  model: string
+  /** 0 = 按测试时模型实际返回的维度 */
+  dim: number
+  query_prefix: string
+}

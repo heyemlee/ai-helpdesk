@@ -6,6 +6,7 @@ import { getStaffKey, type Settings } from '@/api/client'
 import { Card, Chip, KV, StateBlock } from './ui'
 import { EvalPanel } from './EvalPanel'
 import { Icon } from './Icon'
+import { ModelSettings } from './ModelSettings'
 import { MonitorPanel } from './MonitorPanel'
 import { agentDisplayName, agentLabel, dateTime } from '@/lib/format'
 import { explainError } from '@/lib/errors'
@@ -17,6 +18,7 @@ import type { Theme } from '@/hooks/useTheme'
 
 const TAB_LABEL: Record<AdminTab, Key> = {
   overview: 'ad.tab.overview',
+  models: 'ad.tab.models',
   sops: 'ad.tab.sops',
   monitor: 'ad.tab.monitor',
   eval: 'ad.tab.eval',
@@ -61,6 +63,7 @@ export function AdminPanel({ base, tab, settings, streaming, onSave, inspector, 
       </div>
 
       {tab === 'monitor' && <MonitorPanel base={base} />}
+      {tab === 'models' && <ModelSettings base={base} />}
       {tab === 'eval' && <EvalPanel base={base} />}
       {tab === 'overview' && (
         <div className="page scroll"><div className="page-inner">

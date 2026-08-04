@@ -20,7 +20,7 @@ ai-helpdesk 的员工工作台（React 18 + TypeScript + Vite）。主导航只�
   状态流转走后端的状态机，失败时保留原状态并提示
 - **学习模式**（默认关）：逐步讲这一轮实际发生的事——意图识别、知识检索、专家选择、
   SQL 委派、回答检查、转人工——每一句都只转述后端在响应里报告的内容
-- **管理与诊断**：服务与模型信息、连接配置、SOP 只读、Monitor、端到端评测、编排检查器
+- **管理与诊断**：服务与模型信息、连接配置、模型连接（对话模型和向量模型，测试通过才保存，Key 只进不出）、SOP 只读、Monitor、端到端评测、编排检查器
 - 按句流式接收 —— 后端的答案策略守卫必须看到完整句子才能判断，所以流式粒度是句不是 token
 - 中英文切换，默认英文；键盘可达，窄屏用底部导航
 
@@ -37,7 +37,8 @@ src/
 │   ├── KnowledgePanel.tsx     # 文档列表 / 筛选 / 按问题检索 / 导入
 │   ├── KnowledgeDocument.tsx  # 单篇文档正文与检索片段
 │   ├── TicketsPanel.tsx       # 工单列表与详情
-│   ├── AdminPanel.tsx         # 管理与诊断：概览、连接、SOP，内嵌下面三个
+│   ├── AdminPanel.tsx         # 管理与诊断：概览、连接、SOP，内嵌下面四个
+│   ├── ModelSettings.tsx      # 模型连接：对话模型 / 向量模型的测试、保存、恢复和重建进度
 │   ├── MonitorPanel.tsx       # Monitor 摘要
 │   ├── EvalPanel.tsx          # 端到端评测
 │   ├── RoutingInspector.tsx   # 编排检查器

@@ -87,6 +87,25 @@ class Embedder:
             query_prefix=os.getenv("EMBEDDING_QUERY_PREFIX", "").replace("\\n", "\n"),
         )
 
+    def adopt(self, other: "Embedder") -> None:
+        """
+        原地换成另一个 Embedder 的配置，冷却状态清零。
+
+        知识库、情景记忆和意图识别手里拿的是同一个 Embedder 对象。控制台换了向量模型
+        之后要让三处一起换，原地改比挨个替换引用可靠：漏换一处，那一处就会拿旧模型的
+        查询向量去比新模型的库。
+        """
+        self._base_url = other._base_url
+        self._api_key = other._api_key
+        self._model = other._model
+        self._remote = other._remote
+        self.dim = other.dim
+        self._batch_size = other._batch_size
+        self._retry_after_s = other._retry_after_s
+        self._query_prefix = other._query_prefix
+        self._down_until = 0.0
+        self._last_error = ""
+
     @property
     def backend(self) -> str:
         return "remote" if self._remote else "local_ngram"

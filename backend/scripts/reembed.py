@@ -6,6 +6,10 @@
 n-gram 向量换成远端模型，或者换回来。库里的向量是旧模型算的，和新模型的查询向量
 不在同一个空间里；服务启动时会因为维度或来源对不上而拒绝启动，并指到这里来。
 
+在控制台「模型连接」页保存 Embedding 时，服务自己会边跑边重建，用不着这个脚本。
+这个脚本是停机的那条路，也用来收拾残局。用哪个模型和服务的规则一样：控制台保存过
+就用保存的那一组（AI_HELPDESK_MODEL_SETTINGS_PATH 指的文件），没保存过才用 .env。
+
 做什么：把知识库分片（kb_chunks）和情景记忆（memory_episodic）的向量用当前配置的
 模型重算一遍，一次换上。**只换向量**——文档原文、分片、关键词索引、记忆摘要都不动，
 不需要重新导入任何东西。
@@ -50,7 +54,9 @@ try:
 except ImportError:
     pass
 
+from app.core import model_settings  # noqa: E402
 from app.core.embedder import Embedder, EmbeddingUnavailable  # noqa: E402
+from app.core.model_runtime import embedder_from  # noqa: E402
 from app.storage.vector_store import (  # noqa: E402
     EMBEDDING_SIGNATURE_KEY,
     LocalStore,
@@ -94,7 +100,10 @@ async def _embed_all(embedder: Embedder, texts: list[str], label: str) -> list[l
 
 
 async def main(args: argparse.Namespace) -> int:
-    embedder = Embedder.from_env()
+    saved = model_settings.load_store(model_settings.settings_path())
+    for section, problem in saved.get("problems", {}).items():
+        print(f"控制台保存的模型连接（{section}）读不了，不用它：{problem}")
+    embedder, origin = embedder_from(saved)
     store, close, where = await _open(args, embedder.dim)
     try:
         state = await store.vector_state()
@@ -106,7 +115,9 @@ async def main(args: argparse.Namespace) -> int:
         for table, info in state.items():
             dim = f"{info['dim']} 维" if info["dim"] else "空表"
             print(f"  {table:<16} {info['rows']:>6} 行  {dim}")
-        print(f"要换成:     {target}（{embedder.backend}）")
+        from_page = origin["source"] == "page"
+        print(f"要换成:     {target}（{embedder.backend}，"
+              f"{'控制台保存的那一组' if from_page else '.env 里的配置'}）")
 
         same_dim = all(info["dim"] in (None, embedder.dim) for info in state.values())
         if recorded == target and same_dim:

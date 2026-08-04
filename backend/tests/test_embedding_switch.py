@@ -401,6 +401,30 @@ async def test_reembed_script_plans_first_and_swaps_only_on_apply(api, tmp_path,
     assert "不需要重建" in capsys.readouterr().out
 
 
+async def test_reembed_script_uses_the_embedding_saved_in_the_console(api, tmp_path, monkeypatch, capsys):
+    """控制台保存过 Embedding，服务用的是那一组；脚本也得用它，不然重建完服务反而起不来。"""
+    from app.core import model_settings
+
+    db_path = str(tmp_path / "vec.db")
+    store = LocalStore(db_path=db_path)
+    await _seeded(store, Embedder())
+    await store.close()
+
+    for key in ("EMBEDDING_BASE_URL", "EMBEDDING_API_KEY", "EMBEDDING_MODEL", "EMBEDDING_DIM"):
+        monkeypatch.delenv(key, raising=False)
+    settings = str(tmp_path / "runtime" / "model_settings.json")
+    monkeypatch.setenv("AI_HELPDESK_MODEL_SETTINGS_PATH", settings)
+    model_settings.save_section(settings, "embedding", {**REMOTE, "dim": api.dim, "query_prefix": ""})
+    reembed = _load_script("reembed")
+
+    assert await reembed.main(argparse.Namespace(apply=True, dsn="", sqlite=db_path)) == 0
+    assert "控制台保存的那一组" in capsys.readouterr().out
+    store = LocalStore(db_path=db_path)
+    assert (await store.vector_state())["kb_chunks"] == {"rows": 2, "dim": api.dim}
+    assert await store.meta_get(EMBEDDING_SIGNATURE_KEY) == f"fake-embed/{api.dim}"
+    await store.close()
+
+
 async def test_reembed_script_leaves_the_store_alone_when_embedding_fails(api, tmp_path, monkeypatch, capsys):
     db_path = str(tmp_path / "vec.db")
     store = LocalStore(db_path=db_path)
@@ -432,7 +456,7 @@ async def test_intent_templates_are_embedded_in_batches(api):
     templates = sum(len(v) for v in _TEMPLATES.values())
     assert sum(len(batch) for batch in api.requests) == templates + 1
     assert len(api.requests) <= templates // 10 + 2
-    assert recog._tpl_space == "remote" and result["confidence"] > 0
+    assert recog._tpl_space.startswith("remote") and result["confidence"] > 0
 
 
 async def test_intent_never_compares_vectors_from_two_spaces(api):

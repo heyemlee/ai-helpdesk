@@ -1,7 +1,7 @@
 import type {
-  ChatRequest, ChatResponse, ConversationResponse, EvalReport, HealthResponse,
-  ImportResult, KnowledgeDocumentDetail, KnowledgeDocumentList,
-  MonitorSummary, SearchResponse, SopList, StreamEvent, TicketDetail, TicketList,
+  ChatModelBody, ChatRequest, ChatResponse, ConversationResponse, EmbeddingModelBody, EvalReport,
+  HealthResponse, ImportResult, KnowledgeDocumentDetail, KnowledgeDocumentList, ModelStatus,
+  ModelTestResult, MonitorSummary, SearchResponse, SopList, StreamEvent, TicketDetail, TicketList,
 } from './types'
 
 const DEFAULT_API_BASE = import.meta.env.VITE_API_BASE_URL || '/api'
@@ -57,7 +57,8 @@ const authHeaders = (): Record<string, string> => (staffKey ? { 'X-API-Key': sta
 const trimSlash = (v: string) => v.replace(/\/+$/, '')
 
 export class ApiError extends Error {
-  constructor(readonly status: number, message: string) {
+  /** 后端错误体里 `detail` 的原样内容。模型连接的接口在这里给出 `{code, message, test}`。 */
+  constructor(readonly status: number, message: string, readonly detail?: unknown) {
     super(message)
     this.name = 'ApiError'
   }
@@ -94,13 +95,16 @@ async function request<T>(base: string, path: string, init?: RequestInit): Promi
     data = text
   }
   if (!response.ok) {
-    throw new ApiError(response.status, errorMessage(response.status, response.statusText, data))
+    const detail = data && typeof data === 'object' && 'detail' in data
+      ? (data as { detail: unknown }).detail
+      : undefined
+    throw new ApiError(response.status, errorMessage(response.status, response.statusText, data), detail)
   }
   return data as T
 }
 
-const json = (body: unknown): RequestInit => ({
-  method: 'POST',
+const json = (body: unknown, method = 'POST'): RequestInit => ({
+  method,
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify(body),
 })
@@ -147,6 +151,21 @@ export const api = {
 
   setTicketStatus: (base: string, ticketId: string, status: string) =>
     request<TicketDetail>(base, `/tickets/${encodeURIComponent(ticketId)}/status`, json({ status })),
+
+  // ── 模型连接（管理与诊断 → 模型连接）。Key 只往里送，响应里永远没有它 ──
+  modelStatus: (base: string) => request<ModelStatus>(base, '/admin/model'),
+  testChatModel: (base: string, body: ChatModelBody) =>
+    request<ModelTestResult>(base, '/admin/model/chat/test', json(body)),
+  saveChatModel: (base: string, body: ChatModelBody & { force?: boolean }) =>
+    request<ModelStatus & { test: ModelTestResult }>(base, '/admin/model/chat', json(body, 'PUT')),
+  clearChatModel: (base: string) =>
+    request<ModelStatus>(base, '/admin/model/chat', { method: 'DELETE' }),
+  testEmbeddingModel: (base: string, body: EmbeddingModelBody) =>
+    request<ModelTestResult>(base, '/admin/model/embedding/test', json(body)),
+  saveEmbeddingModel: (base: string, body: EmbeddingModelBody) =>
+    request<ModelStatus & { test: ModelTestResult }>(base, '/admin/model/embedding', json(body, 'PUT')),
+  clearEmbeddingModel: (base: string) =>
+    request<ModelStatus>(base, '/admin/model/embedding', { method: 'DELETE' }),
 }
 
 /**

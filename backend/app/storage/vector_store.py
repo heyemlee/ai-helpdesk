@@ -100,6 +100,10 @@ _VECTOR_TABLES = ("kb_chunks", "memory_episodic")
 EMBEDDING_SIGNATURE_KEY = "embedding_signature"
 
 
+class VectorsChangedError(RuntimeError):
+    """算新向量的这段时间里表里多了行：这次不换，重读一遍再算。"""
+
+
 def _require_vectors(
     table: str, ids: set[str], vectors: dict[str, list[float]], dim: int
 ) -> None:
@@ -111,7 +115,7 @@ def _require_vectors(
     """
     missing = ids - set(vectors)
     if missing:
-        raise RuntimeError(
+        raise VectorsChangedError(
             f"{table} 有 {len(missing)} 行没有对应的新向量（重算期间有新写入？），"
             "什么都没有改，重跑一次即可。"
         )

@@ -26,11 +26,12 @@ from enum import Enum
 from typing import Any
 
 import redis.asyncio as redis
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.core.llm_guard import log_model_failure
 from app.core.llm_utils import (
     DEFAULT_ANTHROPIC_MODEL,
+    STRUCTURED_MAX_TOKENS,
     create_llm_client,
     extract_text_content,
     structured_create,
@@ -55,23 +56,25 @@ class Message:
     metadata:   dict[str, Any] = field(default_factory=dict)
 
 
+# 类的 docstring 和字段的 description 会写进 JSON Schema、随请求发给模型，
+# 所以那里只写模型需要知道的；给开发者看的来龙去脉放在注释里。
+#
+# 用户画像的提炼结果，由结构化输出在服务端按 schema 约束。
+#
+# 字段是写死的三条而不是一个自由 dict：strict schema 不允许
+# `additionalProperties`，而且原来那版 prompt 里给的样例
+# `{"entities": {"产品": [], "问题类型": []}}` 也从来没有约束力——模型换个
+# key 名（"产品类型"、"products"）画像就变形，读的人无从发现。
+#
+# key 用英文还有个附带好处：画像会被 `json.dumps(..., ensure_ascii=True)`
+# 渲染进 prompt，中文 key 在那一步会变成一串 \uXXXX 转义，白占 token
+# 还不好读。
 class UserProfilePayload(BaseModel):
-    """
-    用户画像的提炼结果，由结构化输出在服务端按 schema 约束。
+    """从对话中提炼的客户长期画像：跨多轮对话仍然成立的信息。"""
 
-    字段是写死的三条而不是一个自由 dict：strict schema 不允许
-    `additionalProperties`，而且原来那版 prompt 里给的样例
-    `{"entities": {"产品": [], "问题类型": []}}` 也从来没有约束力——模型换个
-    key 名（"产品类型"、"products"）画像就变形，读的人无从发现。
-
-    key 用英文还有个附带好处：画像会被 `json.dumps(..., ensure_ascii=True)`
-    渲染进 prompt，中文 key 在那一步会变成一串 \\uXXXX 转义，白占 token
-    还不好读。
-    """
-
-    preferences: list[str]
-    products: list[str]
-    issue_types: list[str]
+    preferences: list[str] = Field(description="客户反复表达的偏好，例如颜色、门型、预算或沟通方式")
+    products: list[str] = Field(description="客户反复提到的产品、产品线或型号")
+    issue_types: list[str] = Field(description="客户反复遇到的问题类型，例如缺件、安装、交期")
 
 
 @dataclass
@@ -177,6 +180,11 @@ class MemoryManager:
         self._embedder = embedder
         self._cross_session = cross_session
 
+    def reconfigure_llm(self, client: Any, model: str) -> None:
+        """换用另一份对话模型连接（会话摘要和用户画像用它）。"""
+        self._client = client
+        self._model = model
+
     @property
     def cross_session(self) -> bool:
         """情景记忆和用户画像是否启用。关掉时这两级既不读也不写。"""
@@ -253,7 +261,10 @@ class MemoryManager:
             payload = await structured_parse(
                 self._client,
                 output_format=UserProfilePayload,
-                model=self._model, max_tokens=512,
+                # 不用 512：推理模型的 max_tokens 把思考也算在内，预算太紧时正文
+                # 还没开始就用完了，画像这一轮就静默地没写进去。按实际生成量计费，
+                # 给宽一点不多花钱。
+                model=self._model, max_tokens=STRUCTURED_MAX_TOKENS,
                 messages=[{"role": "user", "content": prompt}],
             )
 
@@ -351,7 +362,8 @@ class MemoryManager:
         try:
             resp = await structured_create(
                 self._client,
-                model=self._model, max_tokens=256,
+                # 同上：256 留给推理模型的话，摘要常常一个字都出不来
+                model=self._model, max_tokens=STRUCTURED_MAX_TOKENS,
                 messages=[{"role": "user", "content": prompt}],
             )
             summary = self._safe_text(extract_text_content(resp.content)).strip()

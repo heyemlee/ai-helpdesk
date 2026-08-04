@@ -698,7 +698,19 @@ class KnowledgeBase:
                 dense, lexical = await asyncio.gather(
                     self._store.kb_search(embedding, recall_k),
                     self._store.kb_search_lexical(tokens, embedding, recall_k),
+                    return_exceptions=True,
                 )
+                failed = next(
+                    (r for r in (dense, lexical) if isinstance(r, BaseException)), None
+                )
+                if failed is not None:
+                    # 最常见的是向量维度对不上：另一个实例刚把库里的向量换成了新模型的，
+                    # 这个实例还没跟上（core/model_runtime.py 几秒内会跟上）。关键词那一路
+                    # 顺带算的余弦分也用到了查询向量，所以它也会跟着失败——不带向量再查一次。
+                    # 不是向量的问题时，这一次照样会失败，错误原样抛出去。
+                    logger.warning(f"带向量的检索失败，这次只走关键词: {type(failed).__name__}: {failed}")
+                    dense = []
+                    lexical = await self._store.kb_search_lexical(tokens, None, recall_k)
             # 没有 semantic 属性的 Embedder（测试里的替身）按"有语义"处理
             semantic = getattr(self._embedder, "semantic", True)
             fused = fuse_candidates(dense, lexical, semantic)[:top_k]

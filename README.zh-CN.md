@@ -115,6 +115,8 @@ API 文档：[localhost:8080/docs](http://localhost:8080/docs) · Grafana：[loc
 
 OpenAI 兼容端点使用 `LLM_PROVIDER=openai`、`OPENAI_API_KEY`、`OPENAI_MODEL`，按需填写 `OPENAI_BASE_URL`。`EMBEDDING_*` 和 `RERANK_*` 独立配置检索服务。不同 Embedding 模型的向量不能混用：更换模型后，把 `EMBEDDING_DIM` 改成它的输出维度，停掉服务，用 [reembed.py](backend/scripts/reembed.py) 原地重建已有向量（默认只打印计划，加 `--apply` 执行）。库里的向量不是当前模型生成的，服务会拒绝启动。完整配置见 [backend/.env.example](backend/.env.example)，修改后重启。
 
+两组连接也可以不重启、直接在控制台切换：**管理与诊断 → 模型连接**。保存前先测试连接（对话模型测一次普通回复和一次结构化输出，向量模型测一次 Embedding 请求）。保存向量模型时，服务一边照常回答，一边用新模型重建全部向量，建完才切过去。页面保存的配置压过 `backend/.env`，直到点「恢复为服务端配置」。Key 只进不出：页面只显示配没配和末四位，而且一把 Key 只会发给填它时的那台主机。只有在本机打开的控制台能改，并且要配 `AI_HELPDESK_MODEL_SETTINGS_PATH`；Docker Compose 已经配好，面向客户的实例会跟着员工控制台保存的那份走。
+
 ### 接入自己的业务知识
 
 在知识库面板上传 `.txt`、`.md` 或 JSON 文档列表，也可调用接口：

@@ -105,10 +105,15 @@ services:
       # SQL_AGENT_URL 是给本机直跑用的（127.0.0.1:8000），在容器里会指回容器自己，
       # 所以这里固定成宿主机地址。
       - SQL_AGENT_URL=${AI_HELPDESK_SQL_AGENT_URL:-http://host.docker.internal:8000}
+      # 控制台"管理与诊断 → 模型连接"保存的配置（backend/app/core/model_settings.py）。
+      # 文件里有明文 Key，权限 0600；目录不进版本库（.gitignore 的 backend/data/*）。
+      - AI_HELPDESK_MODEL_SETTINGS_PATH=/app/data/runtime/model_settings.json
     volumes:
       - ./backend/data/eval:/app/data/eval
       - ./backend/skills:/app/skills
       - ./backend/logs:/app/logs
+      # 两个实例挂同一个目录：员工实例在控制台保存，客户实例几秒内跟上
+      - ./backend/data/runtime:/app/data/runtime
     depends_on:
       redis:
         condition: service_healthy
@@ -169,10 +174,14 @@ services:
       - SQL_AGENT_URL=
       # 关掉跨会话记忆，理由见这个服务开头的说明。
       - ENABLE_CROSS_SESSION_MEMORY=false
+      # 模型连接跟员工实例在控制台保存的那份走，这个实例自己不能改
+      - AI_HELPDESK_MODEL_SETTINGS_PATH=/app/data/runtime/model_settings.json
+      - AI_HELPDESK_MODEL_SETTINGS_EDITABLE=false
     volumes:
       - ./backend/data/eval:/app/data/eval
       - ./backend/skills:/app/skills
       - ./backend/logs/customer:/app/logs
+      - ./backend/data/runtime:/app/data/runtime
     depends_on:
       redis:
         condition: service_healthy

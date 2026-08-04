@@ -12,8 +12,8 @@ OpenAI 兼容端点的适配层：把 `client.messages.create/stream` 这套 Ant
 "推理把预算吃光"的报错都依赖这两个字段）。项目没有用 tools= 走原生 function
 calling（工具编排在 tools/tool_manager.py 里自己做），因此工具调用不在翻译范围内。
 
-Anthropic 独有的 output_config（effort）/ cache_control / thinking 会被丢掉而不是
-硬映射，理由见 _Messages._params。
+Anthropic 的 output_config.effort 翻译成 reasoning_effort；cache_control / thinking
+没有对应物，丢掉。理由见 _Messages._params。
 """
 from __future__ import annotations
 
@@ -29,6 +29,14 @@ logger = logging.getLogger(__name__)
 # 那一个并不统一。首次被网关拒绝时翻转这个开关，本进程后续请求都用新字段名，
 # 不需要用户去 .env 里猜自己的网关是哪一边。
 _MAX_TOKENS_FIELD = "max_tokens"
+
+# Anthropic 的 effort → OpenAI 的 reasoning_effort。两边的档位名基本一致，
+# Anthropic 多一档 max，OpenAI 没有，落到 high。
+_REASONING_EFFORT = {"low": "low", "medium": "medium", "high": "high", "max": "high"}
+
+# 拒收过 reasoning_effort 的模型。非推理模型和一部分兼容网关不认这个参数，
+# 会直接 400；第一次被拒后对这个模型就不再传，和 max_tokens 换名一样只付一次代价。
+_NO_REASONING_EFFORT: set[str] = set()
 
 
 class _Usage:
@@ -150,40 +158,61 @@ class _Messages:
         messages: list[dict[str, Any]],
         max_tokens: int,
         system: Any = None,
+        output_config: dict[str, Any] | None = None,
         **_ignored: Any,
     ) -> dict[str, Any]:
         """
         翻译两边都有的那部分参数。
 
-        落进 `_ignored` 被丢掉的是 Anthropic 独有的旋钮：`output_config`（effort）、
-        `cache_control`、`thinking`。它们在 OpenAI 侧要么没有对应物、要么只有
-        推理模型才认（`reasoning_effort` 传给非推理模型直接 400），硬映射会把
-        "省点钱"换成"整条链路挂掉"。丢掉它们只影响成本和思考深度，不影响产出形状。
+        `output_config.effort` 翻译成 `reasoning_effort`。GPT-5 之后的模型都是推理
+        模型，不传就按模型默认（通常是 medium）去想：意图、改写、重排、判分这类
+        判别式调用会慢很多，max_completion_tokens 还会先被推理花掉——那正是
+        "正文为空"那类静默失败的来源（见 core/llm_utils.STRUCTURED_MAX_TOKENS）。
+        不认这个参数的模型第一次 400 之后就不再传（_create_raw），所以映射过去
+        不会把"省点钱"变成"整条链路挂掉"。
+
+        落进 `_ignored` 被丢掉的是 `cache_control`、`thinking`：OpenAI 侧没有对应物
+        （它的前缀缓存是自动的）。丢掉它们只影响成本，不影响产出形状。
 
         temperature 也不在这里了：anthropic SDK 1.x 已经把它从签名里删除，
         调用点一处都不再传，留着就是一段没人走的分支。见 core/llm_utils.py。
         """
-        return {
+        params: dict[str, Any] = {
             "model": model,
             "messages": _to_openai_messages(messages, system),
             _MAX_TOKENS_FIELD: max_tokens,
         }
+        effort = _REASONING_EFFORT.get(str((output_config or {}).get("effort") or "").lower())
+        if effort and model not in _NO_REASONING_EFFORT:
+            params["reasoning_effort"] = effort
+        return params
 
     async def _create_raw(self, params: dict[str, Any], _method: str = "create", **extra: Any) -> Any:
-        """发请求，并在网关只认另一个 token 上限字段名时自动换名重试一次。"""
+        """
+        发请求。网关只认另一个 token 上限字段名、或模型不认 reasoning_effort 时，
+        改掉那一项再试——两件事可能先后各撞一次，所以最多重试两回。
+        """
         global _MAX_TOKENS_FIELD
         call = getattr(self._client.chat.completions, _method)
-        try:
-            return await call(**params, **extra)
-        except BadRequestError as ex:
-            other = "max_completion_tokens" if _MAX_TOKENS_FIELD == "max_tokens" else "max_tokens"
-            if other not in str(ex) or _MAX_TOKENS_FIELD not in params:
+        params = dict(params)
+        for attempt in range(3):
+            try:
+                return await call(**params, **extra)
+            except BadRequestError as ex:
+                text = str(ex)
+                other = "max_completion_tokens" if _MAX_TOKENS_FIELD == "max_tokens" else "max_tokens"
+                if attempt < 2 and "reasoning_effort" in params and "reasoning" in text:
+                    logger.info(f"模型 {params['model']} 不接受 reasoning_effort，之后对它不再传")
+                    _NO_REASONING_EFFORT.add(params["model"])
+                    params.pop("reasoning_effort")
+                    continue
+                if attempt < 2 and other in text and _MAX_TOKENS_FIELD in params:
+                    logger.info(f"网关不接受 {_MAX_TOKENS_FIELD}，本进程改用 {other}")
+                    params[other] = params.pop(_MAX_TOKENS_FIELD)
+                    _MAX_TOKENS_FIELD = other
+                    continue
                 raise
-            logger.info(f"网关不接受 {_MAX_TOKENS_FIELD}，本进程改用 {other}")
-            params = dict(params)
-            params[other] = params.pop(_MAX_TOKENS_FIELD)
-            _MAX_TOKENS_FIELD = other
-            return await call(**params, **extra)
+        raise AssertionError("unreachable")
 
     async def create(self, **kwargs: Any) -> _Message:
         params = self._params(**kwargs)

@@ -41,6 +41,7 @@ from app.core.llm_utils import (
     ANSWER_MAX_TOKENS,
     DEFAULT_ANTHROPIC_MODEL,
     LLMClient,
+    answer_options,
     create_llm_client,
     extract_structured_text,
 )
@@ -268,6 +269,11 @@ class BaseAgent:
         self.replica = replica          # 同类型内的实例序号，对应 stats key 的后缀
         self.stats   = AgentStats()
 
+    def reconfigure_llm(self, client: LLMClient, model: str) -> None:
+        """换用另一份对话模型连接。正在跑的那次调用手里拿的是旧客户端，照样跑完。"""
+        self._client = client
+        self._model = model
+
     @property
     def key(self) -> str:
         """Monitor 用来回写路由惩罚的键，例如 technical_1。"""
@@ -450,6 +456,7 @@ class BaseAgent:
             max_tokens=ANSWER_MAX_TOKENS,
             system=self._system_blocks(skill_prompt),
             messages=self._build_messages(req),
+            **answer_options(),
         ) as stream:
             async for text in stream.text_stream:
                 yield text
@@ -473,6 +480,7 @@ class BaseAgent:
                 max_tokens=ANSWER_MAX_TOKENS,
                 system=self._system_blocks(skill_prompt),
                 messages=self._build_messages(req),
+                **answer_options(),
             )
         usage = getattr(resp, "usage", None)
         if usage is not None:
@@ -1066,6 +1074,21 @@ class AgentOrchestrator:
         }
         # 同分实例之间轮询的游标，避免流量永远压在 0 号实例上
         self._rr_cursor: dict[AgentType, int] = {t: 0 for t in self._pool}
+
+    def reconfigure_llm(self, client: LLMClient, model: str) -> None:
+        """
+        换用另一份对话模型连接（控制台保存时，见 core/model_runtime.py）。
+
+        按实例指定的模型（AI_HELPDESK_AGENT_REPLICA_MODELS）一起作废：那些是给旧连接
+        配的模型名，换了供应商就多半不存在了，全部实例改用新连接的模型。
+        """
+        self._model = model
+        self._llm_guard = getattr(client, "guard", None)
+        self._replica_models = []
+        self._intent_recognizer.reconfigure_llm(client, model)
+        for agents in self._pool.values():
+            for agent in agents:
+                agent.reconfigure_llm(client, model)
 
     def _model_for(self, replica: int) -> str:
         if replica < len(self._replica_models) and self._replica_models[replica]:

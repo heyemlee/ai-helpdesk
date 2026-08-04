@@ -110,19 +110,97 @@ async def test_system_becomes_first_message_and_params_map():
     assert extract_structured_text(resp) == "好的"
 
 
-async def test_anthropic_only_knobs_are_dropped_not_forwarded():
+async def test_cache_control_is_dropped_and_effort_becomes_reasoning_effort(monkeypatch):
     """
-    output_config（effort）/ cache_control 是 Anthropic 独有的，OpenAI 侧没有
-    对应物。硬映射成 reasoning_effort 会在非推理模型上直接 400——把"省点钱"
-    换成"整条链路挂掉"。丢掉它们只影响成本，不影响产出形状。
+    cache_control 是 Anthropic 独有的，OpenAI 侧没有对应物（前缀缓存是自动的），丢掉。
+    effort 翻译成 reasoning_effort：GPT-5 之后的推理模型不传就按默认档位想很久，
+    判别式的结构化调用会慢、还会把 max_completion_tokens 花在推理上。
     """
+    monkeypatch.setattr(openai_compat, "_NO_REASONING_EFFORT", set())
     client = _FakeClient(_FakeResponse(content="x"))
     await _messages(client).create(
         model="m", max_tokens=64, messages=[{"role": "user", "content": "hi"}],
         output_config={"effort": "low"}, cache_control={"type": "ephemeral"},
     )
     sent = client.chat.completions.calls[0]
-    assert not {"output_config", "cache_control", "effort", "reasoning_effort"} & sent.keys()
+    assert sent["reasoning_effort"] == "low"
+    assert not {"output_config", "cache_control", "effort"} & sent.keys()
+
+
+async def test_anthropic_max_effort_maps_to_the_highest_openai_level(monkeypatch):
+    monkeypatch.setattr(openai_compat, "_NO_REASONING_EFFORT", set())
+    client = _FakeClient(_FakeResponse(content="x"))
+    await _messages(client).create(
+        model="m", max_tokens=64, messages=[{"role": "user", "content": "hi"}],
+        output_config={"effort": "max"},
+    )
+    assert client.chat.completions.calls[0]["reasoning_effort"] == "high"
+
+
+def _rejecting(param: str, message: str):
+    class _Picky(_FakeCompletions):
+        async def create(self, **kwargs):
+            self.calls.append(kwargs)
+            if param in kwargs:
+                raise BadRequestError(
+                    message,
+                    response=httpx.Response(400, request=httpx.Request("POST", "https://gw/v1")),
+                    body=None,
+                )
+            return _FakeResponse(content="ok")
+    return _Picky()
+
+
+async def test_model_that_rejects_reasoning_effort_is_retried_without_it_once(monkeypatch):
+    """
+    非推理模型和部分兼容网关不认 reasoning_effort。第一次 400 之后去掉它重试，
+    并记住这个模型——之后对它不再多付一次失败请求，整条链路不会因此挂掉。
+    """
+    monkeypatch.setattr(openai_compat, "_NO_REASONING_EFFORT", set())
+    client = _FakeClient()
+    client.chat.completions = _rejecting(
+        "reasoning_effort",
+        "Unsupported parameter: 'reasoning_effort' is not supported with this model.",
+    )
+    messages = _messages(client)
+    kwargs = dict(model="old-model", max_tokens=64, messages=[{"role": "user", "content": "hi"}],
+                  output_config={"effort": "low"})
+
+    resp = await messages.create(**kwargs)
+    assert extract_structured_text(resp) == "ok"
+    assert "reasoning_effort" not in client.chat.completions.calls[1]
+
+    await messages.create(**kwargs)
+    assert len(client.chat.completions.calls) == 3          # 第二次直接不带，没有再失败一回
+    assert "reasoning_effort" not in client.chat.completions.calls[2]
+
+
+async def test_both_renames_can_happen_on_the_same_request(monkeypatch):
+    """新网关可能既不认 max_tokens、对这个模型也不认 reasoning_effort：两件事各改一次。"""
+    monkeypatch.setattr(openai_compat, "_NO_REASONING_EFFORT", set())
+    monkeypatch.setattr(openai_compat, "_MAX_TOKENS_FIELD", "max_tokens")
+
+    class _VeryPicky(_FakeCompletions):
+        async def create(self, **kwargs):
+            self.calls.append(kwargs)
+            request = httpx.Request("POST", "https://gw/v1")
+            if "reasoning_effort" in kwargs:
+                raise BadRequestError("Unsupported parameter: 'reasoning_effort'.",
+                                      response=httpx.Response(400, request=request), body=None)
+            if "max_tokens" in kwargs:
+                raise BadRequestError("Unsupported parameter: 'max_tokens'. Use 'max_completion_tokens' instead.",
+                                      response=httpx.Response(400, request=request), body=None)
+            return _FakeResponse(content="ok")
+
+    client = _FakeClient()
+    client.chat.completions = _VeryPicky()
+    resp = await _messages(client).create(
+        model="m", max_tokens=64, messages=[{"role": "user", "content": "hi"}],
+        output_config={"effort": "low"},
+    )
+    assert extract_structured_text(resp) == "ok"
+    final = client.chat.completions.calls[-1]
+    assert "max_completion_tokens" in final and not {"max_tokens", "reasoning_effort"} & final.keys()
 
 
 async def test_block_form_system_is_flattened():

@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.core.embedder import Embedder, EmbeddingUnavailable
 from app.core.llm_guard import log_model_failure, unavailable_reason
@@ -86,21 +86,25 @@ FINE_GRAINED_INTENTS = tuple(c for c in IntentCategory if c is not IntentCategor
 FINE_GRAINED_INTENT_COUNT = len(FINE_GRAINED_INTENTS)
 
 
+# 类的 docstring 和字段的 description 会写进 JSON Schema、随请求发给模型，
+# 所以那里只写模型需要知道的；给开发者看的来龙去脉放在注释里。
+#
+# LLM 那一路的返回形状，交给结构化输出在服务端强制。
+#
+# `intent` 写成 Literal 而不是直接用 IntentCategory：两者都能生成合法 schema，
+# 但 Enum 会被 Pydantic 拆成 `$defs` + `$ref`，Literal 直接内联成一个 `enum`
+# 数组。内联的那份更小、也不依赖服务端对 `$ref` 的支持。
+#
+# 这一层约束替掉了原来的 `except ValueError: intent = OTHER`——模型现在**不可能**
+# 返回意图表以外的值，那个兜底分支从"经常走"变成了纯粹的防御。
 class LLMIntentPayload(BaseModel):
-    """
-    LLM 那一路的返回形状，交给结构化输出在服务端强制。
+    """对一条客户消息的意图判断。"""
 
-    `intent` 写成 Literal 而不是直接用 IntentCategory：两者都能生成合法 schema，
-    但 Enum 会被 Pydantic 拆成 `$defs` + `$ref`，Literal 直接内联成一个 `enum`
-    数组。内联的那份更小、也不依赖服务端对 `$ref` 的支持。
-
-    这一层约束替掉了原来的 `except ValueError: intent = OTHER`——模型现在**不可能**
-    返回意图表以外的值，那个兜底分支从"经常走"变成了纯粹的防御。
-    """
-
-    intent: Literal[tuple(c.value for c in IntentCategory)]  # type: ignore[valid-type]
-    confidence: float
-    reasoning: str
+    intent: Literal[tuple(c.value for c in IntentCategory)] = Field(  # type: ignore[valid-type]
+        description="最贴切的意图；能对上细粒度业务意图时优先用细粒度的"
+    )
+    confidence: float = Field(description="对这个判断的把握，0 到 1 之间")
+    reasoning: str = Field(description="一句话说明判断依据")
 
 
 @dataclass
@@ -346,6 +350,16 @@ class IntentRecognizer:
         # LLM 这一路的失败次数。三路融合的容错设计让它挂掉也不报错，
         # 所以必须计数并暴露出去，否则"主力信号长期掉线"只有日志里看得见。
         self.llm_failures   = 0
+
+    def reconfigure_llm(self, client: Any, model: str) -> None:
+        """
+        换用另一份对话模型连接（控制台保存时，见 core/model_runtime.py）。
+
+        缓存一起清掉：里面是旧模型的判断，换了模型还拿它们回答，就等于没换。
+        """
+        self.client = client
+        self.model = model
+        self._cache.clear()
 
     @property
     def embedding_backend(self) -> str:
@@ -693,9 +707,10 @@ confidence 表示你对该判断的把握，0 到 1 之间。
         留着另一个空间的旧向量，比出来的分数没有意义。
         远端一次请求带一批模板（Embedder.embed_many），不是一条一个请求。
         """
-        if self._tpl_space != space:
+        key = self._space_key(space)
+        if self._tpl_space != key:
             self._tpl_embeddings.clear()
-            self._tpl_space = space
+            self._tpl_space = key
         missing = [cat for cat in _TEMPLATES if cat not in self._tpl_embeddings]
         if not missing:
             return space
@@ -705,7 +720,7 @@ confidence 表示你对该判断的把握，0 到 1 之间。
         if got != space:
             # 要的是远端，中途挂了：已有的远端模板作废，全部改用本地向量
             self._tpl_embeddings.clear()
-            self._tpl_space = got
+            self._tpl_space = self._space_key(got)
             missing = list(_TEMPLATES)
             vecs = [self._local_embedding(t) for cat in missing for t in _TEMPLATES[cat]]
         idx = 0
@@ -714,6 +729,13 @@ confidence 表示你对该判断的把握，0 到 1 之间。
             self._tpl_embeddings[cat] = vecs[idx: idx + n]
             idx += n
         return got
+
+    def _space_key(self, space: str) -> str:
+        """
+        模板向量是在哪个空间里算的。远端要带上模型——控制台换了 Embedding 模型之后，
+        同样是"remote"，旧模板也已经不能用了。
+        """
+        return f"remote:{self._embedder.signature}" if space == "remote" else "local"
 
     async def _embed_texts(
         self, texts: list[str], prefer: str = "remote"

@@ -27,6 +27,16 @@ export function useMonitor(base: string, enabled = true) {
   })
 }
 
+/** 模型连接的现状。向量切换在跑时每 1.5 秒看一次进度，平时不轮询。 */
+export function useModelStatus(base: string) {
+  return useQuery({
+    queryKey: ['model-status', base],
+    queryFn: () => api.modelStatus(base),
+    refetchInterval: (query) => (query.state.data?.switch.state === 'running' ? 1_500 : false),
+    retry: false,
+  })
+}
+
 export function useSearch(base: string) {
   return useMutation({
     mutationFn: ({ query, topK }: { query: string; topK?: number }) =>

@@ -35,6 +35,16 @@ STRUCTURED_MAX_TOKENS = int(os.getenv("AI_HELPDESK_STRUCTURED_MAX_TOKENS", "2048
 # 空正文被当成一句合法的空回答返回给用户，judge 打 0 分，看起来像模型不稳定。
 ANSWER_MAX_TOKENS = int(os.getenv("AI_HELPDESK_ANSWER_MAX_TOKENS", "4096"))
 
+# Agent 回复的思考深度。默认不传：Claude 这边回复本来就不开思考；OpenAI 的推理模型
+# 不传就按它自己的默认档位（通常是 medium），会先想一阵再出第一个字。要压首字延迟
+# 就设成 low。结构化调用的档位另见 STRUCTURED_EFFORT。
+ANSWER_EFFORT = os.getenv("AI_HELPDESK_ANSWER_EFFORT", "").strip()
+
+
+def answer_options() -> dict[str, Any]:
+    """Agent 回复调用要多带的参数：配了 ANSWER_EFFORT 才有。"""
+    return {"output_config": {"effort": ANSWER_EFFORT}} if ANSWER_EFFORT else {}
+
 
 def extract_structured_text(resp: Any, budget_env: str = "AI_HELPDESK_STRUCTURED_MAX_TOKENS") -> str:
     """
@@ -164,13 +174,18 @@ def llm_provider() -> str:
     return provider
 
 
-def create_llm_client(api_key: str, base_url: str | None = None) -> LLMClient:
+def create_llm_client(
+    api_key: str, base_url: str | None = None, provider: str | None = None
+) -> LLMClient:
     """
-    按 LLM_PROVIDER 造客户端。所有创建客户端的模块（编排器、意图识别、
-    工具管理、记忆、评测）都走这一个入口，换供应商不需要改调用点。
+    造客户端。所有创建客户端的模块（编排器、意图识别、工具管理、记忆、评测）都走
+    这一个入口，换供应商不需要改调用点。
+
+    provider 不给就按 LLM_PROVIDER；控制台保存的模型连接（core/model_runtime.py）
+    会明确给出，它和 .env 里写的可以不是同一家。
     """
     kwargs = anthropic_client_kwargs(api_key, base_url)
-    provider = llm_provider()
+    provider = provider or llm_provider()
     if provider == "openai":
         from app.core.openai_compat import AsyncOpenAICompat
 

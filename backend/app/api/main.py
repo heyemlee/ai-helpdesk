@@ -112,6 +112,8 @@ _conv_log     = None
 _pg_database  = None
 _reranker     = None
 _embedder     = None
+_model_runtime = None
+_model_watch_task = None
 _llm_info: dict[str, str] = {}
 
 # 后台任务引用集合。asyncio 只持有 Task 的弱引用，不留强引用的话
@@ -153,7 +155,6 @@ async def lifespan(app: FastAPI):
     from app.agents.agent_orchestrator import AgentOrchestrator
     from app.core.answer_policy import AnswerPolicy
     from app.core.auth import RateLimiter, UserTokenAuth
-    from app.core.embedder import Embedder
     from app.core.intent_recognizer import IntentRecognizer
     from app.core.reranker import Reranker
     from app.core.shared_state import SharedState
@@ -172,11 +173,22 @@ async def lifespan(app: FastAPI):
 
     global _user_auth, _rate_limiter, _ticket_store, _shared_state, _infra_redis
     global _conv_log, _pg_database, _reranker, _ticket_notifier, _embedder
+    global _model_runtime, _model_watch_task
 
-    cfg = resolve_llm_config()
+    from app.api import model_admin
+    from app.core import model_settings
+    from app.core.model_runtime import ModelRuntime, chat_config_from, embedder_from
+
+    # 模型连接：控制台保存的那一份压过 .env（core/model_settings.py）。没开这个功能、
+    # 或者文件里没有某一组时，那一组照旧用 .env。
+    settings_path = model_settings.settings_path()
+    saved_models = model_settings.load_store(settings_path)
+    for section, problem in (saved_models.get("problems") or {}).items():
+        logger.warning(f"控制台保存的模型连接（{section}）读不出来，按没有处理: {problem}")
+    cfg = chat_config_from(saved_models)
     logger.info(
         f"LLM 供应商: {cfg['provider']}  模型: {cfg['model']}  "
-        f"base_url: {cfg.get('base_url', '(官方)')}"
+        f"base_url: {cfg.get('base_url') or '(官方)'}  来源: {cfg['source']}"
     )
     # /health 里给工作台"模型信息"用。只放供应商和模型名——base_url 是内部
     # 网关地址，/health 在对外入口上是匿名可读的。
@@ -206,7 +218,8 @@ async def lifespan(app: FastAPI):
 
     # ── 存储装配：配置 POSTGRES_DSN 时全部收敛进 Postgres（pgvector 做向量），
     #    未配置时退化为 SQLite 单文件（demo / 单测零依赖）。Redis 不参与选择。
-    embedder = _embedder = Embedder.from_env()
+    embedder, embedding_meta = embedder_from(saved_models)
+    _embedder = embedder
     postgres_dsn = os.getenv("POSTGRES_DSN", "").strip()
     if postgres_dsn:
         _pg_database = Database(postgres_dsn)
@@ -417,6 +430,28 @@ async def lifespan(app: FastAPI):
         grounding_provider=_eval_grounding,
     )
 
+    # 模型连接的运行时：控制台改了之后由它换给各组件，客户实例靠它跟上员工实例
+    _model_runtime = ModelRuntime(
+        path=settings_path,
+        editable=model_settings.editable_here(),
+        chat=cfg,
+        embedder=embedder,
+        embedding_meta=embedding_meta,
+        store=vector_store,
+        llm_components=[_orchestrator, _tool_manager, _memory, _evaluator],
+        llm_info=_llm_info,
+    )
+    if cfg["source"] == "page":
+        # 上面各组件是按 .env 的协议造的客户端；页面保存的那份可能是另一家，统一换一遍
+        _model_runtime.apply_chat(cfg)
+    model_admin.install(_model_runtime)
+    if settings_path:
+        # 不放进 _background_tasks：那里的任务停机时要等它们跑完，这个循环不会自己结束
+        _model_watch_task = asyncio.create_task(_model_runtime.watch())
+        logger.info(
+            f"模型连接可在控制台配置（{'可修改' if _model_runtime.editable else '只读，跟随员工实例'}）"
+        )
+
     if _API_KEY:
         logger.info("鉴权已开启：写操作端点需要 X-API-Key%s", "，/chat 同样受保护" if _PROTECT_CHAT else "")
     else:
@@ -429,6 +464,12 @@ async def lifespan(app: FastAPI):
     yield
 
     await _monitor.stop()
+    if _model_watch_task is not None:
+        _model_watch_task.cancel()
+    switch = getattr(_model_runtime, "_task", None)
+    if switch is not None and not switch.done():
+        # 向量切换做到一半：取消它。换向量在一个事务里，没提交就是没换
+        switch.cancel()
     # 优雅停机：等后台任务（用户画像更新等）收尾，滚动发布不丢写入。
     # 设上限防止个别任务挂死阻塞退出。
     if _background_tasks:
@@ -813,6 +854,13 @@ class ChatResponse(BaseModel):
 
 
 # ── 路由 ──────────────────────────────────────────────────────────────────────
+# 模型连接的管理接口（api/model_admin.py）。带员工钥匙这一层和其它写接口一样；
+# 能不能改还要过它自己那道"本机控制台发来的"检查。
+from app.api import model_admin as _model_admin  # noqa: E402
+
+app.include_router(_model_admin.router, dependencies=[Depends(require_api_key)])
+
+
 @app.get("/health")
 async def health():
     if _orchestrator is None:
@@ -1897,6 +1945,11 @@ async def _import_or_503(kb, docs: list[dict[str, Any]], **source) -> list[dict[
     """
     from app.core.embedder import EmbeddingUnavailable
 
+    if _model_runtime is not None and _model_runtime.switching:
+        # 重算向量期间进来的分片不会有新模型的向量，那次切换就换不上
+        raise HTTPException(
+            409, "正在切换向量模型，完成之前不能导入文档。切换通常在几分钟内完成，之后再导入即可。"
+        )
     try:
         return await kb.import_documents(docs, **source)
     except EmbeddingUnavailable as ex:

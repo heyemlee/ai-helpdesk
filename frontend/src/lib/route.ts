@@ -8,7 +8,7 @@ import { useCallback, useEffect, useState } from 'react'
  * 有个位置。hash 不经过服务器，开发代理、nginx 和后端的静态挂载都不用配。
  */
 export type View = 'chat' | 'knowledge' | 'tickets' | 'admin'
-export type AdminTab = 'overview' | 'sops' | 'monitor' | 'eval' | 'inspector'
+export type AdminTab = 'overview' | 'models' | 'sops' | 'monitor' | 'eval' | 'inspector'
 export type KnowledgeMode = 'browse' | 'ask'
 
 export type Route =
@@ -17,7 +17,7 @@ export type Route =
   | { view: 'tickets'; ticketId?: string }
   | { view: 'admin'; tab: AdminTab }
 
-export const ADMIN_TABS: AdminTab[] = ['overview', 'sops', 'monitor', 'eval', 'inspector']
+export const ADMIN_TABS: AdminTab[] = ['overview', 'models', 'sops', 'monitor', 'eval', 'inspector']
 
 export function parseRoute(hash: string): Route {
   const [head, second, third] = hash.replace(/^#\/?/, '').split('/').map((p) => {

@@ -1,0 +1,481 @@
+"""
+控制台配置模型连接：存哪、谁能改、Key 去哪、保存后怎么生效、两个实例怎么跟上。
+
+全部离线：对话模型的测试连接打桩在探测函数上，向量模型是接在 HTTP 客户端上的假端点，
+存储是临时 SQLite。
+"""
+import json
+import os
+import stat
+
+import httpx
+import pytest
+from openai import AuthenticationError, NotFoundError, RateLimitError
+from starlette.requests import Request
+
+from app.api import model_admin
+from app.core import model_settings as ms
+from app.core.embedder import Embedder
+from app.core.model_runtime import ModelRuntime, chat_config_from, embedder_from
+from app.storage.vector_store import EMBEDDING_SIGNATURE_KEY, LocalStore, check_embedding_signature
+from app.tools.knowledge_base import KnowledgeBase
+
+KEY = "sk-proj-test-0123456789abcd"
+OTHER_KEY = "sk-proj-other-9876543210wxyz"
+
+
+# ── 夹具 ──────────────────────────────────────────────────────────────────────
+
+class _Component:
+    """记下 reconfigure_llm 收到了什么，代替编排器、工具管理、记忆、评测。"""
+
+    def __init__(self):
+        self.calls = []
+
+    def reconfigure_llm(self, client, model):
+        self.calls.append((client, model))
+
+
+class _FakeEmbeddingAPI:
+    def __init__(self, dim=8):
+        self.dim = dim
+        self.status = 200
+        self.requests = []
+
+    def vector(self, text):
+        return Embedder.local_embedding(f"remote::{text}", self.dim)
+
+    def handle(self, request):
+        texts = json.loads(request.content)["input"]
+        self.requests.append(texts)
+        if self.status != 200:
+            return httpx.Response(self.status, json={"error": {"message": f"Incorrect API key provided: {KEY}",
+                                                               "type": "invalid_request_error"}})
+        return httpx.Response(200, json={"data": [{"index": i, "embedding": self.vector(t)}
+                                                  for i, t in enumerate(texts)]})
+
+
+@pytest.fixture
+def api(monkeypatch):
+    """假的 /embeddings。只接管没指定 transport 的客户端——测试用的 ASGI 客户端照常走它自己的。"""
+    fake = _FakeEmbeddingAPI()
+    real = httpx.AsyncClient
+
+    def factory(*args, **kwargs):
+        kwargs.setdefault("transport", httpx.MockTransport(fake.handle))
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(httpx, "AsyncClient", factory)
+    return fake
+
+
+@pytest.fixture
+def settings_file(tmp_path, monkeypatch):
+    path = str(tmp_path / "runtime" / "model_settings.json")
+    monkeypatch.setenv("AI_HELPDESK_MODEL_SETTINGS_PATH", path)
+    monkeypatch.delenv("AI_HELPDESK_MODEL_SETTINGS_EDITABLE", raising=False)
+    for name in ("EMBEDDING_BASE_URL", "EMBEDDING_API_KEY", "EMBEDDING_MODEL", "EMBEDDING_DIM"):
+        monkeypatch.delenv(name, raising=False)
+    return path
+
+
+@pytest.fixture
+async def store(tmp_path):
+    local = LocalStore(db_path=str(tmp_path / "vec.db"))
+    kb = KnowledgeBase(store=local, embedder=Embedder())
+    await kb.add_documents_async([
+        {"title": "安装调整", "content": "柜门关不严绝大多数是铰链未调到位"},
+        {"title": "送货预约", "content": "送货需提前预约并具备卸货条件"},
+    ])
+    await local.episodic_add("e1", "u1", "c1", "客户问过补件进度", "", Embedder.local_embedding("x"))
+    await check_embedding_signature(local, Embedder())
+    yield local
+    await local.close()
+
+
+def _runtime(path, store, embedder=None, components=None, editable=True):
+    stored = ms.load_store(path)
+    embedder_obj, meta = embedder_from(stored)
+    return ModelRuntime(
+        path=path, editable=editable, chat=chat_config_from(stored),
+        embedder=embedder or embedder_obj, embedding_meta=meta, store=store,
+        llm_components=components if components is not None else [_Component()],
+        llm_info={},
+    )
+
+
+def _client(runtime, monkeypatch, *, host="127.0.0.1:8080", chat_ok=True):
+    """挂上管理接口的最小应用。对话模型的测试连接打桩：不发任何请求。"""
+    from fastapi import FastAPI
+
+    async def fake_probe(candidate):
+        outcome = "ok" if chat_ok else "auth_failed"
+        return {"ok": chat_ok, "warnings": candidate["warnings"],
+                "checks": [{"check": "chat", "outcome": outcome, "status": 200 if chat_ok else 401,
+                            "detail": "", "latency_ms": 1}]}
+
+    monkeypatch.setattr(model_admin, "probe_chat", fake_probe)
+    app = FastAPI()
+    app.include_router(model_admin.router)
+    model_admin.install(runtime)
+    return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url=f"http://{host}")
+
+
+# ── 存取与校验 ────────────────────────────────────────────────────────────────
+
+def test_feature_is_off_without_a_settings_path(monkeypatch):
+    monkeypatch.delenv("AI_HELPDESK_MODEL_SETTINGS_PATH", raising=False)
+    assert ms.settings_path() == ""
+    assert ms.load_store("") == {}
+
+
+def test_each_section_is_saved_on_its_own_and_the_file_is_private(settings_file):
+    ms.save_section(settings_file, "chat", {"provider": "openai", "base_url": "https://api.openai.com/v1",
+                                            "api_key": KEY, "model": "gpt-5.6-luna"}, saved_by="console@x")
+    ms.save_section(settings_file, "embedding", {"base_url": "https://api.openai.com/v1", "api_key": KEY,
+                                                 "model": "text-embedding-3-small", "dim": 1536,
+                                                 "query_prefix": ""})
+    assert stat.S_IMODE(os.stat(settings_file).st_mode) == 0o600     # 文件里有明文 Key
+
+    store = ms.load_store(settings_file)
+    assert store["chat"]["values"]["model"] == "gpt-5.6-luna"
+    assert store["chat"]["saved_by"] == "console@x"
+    assert store["embedding"]["values"]["dim"] == 1536
+
+    assert ms.clear_section(settings_file, "chat") is True
+    assert "chat" not in ms.load_store(settings_file) and "embedding" in ms.load_store(settings_file)
+    assert ms.clear_section(settings_file, "embedding") is True
+    assert not os.path.exists(settings_file)                          # 两组都没了，文件也删掉
+
+
+def test_a_broken_section_is_dropped_with_a_reason_and_the_other_kept(settings_file):
+    os.makedirs(os.path.dirname(settings_file), exist_ok=True)
+    with open(settings_file, "w", encoding="utf-8") as f:
+        json.dump({"chat": {"values": {"provider": "openai", "base_url": "https://api.openai.com/v1",
+                                       "model": "gpt-5.6-luna"}},   # 少了 Key
+                   "embedding": {"values": {"base_url": "https://api.openai.com/v1", "api_key": KEY,
+                                            "model": "text-embedding-3-small", "dim": 1536}}}, f)
+    store = ms.load_store(settings_file)
+    assert "chat" not in store and "embedding" in store
+    assert "Key" in store["problems"]["chat"]
+
+
+@pytest.mark.parametrize("url,code", [
+    ("http://169.254.169.254/v1", "forbidden_address"),          # 云主机元数据服务
+    ("http://2852039166/v1", "forbidden_address"),               # 躲检查的数字主机名
+    ("https://user:pw@api.openai.com/v1", "invalid_base_url"),
+    ("https://api.openai.com/v1?x=1", "invalid_base_url"),
+    ("ftp://api.openai.com", "invalid_base_url"),
+])
+def test_addresses_that_must_not_receive_a_key_are_refused(url, code):
+    with pytest.raises(ms.ModelSettingsError) as raised:
+        ms.validate_base_url(url)
+    assert raised.value.code == code
+
+
+def test_plaintext_http_to_a_public_host_is_allowed_but_flagged():
+    assert ms.validate_base_url("http://relay.example.com/v1/")[1] == ["plaintext_http"]
+    assert ms.validate_base_url("http://127.0.0.1:11434/v1") == ("http://127.0.0.1:11434/v1", [])
+
+
+# ── 谁能改 ────────────────────────────────────────────────────────────────────
+
+def _request(host="127.0.0.1:5174", origin=None):
+    headers = [(b"host", host.encode())]
+    if origin is not None:
+        headers.append((b"origin", origin.encode()))
+    return Request({"type": "http", "method": "PUT", "path": "/admin/model/chat", "headers": headers,
+                    "query_string": b"", "client": ("172.18.0.5", 50000)})
+
+
+@pytest.mark.parametrize("host,origin,problem", [
+    ("127.0.0.1:5174", None, ""),                                # 本机控制台，经前端 nginx 转发
+    ("localhost:8080", "http://localhost:5174", ""),
+    ("[::1]:8080", None, ""),
+    ("evil.example", None, "not_local"),                         # DNS 重绑定：Host 还是对方的域名
+    ("127.0.0.1:5174", "https://evil.example", "cross_origin"),  # 别的网页发来的跨站请求
+])
+def test_only_requests_from_the_local_console_may_edit(settings_file, host, origin, problem):
+    assert model_admin.edit_problem(_request(host, origin)) == problem
+
+
+def test_customer_facing_instance_is_read_only(settings_file, monkeypatch):
+    monkeypatch.setenv("AI_HELPDESK_MODEL_SETTINGS_EDITABLE", "false")
+    assert model_admin.edit_problem(_request()) == "read_only_instance"
+
+
+# ── 对话连接：保存即生效 ──────────────────────────────────────────────────────
+
+async def test_status_never_contains_the_key(settings_file, store, monkeypatch):
+    ms.save_section(settings_file, "chat", {"provider": "openai", "base_url": "https://api.openai.com/v1",
+                                            "api_key": KEY, "model": "gpt-5.6-luna"})
+    runtime = _runtime(settings_file, store)
+    async with _client(runtime, monkeypatch) as client:
+        body = (await client.get("/admin/model")).json()
+    assert body["chat"]["source"] == "page" and body["chat"]["key_hint"] == "abcd"
+    assert KEY not in json.dumps(body)
+
+
+async def test_saving_chat_applies_it_to_every_component_without_restart(settings_file, store, monkeypatch):
+    components = [_Component(), _Component()]
+    runtime = _runtime(settings_file, store, components=components)
+    async with _client(runtime, monkeypatch) as client:
+        resp = await client.put("/admin/model/chat", json={
+            "provider": "openai", "base_url": "https://api.openai.com/v1", "api_key": KEY,
+            "model": "gpt-5.6-luna"})
+    assert resp.status_code == 200, resp.text
+    assert KEY not in resp.text
+    assert all(c.calls and c.calls[-1][1] == "gpt-5.6-luna" for c in components)
+    assert runtime.chat["provider"] == "openai" and runtime.chat["source"] == "page"
+    assert ms.load_store(settings_file)["chat"]["values"]["api_key"] == KEY
+
+
+async def test_a_connection_that_fails_its_test_is_not_saved_unless_forced(settings_file, store, monkeypatch):
+    runtime = _runtime(settings_file, store)
+    body = {"provider": "openai", "base_url": "https://api.openai.com/v1", "api_key": KEY, "model": "gpt-x"}
+    async with _client(runtime, monkeypatch, chat_ok=False) as client:
+        refused = await client.put("/admin/model/chat", json=body)
+        assert refused.status_code == 422 and refused.json()["detail"]["code"] == "test_failed"
+        assert "chat" not in ms.load_store(settings_file)
+
+        forced = await client.put("/admin/model/chat", json={**body, "force": True})
+    assert forced.status_code == 200
+    assert "chat" in ms.load_store(settings_file)
+
+
+async def test_blank_key_reuses_the_current_one_only_on_the_same_host(settings_file, store, monkeypatch):
+    ms.save_section(settings_file, "chat", {"provider": "openai", "base_url": "https://api.openai.com/v1",
+                                            "api_key": KEY, "model": "gpt-5.6-luna"})
+    runtime = _runtime(settings_file, store)
+    async with _client(runtime, monkeypatch) as client:
+        same_host = await client.put("/admin/model/chat", json={
+            "provider": "openai", "base_url": "https://api.openai.com/v1/", "api_key": "",
+            "model": "gpt-6-luna"})
+        other_host = await client.put("/admin/model/chat", json={
+            "provider": "openai", "base_url": "https://gateway.example.com/v1", "api_key": "",
+            "model": "gpt-6-luna"})
+    assert same_host.status_code == 200
+    assert ms.load_store(settings_file)["chat"]["values"]["api_key"] == KEY
+    # 换了主机还沿用现在的 Key，等于把它交给一台新主机
+    assert other_host.status_code == 422
+    assert other_host.json()["detail"]["code"] == "api_key_required"
+
+
+async def test_restoring_chat_goes_back_to_env(settings_file, store, monkeypatch):
+    monkeypatch.setenv("LLM_PROVIDER", "anthropic")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-env-key-000000")
+    ms.save_section(settings_file, "chat", {"provider": "openai", "base_url": "https://api.openai.com/v1",
+                                            "api_key": KEY, "model": "gpt-5.6-luna"})
+    components = [_Component()]
+    runtime = _runtime(settings_file, store, components=components)
+    async with _client(runtime, monkeypatch) as client:
+        resp = await client.delete("/admin/model/chat")
+    assert resp.status_code == 200
+    assert resp.json()["chat"]["source"] == "env" and resp.json()["chat"]["provider"] == "anthropic"
+    assert "chat" not in ms.load_store(settings_file)
+    assert components[0].calls                                         # 换回 .env 那份也立刻生效
+
+
+async def test_edits_from_another_site_are_refused(settings_file, store, monkeypatch):
+    runtime = _runtime(settings_file, store)
+    async with _client(runtime, monkeypatch) as client:
+        resp = await client.put("/admin/model/chat", headers={"origin": "https://evil.example"}, json={
+            "provider": "openai", "base_url": "https://evil.example/v1", "api_key": KEY, "model": "x"})
+    assert resp.status_code == 403 and resp.json()["detail"]["code"] == "cross_origin"
+    assert "chat" not in ms.load_store(settings_file)
+
+
+# ── 测试连接 ──────────────────────────────────────────────────────────────────
+
+class _FakeChatClient:
+    def __init__(self, error=None):
+        self.error = error
+        self.messages = self
+
+    async def create(self, **kwargs):
+        if self.error:
+            raise self.error
+        return type("R", (), {"content": [type("B", (), {"type": "text", "text": "可以"})()],
+                              "stop_reason": "end_turn"})()
+
+    async def parse(self, **kwargs):
+        from app.tools.tool_manager import QueryRewritePayload
+        return type("R", (), {"parsed_output": QueryRewritePayload(queries=["门板缺件补发"]),
+                              "stop_reason": "end_turn"})()
+
+
+def _status_error(cls, status, message, body):
+    response = httpx.Response(status, request=httpx.Request("POST", "https://api.openai.com/v1/x"))
+    return cls(message, response=response, body=body)
+
+
+async def test_chat_probe_checks_plain_and_structured_calls(monkeypatch):
+    monkeypatch.setattr(model_admin, "_probe_client", lambda candidate: _FakeChatClient())
+    result = await model_admin.probe_chat({"provider": "openai", "base_url": "https://api.openai.com/v1",
+                                           "api_key": KEY, "model": "gpt-5.6-luna", "warnings": []})
+    assert result["ok"] is True
+    assert [c["check"] for c in result["checks"]] == ["chat", "structured"]
+
+
+@pytest.mark.parametrize("error,outcome", [
+    (_status_error(AuthenticationError, 401, f"Incorrect API key provided: {KEY}",
+                   {"error": {"message": f"Incorrect API key provided: {KEY}", "type": "invalid_request_error"}}),
+     "auth_failed"),
+    (_status_error(RateLimitError, 429, "You exceeded your current quota",
+                   {"error": {"message": "You exceeded your current quota", "type": "insufficient_quota"}}),
+     "quota_exhausted"),
+    (_status_error(NotFoundError, 404, "The model `gpt-x` does not exist",
+                   {"error": {"message": "The model `gpt-x` does not exist", "type": "invalid_request_error"}}),
+     "model_not_found"),
+])
+async def test_chat_probe_names_the_failure_and_never_echoes_the_key(monkeypatch, error, outcome):
+    monkeypatch.setattr(model_admin, "_probe_client", lambda candidate: _FakeChatClient(error))
+    result = await model_admin.probe_chat({"provider": "openai", "base_url": "https://api.openai.com/v1",
+                                           "api_key": KEY, "model": "gpt-x", "warnings": []})
+    assert result["ok"] is False
+    assert result["checks"][0]["outcome"] == outcome
+    assert result["checks"][1]["outcome"] == "skipped"     # 第一条就失败了，第二条不再发
+    assert KEY not in json.dumps(result)
+
+
+async def test_embedding_probe_reports_the_real_dimension(api):
+    result = await model_admin.probe_embedding({"base_url": "https://api.openai.com/v1", "api_key": KEY,
+                                                "model": "text-embedding-3-small", "dim": 0,
+                                                "query_prefix": "", "warnings": []})
+    assert result["ok"] is True and result["dim"] == api.dim
+
+    wrong = await model_admin.probe_embedding({"base_url": "https://api.openai.com/v1", "api_key": KEY,
+                                               "model": "text-embedding-3-small", "dim": 1536,
+                                               "query_prefix": "", "warnings": []})
+    assert wrong["ok"] is False and wrong["checks"][0]["outcome"] == "dim_mismatch"
+
+    api.status = 401
+    denied = await model_admin.probe_embedding({"base_url": "https://api.openai.com/v1", "api_key": KEY,
+                                                "model": "text-embedding-3-small", "dim": 0,
+                                                "query_prefix": "", "warnings": []})
+    assert denied["checks"][0]["outcome"] == "auth_failed"
+    assert KEY not in json.dumps(denied)
+
+
+# ── 向量连接：切换、恢复、另一个实例跟上 ──────────────────────────────────────
+
+async def test_saving_embedding_rebuilds_vectors_then_switches(settings_file, store, api, monkeypatch):
+    runtime = _runtime(settings_file, store)
+    shared = runtime.embedder
+    async with _client(runtime, monkeypatch) as client:
+        resp = await client.put("/admin/model/embedding", json={
+            "base_url": "https://api.openai.com/v1", "api_key": KEY, "model": "text-embedding-3-small"})
+        assert resp.status_code == 202, resp.text
+        assert resp.json()["switch"]["state"] == "running"
+        await runtime._task
+        status = (await client.get("/admin/model")).json()
+
+    assert status["switch"]["state"] == "succeeded" and status["switch"]["total"] == 3
+    assert status["embedding"]["source"] == "page" and status["embedding"]["dim"] == api.dim
+    assert (await store.vector_state())["kb_chunks"] == {"rows": 2, "dim": api.dim}
+    assert await store.meta_get(EMBEDDING_SIGNATURE_KEY) == f"text-embedding-3-small/{api.dim}"
+    assert shared.signature == f"text-embedding-3-small/{api.dim}"     # 原地换：各处拿的是同一个对象
+    assert ms.load_store(settings_file)["embedding"]["values"]["dim"] == api.dim
+
+
+async def test_a_failed_switch_changes_nothing(settings_file, store, api, monkeypatch):
+    runtime = _runtime(settings_file, store)
+    async with _client(runtime, monkeypatch) as client:
+        resp = await client.put("/admin/model/embedding", json={
+            "base_url": "https://api.openai.com/v1", "api_key": KEY, "model": "text-embedding-3-small"})
+        assert resp.status_code == 202
+        api.status = 503                                    # 测试通过之后、重算到一半服务挂了
+        await runtime._task
+
+    assert runtime.job.state == "failed"
+    assert (await store.vector_state())["kb_chunks"]["dim"] == 256
+    assert runtime.embedder.signature == "local_ngram/256"
+    assert "embedding" not in ms.load_store(settings_file)
+
+
+async def test_only_one_switch_runs_at_a_time(settings_file, store):
+    runtime = _runtime(settings_file, store)
+    runtime.job.state = "running"
+    assert runtime.switching
+    with pytest.raises(ms.ModelSettingsError):
+        runtime.start_embedding_switch(Embedder(), values=None)
+
+
+async def test_imports_are_paused_while_vectors_are_being_rebuilt(monkeypatch):
+    """重算到一半进来的分片不会有新模型的向量，那次切换就换不上。"""
+    from fastapi import HTTPException
+
+    from app.api import main
+
+    monkeypatch.setattr(main, "_model_runtime", type("R", (), {"switching": True})())
+    with pytest.raises(HTTPException) as raised:
+        await main._import_or_503(kb=None, docs=[{"title": "t", "content": "c"}])
+    assert raised.value.status_code == 409
+
+
+async def test_restoring_embedding_switches_back_to_env(settings_file, store, api, monkeypatch):
+    runtime = _runtime(settings_file, store)
+    async with _client(runtime, monkeypatch) as client:
+        await client.put("/admin/model/embedding", json={
+            "base_url": "https://api.openai.com/v1", "api_key": KEY, "model": "text-embedding-3-small"})
+        await runtime._task
+        resp = await client.delete("/admin/model/embedding")
+        assert resp.status_code == 202
+        await runtime._task
+
+    assert runtime.embedder.signature == "local_ngram/256"
+    assert (await store.vector_state())["kb_chunks"]["dim"] == 256
+    assert "embedding" not in ms.load_store(settings_file)
+
+
+async def test_the_other_instance_follows_chat_and_embedding(settings_file, store, api, monkeypatch):
+    """
+    员工实例保存，客户实例过几秒自己跟上。向量要等库里的向量已经换好才跟——
+    不然就是拿新模型的查询向量去比旧库。
+    """
+    staff = _runtime(settings_file, store)
+    customer_components = [_Component()]
+    customer = _runtime(settings_file, store, components=customer_components, editable=False)
+
+    async with _client(staff, monkeypatch) as client:
+        await client.put("/admin/model/chat", json={
+            "provider": "openai", "base_url": "https://api.openai.com/v1", "api_key": KEY,
+            "model": "gpt-5.6-luna"})
+    await customer.sync()
+    assert customer.chat["model"] == "gpt-5.6-luna" and customer_components[0].calls
+
+    # 配置文件先到、库还没换：客户实例不跟
+    ms.save_section(settings_file, "embedding", {"base_url": "https://api.openai.com/v1", "api_key": KEY,
+                                                 "model": "text-embedding-3-small", "dim": api.dim,
+                                                 "query_prefix": ""})
+    await customer.sync()
+    assert customer.embedder.signature == "local_ngram/256"
+
+    # 库换好之后跟上
+    target = Embedder(base_url="https://api.openai.com/v1", api_key=KEY, model="text-embedding-3-small",
+                      dim=api.dim)
+    rows = await store.kb_embedding_rows()
+    episodes = await store.episodic_embedding_rows()
+    await store.replace_embeddings(
+        api.dim,
+        {r["id"]: api.vector(KnowledgeBase.embedding_text(r["title"], r["content"])) for r in rows},
+        {r["id"]: api.vector(r["summary"]) for r in episodes},
+        target.signature,
+    )
+    await customer.sync()
+    assert customer.embedder.signature == target.signature
+
+
+async def test_search_keeps_working_while_an_instance_lags_behind_a_switch(settings_file, store, api):
+    """另一个实例刚把向量换成新维度，这个实例还没跟上：这几秒只走关键词，不报错。"""
+    lagging = KnowledgeBase(store=store, embedder=Embedder())
+    rows = await store.kb_embedding_rows()
+    episodes = await store.episodic_embedding_rows()
+    await store.replace_embeddings(
+        api.dim,
+        {r["id"]: api.vector(KnowledgeBase.embedding_text(r["title"], r["content"])) for r in rows},
+        {r["id"]: api.vector(r["summary"]) for r in episodes},
+        f"text-embedding-3-small/{api.dim}",
+    )
+    hits = await lagging.search_async("铰链怎么调", top_k=3)
+    assert hits and hits[0]["title"] == "安装调整"

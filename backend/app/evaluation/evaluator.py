@@ -24,7 +24,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.core.intent_recognizer import IntentRecognizer
 from app.core.llm_guard import log_model_failure
@@ -43,13 +43,16 @@ def _clamp01(value: float) -> float:
     return min(1.0, max(0.0, float(value)))
 
 
+# 类的 docstring 和字段的 description 会写进 JSON Schema、随请求发给模型，
+# 所以那里只写模型需要知道的；给开发者看的来龙去脉放在注释里。
+# LLM Judge 的四维打分，由结构化输出在服务端按 schema 约束。
 class JudgePayload(BaseModel):
-    """LLM Judge 的四维打分，由结构化输出在服务端按 schema 约束。"""
+    """对一条客服回答的四个维度的评分，每项都是 0 到 1 之间的小数。"""
 
-    relevance: float
-    accuracy: float
-    completeness: float
-    helpfulness: float
+    relevance: float = Field(description="是否直接针对用户的问题")
+    accuracy: float = Field(description="信息是否准确，且没有越过业务边界")
+    completeness: float = Field(description="该说的是否都说清楚了，包括下一步怎么走")
+    helpfulness: float = Field(description="用户看完能不能据此采取下一步行动")
 
 
 def _default_concurrency() -> int:
@@ -386,6 +389,11 @@ class EndToEndEvaluator:
         self._release = release
         self._baseline_path = pathlib.Path(baseline_path) if baseline_path else None
         self._baseline: EvalReport | None = self._load_baseline()
+
+    def reconfigure_llm(self, client: LLMClient, model: str) -> None:
+        """换用另一份对话模型连接：判分跟着换（编排器和意图识别由它们自己换）。"""
+        self._llm_guard = getattr(client, "guard", None)
+        self._judge = LLMJudge(client, model)
 
     async def run(
         self,

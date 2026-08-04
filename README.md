@@ -115,6 +115,8 @@ API docs: [localhost:8080/docs](http://localhost:8080/docs) · Grafana: [localho
 
 For OpenAI-compatible endpoints, set `LLM_PROVIDER=openai`, `OPENAI_API_KEY`, `OPENAI_MODEL`, and, if needed, `OPENAI_BASE_URL`. `EMBEDDING_*` and `RERANK_*` configure separate retrieval services. Vectors from different embedding models cannot be mixed: after changing the model, set `EMBEDDING_DIM` to its output size, stop the service, and rebuild the stored vectors in place with [reembed.py](backend/scripts/reembed.py) (it prints a plan first; `--apply` executes). The service refuses to start on vectors another model produced. See [backend/.env.example](backend/.env.example); restart after configuration changes.
 
+Both connections can also be switched from the console without a restart: **Admin & diagnostics → Model connections**. A connection is tested before it is saved (a plain reply and a structured-output call for the chat model, one embedding request for the embedding model). Saving an embedding model re-embeds every stored vector while the service keeps answering, then switches over. Saved values override `backend/.env` until you press *Restore server configuration*. Keys are write-only: the page shows only whether one is set and its last four characters, and a key is only ever sent to the host it was entered for. Editing works only from a console opened on the same machine and requires `AI_HELPDESK_MODEL_SETTINGS_PATH`; Docker Compose sets it and has the customer-facing instance follow what the staff console saves.
+
 ### Add your business knowledge
 
 Upload `.txt`, `.md`, or JSON document lists in the knowledge panel, or use the API:
