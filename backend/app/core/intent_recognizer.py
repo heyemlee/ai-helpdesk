@@ -21,15 +21,16 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
 import re
 import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Literal
 
-import httpx
 from pydantic import BaseModel
 
+from app.core.embedder import Embedder, EmbeddingUnavailable
 from app.core.llm_guard import log_model_failure, unavailable_reason
 from app.core.llm_utils import (
     DEFAULT_ANTHROPIC_MODEL,
@@ -311,6 +312,7 @@ class IntentRecognizer:
         embedding_api_key: str | None = None,
         embedding_model: str = "text-embedding-3-small",
         enable_fast_path: bool = True,
+        embedder: Embedder | None = None,
     ):
         self.client    = create_llm_client(api_key, base_url)
         self.model     = model
@@ -321,13 +323,21 @@ class IntentRecognizer:
         # 走远端真向量；没配置（例如走 Anthropic 协议，它不提供 embeddings 资源）
         # 时退化为本地字符 n-gram 哈希向量。
         # 换供应商是改环境变量的事，不需要改代码，三路融合链路始终成立。
-        self._embedding_base_url = (embedding_base_url or "").rstrip("/") or None
-        self._embedding_api_key  = embedding_api_key or None
-        self._embedding_model    = embedding_model
-        self._embedding_enabled  = True
-        self._remote_embedding_ok = bool(self._embedding_base_url and self._embedding_api_key)
+        #
+        # 服务里传进来的是和知识库共用的那个 Embedder；单独构造（测试、评测脚本）
+        # 时按 embedding_* 参数自己建一个。
+        self._embedding_enabled = True
+        dim_raw = os.getenv("EMBEDDING_DIM", "").strip()
+        self._embedder = embedder or Embedder(
+            base_url=embedding_base_url, api_key=embedding_api_key, model=embedding_model,
+            dim=int(dim_raw) if dim_raw else None,
+        )
 
+        # 模板向量，以及它们是哪条路算出来的（remote / local）。消息向量必须和模板
+        # 在同一个空间里比：远端失败时这一路整体改用本地向量现算，模板也跟着重算，
+        # 不拿本地的消息向量去和远端的模板向量算余弦。
         self._tpl_embeddings: dict[IntentCategory, list[list[float]]] = {}
+        self._tpl_space = ""
         self._cache: dict[str, IntentResult] = {}
         self.cache_hits   = 0
         self.cache_misses = 0
@@ -340,7 +350,11 @@ class IntentRecognizer:
     @property
     def embedding_backend(self) -> str:
         """当前 Embedding 这一路实际使用的后端，供 /health 和排障使用。"""
-        return "remote" if self._remote_embedding_ok else "local_ngram"
+        return "remote" if self._remote_embedding_usable else "local_ngram"
+
+    @property
+    def _remote_embedding_usable(self) -> bool:
+        return self._embedder.backend == "remote" and self._embedder.available
 
     # ── 公开接口 ──────────────────────────────────────────────────────────────
 
@@ -553,8 +567,10 @@ confidence 表示你对该判断的把握，0 到 1 之间。
     async def _embedding_recognize(self, message: str) -> dict[str, Any]:
         """策略 2：Embedding 向量相似度匹配。"""
         try:
-            await self._load_template_embeddings()
-            msg_vec = await self._embed_text(message)
+            space, (msg_vec,) = await self._embed_texts([message])
+            if await self._load_template_embeddings(space) != space:
+                # 模板加载到一半远端挂了，模板已经改用本地向量：消息也得换过去
+                msg_vec = self._local_embedding(message)
 
             best_cat, best_score = IntentCategory.OTHER, 0.0
             for cat, vecs in self._tpl_embeddings.items():
@@ -668,49 +684,57 @@ confidence 表示你对该判断的把握，0 到 1 之间。
 
     # ── 辅助 ──────────────────────────────────────────────────────────────────
 
-    async def _load_template_embeddings(self) -> None:
-        """懒加载所有模板的 Embedding（只在首次调用时执行）。"""
+    async def _load_template_embeddings(self, space: str) -> str:
+        """
+        保证模板向量和 space 在同一个空间里，缺的补算。返回模板最终所在的空间。
+
+        只有三种情况真的去算：首次调用、某个类别被纠正过（见 learn）、空间换了。
+        换空间有两种——远端挂了改用本地，和远端恢复后换回来——都要把模板整批重算：
+        留着另一个空间的旧向量，比出来的分数没有意义。
+        远端一次请求带一批模板（Embedder.embed_many），不是一条一个请求。
+        """
+        if self._tpl_space != space:
+            self._tpl_embeddings.clear()
+            self._tpl_space = space
         missing = [cat for cat in _TEMPLATES if cat not in self._tpl_embeddings]
         if not missing:
-            return
+            return space
 
-        all_texts = [t for cat in missing for t in _TEMPLATES[cat]]
-        vecs = [await self._embed_text(text) for text in all_texts]
+        texts = [t for cat in missing for t in _TEMPLATES[cat]]
+        got, vecs = await self._embed_texts(texts, prefer=space)
+        if got != space:
+            # 要的是远端，中途挂了：已有的远端模板作废，全部改用本地向量
+            self._tpl_embeddings.clear()
+            self._tpl_space = got
+            missing = list(_TEMPLATES)
+            vecs = [self._local_embedding(t) for cat in missing for t in _TEMPLATES[cat]]
         idx = 0
         for cat in missing:
             n = len(_TEMPLATES[cat])
             self._tpl_embeddings[cat] = vecs[idx: idx + n]
             idx += n
+        return got
 
-    async def _embed_text(self, text: str) -> list[float]:
+    async def _embed_texts(
+        self, texts: list[str], prefer: str = "remote"
+    ) -> tuple[str, list[list[float]]]:
         """
-        生成文本向量。
+        生成一批文本向量，返回 (向量所在的空间, 向量)。
 
         优先调用配置好的 OpenAI 兼容 embeddings 端点（EMBEDDING_BASE_URL /
-        EMBEDDING_API_KEY）；没配置或调用失败时退化为字符 n-gram 哈希向量。
-        无论走哪条路，Embedding 都会作为独立的一路参与投票——这是"三路融合"
-        在换供应商时依然成立的原因。
+        EMBEDDING_API_KEY）；没配置、还在失败后的冷却期、或这次调用失败时改用
+        字符 n-gram 哈希向量。无论走哪条路，Embedding 都会作为独立的一路参与投票
+        ——这是"三路融合"在换供应商时依然成立的原因。
+
+        返回值带着空间，是因为两种向量不能放在一起比：调用方要据此保证消息和
+        模板用的是同一种。冷却由 Embedder 管，过了冷却期这里会自动换回远端。
         """
-        if self._remote_embedding_ok:
+        if prefer == "remote" and self._remote_embedding_usable:
             try:
-                return await self._remote_embed(text)
-            except Exception as ex:
-                # 一次失败就永久降级，避免每条消息都白等一次网络超时
-                self._remote_embedding_ok = False
-                logger.warning(f"远端 Embedding 不可用，本轮起使用本地向量: {ex}")
-
-        return self._local_embedding(text)
-
-    async def _remote_embed(self, text: str) -> list[float]:
-        """调用 OpenAI 兼容的 /embeddings 接口。用 httpx 直连，不额外引入 SDK。"""
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(
-                f"{self._embedding_base_url}/embeddings",
-                headers={"Authorization": f"Bearer {self._embedding_api_key}"},
-                json={"model": self._embedding_model, "input": text},
-            )
-            resp.raise_for_status()
-            return list(resp.json()["data"][0]["embedding"])
+                return "remote", await self._embedder.embed_many(texts)
+            except EmbeddingUnavailable as ex:
+                logger.warning(f"远端 Embedding 不可用，意图识别这一路暂时改用本地向量: {ex}")
+        return "local", [self._local_embedding(text) for text in texts]
 
     @staticmethod
     def _local_embedding(text: str, dims: int = 256) -> list[float]:

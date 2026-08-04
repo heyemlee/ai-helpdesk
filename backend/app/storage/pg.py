@@ -15,12 +15,17 @@ tsvector 用 'simple' 配置——中文分词由 core/lexical.py 在写入前�
 
 维度契约：向量列的维度在建表时由当前 Embedder 决定。启动时校验现有
 表的维度与配置一致，不一致直接抛错——静默把 256 维向量塞进 1536 维列
-（或反过来）产生的是无意义的检索结果，宁可 fail fast 逼运维重建向量表。
+（或反过来）产生的是无意义的检索结果，宁可 fail fast 逼运维重建向量
+（scripts/reembed.py：原地重算两张表的向量，文档和记忆的内容不动）。
+维度相同、模型不同的情况这里看不出来，由 storage_meta 里记的向量来源把关，
+见 vector_store.check_embedding_signature。
 """
 from __future__ import annotations
 
 import logging
 import re
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
 
 import asyncpg
@@ -130,6 +135,12 @@ CREATE TABLE IF NOT EXISTS memory_profile (
     profile TEXT NOT NULL,
     ts      DOUBLE PRECISION NOT NULL
 );
+
+-- 存储层自己要记的事。目前只有一条：库里的向量是哪个 Embedding 模型算的。
+CREATE TABLE IF NOT EXISTS storage_meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 """
 
 # 数据量到十万级后再建 ivfflat/hnsw 索引；demo 阶段顺序扫描反而更快，
@@ -147,37 +158,56 @@ class Database:
         self._max = max_size
         self._pool: asyncpg.Pool | None = None
 
-    async def connect(self, embedding_dim: int) -> None:
+    async def connect(self, embedding_dim: int, verify_dim: bool = True) -> None:
+        """
+        建连接池并初始化 schema。
+
+        verify_dim=False 只给 scripts/reembed.py 用：它连上来就是为了把维度对不上
+        的向量重建掉，不能被这道校验挡在门外。
+        """
         self._pool = await asyncpg.create_pool(
             self._dsn, min_size=self._min, max_size=self._max, timeout=10.0
         )
-        await self._init_schema(embedding_dim)
+        await self._init_schema(embedding_dim, verify_dim)
         logger.info(f"Postgres 已连接，向量维度 {embedding_dim}")
 
-    async def _init_schema(self, dim: int) -> None:
+    async def _init_schema(self, dim: int, verify_dim: bool = True) -> None:
         assert self._pool is not None
         async with self._pool.acquire() as conn:
             await conn.execute(_SCHEMA.format(dim=dim))
-            await self._check_vector_dim(conn, "kb_chunks", dim)
-            await self._check_vector_dim(conn, "memory_episodic", dim)
+            if verify_dim:
+                await self._check_vector_dim(conn, "kb_chunks", dim)
+                await self._check_vector_dim(conn, "memory_episodic", dim)
 
     @staticmethod
-    async def _check_vector_dim(conn: asyncpg.Connection, table: str, expected: int) -> None:
-        """现有表的向量维度必须与当前 Embedder 一致，否则 fail fast。"""
+    async def vector_dim(conn: asyncpg.Connection, table: str) -> int | None:
+        """
+        表里 embedding 列现在的维度；没有这张表返回 None。
+
+        用 to_regclass 按当前 search_path 找表，不按表名在 pg_class 里搜：同一个库的
+        别的 schema 里也可以有一张同名的表（scripts/eval_retrieval.py 就在临时 schema
+        里建了一整套），按名字搜会拿到别人那张的维度。
+        """
         row = await conn.fetchrow(
             "SELECT format_type(a.atttypid, a.atttypmod) AS t FROM pg_attribute a"
-            " JOIN pg_class c ON a.attrelid = c.oid"
-            " WHERE c.relname = $1 AND a.attname = 'embedding'",
+            " WHERE a.attrelid = to_regclass($1) AND a.attname = 'embedding'"
+            " AND NOT a.attisdropped",
             table,
         )
-        if row is None:
-            return
-        match = re.search(r"vector\((\d+)\)", row["t"] or "")
-        if match and int(match.group(1)) != expected:
+        match = re.search(r"vector\((\d+)\)", (row["t"] if row else "") or "")
+        return int(match.group(1)) if match else None
+
+    @classmethod
+    async def _check_vector_dim(cls, conn: asyncpg.Connection, table: str, expected: int) -> None:
+        """现有表的向量维度必须与当前 Embedder 一致，否则 fail fast。"""
+        actual = await cls.vector_dim(conn, table)
+        if actual is not None and actual != expected:
             raise RuntimeError(
-                f"表 {table} 的向量维度是 {match.group(1)}，当前 Embedder 是 {expected} 维。"
-                f"换嵌入后端后必须重建向量表（历史向量已无意义）：\n"
-                f"  DROP TABLE {table}; 然后重启服务并重新导入。"
+                f"表 {table} 的向量维度是 {actual}，当前 Embedder 是 {expected} 维。"
+                f"换嵌入后端后库里的向量必须重建（历史向量已无意义）：\n"
+                f"  python scripts/reembed.py          # 先看要重建什么\n"
+                f"  python scripts/reembed.py --apply  # 重算向量并换上，文档内容不动\n"
+                f"不要 DROP TABLE：分片没了，文档记录会在下次启动时被当成空壳清掉。"
             )
 
     # ── 查询封装 ──────────────────────────────────────────────────────────────
@@ -204,6 +234,13 @@ class Database:
     async def fetchrow(self, sql: str, *args: Any) -> asyncpg.Record | None:
         async with self._require_pool().acquire() as conn:
             return await conn.fetchrow(sql, *args)
+
+    @asynccontextmanager
+    async def transaction(self) -> AsyncIterator[asyncpg.Connection]:
+        """一条连接上的一个事务。上面几个封装每次调用各取一条连接，凑不成事务。"""
+        async with self._require_pool().acquire() as conn:
+            async with conn.transaction():
+                yield conn
 
     async def close(self) -> None:
         if self._pool is not None:

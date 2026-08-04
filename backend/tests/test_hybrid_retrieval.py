@@ -9,7 +9,12 @@ import pytest
 from app.core.lexical import bm25_scores, index_text, query_tokens, tokenize
 from app.core.reranker import Reranker
 from app.storage.vector_store import LocalStore
-from app.tools.knowledge_base import KnowledgeBase, rrf_fuse
+from app.tools.knowledge_base import (
+    KnowledgeBase,
+    fuse_candidates,
+    lexical_first_fuse,
+    rrf_fuse,
+)
 from app.tools.tool_manager import RerankOutcome, RerankPayload, Tool, ToolManager
 
 # ── 分词 ──────────────────────────────────────────────────────────────────────
@@ -93,6 +98,53 @@ def test_rrf_truncates_to_top_k():
     assert len(rrf_fuse({"dense": rows}, top_k=3)) == 3
 
 
+# ── 本地向量：关键词在前，向量补位 ────────────────────────────────────────────
+
+def _row(key: str, **extra) -> dict:
+    return {"id": key, "title": key, "content": f"{key} 的正文", **extra}
+
+
+def test_lexical_first_keeps_keyword_order_and_appends_dense_only_hits():
+    """
+    本地 n-gram 向量和关键词一路量的是同一种东西（字符重合），不是独立的判断。
+    让它投票，两路都排在后面的 b 会压过关键词一路的第 1 名 a。
+    """
+    dense = [_row("b", score=0.2), _row("c", score=0.1)]
+    lexical = [_row("a", lex_score=3.0, score=0.05), _row("b", lex_score=1.0, score=0.2)]
+
+    fused = lexical_first_fuse(dense, lexical)
+
+    assert [r["id"] for r in fused] == ["a", "b", "c"]
+    assert [r["retrieval"] for r in fused] == ["lexical", "hybrid", "dense"]
+    # 同样的输入交给 RRF：b 两路都有，排到了 a 前面
+    assert [r["id"] for r in rrf_fuse({"dense": dense, "lexical": lexical}, top_k=3)][0] == "b"
+
+
+def test_lexical_first_falls_back_to_dense_when_nothing_matches_literally():
+    """问句和文档没有共同的字面时，关键词一路是空的：这时向量结果就是全部结果。"""
+    dense = [_row("b", score=0.2), _row("c", score=0.1)]
+    assert [r["id"] for r in lexical_first_fuse(dense, [])] == ["b", "c"]
+
+
+def test_fusion_follows_whether_the_vectors_carry_meaning():
+    dense = [_row("b", score=0.2), _row("c", score=0.1)]
+    lexical = [_row("a", score=0.05), _row("b", score=0.2)]
+
+    assert [r["id"] for r in fuse_candidates(dense, lexical, semantic=True)][0] == "b"    # RRF
+    assert [r["id"] for r in fuse_candidates(dense, lexical, semantic=False)][0] == "a"   # 关键词在前
+
+
+def test_fusion_drops_repeated_passages_whichever_way_it_ranks():
+    """同名文档的两个版本共用一段原文：检索结果里这段文字只出现一次。"""
+    twin = {"title": "保修政策", "content": "柜体质保 5 年"}
+    dense = [{"id": "v1", **twin, "score": 0.3}]
+    lexical = [{"id": "v2", **twin, "score": 0.3}, _row("other", score=0.1)]
+
+    for semantic in (True, False):
+        fused = fuse_candidates(dense, lexical, semantic=semantic)
+        assert sorted(r["title"] for r in fused) == ["other", "保修政策"]
+
+
 # ── 存储层稀疏检索 ────────────────────────────────────────────────────────────
 
 @pytest.fixture
@@ -145,10 +197,11 @@ async def test_hybrid_search_reports_which_leg_recalled_each_hit(kb):
 
 async def test_hybrid_rescues_a_hit_dense_alone_would_miss(kb):
     """
-    这是混合检索存在的理由，钉成回归用例：
+    这是补一路关键词检索的理由，钉成回归用例：
     "补件需要提供什么材料" 在纯稠密召回里排第 4（掉出 top-3，等于喂给 Agent 的
-    出处里根本没有它），关键词那一路排第 1，融合后回到第 2。
-    完整对照见 scripts/eval_retrieval.py：hit@3 从 6/8 提到 8/8。
+    出处里根本没有它），关键词那一路排第 1，所以最终结果里有它。
+    完整对照见 scripts/eval_retrieval.py --suite smoke：这 8 条里纯稠密进前 3 的
+    有 6 条，关键词 7 条。
     """
     await kb.ensure_seeded()
     gold = "缺件漏发与补件流程"
@@ -159,6 +212,33 @@ async def test_hybrid_rescues_a_hit_dense_alone_would_miss(kb):
     assert gold not in [r["title"] for r in dense[:3]]
 
     assert gold in [r["title"] for r in await kb.search_async(query, top_k=3)]
+
+
+async def test_local_vectors_do_not_push_the_keyword_winner_out_of_the_top_three(kb):
+    """
+    语料长到几十个片段之后，本地 n-gram 向量参与 RRF 投票会帮倒忙："报价单有效期是多久"
+    的目标文档在关键词一路排第 1，融合之后掉到第 5，交给 Agent 的前三条里没有它。
+    本地向量因此不参与排序。完整对照见 scripts/eval_retrieval.py（默认的 ca 套）
+    和 docs/evaluation/retrieval-ca-factory.md。
+    """
+    import json
+    import pathlib
+
+    corpus = (pathlib.Path(__file__).resolve().parents[1]
+              / "data" / "demo_docs" / "sample_ca_factory_knowledge.json")
+    await kb.ensure_seeded()
+    await kb.add_documents_async(json.loads(corpus.read_text(encoding="utf-8")))
+    gold = "报价有效期与价格调整"
+    query = "报价单有效期是多久"
+
+    embedding = await kb._embedder.embed(query)
+    dense = await kb._store.kb_search(embedding, 10)
+    lexical = await kb._store.kb_search_lexical(query_tokens(query), embedding, 10)
+    assert lexical[0]["title"] == gold
+    voted = rrf_fuse({"dense": dense, "lexical": lexical}, top_k=20)
+    assert gold not in [r["title"] for r in voted[:3]]      # 两路各一票的结果
+
+    assert (await kb.search_async(query, top_k=3))[0]["title"] == gold
 
 
 async def test_backfill_builds_lexical_index_for_pre_upgrade_chunks(kb):
@@ -276,6 +356,61 @@ async def test_llm_rerank_sends_no_sampling_parameters():
     sent = manager._client.messages.calls[0]
     assert not {"temperature", "top_p", "top_k"} & sent.keys()
     assert sent["output_format"] is RerankPayload
+
+
+def _rerank_prompt(manager: ToolManager) -> str:
+    return manager._client.messages.calls[0]["messages"][0]["content"]
+
+
+async def test_llm_rerank_shows_the_model_the_end_of_each_passage():
+    """
+    条款的条件和例外多半写在后半段。以前每条候选只给序列化后的前 200 个字符，
+    模型是在没读到"已开料的不退"的情况下排的序、判的"证据够不够"。
+    """
+    clause = "已开料的订单不能取消，客户须支付已完成部分的材料和人工费用"
+    passage = "签约后 3 个工作日内且订单尚未排产的，可以无条件取消。" * 12 + clause
+    assert 300 < len(passage) <= 500   # 一个正常分片的长度，结论在最后一句
+    manager = _manager_returning(RerankPayload(order=[0, 1], sufficient=True, missing=""))
+
+    await manager._llm_rerank(
+        "开料了还能退吗",
+        [{"title": "订单取消与定金退还", "content": passage, "score": 0.12, "doc_id": "doc_1"},
+         {"title": "交期说明", "content": "标准线的标准交期为 4 周"}],
+        top_k=1,
+    )
+
+    prompt = _rerank_prompt(manager)
+    assert clause in prompt
+    assert "[0] 订单取消与定金退还" in prompt and "[1] 交期说明" in prompt
+    # 给模型的是标题和正文，不是整条记录：分数和出处帮不上"相不相关"的判断
+    assert "doc_1" not in prompt and "score" not in prompt
+
+
+async def test_llm_rerank_caps_how_much_of_a_passage_it_sends():
+    """prompt 的长度随候选数线性增长，单条候选得有个上限。"""
+    from app.tools.tool_manager import PASSAGE_CHARS
+
+    manager = _manager_returning(RerankPayload(order=[0], sufficient=True, missing=""))
+    long_passage = "头" * PASSAGE_CHARS + "尾巴不该出现"
+
+    await manager._llm_rerank(
+        "q", [{"title": "长文", "content": long_passage}, {"title": "b", "content": "短"}], top_k=1
+    )
+
+    prompt = _rerank_prompt(manager)
+    assert "头" * PASSAGE_CHARS in prompt
+    assert "尾巴不该出现" not in prompt
+
+
+async def test_llm_rerank_still_handles_candidates_that_are_not_passages():
+    """重排是工具层的通用能力，候选不一定是 {title, content}。"""
+    manager = _manager_returning(RerankPayload(order=[1, 0], sufficient=True, missing=""))
+
+    outcome = await manager._llm_rerank("q", [{"sku": "W3036"}, "纯文本候选"], top_k=2)
+
+    prompt = _rerank_prompt(manager)
+    assert '[0] {"sku": "W3036"}' in prompt and "[1] " in prompt and "纯文本候选" in prompt
+    assert outcome.items == ["纯文本候选", {"sku": "W3036"}]
 
 
 # ── 证据充分性判定 ────────────────────────────────────────────────────────────

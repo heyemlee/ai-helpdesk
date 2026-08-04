@@ -56,7 +56,7 @@
 | 可观测性 | OpenTelemetry · Prometheus · Grafana · Tempo · Loki | 关联指标、日志与追踪；Compose 当前通过 Promtail 采集日志 |
 | 工程与交付 | pytest · Ruff · Vitest · Testing Library · GitHub Actions · Docker Compose · Nginx | 后端、前端、契约与镜像检查，11 服务部署编排 |
 
-锁定版本见 [requirements.txt](backend/requirements.txt)、[package-lock.json](frontend/package-lock.json) 与 [Compose](docker-compose.yml)。真实对话需要接入模型；Embedding 和 Rerank 独立配置，未配置远端 Embedding 时使用本地字符 n-gram 向量。
+锁定版本见 [requirements.txt](backend/requirements.txt)、[package-lock.json](frontend/package-lock.json) 与 [Compose](docker-compose.yml)。真实对话需要接入模型；Embedding 和 Rerank 独立配置；未配置远端 Embedding 时，检索以关键词结果为先，本地字符 n-gram 向量只用来补位。
 
 ## 关键设计
 
@@ -113,7 +113,7 @@ API 文档：[localhost:8080/docs](http://localhost:8080/docs) · Grafana：[loc
 
 ### 选择模型服务
 
-OpenAI 兼容端点使用 `LLM_PROVIDER=openai`、`OPENAI_API_KEY`、`OPENAI_MODEL`，按需填写 `OPENAI_BASE_URL`。`EMBEDDING_*` 和 `RERANK_*` 独立配置检索服务；更换 Embedding 模型时需匹配向量维度并重建已有向量。完整配置见 [backend/.env.example](backend/.env.example)，修改后重启。
+OpenAI 兼容端点使用 `LLM_PROVIDER=openai`、`OPENAI_API_KEY`、`OPENAI_MODEL`，按需填写 `OPENAI_BASE_URL`。`EMBEDDING_*` 和 `RERANK_*` 独立配置检索服务。不同 Embedding 模型的向量不能混用：更换模型后，把 `EMBEDDING_DIM` 改成它的输出维度，停掉服务，用 [reembed.py](backend/scripts/reembed.py) 原地重建已有向量（默认只打印计划，加 `--apply` 执行）。库里的向量不是当前模型生成的，服务会拒绝启动。完整配置见 [backend/.env.example](backend/.env.example)，修改后重启。
 
 ### 接入自己的业务知识
 
@@ -167,6 +167,17 @@ scripts/dev-all.sh
 | RRF 混合检索 | 0.812 | **8/8** |
 
 这组用例中，混合检索让所有目标文档进入前三；纯关键词的 MRR 更高。这是小规模的检索排名验证，不能代表回答准确率、远端 Embedding 效果或生产性能。条件、逐条排名与复现命令见[测量记录](docs/evaluation/retrieval-smoke.md)。
+
+**较大规模实测**：108 条有答案的问题（中文直问、口语换说法、型号与专名、英文问中文文档）加 14 条知识库里没有答案的问题，语料是一套仿真的工厂知识库（56 个片段），向量仍是本地 n-gram。
+
+| 检索策略 | hit@3（SQLite） | hit@3（PostgreSQL） |
+| --- | --- | --- |
+| 纯向量 | 24/108 | 24/108 |
+| 纯关键词 | **80/108** | **77/108** |
+| RRF 混合检索 | 62/108 | 64/108 |
+| 关键词优先（本地向量时服务实际使用） | **80/108** | **77/108** |
+
+语料超过每路的召回深度之后，本地 n-gram 向量会把 RRF 的结果拉到纯关键词之下：它量的也是字符重合，和关键词一路是同一种信号，算不上独立的一票。所以使用本地向量时，服务改为关键词结果在前、向量结果只补位；在上面那 8 条冒烟问题上，这就是纯关键词的排序（7/8）。配置了真正的 Embedding 模型后仍用 RRF。英文问中文文档大多召不回（7/22）；目前还没有测过远端 Embedding 模型。详见[测量记录](docs/evaluation/retrieval-ca-factory.md)。
 
 ```bash
 # 仓库根目录执行；先安装项目依赖，Ruff 需单独安装

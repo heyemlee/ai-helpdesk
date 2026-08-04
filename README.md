@@ -56,7 +56,7 @@ A request follows **identity → memory → intent → retrieval / optional busi
 | Observability | OpenTelemetry · Prometheus · Grafana · Tempo · Loki | Correlated metrics, logs, and traces; Compose currently collects logs with Promtail |
 | Engineering & delivery | pytest · Ruff · Vitest · Testing Library · GitHub Actions · Docker Compose · Nginx | Backend/frontend/contract/image checks and an 11-service deployment stack |
 
-Pinned dependencies live in [requirements.txt](backend/requirements.txt), [package-lock.json](frontend/package-lock.json), and [Compose](docker-compose.yml). Live chat requires a model provider. Embedding and reranking are configured independently; without a remote embedding endpoint, retrieval uses local character n-gram vectors.
+Pinned dependencies live in [requirements.txt](backend/requirements.txt), [package-lock.json](frontend/package-lock.json), and [Compose](docker-compose.yml). Live chat requires a model provider. Embedding and reranking are configured independently; without a remote embedding endpoint, retrieval ranks keyword matches first and uses local character n-gram vectors only to fill the remaining places.
 
 ## Design decisions
 
@@ -113,7 +113,7 @@ API docs: [localhost:8080/docs](http://localhost:8080/docs) · Grafana: [localho
 
 ### Choose a model provider
 
-For OpenAI-compatible endpoints, set `LLM_PROVIDER=openai`, `OPENAI_API_KEY`, `OPENAI_MODEL`, and, if needed, `OPENAI_BASE_URL`. `EMBEDDING_*` and `RERANK_*` configure separate retrieval services. Match the embedding dimension and rebuild stored vectors when changing embedding models. See [backend/.env.example](backend/.env.example); restart after configuration changes.
+For OpenAI-compatible endpoints, set `LLM_PROVIDER=openai`, `OPENAI_API_KEY`, `OPENAI_MODEL`, and, if needed, `OPENAI_BASE_URL`. `EMBEDDING_*` and `RERANK_*` configure separate retrieval services. Vectors from different embedding models cannot be mixed: after changing the model, set `EMBEDDING_DIM` to its output size, stop the service, and rebuild the stored vectors in place with [reembed.py](backend/scripts/reembed.py) (it prints a plan first; `--apply` executes). The service refuses to start on vectors another model produced. See [backend/.env.example](backend/.env.example); restart after configuration changes.
 
 ### Add your business knowledge
 
@@ -167,6 +167,17 @@ The script starts ai-sql-agent on `127.0.0.1:8000` (its own `AI_SQL_PORT`), wait
 | Hybrid, RRF | 0.812 | **8/8** |
 
 Hybrid retrieval places the expected document in the top three for every case here; lexical retrieval has the higher MRR. This small check measures retrieval ranks, not answer accuracy, remote embedding quality, or production performance. Conditions, per-query ranks, and the reproduction command are in the [measurement record](docs/evaluation/retrieval-smoke.md).
+
+**Larger measurement:** 108 answerable questions (Chinese, colloquial paraphrases, model codes, English over Chinese documents) plus 14 with no answer, over 56 chunks of a simulated factory knowledge base, with the same local n-gram vectors.
+
+| Retrieval strategy | hit@3, SQLite | hit@3, PostgreSQL |
+| --- | --- | --- |
+| Dense only | 24/108 | 24/108 |
+| Lexical only | **80/108** | **77/108** |
+| Hybrid, RRF | 62/108 | 64/108 |
+| Keyword-first, served with local vectors | **80/108** | **77/108** |
+
+Once the corpus outgrows the recall depth, local n-gram vectors pull RRF below lexical retrieval alone: they measure character overlap, as the lexical leg does, so they are not an independent vote. With local vectors the service therefore serves keyword matches first and uses dense results only to fill in; on the eight smoke queries above that is the lexical ranking (7/8). RRF applies when a real embedding model is configured. English questions over Chinese documents mostly miss (7/22), and no remote embedding model has been measured yet. See the [measurement record](docs/evaluation/retrieval-ca-factory.md).
 
 ```bash
 # From the repository root, after installing dependencies; Ruff is separate

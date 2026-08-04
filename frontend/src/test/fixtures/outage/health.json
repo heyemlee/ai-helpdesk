@@ -116,7 +116,8 @@
   "storage_backend": "unknown",
   "retrieval": {
     "mode": "hybrid_dense_lexical_rrf",
-    "rerank": "llm_listwise"
+    "rerank": "llm_listwise",
+    "embedding": null
   },
   "auth": {
     "user_token": false,

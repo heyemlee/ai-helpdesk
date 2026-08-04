@@ -19,9 +19,12 @@ This is a small, deterministic comparison of recall strategies. It does not run 
 After installing `backend/requirements.txt` into `backend/.venv`, run from the repository root:
 
 ```bash
-EMBEDDING_BASE_URL='' EMBEDDING_API_KEY='' EMBEDDING_DIM=256 \
-  backend/.venv/bin/python backend/scripts/eval_retrieval.py
+backend/.venv/bin/python backend/scripts/eval_retrieval.py --suite smoke
 ```
+
+The harness has since gained a larger default suite, so this set is selected with `--suite smoke`; it reproduces the ranks below, with the hybrid figures in its `rrf` column. Local vectors are now the harness default, which replaces the environment overrides this record was first taken with.
+
+The service no longer fuses with RRF when it runs on local vectors: it serves lexical results first, so on these eight queries it now returns the lexical ranking (hit@3 7/8, the harness's `served` column). The larger measurement that led to this is in [retrieval-ca-factory.md](retrieval-ca-factory.md).
 
 ## Observed ranks
 

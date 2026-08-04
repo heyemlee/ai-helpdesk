@@ -270,10 +270,17 @@ export function KnowledgePanel({ base, mode, docId, navigate }: {
                             <p className="hit-text">
                               <HighlightQuestion text={passageText(item.content ?? '', item.doc_title)} query={asked} />
                             </p>
-                            {item.score !== undefined && (
+                            {/* score 为 null 是 Embedding 不可用、只走了关键词一路：没有分数可显示，
+                                但"这条是哪一路召回的"照样要说 */}
+                            {item.score != null ? (
                               <p className="hit-source" title={t('kb.relevance.hint')}>
                                 {t('kb.relevance')} <span className="mono">{num(item.score, 3)}</span>
                                 {item.retrieval && <> · {item.retrieval}</>}
+                                {search.data.reranked && <> · {t('kb.reranked')}</>}
+                              </p>
+                            ) : item.retrieval && (
+                              <p className="hit-source">
+                                {item.retrieval}
                                 {search.data.reranked && <> · {t('kb.reranked')}</>}
                               </p>
                             )}

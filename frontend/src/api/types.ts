@@ -328,7 +328,8 @@ export interface EvalReport {
 export interface SearchResultItem {
   title?: string
   content?: string
-  score?: number
+  /** 余弦相似度。null：Embedding 服务不可用，这次只走了关键词那一路，没有向量分 */
+  score?: number | null
   fallback?: boolean
   /** 第几片（从 0 起） */
   chunk?: number

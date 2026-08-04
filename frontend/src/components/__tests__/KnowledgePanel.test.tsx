@@ -301,6 +301,26 @@ describe('按问题检索', () => {
     expect(text.querySelector('mark')).toHaveTextContent('installation')
   })
 
+  it('Embedding 不可用时片段没有相关度，照样显示并说明是哪一路召回的', async () => {
+    mocks.documents.mockResolvedValue(LIBRARY)
+    mocks.search.mockResolvedValue({
+      query: 'q', reranked: false, corrected: false, evidence_ok: null,
+      results: [{
+        title: 'fulfillment', doc_title: 'Order Status and Delivery', doc_id: 'legacy_9', chunk_id: 'c1',
+        chunk: 0, score: null, retrieval: 'lexical',
+        content: 'LTL freight and installation are separately scheduled.',
+      }],
+    })
+    show({ mode: 'ask' })
+    await userEvent.type(screen.getByRole('textbox', { name: 'Ask the knowledge base' }), 'Is installation included?')
+    await userEvent.click(screen.getByRole('button', { name: 'Search' }))
+
+    expect(await screen.findByRole('link', { name: 'Order Status and Delivery' })).toBeInTheDocument()
+    const source = [...document.querySelectorAll('.hit-source')].map((el) => el.textContent)
+    expect(source).toContain('lexical')
+    expect(screen.queryByText('Relevance')).not.toBeInTheDocument()
+  })
+
   it('没检索过时给示例问法，不显示成"没有结果"', async () => {
     mocks.documents.mockResolvedValue(LIBRARY)
     show({ mode: 'ask' })

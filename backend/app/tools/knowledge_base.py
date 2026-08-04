@@ -18,6 +18,10 @@ RAG 知识库（pgvector / SQLite 双后端）的混合检索。
 重新标定权重，标完还会随文档增长失效。RRF 只用**名次**，不碰原始分数，
 因此无需标定——这是它成为工业界默认融合方式的原因。
 
+RRF 只在稠密一路用的是真正的 Embedding 模型时才用。没配远端 Embedding 时，
+稠密一路是本地字符 n-gram 向量，它不是一个独立的判断，融合改成"关键词在前、
+向量补位"——原因和实测见 lexical_first_fuse。
+
 文档与分片。检索的单位是分片，人读的单位是文档：导入时把标题、原文、
 来源和时间记进文档表，分片用 doc_id 指回去，检索结果因此能说出"出自哪篇"。
 
@@ -47,6 +51,7 @@ import re
 import time
 from typing import Any
 
+from app.core.embedder import EmbeddingUnavailable
 from app.core.lexical import index_text, query_tokens
 from app.core.telemetry import span
 
@@ -196,6 +201,11 @@ def should_use_knowledge(message: str, intent=None) -> bool:
     return len(msg) >= 4 or any(kw in msg for kw in business_keywords)
 
 
+def _row_key(row: dict[str, Any]) -> str:
+    """两路结果按它归并：片段 id，没有就退回标题 + 序号。"""
+    return row.get("id") or f"{row.get('title', '')}:{row.get('chunk_index', 0)}"
+
+
 def rrf_fuse(
     rankings: dict[str, list[dict[str, Any]]],
     top_k: int,
@@ -213,7 +223,7 @@ def rrf_fuse(
     fused: dict[str, dict[str, Any]] = {}
     for source, rows in rankings.items():
         for rank, row in enumerate(rows, start=1):
-            key = row.get("id") or f"{row.get('title', '')}:{row.get('chunk_index', 0)}"
+            key = _row_key(row)
             entry = fused.get(key)
             if entry is None:
                 entry = {**row, "rrf_score": 0.0, "sources": []}
@@ -231,6 +241,70 @@ def rrf_fuse(
 
     ordered = sorted(fused.values(), key=lambda e: e["rrf_score"], reverse=True)
     return ordered[:top_k]
+
+
+def lexical_first_fuse(
+    dense: list[dict[str, Any]], lexical: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """
+    关键词一路的结果按原顺序排在前面，只被稠密一路召回的排在后面补位。
+
+    给**本地 n-gram 向量**用的。RRF 的前提是两路各自独立：两份名单里都出现的片段，
+    会排到只在一份名单里拿第一的前面，因为"两个互不相干的判断都认可"比
+    "一个判断极度认可"更可信。本地 n-gram 向量不满足这个前提——它量的也是字符
+    重合，和关键词一路是同一种信号，只是噪声大得多。拿它去投票，得票最多的是
+    和问题只沾一点边、因而在两路里都排得上号的片段，关键词一路的第 1 名反而
+    被挤出前三。
+
+    56 个片段、108 条用例上的实测（docs/evaluation/retrieval-ca-factory.md），
+    目标文档进前 3 的条数：只用关键词 80，RRF 融合 62。所以这种向量不参与排序，
+    只在关键词一路什么都没召回时（问句和文档没有共同的字面）兜个底。
+
+    返回的每条结果带 retrieval，取值和 rrf_fuse 一致。
+    """
+    dense_by_key = {_row_key(row): row for row in dense}
+    lexical_keys = {_row_key(row) for row in lexical}
+
+    fused: list[dict[str, Any]] = []
+    for row in lexical:
+        twin = dense_by_key.get(_row_key(row))
+        entry = {**row, "retrieval": "hybrid" if twin else "lexical"}
+        if not entry.get("score") and twin and twin.get("score"):
+            entry["score"] = twin["score"]
+        fused.append(entry)
+    fused.extend(
+        {**row, "retrieval": "dense"} for row in dense if _row_key(row) not in lexical_keys
+    )
+    return fused
+
+
+def fuse_candidates(
+    dense: list[dict[str, Any]], lexical: list[dict[str, Any]], semantic: bool = True
+) -> list[dict[str, Any]]:
+    """
+    两路召回的候选 → 一份去重后的排序。
+
+    semantic 说的是稠密一路的向量有没有语义（Embedder.semantic）：有就用 RRF，
+    没有就用 lexical_first_fuse。KnowledgeBase.search_async 和
+    scripts/eval_retrieval.py 都走这里，评测量的就是线上这条路。
+
+    同一段文字只留排名最靠前的那一条。同名文档的不同版本会各自带着相同的段落，
+    不去掉的话前 K 条里会有几条一模一样的内容。先融合全部候选再去重，调用方
+    最后才截断：反过来做，被去掉的名额就补不回来了。
+    """
+    if semantic:
+        fused = rrf_fuse({"dense": dense, "lexical": lexical}, top_k=len(dense) + len(lexical))
+    else:
+        fused = lexical_first_fuse(dense, lexical)
+
+    unique: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for row in fused:
+        key = (row["title"], row["content"])
+        if key not in seen:
+            seen.add(key)
+            unique.append(row)
+    return unique
 
 
 class KnowledgeBase:
@@ -328,6 +402,13 @@ class KnowledgeBase:
             # 用随机 ID 的话，"先查有没有、再写"之间的那道缝会让同一篇进去两次。
             doc_id = f"doc_{digest[:20]}"
             now = time.time()
+            # 向量先算完再落库：这是导入里唯一慢的一步，放在登记文档之前，
+            # 文档记录和它的分片之间就只隔着两次写入。整篇的分片一批送去算；
+            # 远端 Embedding 这时不可用会抛 EmbeddingUnavailable，这一篇什么都不写
+            # ——没有向量的分片进了库，稠密那一路永远召不回它。
+            embeddings = await self._embedder.embed_many(
+                [self.embedding_text(title, chunk) for chunk in chunks]
+            )
             rows = [
                 {
                     "id": hashlib.md5(f"{doc_id}\n{i}\n{chunk}".encode()).hexdigest(),
@@ -338,9 +419,7 @@ class KnowledgeBase:
                     "total_chunks": len(chunks),
                     "ingested_at": now,
                     "tokens": index_text(title, chunk),
-                    # 向量先算完再落库：这是导入里唯一慢的一步，放在登记文档之前，
-                    # 文档记录和它的分片之间就只隔着两次写入。
-                    "embedding": await self._embedder.embed(f"{title}\n{chunk}"),
+                    "embedding": embeddings[i],
                 }
                 for i, chunk in enumerate(chunks)
             ]
@@ -575,19 +654,24 @@ class KnowledgeBase:
 
     async def search_async(self, query: str, top_k: int = 5) -> list[dict[str, Any]]:
         """
-        混合检索：稠密向量 + 稀疏关键词并行召回，RRF 融合后取 Top-K。
+        混合检索：稠密向量 + 稀疏关键词并行召回，融合后取 Top-K。
+
+        怎么融合看稠密一路用的是什么向量（见 fuse_candidates）：真正的 Embedding
+        模型用 RRF；本地 n-gram 向量时关键词结果在前、向量结果只补位。
 
         返回 [{title, content, score, chunk, retrieval, doc_id, chunk_id}]：
           - score     余弦相似度（两路口径一致，稀疏召回的片段也带真实向量分）；
+                      拿不到查询向量时是 None，见下；
           - retrieval 该片段由哪一路召回（dense / lexical / hybrid），
                       排障时能直接看出"这条是关键词捞回来的"；
           - doc_id / chunk_id  出处：哪篇文档的哪一片。回答的依据靠它追回原文。
-                      排在最后，是因为 LLM 重排只看每条候选序列化后的前 200 字，
-                      新字段插在前面会把正文挤出去。
 
         召回深度取 top_k 的 3 倍（下限 10）：RRF 融合的收益来自两路名次的
         交叉，如果每路只召回 top_k 条，交集之外的候选根本没机会进入融合，
         融合就退化成了"两个短列表拼接"。
+
+        远端 Embedding 不可用时只走关键词那一路：结果的 retrieval 全是 lexical、
+        score 是 None。少一路召回，但关键词这一路不依赖向量，没有理由跟着一起停。
         """
         if not (query or "").strip():
             return []
@@ -600,35 +684,30 @@ class KnowledgeBase:
             top_k=top_k,
             lexical_terms=len(tokens),
         ):
-            embedding = await self._embedder.embed(query)
-            dense, lexical = await asyncio.gather(
-                self._store.kb_search(embedding, recall_k),
-                self._store.kb_search_lexical(tokens, embedding, recall_k),
-            )
-            fused = rrf_fuse(
-                {"dense": dense, "lexical": lexical}, top_k=len(dense) + len(lexical)
-            )
-
-        # 同一段文字只留排名最靠前的那一条。同名文档的不同版本会各自带着相同的
-        # 段落，不去掉的话 top_k 里会有几条一模一样的内容。先融合全部候选再去重、
-        # 再截断：反过来做，被去掉的名额就补不回来了。
-        unique: list[dict[str, Any]] = []
-        seen: set[tuple[str, str]] = set()
-        for row in fused:
-            key = (row["title"], row["content"])
-            if key in seen:
-                continue
-            seen.add(key)
-            unique.append(row)
-            if len(unique) == top_k:
-                break
-        fused = unique
+            try:
+                # 查询和文档可以不是同一种编法（Embedder.embed_query）；
+                # 没有这个方法的 Embedder 替身就按文档的编法来
+                embed_query = getattr(self._embedder, "embed_query", self._embedder.embed)
+                embedding = await embed_query(query)
+            except EmbeddingUnavailable:
+                embedding = None
+            if embedding is None:
+                dense = []
+                lexical = await self._store.kb_search_lexical(tokens, None, recall_k)
+            else:
+                dense, lexical = await asyncio.gather(
+                    self._store.kb_search(embedding, recall_k),
+                    self._store.kb_search_lexical(tokens, embedding, recall_k),
+                )
+            # 没有 semantic 属性的 Embedder（测试里的替身）按"有语义"处理
+            semantic = getattr(self._embedder, "semantic", True)
+            fused = fuse_candidates(dense, lexical, semantic)[:top_k]
 
         return [
             {
                 "title": r["title"],
                 "content": r["content"],
-                "score": round(float(r.get("score", 0.0)), 4),
+                "score": round(float(r["score"]), 4) if r.get("score") is not None else None,
                 "chunk": r.get("chunk_index", 0),
                 "retrieval": r["retrieval"],
                 "doc_id": r.get("doc_id", ""),
@@ -642,9 +721,18 @@ class KnowledgeBase:
         return await self._store.kb_count()
 
     async def ensure_seeded(self) -> None:
-        """知识库为空时导入默认客服文档（原 Chroma 版在构造函数里做，现改为显式调用）。"""
+        """
+        知识库为空时导入默认客服文档（原 Chroma 版在构造函数里做，现改为显式调用）。
+
+        远端 Embedding 这时恰好不可用就先空着：服务照常起来，下次启动再导。
+        为了几篇示例文档让整个服务起不来不值得。
+        """
         if await self.doc_count_async() == 0:
-            count = await self.add_documents_async(_DEFAULT_DOCS, source_type=SOURCE_SEED)
+            try:
+                count = await self.add_documents_async(_DEFAULT_DOCS, source_type=SOURCE_SEED)
+            except EmbeddingUnavailable as ex:
+                logger.warning(f"知识库是空的，但 Embedding 不可用，默认文档没有导入: {ex}")
+                return
             logger.info(f"已导入默认知识库: {count} 个片段")
 
     async def backfill_lexical(self, batch: int = 500) -> int:
@@ -679,6 +767,16 @@ class KnowledgeBase:
         return await self.search_async(query, top_k=top_k)
 
     # ── 内部方法 ──────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def embedding_text(title: str, chunk: str) -> str:
+        """
+        一个分片拿去算向量的文本：标题 + 正文。
+
+        导入和重建向量（scripts/reembed.py）必须用同一个：重建时换一种拼法，
+        算出来的就不是"这批分片在新模型下的向量"，而是另一批文本的向量。
+        """
+        return f"{title}\n{chunk}"
 
     @staticmethod
     def _chunk_text(text: str, chunk_size: int = 500) -> list[str]:

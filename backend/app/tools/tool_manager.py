@@ -57,6 +57,14 @@ logger = logging.getLogger(__name__)
 # 通常只是同领域的泛泛内容而不是能回答该问题的具体条款。
 EVIDENCE_MIN_SCORE = float(os.getenv("RAG_EVIDENCE_MIN_SCORE", "0.5"))
 
+# 一条知识片段给模型看多少字，LLM 重排和最后交给 Agent 的上下文（api/main.py 的
+# _build_knowledge_context）用同一个数。重排那次调用顺带判"这些内容够不够回答"，
+# 它读到的就得是之后真正拿去回答的那一段——读得比 Agent 少，条款的后半句
+# （"但已开料的不退"）它看不见，会把够用的证据判成不足、白补一轮检索；
+# 读得比 Agent 多，又会拿 Agent 看不到的内容判"充分"。
+# 600 盖得住一整个分片（切片上限 500 字，见 knowledge_base.CHUNK_SIZE）。
+PASSAGE_CHARS = 600
+
 
 # ── 数据结构 ──────────────────────────────────────────────────────────────────
 
@@ -647,14 +655,17 @@ class ToolManager:
         return [items[idx] for idx, _ in ranked]
 
     @staticmethod
-    def _as_document(item: Any) -> str:
-        """把候选压成 cross-encoder 的输入文本。dict 优先取标题+正文，其余原样序列化。"""
+    def _as_document(item: Any, limit: int = 2000) -> str:
+        """
+        把候选压成给重排模型看的文本。dict 取标题 + 正文（正文最多 limit 字），
+        其余原样序列化。
+        """
         if isinstance(item, dict):
             title = str(item.get("title", "")).strip()
             content = str(item.get("content", "")).strip()
             if title or content:
-                return f"{title}\n{content}"[:2000]
-        return json.dumps(item, ensure_ascii=False)[:2000]
+                return f"{title}\n{content[:limit]}"
+        return json.dumps(item, ensure_ascii=False)[:limit]
 
     async def _llm_rerank(self, query: str, items: list[Any], top_k: int) -> RerankOutcome:
         """
@@ -662,12 +673,19 @@ class ToolManager:
 
         合并进同一个 JSON 而不是单开一次调用：判定所需的信息（查询 + 全部
         候选正文）和重排完全相同，模型已经读过一遍了，再问一次纯属重复付费。
+
+        每条候选给的是标题 + 正文（PASSAGE_CHARS 字以内），不是整条记录的 JSON。
+        以前是 json.dumps(item)[:200]：标题和键名先占掉三四十个字符，正文只剩
+        一百六十来字，而一个分片可以有 500 字——条款里的条件和例外多半写在后半段，
+        模型是在没读到它们的情况下排的序、判的"够不够"。prompt 因此变长，
+        长度随候选数线性增长，上限是 候选数 × PASSAGE_CHARS。
         """
-        items_text = "\n".join(f"{i}. {json.dumps(item, ensure_ascii=False)[:200]}"
-                               for i, item in enumerate(items))
+        items_text = "\n\n".join(
+            f"[{i}] {self._as_document(item, PASSAGE_CHARS)}" for i, item in enumerate(items)
+        )
         prompt = f"""根据用户查询对以下检索结果按相关性排序，并判断这些内容是否足以回答该问题。
 用户查询: "{query}"
-检索结果:
+检索结果（每条以 [索引] 开头，第一行是标题，之后是正文）:
 {items_text}
 
 order 是按相关性降序排列的候选索引。

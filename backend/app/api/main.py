@@ -111,6 +111,7 @@ _infra_redis  = None
 _conv_log     = None
 _pg_database  = None
 _reranker     = None
+_embedder     = None
 _llm_info: dict[str, str] = {}
 
 # 后台任务引用集合。asyncio 只持有 Task 的弱引用，不留强引用的话
@@ -123,20 +124,6 @@ def _spawn_background(coro) -> None:
     task = asyncio.create_task(coro)
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
-
-
-def _embedding_cfg() -> dict[str, Any]:
-    """
-    意图识别 Embedding 这一路的配置。
-
-    配置了 OpenAI 兼容端点就走远端真向量；留空则退化为本地 n-gram 向量，
-    Embedding 依然作为独立的一路参与投票。
-    """
-    return {
-        "embedding_base_url": os.getenv("EMBEDDING_BASE_URL", "").strip() or None,
-        "embedding_api_key": os.getenv("EMBEDDING_API_KEY", "").strip() or None,
-        "embedding_model": os.getenv("EMBEDDING_MODEL", "text-embedding-3-small").strip(),
-    }
 
 
 # 跨会话记忆（情景记忆 + 用户画像）的开关，默认开。这两级只按 user_id 区分，
@@ -176,7 +163,7 @@ async def lifespan(app: FastAPI):
     from app.monitor.performance_monitor import PerformanceMonitor
     from app.storage.conversation_log import ConversationLog, PgConversationLog
     from app.storage.pg import Database
-    from app.storage.vector_store import LocalStore, PgStore
+    from app.storage.vector_store import LocalStore, PgStore, check_embedding_signature
     from app.tickets.notifier import TicketNotifier
     from app.tickets.ticket_store import PgTicketStore, TicketStore
     from app.tools.knowledge_base import KnowledgeBase
@@ -184,7 +171,7 @@ async def lifespan(app: FastAPI):
     from app.tools.tool_manager import Tool, ToolManager
 
     global _user_auth, _rate_limiter, _ticket_store, _shared_state, _infra_redis
-    global _conv_log, _pg_database, _reranker, _ticket_notifier
+    global _conv_log, _pg_database, _reranker, _ticket_notifier, _embedder
 
     cfg = resolve_llm_config()
     logger.info(
@@ -219,7 +206,7 @@ async def lifespan(app: FastAPI):
 
     # ── 存储装配：配置 POSTGRES_DSN 时全部收敛进 Postgres（pgvector 做向量），
     #    未配置时退化为 SQLite 单文件（demo / 单测零依赖）。Redis 不参与选择。
-    embedder = Embedder.from_env()
+    embedder = _embedder = Embedder.from_env()
     postgres_dsn = os.getenv("POSTGRES_DSN", "").strip()
     if postgres_dsn:
         _pg_database = Database(postgres_dsn)
@@ -239,6 +226,9 @@ async def lifespan(app: FastAPI):
             db_path=os.getenv("CONVERSATION_LOG_DB_PATH", str(pathlib.Path(_ROOT) / "data" / "conversations.db"))
         )
         logger.warning("存储后端: SQLite 本地兜底（未配置 POSTGRES_DSN，仅适用于 demo/联调）")
+    # 库里的向量得是当前这个 Embedding 模型算的。换过模型而没重建向量的，在这里停下
+    # ——维度相同的话后面一路都不会报错，只是语义检索返回的东西和问题无关。
+    await check_embedding_signature(vector_store, embedder)
 
     # 工单通知：outbox 投递器。先落待发送记录再发，失败按退避重试，
     # 到上限则升级（ERROR + ticket_notify_failures_total）。
@@ -263,7 +253,9 @@ async def lifespan(app: FastAPI):
         base_url=cfg.get("base_url"),
         model=cfg["model"],
         enable_fast_path=os.getenv("ENABLE_INTENT_FAST_PATH", "true").lower() != "false",
-        **_embedding_cfg(),
+        # 和知识库、情景记忆用同一个 Embedder：同一份配置、同一个冷却状态，
+        # 远端挂了不会三处各自再撞一次超时。
+        embedder=embedder,
     )
     logger.info(f"意图 Embedding 后端: {_recognizer.embedding_backend}")
 
@@ -331,7 +323,9 @@ async def lifespan(app: FastAPI):
         f"知识库已加载: {kb_stats['total_documents']} 篇文档 / {kb_stats['total_chunks']} 个片段"
         + (f"（其中 {kb_stats['legacy_documents']} 篇由历史分片归档）"
            if kb_stats["legacy_documents"] else "")
-        + f"（后端 {kb.backend}，混合检索 dense+lexical，重排 {_reranker.backend}）"
+        + f"（后端 {kb.backend}，"
+        + ("dense+lexical RRF 融合" if embedder.semantic else "关键词优先、本地向量只补位")
+        + f"，重排 {_reranker.backend}）"
     )
 
     def knowledge_fallback(params: dict[str, Any], context: dict[str, Any] | None, error: str):
@@ -489,6 +483,7 @@ from app.core.metrics import (  # noqa: E402
 )
 from app.core.telemetry import setup_telemetry  # noqa: E402
 from app.tools.knowledge_base import document_excerpt, should_use_knowledge  # noqa: E402
+from app.tools.tool_manager import PASSAGE_CHARS  # noqa: E402
 
 # OTel：配置 OTEL_EXPORTER_OTLP_ENDPOINT 后启用 FastAPI/httpx/redis/asyncpg
 # 自动埋点 + 业务 span；未配置时零开销。
@@ -837,8 +832,13 @@ async def health():
         "conversations": conversations,
         "storage_backend": _knowledge_base.backend if _knowledge_base else "unknown",
         "retrieval": {
-            "mode": "hybrid_dense_lexical_rrf",
+            # 本地 n-gram 向量没有语义，不参与排序（见 knowledge_base.lexical_first_fuse）
+            "mode": ("hybrid_dense_lexical_rrf" if _embedder is None or _embedder.semantic
+                     else "lexical_first_dense_fill"),
             "rerank": _reranker.backend if _reranker else "llm_listwise",
+            # available 为 false：远端 Embedding 刚失败过、还在冷却期，这期间检索只走
+            # 关键词一路、文档导入会被拒绝。读的是进程里记下的状态，不为这个接口去调它。
+            "embedding": _embedder.status() if _embedder else None,
         },
         "auth": {
             "user_token": _user_auth.enabled if _user_auth else False,
@@ -1354,7 +1354,9 @@ async def _build_knowledge_context(
             if not content:
                 continue
             used = True
-            parts.append(f"{i}. 标题: {title}\n   相关度: {score}\n   内容: {content[:600]}")
+            # 只走了关键词一路的结果没有向量分（score 是 None），不给模型看一行"相关度: None"
+            relevance = f"   相关度: {score}\n" if isinstance(score, (int, float)) else ""
+            parts.append(f"{i}. 标题: {title}\n{relevance}   内容: {content[:PASSAGE_CHARS]}")
             if item.get("fallback"):
                 info["degraded"] = True
                 continue
@@ -1841,8 +1843,8 @@ async def add_knowledge(body: BatchDocInput):
     ```
     """
     kb = _require_knowledge_base()
-    results = await kb.import_documents(
-        [{"title": d.title, "content": d.content} for d in body.documents],
+    results = await _import_or_503(
+        kb, [{"title": d.title, "content": d.content} for d in body.documents],
         source_type="manual",
     )
     return await _import_response(kb, results)
@@ -1882,8 +1884,28 @@ async def upload_knowledge(file: UploadFile = File(...)):
         title = filename.rsplit(".", 1)[0] if "." in filename else filename
         docs = [{"title": title, "content": text}]
 
-    results = await kb.import_documents(docs, source_type="upload", source_name=filename)
+    results = await _import_or_503(kb, docs, source_type="upload", source_name=filename)
     return await _import_response(kb, results, f"文件 {filename} 导入成功")
+
+
+async def _import_or_503(kb, docs: list[dict[str, Any]], **source) -> list[dict[str, Any]]:
+    """
+    导入文档；远端 Embedding 不可用时返回 503，而不是把没有向量的文档写进库。
+
+    一批里排在前面、已经算出向量的文档这时已经入库了。导入是幂等的，
+    所以提示里直接说"恢复后把同一份再导一次"——已有的会被跳过，不会重复。
+    """
+    from app.core.embedder import EmbeddingUnavailable
+
+    try:
+        return await kb.import_documents(docs, **source)
+    except EmbeddingUnavailable as ex:
+        logger.warning(f"知识库导入中断，Embedding 不可用: {ex}")
+        raise HTTPException(
+            503,
+            "Embedding 服务暂时不可用，文档没有全部导入。恢复后把同一份内容重新导入即可，"
+            "已经导入的不会重复。",
+        ) from ex
 
 
 async def _import_response(

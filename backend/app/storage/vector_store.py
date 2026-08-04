@@ -23,6 +23,11 @@ LocalStore 的暴力扫为什么可接受：demo 知识库百级片段、情景�
 文档表只存"导入时拿到了什么"——标题、原文、来源、导入时间——分片用 doc_id
 指回去。升级前写入的分片 doc_id 为空，由 KnowledgeBase.ensure_documents 归档
 成"历史"文档；那一步只用这里的原子操作拼出来，两个后端走的是同一段逻辑。
+
+向量的来源：storage_meta 里记着库里的向量是哪个 Embedding 模型算的。换了模型
+（哪怕维度一样）旧向量就不能再用——它们和新模型的查询向量不在一个空间里，
+余弦算得出来，但和内容无关。check_embedding_signature 在启动时把关，
+replace_embeddings 给 scripts/reembed.py 整批换向量用。
 """
 from __future__ import annotations
 
@@ -84,7 +89,35 @@ CREATE TABLE IF NOT EXISTS memory_profile (
     profile TEXT NOT NULL,
     ts      REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS storage_meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL             -- 目前只有 embedding_signature 一条
+);
 """
+
+# 带向量列的两张表。知识库分片和情景记忆用的是同一个 Embedder，要换一起换。
+_VECTOR_TABLES = ("kb_chunks", "memory_episodic")
+EMBEDDING_SIGNATURE_KEY = "embedding_signature"
+
+
+def _require_vectors(
+    table: str, ids: set[str], vectors: dict[str, list[float]], dim: int
+) -> None:
+    """
+    换向量之前的两道检查：表里每一行都得有新向量，新向量都得是说好的维度。
+
+    读完全表去算向量的这段时间里如果又写进了新行，那几行就没有新向量——
+    换上去之后它们还留着旧空间的向量。宁可整个不换，让调用方重跑。
+    """
+    missing = ids - set(vectors)
+    if missing:
+        raise RuntimeError(
+            f"{table} 有 {len(missing)} 行没有对应的新向量（重算期间有新写入？），"
+            "什么都没有改，重跑一次即可。"
+        )
+    wrong = next((len(v) for v in vectors.values() if len(v) != dim), None)
+    if wrong is not None:
+        raise RuntimeError(f"{table} 的新向量里有 {wrong} 维的，说好的是 {dim} 维，什么都没有改。")
 
 
 # 文档列表返回的列。正文只取开头一段（列表页要它算摘要），整篇正文走详情。
@@ -213,9 +246,14 @@ class LocalStore:
         return await asyncio.to_thread(_q)
 
     async def kb_search_lexical(
-        self, tokens: list[str], embedding: list[float], top_k: int
+        self, tokens: list[str], embedding: list[float] | None, top_k: int
     ) -> list[dict[str, Any]]:
-        """BM25 关键词检索。分数为 0（无字面命中）的片段直接不返回。"""
+        """
+        BM25 关键词检索。分数为 0（无字面命中）的片段直接不返回。
+
+        embedding 只用来顺带算余弦分；拿不到查询向量时传 None，score 就是 None
+        ——关键词这一路本身不依赖它，Embedding 服务挂了照样能召回。
+        """
         if not tokens:
             return []
 
@@ -236,7 +274,8 @@ class LocalStore:
                     "chunk_index": r["chunk_index"],
                     "doc_id": r["doc_id"],
                     "lex_score": score,
-                    "score": cosine(embedding, json.loads(r["embedding"])),
+                    "score": (cosine(embedding, json.loads(r["embedding"]))
+                              if embedding is not None else None),
                 }
                 for r, score in zip(rows, lex, strict=True)
                 if score > 0
@@ -515,6 +554,94 @@ class LocalStore:
                 self._db.commit()
         await asyncio.to_thread(_w)
 
+    # ── 向量来源与重建 ────────────────────────────────────────────────────────
+
+    async def meta_get(self, key: str) -> str | None:
+        def _q() -> str | None:
+            with self._lock:
+                row = self._db.execute(
+                    "SELECT value FROM storage_meta WHERE key = ?", (key,)
+                ).fetchone()
+            return row["value"] if row else None
+        return await asyncio.to_thread(_q)
+
+    async def meta_set(self, key: str, value: str) -> None:
+        def _w() -> None:
+            with self._lock:
+                self._db.execute(
+                    "INSERT INTO storage_meta (key, value) VALUES (?, ?)"
+                    " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                    (key, value),
+                )
+                self._db.commit()
+        await asyncio.to_thread(_w)
+
+    async def vector_state(self) -> dict[str, dict[str, int | None]]:
+        """两张向量表各有多少行、向量现在是多少维（空表的维度是 None）。"""
+        def _q() -> dict[str, dict[str, int | None]]:
+            state: dict[str, dict[str, int | None]] = {}
+            with self._lock:
+                for table in _VECTOR_TABLES:
+                    rows = self._db.execute(f"SELECT COUNT(*) AS n FROM {table}").fetchone()["n"]
+                    sample = self._db.execute(f"SELECT embedding FROM {table} LIMIT 1").fetchone()
+                    state[table] = {
+                        "rows": rows,
+                        "dim": len(json.loads(sample["embedding"])) if sample else None,
+                    }
+            return state
+        return await asyncio.to_thread(_q)
+
+    async def kb_embedding_rows(self) -> list[dict[str, Any]]:
+        """全部分片的 id、标题和正文：重算向量的输入。"""
+        def _q() -> list[dict[str, Any]]:
+            with self._lock:
+                rows = self._db.execute(
+                    "SELECT id, title, content FROM kb_chunks ORDER BY id"
+                ).fetchall()
+            return [dict(r) for r in rows]
+        return await asyncio.to_thread(_q)
+
+    async def episodic_embedding_rows(self) -> list[dict[str, Any]]:
+        """全部情景记忆的 id 和摘要：向量是按摘要算的。"""
+        def _q() -> list[dict[str, Any]]:
+            with self._lock:
+                rows = self._db.execute(
+                    "SELECT id, summary FROM memory_episodic ORDER BY id"
+                ).fetchall()
+            return [dict(r) for r in rows]
+        return await asyncio.to_thread(_q)
+
+    async def replace_embeddings(
+        self, dim: int, kb: dict[str, list[float]], episodic: dict[str, list[float]],
+        signature: str,
+    ) -> None:
+        """
+        把两张表的向量整批换成新的，并记下新向量的来源。要么全换，要么一行不动。
+
+        kb / episodic 是 {行 id: 新向量}。只换向量：标题、正文、关键词索引、
+        文档归属都不碰。
+        """
+        def _w() -> None:
+            with self._lock:
+                try:
+                    for table, vectors in (("kb_chunks", kb), ("memory_episodic", episodic)):
+                        ids = {r["id"] for r in self._db.execute(f"SELECT id FROM {table}")}
+                        _require_vectors(table, ids, vectors, dim)
+                        self._db.executemany(
+                            f"UPDATE {table} SET embedding = ? WHERE id = ?",
+                            [(json.dumps(vec), row_id) for row_id, vec in vectors.items()],
+                        )
+                    self._db.execute(
+                        "INSERT INTO storage_meta (key, value) VALUES (?, ?)"
+                        " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                        (EMBEDDING_SIGNATURE_KEY, signature),
+                    )
+                    self._db.commit()
+                except BaseException:
+                    self._db.rollback()
+                    raise
+        await asyncio.to_thread(_w)
+
     async def profile_get(self, user_id: str) -> str | None:
         def _q() -> str | None:
             with self._lock:
@@ -580,7 +707,7 @@ class PgStore:
         return [dict(r) for r in rows]
 
     async def kb_search_lexical(
-        self, tokens: list[str], embedding: list[float], top_k: int
+        self, tokens: list[str], embedding: list[float] | None, top_k: int
     ) -> list[dict[str, Any]]:
         """
         tsvector 关键词检索，GIN 索引 + ts_rank_cd 排序。
@@ -588,6 +715,8 @@ class PgStore:
         token 之间用 `|`（OR）而不是 `&`：客服问句里多数 token 是无关紧要的
         修饰语（"这个""怎么办"），AND 会让任何一个噪声 token 就把整条查询打空。
         排序交给 ts_rank_cd —— 命中得多、命中得密的片段自然排前面。
+
+        embedding 为 None（拿不到查询向量）时 score 是 NULL，召回和排序不受影响。
         """
         if not tokens:
             return []
@@ -597,7 +726,7 @@ class PgStore:
             "       1 - (embedding <=> $2::vector) AS score"
             " FROM kb_chunks, to_tsquery('simple', $1) AS q"
             " WHERE tokens @@ q ORDER BY lex_score DESC LIMIT $3",
-            " | ".join(tokens), self._vec(embedding), top_k,
+            " | ".join(tokens), self._vec(embedding) if embedding is not None else None, top_k,
         )
         return [dict(r) for r in rows]
 
@@ -792,5 +921,108 @@ class PgStore:
         )
         return row["profile"] if row else None
 
+    # ── 向量来源与重建（与 LocalStore 同构，说明见那边）──────────────────────
+
+    async def meta_get(self, key: str) -> str | None:
+        row = await self._db.fetchrow("SELECT value FROM storage_meta WHERE key = $1", key)
+        return row["value"] if row else None
+
+    async def meta_set(self, key: str, value: str) -> None:
+        await self._db.execute(
+            "INSERT INTO storage_meta (key, value) VALUES ($1, $2)"
+            " ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+            key, value,
+        )
+
+    async def vector_state(self) -> dict[str, dict[str, int | None]]:
+        state: dict[str, dict[str, int | None]] = {}
+        async with self._db.transaction() as conn:
+            for table in _VECTOR_TABLES:
+                state[table] = {
+                    "rows": await conn.fetchval(f"SELECT COUNT(*) FROM {table}"),
+                    # 维度写在列类型里，空表也有
+                    "dim": await self._db.vector_dim(conn, table),
+                }
+        return state
+
+    async def kb_embedding_rows(self) -> list[dict[str, Any]]:
+        rows = await self._db.fetch("SELECT id, title, content FROM kb_chunks ORDER BY id")
+        return [dict(r) for r in rows]
+
+    async def episodic_embedding_rows(self) -> list[dict[str, Any]]:
+        rows = await self._db.fetch("SELECT id, summary FROM memory_episodic ORDER BY id")
+        return [dict(r) for r in rows]
+
+    async def replace_embeddings(
+        self, dim: int, kb: dict[str, list[float]], episodic: dict[str, list[float]],
+        signature: str,
+    ) -> None:
+        """
+        一个事务里把两张表的向量列换成新维度、新向量。
+
+        维度写在列类型里，改不了，只能加一列新的、填好、删掉旧的再改名。Postgres 的
+        DDL 是事务性的：中途任何一步失败整个回滚，旧向量原样还在。事务期间两张表
+        被独占锁住，读写都要等它提交。提交之后还按旧维度跑着的服务会在写入和稠密
+        检索上报维度不符——换向量要配合改配置和重启，见 scripts/reembed.py。
+        手工建过的向量索引会随旧列一起删掉，需要重建。
+        """
+        async with self._db.transaction() as conn:
+            for table, vectors in (("kb_chunks", kb), ("memory_episodic", episodic)):
+                await conn.execute(
+                    f"ALTER TABLE {table} ADD COLUMN embedding_next vector({int(dim)})"
+                )
+                # 加列拿到了独占锁，这之后表里不会再多出行来
+                ids = {r["id"] for r in await conn.fetch(f"SELECT id FROM {table}")}
+                _require_vectors(table, ids, vectors, dim)
+                if vectors:
+                    await conn.executemany(
+                        f"UPDATE {table} SET embedding_next = $2::vector WHERE id = $1",
+                        [(row_id, self._vec(vec)) for row_id, vec in vectors.items()],
+                    )
+                await conn.execute(f"ALTER TABLE {table} DROP COLUMN embedding")
+                await conn.execute(
+                    f"ALTER TABLE {table} RENAME COLUMN embedding_next TO embedding"
+                )
+                await conn.execute(f"ALTER TABLE {table} ALTER COLUMN embedding SET NOT NULL")
+            await conn.execute(
+                "INSERT INTO storage_meta (key, value) VALUES ($1, $2)"
+                " ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+                EMBEDDING_SIGNATURE_KEY, signature,
+            )
+
     async def close(self) -> None:
         """连接池归 Database 管，这里不关。"""
+
+
+async def check_embedding_signature(store: Any, embedder: Any) -> None:
+    """
+    库里的向量和当前的 Embedder 是不是同一个模型算的。不是就别起来。
+
+    维度不同的情况 Postgres 的列类型会拦住（见 pg.Database._check_vector_dim），
+    这里拦的是它拦不住的：维度一样、模型不一样，以及 SQLite 后端（向量存成 JSON，
+    没有列类型可查）。两种都不会报错，只是语义检索从此返回和问题无关的片段。
+
+    没有记录的库（加这道检查之前建的，或者全新的）记下当前的来源就放行。
+    """
+    current = embedder.signature
+    recorded = await store.meta_get(EMBEDDING_SIGNATURE_KEY)
+    if recorded == current:
+        return
+    if recorded is None:
+        state = await store.vector_state()
+        if embedder.backend == "remote" and any(t["rows"] for t in state.values()):
+            # 没法倒推这些向量当初是谁算的。一直配着同一个远端模型的库不该被拦，
+            # 所以放行；但如果是刚从本地向量换过来、维度又恰好相同，就得重建。
+            logger.warning(
+                f"库里已有向量，但没有记录它们是哪个模型生成的；按当前配置 {current} 记下。"
+                "如果换过 Embedding 模型，请运行 scripts/reembed.py --apply 重建向量。"
+            )
+        await store.meta_set(EMBEDDING_SIGNATURE_KEY, current)
+        return
+    raise RuntimeError(
+        f"库里的向量是 {recorded} 生成的，当前的 Embedding 配置是 {current}。"
+        f"两者不在同一个向量空间里，直接用会让语义检索返回和问题无关的片段：\n"
+        f"  python scripts/reembed.py          # 先看要重建什么\n"
+        f"  python scripts/reembed.py --apply  # 重算向量并换上，文档内容不动\n"
+        f"要退回原来的模型，把 EMBEDDING_* 改回去即可。"
+    )
