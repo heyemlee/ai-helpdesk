@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { MessageBubble } from './MessageBubble'
 import { Icon, type IconName } from './Icon'
 import type { ChatMessage } from '@/hooks/useChatStream'
@@ -7,14 +8,18 @@ import { useT } from '@/i18n'
 import type { Key } from '@/i18n/catalog'
 
 /**
- * 示例问题：知识问答、订单查询两类各有代表。点一下只填进输入框，不直接发——
- * 订单那条带着占位的单号，本来就得先改成真的。
+ * 示例问题：知识问答、订单查询两类各有代表。按钮上是一行短标签，点一下把完整问题
+ * 填进输入框，不直接发——订单那条带着占位的单号，本来就得先改成真的，所以填进去后
+ * 把占位选中，直接打单号就替换掉。
+ *
+ * 订单那条只在业务数据接上时给。后端明说没接（客户实例那种）就不给一个注定查不到的例子；
+ * 没报（老版本）照常给，和「可以查询什么」里只说"没报"一个口径，不替它猜。
  */
-const SAMPLES: Array<{ question: Key; title: Key; icon: IconName }> = [
-  { question: 'cw.sample.1', title: 'cw.category.1', icon: 'pulse' },
-  { question: 'cw.sample.2', title: 'cw.category.2', icon: 'checklist' },
-  { question: 'cw.sample.3', title: 'cw.category.3', icon: 'arrow' },
-  { question: 'cw.sample.4', title: 'cw.category.4', icon: 'book' },
+const SAMPLES: Array<{ question: Key; label: Key; icon: IconName; needsData?: boolean }> = [
+  { question: 'cw.sample.1', label: 'cw.chip.1', icon: 'pulse', needsData: true },
+  { question: 'cw.sample.3', label: 'cw.chip.3', icon: 'arrow' },
+  { question: 'cw.sample.4', label: 'cw.chip.4', icon: 'book' },
+  { question: 'cw.sample.2', label: 'cw.chip.2', icon: 'checklist' },
 ]
 
 /**
@@ -82,6 +87,26 @@ export function ChatPanel({ messages, busy, onSend, onInspect, explain, restorin
 
   const restoredCount = messages.filter((m) => m.restored).length
 
+  // 空对话时输入框居中，标题在上、例子在下；发出第一条就去掉，输入框落回底部。
+  // 两种状态用的是同一个输入框，只换样式——换成两处各渲染一个的话，
+  // 发出第一条那一下 textarea 重新挂载，焦点就丢了。
+  const empty = messages.length === 0 && !restoring
+  const samples = SAMPLES.filter((s) => !s.needsData || capabilities?.business_data !== false)
+
+  const fill = (question: Key) => {
+    const text = t(question)
+    // 先同步提交新值，再在同一个点击里选中占位
+    flushSync(() => setDraft(text))
+    const el = areaRef.current
+    if (!el) return
+    el.focus()
+    const slot = t('cw.sample.slot')
+    const at = text.indexOf(slot)
+    if (at >= 0) el.setSelectionRange(at, at + slot.length)
+    else el.setSelectionRange(text.length, text.length)
+    grow()
+  }
+
   const submit = () => {
     const text = draft.trim()
     if (!text || busy || restoring) return
@@ -94,7 +119,7 @@ export function ChatPanel({ messages, busy, onSend, onInspect, explain, restorin
 
   return (
     <>
-      <div className="thread scroll" ref={listRef} onScroll={() => {
+      <div className={empty ? 'thread scroll is-empty' : 'thread scroll'} ref={listRef} onScroll={() => {
         const el = listRef.current!
         const away = el.scrollHeight - el.scrollTop - el.clientHeight > 100
         followLatest.current = !away
@@ -106,25 +131,11 @@ export function ChatPanel({ messages, busy, onSend, onInspect, explain, restorin
             <div className="thinking"><span className="pulse" />{t('cw.restoring')}</div>
           </div>
         ) : messages.length === 0 ? (
+          // 「可以查询什么」的完整说明只留在顶栏的弹层里：第一屏只说一句，
+          // 依据和工单的细节等回复里真出现时再讲（依据列表、工单卡下面都有）
           <div className="thread-empty">
             <h2>{t('cw.empty.title')}</h2>
             <p>{t('cw.empty.body')}</p>
-            <section className="starter-section" aria-labelledby="scope-title">
-              <h3 className="starter-label" id="scope-title">{t('cw.scope.title')}</h3>
-              <ScopeGuide capabilities={capabilities} />
-            </section>
-            <section className="starter-section" aria-labelledby="starter-title">
-              <h3 className="starter-label" id="starter-title">{t('cw.examples')}</h3>
-              <div className="starter-grid">
-                {SAMPLES.map((sample) => (
-                  <button key={sample.question} className="starter-card" disabled={busy || restoring}
-                    onClick={() => { setDraft(t(sample.question)); areaRef.current?.focus(); requestAnimationFrame(grow) }}>
-                    <span className="starter-card-head"><Icon name={sample.icon} /><strong>{t(sample.title)}</strong></span>
-                    <span>{t(sample.question)}</span>
-                  </button>
-                ))}
-              </div>
-            </section>
           </div>
         ) : (
           <div className="thread-inner">
@@ -141,7 +152,7 @@ export function ChatPanel({ messages, busy, onSend, onInspect, explain, restorin
         )}
       </div>
 
-      <div className="composer-wrap">
+      <div className={empty ? 'composer-wrap is-empty' : 'composer-wrap'}>
         {awayFromBottom && messages.length > 0 && <button className="btn btn-secondary latest-message" onClick={() => {
           followLatest.current = true
           setAwayFromBottom(false)
@@ -169,6 +180,15 @@ export function ChatPanel({ messages, busy, onSend, onInspect, explain, restorin
             </button>
           </div>
         </form>
+        {empty && (
+          <div className="suggestions starters" role="group" aria-label={t('cw.examples')}>
+            {samples.map((sample) => (
+              <button key={sample.question} type="button" className="suggestion" onClick={() => fill(sample.question)}>
+                <Icon name={sample.icon} size={14} />{t(sample.label)}
+              </button>
+            ))}
+          </div>
+        )}
         <p className="composer-hint">
           <Icon name="shield" size={12} />{t('cw.hint')}
         </p>

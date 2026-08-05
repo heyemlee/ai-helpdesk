@@ -92,19 +92,22 @@ button:focus-visible, summary:focus-visible, a:focus-visible { outline: 2px soli
 .options-popover .switch { gap: 10px; font-size: 13px; }
 .chat-view { display: flex; flex-direction: column; flex: 1; min-height: 0; position: relative; }
 .chat-view[hidden] { display: none; }
-.thread-empty { height: auto; min-height: 100%; max-width: 880px; margin: auto; padding: 44px 40px 32px; gap: 0; align-items: flex-start; text-align: left; }
+/* 空对话：输入框居中，标题在它上面、示例在它下面。上下两块按 2:3 分高度，
+   输入框落在视口中线略偏上。发出第一条后 is-empty 去掉，同一个输入框落回底部。
+   内容放不下时只有上面那块（.thread）收缩滚动，输入框和示例不会被挤出屏幕。 */
+.thread.is-empty { display: flex; flex-direction: column; flex: 2 1 0; }
+.thread-empty { width: 100%; max-width: var(--reading); height: auto; margin: auto auto 0; padding: 32px 24px 22px; gap: 0; }
 .welcome-mark { display: grid; place-items: center; width: 62px; height: 62px; background: var(--accent-soft); border-radius: 20px; color: var(--accent-text); margin-bottom: 22px; }
 .eyebrow { color: var(--color-text-secondary); font-size: 10px; font-weight: 600; letter-spacing: .13em; margin-bottom: 12px; }
-.thread-empty h2 { font-size: clamp(26px, 2.8vw, 38px); line-height: 1.3; letter-spacing: -.04em; max-width: 650px; }
-.thread-empty > p { margin-top: 14px; max-width: 600px; font-size: 14px; line-height: 1.8; text-wrap: pretty; }
-.starter-section { margin-top: 32px; width: 100%; }
-.starter-section .starter-label { text-align: left; font-size: 11px; color: var(--color-text-tertiary); margin-bottom: 12px; }
-.starter-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.starter-card { display: flex; flex-direction: column; gap: 12px; padding: 17px 18px; min-height: 110px; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-surface); color: var(--color-text-secondary); text-align: left; font-size: 12px; line-height: 1.6; cursor: pointer; transition: border-color .15s, background .15s; }
-.starter-card:hover { border-color: var(--color-solid); background: var(--accent-soft); }
-.starter-card-head { display: flex; align-items: center; gap: 9px; color: var(--color-text); }
-.starter-card-head strong { flex: 1; font-size: 13px; font-weight: 500; }
-.starter-card-head > svg:last-child { color: var(--color-text-tertiary); }
+.thread-empty h2 { line-height: 1.3; letter-spacing: -.03em; }
+.thread-empty > p { margin-top: 10px; max-width: 560px; font-size: 14px; line-height: 1.7; }
+.composer-wrap.is-empty { display: flex; flex-direction: column; flex: 3 1 0; }
+.composer-wrap.is-empty .composer { width: 100%; }
+.composer-wrap.is-empty .composer-hint { margin-top: auto; padding-top: 16px; }
+/* 示例排成 2×2：英文四个标签一行放不下，自然折行会变成 3+1，落单的那个像是漏排了 */
+.starters { display: grid; grid-template-columns: repeat(2, max-content); justify-content: center; max-width: var(--reading); margin: 14px auto 0; }
+.starters .suggestion { display: inline-flex; align-items: center; gap: 8px; }
+.starters .suggestion svg { color: var(--color-text-tertiary); }
 .composer-wrap { padding: 12px 40px 22px; position: relative; background: var(--workspace-bg); }
 .composer { border-radius: 16px; background: var(--color-surface); box-shadow: 0 4px 20px #00000006; }
 .composer:focus-within { border-color: var(--color-solid); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-solid) 10%, transparent); }
@@ -168,7 +171,7 @@ dialog.inspector[open] { display: flex; }
 .inspector-empty p { font-size: 13px; line-height: 1.8; color: var(--color-text-secondary); }
 .inspector-empty ol { list-style: decimal-leading-zero; padding-left: 28px; margin-top: 28px; color: var(--color-text-secondary); font-size: 12px; }
 .inspector-empty li { padding: 14px 0 14px 8px; border-bottom: 1px solid var(--color-border-subtle); }
-@media (min-width: 1181px) { .app[data-inspector="open"] .thread-empty { padding: 32px; } .app[data-inspector="open"] .thread-empty h2 { font-size: 28px; } .app[data-inspector="open"] .composer-keyboard { display: none; } .app[data-inspector="open"] .send { margin-left: auto; } }
+@media (min-width: 1181px) { .app[data-inspector="open"] .composer-keyboard { display: none; } .app[data-inspector="open"] .send { margin-left: auto; } }
 @media (max-width: 1180px) { dialog.inspector { position: fixed; inset: 0 0 0 auto; width: min(400px, 100%); height: 100dvh; margin: 0 0 0 auto; } }
 @media (max-width: 900px) and (min-width: 641px) {
   .rail { width: 76px; }
@@ -198,16 +201,13 @@ dialog.inspector[open] { display: flex; }
   .mobile-new-chat { display: inline-flex; width: 36px; padding: 0; border: 0; }
   .inspector-toggle { width: 36px; min-width: 36px; padding: 0; }
   .inspector-toggle span { display: none; }
-  .thread-empty { padding: 28px 20px; justify-content: flex-start; }
+  .thread-empty { padding: 24px 18px 18px; }
   .welcome-mark { width: 48px; height: 48px; border-radius: 15px; margin-bottom: 18px; }
-  .thread-empty h2 { font-size: 28px; }
+  .thread-empty h2 { font-size: 24px; }
   .thread-empty > p { font-size: 13px; }
-  .starter-section { margin-top: 24px; }
-  .starter-grid { gap: 8px; }
-  .starter-card { padding: 12px; gap: 8px; min-height: 122px; font-size: 11px; }
-  .starter-card-head { gap: 6px; }
-  .starter-card-head strong { font-size: 12px; }
-  .starter-card-head > svg:last-child { display: none; }
+  /* 窄屏两列会撑出横向滚动：改成一列，每条占满宽度，手指也更容易点中 */
+  .starters { grid-template-columns: minmax(0, 1fr); width: 100%; }
+  .starters .suggestion { min-height: 44px; }
   .composer-wrap { padding: 8px 14px 12px; }
   .composer textarea { font-size: 16px; padding: 14px 14px 4px; min-height: 50px; }
   .composer-bar { padding: 4px 10px 8px 14px; }
@@ -399,17 +399,14 @@ section > .state-block { margin-top: 14px; }
 
 /* Conversations: what backs a reply */
 .thread-empty h2 { font-size: clamp(22px, 2.4vw, 30px); }
-.starter-section h3.starter-label { font-weight: 600; letter-spacing: .02em; }
+/* 「可以查询什么」现在只在顶栏弹层里出现，按弹层的单列排 */
 .scope { display: grid; gap: 12px; }
-.scope-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0; }
-.scope-item { padding: 14px 16px; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-surface); }
+.scope-list { display: grid; gap: 14px; margin: 0; }
 .scope-item dt { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 13px; font-weight: 600; color: var(--color-text); }
 .scope-item dd { margin: 0; font-size: 12px; line-height: 1.7; color: var(--color-text-secondary); }
 .scope-limits { display: flex; align-items: flex-start; gap: 6px; font-size: 12px; line-height: 1.6; color: var(--color-text-secondary); }
 .scope-limits svg { margin-top: 2px; }
 .options-popover.scope-popover { width: min(400px, calc(100vw - 32px)); gap: 14px; }
-.scope-popover .scope-list { grid-template-columns: 1fr; gap: 14px; }
-.scope-popover .scope-item { padding: 0; border: 0; background: none; }
 .sources { padding: 0 14px; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-surface); }
 .sources > summary { display: flex; align-items: center; gap: 8px; min-height: 40px; cursor: pointer; list-style: none; font-size: 12px; font-weight: 600; color: var(--color-text); }
 .sources > summary::-webkit-details-marker { display: none; }
@@ -488,7 +485,6 @@ p.transcript-text { white-space: pre-wrap; }
 .sop .reader-meta { margin-bottom: 14px; }
 
 @media (max-width: 900px) {
-  .scope-list { grid-template-columns: 1fr; }
   .admin-head { padding: 12px 16px 0; }
 }
 @media (max-width: 900px) and (min-width: 641px) {
