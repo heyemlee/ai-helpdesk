@@ -54,6 +54,8 @@ const OUTCOME_TEXT: Record<string, Key> = {
   connection_failed: 'ms.outcome.connection_failed',
   server_error: 'ms.outcome.server_error',
   empty_response: 'ms.outcome.empty_response',
+  not_structured: 'ms.outcome.not_structured',
+  not_api_response: 'ms.outcome.not_api_response',
   dim_mismatch: 'ms.outcome.dim_mismatch',
   skipped: 'ms.outcome.skipped',
   unexpected: 'ms.outcome.unexpected',
@@ -186,6 +188,7 @@ function TestReport({ result }: { result: ModelTestResult | null }) {
       </ul>
       {result.ok && result.dim ? <p>{t('ms.test.dim', { n: result.dim })}</p> : null}
       {result.warnings.includes('plaintext_http') && <p>{t('ms.warn.plaintext')}</p>}
+      {result.warnings.includes('schema_not_enforced') && <p>{t('ms.warn.schema')}</p>}
     </div>
   )
 }

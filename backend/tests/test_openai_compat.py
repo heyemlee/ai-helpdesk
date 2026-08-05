@@ -312,3 +312,125 @@ async def test_retries_with_max_completion_tokens_when_gateway_rejects(monkeypat
     assert "max_completion_tokens" in client.chat.completions.calls[1]
     # 翻转是进程级的，后续请求直接用新字段名，不再多跑一次失败请求
     assert openai_compat._MAX_TOKENS_FIELD == "max_completion_tokens"
+
+
+# ── 中转站：只写到主机的地址、回网页、不认 response_format ──────────────────────
+
+def test_api_root_adds_v1_only_to_a_bare_host():
+    from app.core.model_settings import api_root
+
+    assert api_root("https://api.kabi.pro") == "https://api.kabi.pro/v1"
+    assert api_root("https://api.kabi.pro/") == "https://api.kabi.pro/v1"
+    assert api_root(" http://127.0.0.1:11434 ") == "http://127.0.0.1:11434/v1"
+    for kept in ("https://api.openai.com/v1", "https://relay.example.com/api/v1",
+                 "https://dashscope.aliyuncs.com/compatible-mode/v1", "https://relay.example.com/api"):
+        assert api_root(kept) == kept
+    assert api_root("https://generativelanguage.googleapis.com/v1beta/openai/") == \
+        "https://generativelanguage.googleapis.com/v1beta/openai"
+    assert api_root("") == ""
+
+
+def test_a_bare_host_is_sent_to_v1():
+    """和 ai-sql-agent 同一个口径：同一个地址在两个项目里请求到同一个接口。"""
+    client = AsyncOpenAICompat(api_key="sk-test", base_url="https://api.kabi.pro")
+    assert str(client._client.base_url) == "https://api.kabi.pro/v1/"
+
+
+async def test_a_web_page_is_reported_as_a_wrong_address():
+    """SDK 拿到不是 JSON 的 200 会把原文当字符串交回来——要说清楚是地址的问题。"""
+    client = _FakeClient()
+
+    async def web_page(**kwargs):
+        return "<!doctype html><html><title>Relay</title></html>"
+
+    client.chat.completions.create = web_page
+    with pytest.raises(openai_compat.GatewayResponseError, match="/v1"):
+        await _messages(client).create(model="gpt-5.6-luna", max_tokens=64,
+                                       messages=[{"role": "user", "content": "hi"}])
+
+
+class _SchemaDroppingGateway(_FakeCompletions):
+    """
+    不认 response_format 的中转站：parse 时把 Schema 丢掉，模型照常写一段文字，
+    真实 SDK 在校验那一步抛 ValidationError；create 时按提示词作答。
+    """
+
+    def __init__(self, answer):
+        super().__init__()
+        self.answer = answer
+        self.parse_calls = 0
+
+    async def parse(self, **kwargs):
+        self.parse_calls += 1
+        kwargs["response_format"].model_validate_json("1. 柜子门板缺失如何补件\n2. 门板尺寸测量")
+
+    async def create(self, **kwargs):
+        self.calls.append(kwargs)
+        return _FakeResponse(content=self.answer)
+
+
+async def test_schema_goes_into_the_prompt_when_the_gateway_drops_it(monkeypatch):
+    from app.core.llm_utils import structured_parse
+    from app.tools.tool_manager import QueryRewritePayload
+
+    monkeypatch.setattr(openai_compat, "_SCHEMA_NOT_ENFORCED", set())
+    client = _FakeClient()
+    client.base_url = "https://api.kabi.pro/v1/"
+    client.chat.completions = _SchemaDroppingGateway(
+        '好的：\n```json\n{"queries": ["门板缺件怎么补发", "门板尺寸怎么量"]}\n```'
+    )
+    messages = _messages(client)
+    resp = await messages.parse(
+        output_format=QueryRewritePayload, model="gpt-5.6-luna", max_tokens=512,
+        system="你是检索助手", messages=[{"role": "user", "content": "柜子缺门板"}],
+    )
+    assert resp.parsed_output.queries == ["门板缺件怎么补发", "门板尺寸怎么量"]
+    assert resp.schema_enforced is False
+    sent = client.chat.completions.calls[0]
+    assert "response_format" not in sent
+    assert sent["messages"][0]["role"] == "system"
+    assert sent["messages"][0]["content"].startswith("你是检索助手")
+    assert "JSON Schema" in sent["messages"][0]["content"] and "queries" in sent["messages"][0]["content"]
+    assert openai_compat.schema_enforced_for(type("C", (), {"messages": messages})(), "gpt-5.6-luna") is False
+
+    # 记住了：第二次直接走提示词，不再先撞一次 parse
+    await structured_parse(client=type("C", (), {"messages": messages})(), output_format=QueryRewritePayload,
+                           model="gpt-5.6-luna", max_tokens=512,
+                           messages=[{"role": "user", "content": "柜子缺门板"}])
+    assert client.chat.completions.parse_calls == 1
+    assert len(client.chat.completions.calls) == 2
+
+
+async def test_an_answer_that_does_not_match_the_schema_is_still_a_loud_failure(monkeypatch):
+    """自己校验和服务端约束一样严：字段不对、不是 JSON，都报错，不拿半个对象凑数。"""
+    from app.core.llm_utils import structured_parse
+    from app.tools.tool_manager import QueryRewritePayload
+
+    monkeypatch.setattr(openai_compat, "_SCHEMA_NOT_ENFORCED", set())
+    for answer in ("1. 门板缺件怎么补发\n2. 门板尺寸怎么量", '{"query": "门板"}', '{"queries": "门板"}'):
+        client = _FakeClient()
+        client.chat.completions = _SchemaDroppingGateway(answer)
+        holder = type("C", (), {"messages": _messages(client)})()
+        with pytest.raises(ValueError, match="QueryRewritePayload"):
+            await structured_parse(holder, output_format=QueryRewritePayload, model="gpt-5.6-luna",
+                                   max_tokens=512, messages=[{"role": "user", "content": "柜子缺门板"}])
+
+
+async def test_a_gateway_that_honours_the_schema_keeps_the_strict_path(monkeypatch):
+    from app.tools.tool_manager import QueryRewritePayload
+
+    monkeypatch.setattr(openai_compat, "_SCHEMA_NOT_ENFORCED", set())
+
+    class _Strict(_FakeCompletions):
+        async def parse(self, **kwargs):
+            self.calls.append(kwargs)
+            response = _FakeResponse(content='{"queries": ["a"]}')
+            response.choices[0].message.parsed = QueryRewritePayload(queries=["a"])
+            return response
+
+    client = _FakeClient()
+    client.chat.completions = _Strict()
+    resp = await _messages(client).parse(output_format=QueryRewritePayload, model="gpt-5.6-luna",
+                                         max_tokens=512, messages=[{"role": "user", "content": "x"}])
+    assert resp.parsed_output.queries == ["a"] and resp.schema_enforced is True
+    assert client.chat.completions.calls[0]["response_format"] is QueryRewritePayload

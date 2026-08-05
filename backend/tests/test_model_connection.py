@@ -7,6 +7,7 @@
 import json
 import os
 import stat
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -17,6 +18,7 @@ from app.api import model_admin
 from app.core import model_settings as ms
 from app.core.embedder import Embedder
 from app.core.model_runtime import ModelRuntime, chat_config_from, embedder_from
+from app.core.openai_compat import AsyncOpenAICompat
 from app.storage.vector_store import EMBEDDING_SIGNATURE_KEY, LocalStore, check_embedding_signature
 from app.tools.knowledge_base import KnowledgeBase
 
@@ -336,6 +338,79 @@ async def test_chat_probe_names_the_failure_and_never_echoes_the_key(monkeypatch
     assert result["checks"][0]["outcome"] == outcome
     assert result["checks"][1]["outcome"] == "skipped"     # 第一条就失败了，第二条不再发
     assert KEY not in json.dumps(result)
+
+
+def _completion(text, finish_reason="stop"):
+    message = SimpleNamespace(content=text, parsed=None)
+    return SimpleNamespace(choices=[SimpleNamespace(message=message, finish_reason=finish_reason)],
+                           usage=SimpleNamespace(prompt_tokens=5, completion_tokens=5), model="gpt-5.6-luna")
+
+
+class _Relay:
+    """
+    假的中转站（OpenAI 兼容）：`parse` 时把 response_format 丢掉、照常回一段文字（真实 SDK 在
+    校验那一步抛 ValidationError）；`create` 按 `answer(kwargs)` 作答。
+    """
+
+    def __init__(self, answer):
+        self.base_url = "https://relay.example/v1/"
+        self.chat = SimpleNamespace(completions=self)
+        self.answer = answer
+
+    async def create(self, **kwargs):
+        return self.answer(kwargs)
+
+    async def parse(self, **kwargs):
+        kwargs["response_format"].model_validate_json("1. 柜子门板缺失如何补件")
+
+
+def _relay_client(answer):
+    from app.core.openai_compat import _Messages
+
+    client = AsyncOpenAICompat(api_key=KEY, base_url="https://relay.example/v1")
+    client.messages = _Messages(_Relay(answer))
+    return client
+
+
+def _asked_for_schema(kwargs):
+    return any("JSON Schema" in str(m.get("content", "")) for m in kwargs["messages"])
+
+
+async def test_a_relay_that_drops_the_schema_passes_with_a_warning(monkeypatch):
+    from app.core import openai_compat
+
+    monkeypatch.setattr(openai_compat, "_SCHEMA_NOT_ENFORCED", set())
+    client = _relay_client(lambda kwargs: _completion(
+        '{"queries": ["门板缺件补发", "门板尺寸测量"]}' if _asked_for_schema(kwargs) else "可以"
+    ))
+    monkeypatch.setattr(model_admin, "_probe_client", lambda candidate: client)
+    result = await model_admin.probe_chat({"provider": "openai", "base_url": "https://relay.example/v1",
+                                           "api_key": KEY, "model": "gpt-5.6-luna", "warnings": []})
+    assert result["ok"] is True
+    assert [c["outcome"] for c in result["checks"]] == ["ok", "ok"]
+    assert result["warnings"] == ["schema_not_enforced"]
+
+
+async def test_a_relay_answer_in_the_wrong_shape_fails_the_structured_check(monkeypatch):
+    from app.core import openai_compat
+
+    monkeypatch.setattr(openai_compat, "_SCHEMA_NOT_ENFORCED", set())
+    client = _relay_client(lambda kwargs: _completion("1. 门板缺件补发\n2. 门板尺寸测量"))
+    monkeypatch.setattr(model_admin, "_probe_client", lambda candidate: client)
+    result = await model_admin.probe_chat({"provider": "openai", "base_url": "https://relay.example/v1",
+                                           "api_key": KEY, "model": "gpt-5.6-luna", "warnings": []})
+    assert result["ok"] is False
+    assert result["checks"][1]["outcome"] == "not_structured"
+    assert "预算" not in json.dumps(result, ensure_ascii=False), "不能再说成「预算被推理用完了」"
+
+
+async def test_a_web_page_is_reported_as_a_missing_v1(monkeypatch):
+    client = _relay_client(lambda kwargs: "<!doctype html><html><title>Relay</title></html>")
+    monkeypatch.setattr(model_admin, "_probe_client", lambda candidate: client)
+    result = await model_admin.probe_chat({"provider": "openai", "base_url": "https://relay.example",
+                                           "api_key": KEY, "model": "gpt-5.6-luna", "warnings": []})
+    assert [c["outcome"] for c in result["checks"]] == ["not_api_response", "skipped"]
+    assert "/v1" in result["checks"][0]["detail"]
 
 
 async def test_embedding_probe_reports_the_real_dimension(api):

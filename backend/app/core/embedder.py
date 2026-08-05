@@ -33,6 +33,8 @@ from typing import Any
 
 import httpx
 
+from app.core.model_settings import api_root
+
 logger = logging.getLogger(__name__)
 
 LOCAL_DIM = 256
@@ -55,7 +57,8 @@ class Embedder:
         retry_after_s: float = 30.0,
         query_prefix: str = "",
     ):
-        self._base_url = (base_url or "").rstrip("/") or None
+        # 只写到主机的地址补上 /v1，和对话模型、ai-sql-agent 同一个口径（见 model_settings.api_root）
+        self._base_url = api_root(base_url or "") or None
         self._api_key = api_key or None
         self._model = model
         self._remote = bool(self._base_url and self._api_key)

@@ -241,6 +241,24 @@ def origin_of(url: str) -> str:
     return f"{scheme}://{host}{suffix}"
 
 
+def api_root(url: str) -> str:
+    """
+    OpenAI 兼容服务的接口根地址：只写到主机（`https://relay.example.com`）时补上 `/v1`。
+
+    官方和绝大多数中转站的接口都在 `/v1` 下面。OpenAI SDK 把地址原样当根，只写到主机的话
+    请求会落到 `https://relay.example.com/chat/completions`——中转站在那里回的往往是
+    它的网页（200 + HTML），报错只剩一句 `'str' object has no attribute 'choices'`。
+    ai-sql-agent 一直会补 `/v1`，同一个地址在两个项目里应该是同一个结果。
+
+    带了路径的（`/v1`、`/api/v1`、`/compatible-mode/v1`、`/v1beta/openai`）原样用，不去猜。
+    """
+    text = str(url or "").strip().rstrip("/")
+    parts = urlsplit(text)
+    if parts.scheme in ("http", "https") and parts.netloc and not parts.path:
+        return f"{text}/v1"
+    return text
+
+
 def same_address(left: str, right: str) -> bool:
     """两个接口地址是不是同一台主机。只有是，现有的 Key 才可以不重填、接着用。"""
     a, b = origin_of(left), origin_of(right)

@@ -17,13 +17,32 @@ Anthropic 的 output_config.effort 翻译成 reasoning_effort；cache_control / 
 """
 from __future__ import annotations
 
+import json
 import logging
+import re
 from collections.abc import AsyncIterator
 from typing import Any
 
 from openai import AsyncOpenAI, BadRequestError
+from pydantic import ValidationError
+
+from app.core.model_settings import api_root
 
 logger = logging.getLogger(__name__)
+
+
+class GatewayResponseError(RuntimeError):
+    """
+    接口回了 200，内容却不是接口数据——多半是一张网页。
+
+    OpenAI SDK 遇到不是 JSON 的响应会把原文当字符串交回来，调用点接着取 `.choices`，
+    报出来的是 `'str' object has no attribute 'choices'`，看不出原因。这里换成一句能照着查的话。
+    """
+
+
+_NOT_API_RESPONSE = (
+    "接口返回的不是 JSON（多半是一张网页）：接口地址可能少了 /v1，或者指到了别的服务上。"
+)
 
 # OpenAI 新模型把 max_tokens 换成了 max_completion_tokens，而各家兼容网关支持的
 # 那一个并不统一。首次被网关拒绝时翻转这个开关，本进程后续请求都用新字段名，
@@ -37,6 +56,11 @@ _REASONING_EFFORT = {"low": "low", "medium": "medium", "high": "high", "max": "h
 # 拒收过 reasoning_effort 的模型。非推理模型和一部分兼容网关不认这个参数，
 # 会直接 400；第一次被拒后对这个模型就不再传，和 max_tokens 换名一样只付一次代价。
 _NO_REASONING_EFFORT: set[str] = set()
+
+# 不按 response_format 约束输出的（接口根地址, 模型）。有的中转站把 JSON Schema 丢掉、
+# 只把对话转给模型，模型照常写一段文字。第一次遇到之后，对它们直接把 Schema 写进提示词，
+# 省掉一次注定失败的请求。见 _Messages.parse。
+_SCHEMA_NOT_ENFORCED: set[tuple[str, str]] = set()
 
 
 class _Usage:
@@ -67,6 +91,7 @@ class _Message:
         usage: _Usage,
         model: str,
         parsed_output: Any = None,
+        schema_enforced: bool = True,
     ):
         self.content = [_TextBlock(text)]
         self.stop_reason = stop_reason
@@ -74,6 +99,8 @@ class _Message:
         self.model = model
         self.role = "assistant"
         self.parsed_output = parsed_output
+        # False：网关没有按 Schema 约束，结果是按提示词要来、再自己校验过的（见 _Messages.parse）
+        self.schema_enforced = schema_enforced
 
 
 def _stop_reason(finish_reason: str | None) -> str:
@@ -145,11 +172,57 @@ def _message_text(choice_message: Any) -> str:
     return getattr(choice_message, "content", None) or ""
 
 
+def _schema_instruction(output_format: type) -> str:
+    """网关不认 response_format 时，把同一份 JSON Schema 写进提示词。字段说明一起带上。"""
+    schema = json.dumps(output_format.model_json_schema(), ensure_ascii=False)
+    return (
+        "只输出一个 JSON 对象，不要输出任何别的文字，不要用 Markdown 代码块。"
+        "这个 JSON 必须符合下面的 JSON Schema，每个字段该填什么写在 description 里：\n"
+        + schema
+    )
+
+
+_FENCED_JSON = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.S)
+
+
+def _validated(output_format: type, text: str) -> Any:
+    """
+    按提示词要来的 JSON → 校验过的实例；怎么都通不过校验就返回 None（由调用方报错）。
+
+    只容忍两种包装：Markdown 代码块，和 JSON 前后多出来的一两句话。取出来的对象必须
+    **完整通过 Schema 校验**——字段少了、类型错了都算失败，和服务端约束出来的结果一样严，
+    不会出现「抠出半个对象、缺的字段用默认值顶上」那种静默降级。
+    """
+    candidates = [text.strip()]
+    fenced = _FENCED_JSON.search(text)
+    if fenced:
+        candidates.append(fenced.group(1))
+    start, end = text.find("{"), text.rfind("}")
+    if 0 <= start < end:
+        candidates.append(text[start:end + 1])
+    for candidate in candidates:
+        try:
+            return output_format.model_validate_json(candidate)
+        except ValidationError:
+            continue
+    return None
+
+
+def schema_enforced_for(client: Any, model: str) -> bool:
+    """这个客户端上的这个模型，结构化输出是不是由服务端按 Schema 约束的。Anthropic 一律是。"""
+    client = getattr(client, "unguarded", client)
+    messages = getattr(client, "messages", None)
+    if not isinstance(messages, _Messages):
+        return True
+    return (messages._root, model) not in _SCHEMA_NOT_ENFORCED
+
+
 class _Messages:
     """`client.messages` 命名空间：create() 与 stream() 两个入口。"""
 
     def __init__(self, client: AsyncOpenAI):
         self._client = client
+        self._root = str(getattr(client, "base_url", "") or "")
 
     def _params(
         self,
@@ -197,7 +270,12 @@ class _Messages:
         params = dict(params)
         for attempt in range(3):
             try:
-                return await call(**params, **extra)
+                result = await call(**params, **extra)
+            except AttributeError as ex:
+                # parse() 拿到网页时，SDK 自己在解析那一步就挂了，挂出来的就是这一句
+                if "'str' object" in str(ex):
+                    raise GatewayResponseError(_NOT_API_RESPONSE) from ex
+                raise
             except BadRequestError as ex:
                 text = str(ex)
                 other = "max_completion_tokens" if _MAX_TOKENS_FIELD == "max_tokens" else "max_tokens"
@@ -212,11 +290,67 @@ class _Messages:
                     _MAX_TOKENS_FIELD = other
                     continue
                 raise
+            if isinstance(result, str):
+                raise GatewayResponseError(_NOT_API_RESPONSE)
+            return result
         raise AssertionError("unreachable")
 
     async def create(self, **kwargs: Any) -> _Message:
         params = self._params(**kwargs)
-        resp = await self._create_raw(params)
+        return self._message(await self._create_raw(params), params)
+
+    async def parse(self, *, output_format: type, **kwargs: Any) -> _Message:
+        """
+        结构化输出。对齐 `anthropic` 的 `messages.parse(output_format=Model)`。
+
+        OpenAI 侧走 `chat.completions.parse(response_format=Model)`——同样是服务端
+        按 JSON Schema 约束解码，不是"提示模型输出 JSON 然后祈祷"。两边都由服务端
+        保证形状，所以调用点拿到的东西是一样的：一个已校验的 Pydantic 实例。
+
+        网关明确拒绝结构化输出（400）时照常抛错，**不做降级**。
+
+        只有一种情况换个做法：网关回了 200，正文却不是这个 Schema 的 JSON。那是它把
+        `response_format` 丢掉了，只把对话转给了模型——有的中转站就是这样，在它上面
+        结构化输出一次也不会成功。这时把同一份 Schema 写进提示词再要一次，
+        拿到的 JSON 照样完整校验（`_validated`），通不过就是 `parsed_output=None`，
+        由 `structured_parse` 报错；记住这个（地址, 模型），之后直接这么要。
+        `schema_enforced=False` 让连接测试能如实说出来走的是哪条路。
+        """
+        params = self._params(**kwargs)
+        key = (self._root, params["model"])
+        if key not in _SCHEMA_NOT_ENFORCED:
+            try:
+                resp = await self._create_raw(
+                    {**params, "response_format": output_format}, _method="parse"
+                )
+            except ValidationError:
+                logger.warning(
+                    f"网关不按 response_format 约束输出（{self._root or '默认地址'}，{params['model']}），"
+                    "之后改为在提示词里给出 JSON Schema，并逐条校验模型的回答"
+                )
+                _SCHEMA_NOT_ENFORCED.add(key)
+            else:
+                choice = resp.choices[0] if resp.choices else None
+                message = getattr(choice, "message", None)
+                return self._message(resp, params, parsed_output=getattr(message, "parsed", None))
+
+        messages = list(params["messages"])
+        instruction = _schema_instruction(output_format)
+        if messages and messages[0].get("role") == "system":
+            messages[0] = {"role": "system", "content": f"{messages[0]['content']}\n\n{instruction}"}
+        else:
+            messages.insert(0, {"role": "system", "content": instruction})
+        resp = await self._create_raw({**params, "messages": messages})
+        choice = resp.choices[0] if resp.choices else None
+        text = _message_text(getattr(choice, "message", None)) if choice else ""
+        return self._message(
+            resp, params, parsed_output=_validated(output_format, text), schema_enforced=False
+        )
+
+    def _message(
+        self, resp: Any, params: dict[str, Any], *, parsed_output: Any = None,
+        schema_enforced: bool = True,
+    ) -> _Message:
         choice = resp.choices[0] if resp.choices else None
         usage = getattr(resp, "usage", None)
         return _Message(
@@ -227,36 +361,8 @@ class _Messages:
                 output_tokens=getattr(usage, "completion_tokens", 0) or 0,
             ),
             model=getattr(resp, "model", params["model"]),
-        )
-
-    async def parse(self, *, output_format: type, **kwargs: Any) -> _Message:
-        """
-        结构化输出。对齐 `anthropic` 的 `messages.parse(output_format=Model)`。
-
-        OpenAI 侧走 `chat.completions.parse(response_format=Model)`——同样是服务端
-        按 JSON Schema 约束解码，不是"提示模型输出 JSON 然后祈祷"。两边都由服务端
-        保证形状，所以调用点拿到的东西是一样的：一个已校验的 Pydantic 实例。
-
-        网关不支持结构化输出时这里会抛 BadRequestError，**不做降级**。降级回手工
-        抠 JSON 等于把刚删掉的那类静默失败又请回来；让它响亮地失败，调用方各自的
-        except 会接住并记录真实原因。
-        """
-        params = self._params(**kwargs)
-        params["response_format"] = output_format
-        resp = await self._create_raw(params, _method="parse")
-
-        choice = resp.choices[0] if resp.choices else None
-        message = getattr(choice, "message", None)
-        usage = getattr(resp, "usage", None)
-        return _Message(
-            text=_message_text(message) if choice else "",
-            stop_reason=_stop_reason(getattr(choice, "finish_reason", None) if choice else None),
-            usage=_Usage(
-                input_tokens=getattr(usage, "prompt_tokens", 0) or 0,
-                output_tokens=getattr(usage, "completion_tokens", 0) or 0,
-            ),
-            model=getattr(resp, "model", params["model"]),
-            parsed_output=getattr(message, "parsed", None),
+            parsed_output=parsed_output,
+            schema_enforced=schema_enforced,
         )
 
     def stream(self, **kwargs: Any) -> _MessageStream:
@@ -333,5 +439,6 @@ class AsyncOpenAICompat:
     """
 
     def __init__(self, api_key: str, base_url: str | None = None, **kwargs: Any):
-        self._client = AsyncOpenAI(api_key=api_key, base_url=base_url or None, **kwargs)
+        # 只写到主机的地址补上 /v1（见 model_settings.api_root），和 ai-sql-agent 同一个口径
+        self._client = AsyncOpenAI(api_key=api_key, base_url=api_root(base_url or "") or None, **kwargs)
         self.messages = _Messages(self._client)

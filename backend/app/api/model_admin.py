@@ -42,6 +42,7 @@ from anthropic import AsyncAnthropic
 from fastapi import APIRouter, HTTPException, Request, Response
 from openai import APIConnectionError as OpenAIConnectionError
 from openai import APITimeoutError as OpenAITimeoutError
+from pydantic import ValidationError
 
 from app.core import llm_guard
 from app.core import model_settings as ms
@@ -54,7 +55,7 @@ from app.core.llm_utils import (
     structured_parse,
 )
 from app.core.model_runtime import ModelRuntime, chat_config_from, embedder_for
-from app.core.openai_compat import AsyncOpenAICompat
+from app.core.openai_compat import AsyncOpenAICompat, GatewayResponseError, schema_enforced_for
 
 logger = logging.getLogger(__name__)
 
@@ -257,6 +258,10 @@ def _provider_message(ex: BaseException) -> str:
 
 def outcome_of(ex: BaseException) -> tuple[str, int | None]:
     """一次失败 → (结果代号, HTTP 状态)。代号是页面配文案用的，和 llm_guard 的口径一致。"""
+    if isinstance(ex, GatewayResponseError):
+        return "not_api_response", 200
+    if isinstance(ex, ValidationError):
+        return "not_structured", 200
     if isinstance(ex, (OpenAITimeoutError, AnthropicTimeoutError, httpx.TimeoutException)):
         return "timeout", None
     if isinstance(ex, (OpenAIConnectionError, AnthropicConnectionError, httpx.TransportError)):
@@ -329,12 +334,15 @@ async def probe_chat(candidate: dict[str, Any]) -> dict[str, Any]:
         extract_structured_text(resp)
         checks.append({"check": "chat", "outcome": "ok", "status": 200, "detail": "",
                        "latency_ms": round((time.monotonic() - started) * 1000)})
+    except GatewayResponseError as ex:
+        checks.append(_failure("chat", ex, key, started))
     except ValueError as ex:
         checks.append({"check": "chat", "outcome": "empty_response", "status": 200,
                        "detail": str(ex)[:300], "latency_ms": round((time.monotonic() - started) * 1000)})
     except Exception as ex:  # noqa: BLE001
         checks.append(_failure("chat", ex, key, started))
 
+    warnings = list(candidate["warnings"])
     if checks[0]["outcome"] in ("ok", "empty_response"):
         started = time.monotonic()
         try:
@@ -346,8 +354,15 @@ async def probe_chat(candidate: dict[str, Any]) -> dict[str, Any]:
             outcome = "ok" if payload.queries else "empty_response"
             checks.append({"check": "structured", "outcome": outcome, "status": 200, "detail": "",
                            "latency_ms": round((time.monotonic() - started) * 1000)})
+            if not schema_enforced_for(client, candidate["model"]):
+                # 通是通了，但网关没有按 Schema 约束：结果是按提示词要来、再逐条校验的
+                warnings.append("schema_not_enforced")
+        except (ValidationError, GatewayResponseError) as ex:
+            checks.append(_failure("structured", ex, key, started))
         except ValueError as ex:
-            checks.append({"check": "structured", "outcome": "empty_response", "status": 200,
+            # structured_parse 的两种报错：预算被推理吃光，或者回了文字却校验不过
+            outcome = "empty_response" if "max_tokens" in str(ex) else "not_structured"
+            checks.append({"check": "structured", "outcome": outcome, "status": 200,
                            "detail": str(ex)[:300], "latency_ms": round((time.monotonic() - started) * 1000)})
         except Exception as ex:  # noqa: BLE001
             checks.append(_failure("structured", ex, key, started))
@@ -355,8 +370,7 @@ async def probe_chat(candidate: dict[str, Any]) -> dict[str, Any]:
         checks.append({"check": "structured", "outcome": "skipped", "status": None, "detail": "",
                        "latency_ms": 0})
 
-    return {"ok": all(c["outcome"] == "ok" for c in checks), "checks": checks,
-            "warnings": candidate["warnings"]}
+    return {"ok": all(c["outcome"] == "ok" for c in checks), "checks": checks, "warnings": warnings}
 
 
 async def probe_embedding(candidate: dict[str, Any]) -> dict[str, Any]:
@@ -366,7 +380,7 @@ async def probe_embedding(candidate: dict[str, Any]) -> dict[str, Any]:
     try:
         async with httpx.AsyncClient(timeout=PROBE_TIMEOUT_S) as client:
             resp = await client.post(
-                f"{candidate['base_url']}/embeddings",
+                f"{ms.api_root(candidate['base_url'])}/embeddings",
                 headers={"Authorization": f"Bearer {key}"},
                 json={"model": candidate["model"], "input": [f"{candidate['query_prefix']}连接测试"]},
             )
