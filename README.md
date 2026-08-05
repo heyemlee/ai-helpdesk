@@ -202,8 +202,9 @@ Load tests use `backend/scripts/load_test.py --unique-messages --requests 100 --
 | `POST /chat` · `POST /chat/stream` | Replies, routing metadata, policy findings, and handoff state; SSE includes preparation progress |
 | `GET /tickets` · `GET /tickets/{ticket_id}` · `POST /tickets/{ticket_id}/status` | Inspect and advance human tickets; each ticket reports its allowed transitions and notification delivery record |
 | `GET /conversations/{conv_id}` | Full transcript behind a ticket |
-| `GET /knowledge/documents` · `GET /knowledge/documents/{doc_id}` | Browse documents (optional `q` filters title and text) and read one with its retrieval passages |
-| `POST /knowledge/add` · `POST /knowledge/upload` | Ingest knowledge as documents; re-importing identical text is a no-op |
+| `GET /knowledge/documents` · `GET /knowledge/documents/{doc_id}` | Browse documents (optional `category`; `q` filters title and text, with per-category match counts) and read one with its retrieval passages |
+| `GET /knowledge/categories` · `PATCH /knowledge/documents/{doc_id}` | List the fixed categories with document counts; move a document to another category (retrieval is unaffected) |
+| `POST /knowledge/add` · `POST /knowledge/upload` | Ingest knowledge as documents, each optionally filed under a category; re-importing identical text is a no-op |
 | `POST /search` | Question-based retrieval (rewrite, hybrid recall, rerank); hits name their source document |
 | `GET /skills` · `GET /sops` · `POST /skills/reload` | Inspect SOP metadata, read SOP text, and reload from disk |
 | `POST /eval/run` · `POST /eval/promote` | Run evaluations and explicitly promote the baseline |

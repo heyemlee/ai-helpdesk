@@ -202,8 +202,9 @@ backend/.venv/bin/pip install ruff
 | `POST /chat` · `POST /chat/stream` | 回答、路由依据、策略违规与转人工状态；SSE 支持准备阶段的进度事件 |
 | `GET /tickets` · `GET /tickets/{ticket_id}` · `POST /tickets/{ticket_id}/status` | 查看与推进人工工单；每张工单带可流转状态和通知投递记录 |
 | `GET /conversations/{conv_id}` | 工单背后的完整对话原文 |
-| `GET /knowledge/documents` · `GET /knowledge/documents/{doc_id}` | 浏览文档（可用 `q` 按标题和正文筛选），读取单篇正文及其检索片段 |
-| `POST /knowledge/add` · `POST /knowledge/upload` | 按文档导入知识，正文相同的重复导入不会写入 |
+| `GET /knowledge/documents` · `GET /knowledge/documents/{doc_id}` | 浏览文档（可用 `category` 只看一类，`q` 按标题和正文筛选并给出每类匹配篇数），读取单篇正文及其检索片段 |
+| `GET /knowledge/categories` · `PATCH /knowledge/documents/{doc_id}` | 列出固定的分类和每类篇数；把文档挪到另一个分类（不影响检索） |
+| `POST /knowledge/add` · `POST /knowledge/upload` | 按文档导入知识，每篇可以带分类；正文相同的重复导入不会写入 |
 | `POST /search` | 按问题检索（改写、混合召回、重排），命中片段标明所属文档 |
 | `GET /skills` · `GET /sops` · `POST /skills/reload` | 查看 SOP 摘要、读取 SOP 正文、热加载 |
 | `POST /eval/run` · `POST /eval/promote` | 运行评测、显式提升基线 |

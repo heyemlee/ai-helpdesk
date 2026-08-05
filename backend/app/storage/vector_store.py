@@ -23,6 +23,8 @@ LocalStore 的暴力扫为什么可接受：demo 知识库百级片段、情景�
 文档表只存"导入时拿到了什么"——标题、原文、来源、导入时间——分片用 doc_id
 指回去。升级前写入的分片 doc_id 为空，由 KnowledgeBase.ensure_documents 归档
 成"历史"文档；那一步只用这里的原子操作拼出来，两个后端走的是同一段逻辑。
+文档另有一个分类（category），只给工作台整理和浏览用，检索不看它——改分类
+只改文档表的这一列，分片、向量和关键词索引都不动。
 
 向量的来源：storage_meta 里记着库里的向量是哪个 Embedding 模型算的。换了模型
 （哪怕维度一样）旧向量就不能再用——它们和新模型的查询向量不在一个空间里，
@@ -69,7 +71,8 @@ CREATE TABLE IF NOT EXISTS kb_documents (
     source_type  TEXT NOT NULL DEFAULT '',  -- manual / upload / seed / legacy
     source_name  TEXT NOT NULL DEFAULT '',  -- 上传的文件名；没有就是空
     chunk_count  INTEGER NOT NULL DEFAULT 0,  -- 导入时切成了几片
-    created_at   REAL NOT NULL              -- 导入时间
+    created_at   REAL NOT NULL,             -- 导入时间
+    category     TEXT NOT NULL DEFAULT ''   -- 大类的 key（见 knowledge_base.CATEGORIES）；空 = 未分类
 );
 CREATE INDEX IF NOT EXISTS idx_kb_docs_hash ON kb_documents (content_hash);
 CREATE INDEX IF NOT EXISTS idx_kb_docs_created ON kb_documents (created_at);
@@ -126,9 +129,12 @@ def _require_vectors(
 
 # 文档列表返回的列。正文只取开头一段（列表页要它算摘要），整篇正文走详情。
 DOC_HEAD_CHARS = 600
-_DOC_COLUMNS = "id, title, origin, source_type, source_name, chunk_count, created_at"
+_DOC_COLUMNS = "id, title, origin, source_type, source_name, chunk_count, created_at, category"
 # kb_doc_update 允许改的列。写死白名单：列名是拼进 SQL 的，不能来自调用方。
-_DOC_UPDATABLE = ("title", "content", "content_hash", "origin", "source_type", "source_name", "chunk_count")
+_DOC_UPDATABLE = (
+    "title", "content", "content_hash", "origin", "source_type", "source_name", "chunk_count",
+    "category",
+)
 
 
 def like_pattern(term: str) -> str:
@@ -137,25 +143,46 @@ def like_pattern(term: str) -> str:
     return f"%{escaped}%"
 
 
-def doc_filter_sql(terms: list[str], mark) -> tuple[str, str]:
+def doc_filter_sql(
+    terms: list[str],
+    mark,
+    category_in: list[str] | None = None,
+    category_not_in: list[str] | None = None,
+) -> tuple[str, str, list[Any]]:
     """
-    文档筛选的 WHERE 和 ORDER BY，两个后端共用同一个形状。
+    文档筛选的 WHERE、ORDER BY 和参数，两个后端共用同一个形状。
 
     每个词都要在标题或正文里出现（AND）：这是"筛选"，词越多结果越少。
     标题里就能凑齐所有词的排前面——按标题找文档是最常见的用法。
+    分类条件和词是 AND 的关系：category_in 只要这几类，category_not_in 除了这几类
+    （"未分类"就是"不在任何一个现有大类里"，空串和已经撤掉的旧分类都算）。
     `mark(i)` 给出第 i 个参数（从 0 起）的占位符，SQLite 是 `?1`，Postgres 是 `$1`，
     两边都支持同一个参数引用多次。
     """
-    order_tail = "created_at DESC, title, id"
-    if not terms:
-        return "", order_tail
+    params: list[Any] = [like_pattern(t) for t in terms]
     esc = "ESCAPE '\\'"
-    where = " AND ".join(
+    conds = [
         f"(lower(title) LIKE {mark(i)} {esc} OR lower(content) LIKE {mark(i)} {esc})"
         for i in range(len(terms))
-    )
+    ]
+    for keys, op in ((category_in, "IN"), (category_not_in, "NOT IN")):
+        if keys is None:
+            continue
+        if not keys:
+            # IN () 是语法错误：空的"只要"什么都不要，空的"除了"什么都不排除
+            if op == "IN":
+                conds.append("1 = 0")
+            continue
+        marks = ", ".join(mark(len(params) + j) for j in range(len(keys)))
+        conds.append(f"category {op} ({marks})")
+        params.extend(keys)
+
+    where = f"WHERE {' AND '.join(conds)}" if conds else ""
+    order_tail = "created_at DESC, title, id"
+    if not terms:
+        return where, order_tail, params
     title_all = " AND ".join(f"lower(title) LIKE {mark(i)} {esc}" for i in range(len(terms)))
-    return f"WHERE {where}", f"CASE WHEN {title_all} THEN 0 ELSE 1 END, {order_tail}"
+    return where, f"CASE WHEN {title_all} THEN 0 ELSE 1 END, {order_tail}", params
 
 
 class LocalStore:
@@ -172,6 +199,7 @@ class LocalStore:
         with self._lock:
             self._db.executescript(_LOCAL_SCHEMA)
             self._migrate_chunk_columns()
+            self._migrate_document_columns()
             self._db.commit()
 
     def _migrate_chunk_columns(self) -> None:
@@ -195,6 +223,18 @@ class LocalStore:
             self._db.execute("ALTER TABLE kb_chunks ADD COLUMN doc_id TEXT NOT NULL DEFAULT ''")
             logger.info("kb_chunks 已补 doc_id 列（历史分片待归档成文档）")
         self._db.execute("CREATE INDEX IF NOT EXISTS idx_kb_chunks_doc ON kb_chunks (doc_id)")
+
+    def _migrate_document_columns(self) -> None:
+        """
+        给已存在的 kb_documents 补 category 列（加分类时加的）。
+
+        补出来是空串，也就是"未分类"：已有文档原样留在库里，等人在工作台里归类。
+        不按标题猜分类——猜错了的文档会躲进一个没人去找的大类里。
+        """
+        cols = {r["name"] for r in self._db.execute("PRAGMA table_info(kb_documents)")}
+        if "category" not in cols:
+            self._db.execute("ALTER TABLE kb_documents ADD COLUMN category TEXT NOT NULL DEFAULT ''")
+            logger.info("kb_documents 已补 category 列（已有文档都是未分类）")
 
     async def init(self) -> None:
         """与 PgStore 对齐的异步初始化钩子（SQLite 在构造时已建表）。"""
@@ -324,11 +364,12 @@ class LocalStore:
                 cur = self._db.execute(
                     "INSERT OR IGNORE INTO kb_documents"
                     " (id, title, content, content_hash, origin, source_type, source_name,"
-                    "  chunk_count, created_at)"
-                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "  chunk_count, created_at, category)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (doc["id"], doc["title"], doc["content"], doc["content_hash"],
                      doc.get("origin", "original"), doc.get("source_type", ""),
-                     doc.get("source_name", ""), doc.get("chunk_count", 0), doc["created_at"]),
+                     doc.get("source_name", ""), doc.get("chunk_count", 0), doc["created_at"],
+                     doc.get("category", "")),
                 )
                 self._db.commit()
                 return cur.rowcount > 0
@@ -361,16 +402,19 @@ class LocalStore:
 
     async def kb_doc_list(
         self, terms: list[str], limit: int, offset: int = 0, with_content: bool = False,
+        category_in: list[str] | None = None, category_not_in: list[str] | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
         """
         文档列表，返回 (本页, 符合条件的总数)。
 
         terms 为空是浏览全部；非空时每个词都要在标题或正文里出现。
+        分类条件见 doc_filter_sql。
         `chunks` 是现在真的挂在这篇文档下的分片数，和导入时记下的 chunk_count
         分开给——两个数对不上，就是有分片在库里被动过。
         """
-        where, order = doc_filter_sql(terms, lambda i: f"?{i + 1}")
-        params = [like_pattern(t) for t in terms]
+        where, order, params = doc_filter_sql(
+            terms, lambda i: f"?{i + 1}", category_in, category_not_in
+        )
         body = ", content" if with_content else ""
 
         def _q() -> tuple[list[dict[str, Any]], int]:
@@ -387,6 +431,19 @@ class LocalStore:
                     [*params, limit, offset],
                 ).fetchall()
             return [dict(r) for r in rows], total
+        return await asyncio.to_thread(_q)
+
+    async def kb_doc_category_counts(self, terms: list[str]) -> dict[str, int]:
+        """按分类数文档（存的是什么就按什么数），筛选词和 kb_doc_list 同一个口径。"""
+        where, _, params = doc_filter_sql(terms, lambda i: f"?{i + 1}")
+
+        def _q() -> dict[str, int]:
+            with self._lock:
+                rows = self._db.execute(
+                    f"SELECT category, COUNT(*) AS n FROM kb_documents {where} GROUP BY category",
+                    params,
+                ).fetchall()
+            return {r["category"]: r["n"] for r in rows}
         return await asyncio.to_thread(_q)
 
     async def kb_doc_briefs(self, doc_ids: list[str]) -> list[dict[str, Any]]:
@@ -761,12 +818,13 @@ class PgStore:
         row = await self._db.fetchrow(
             "INSERT INTO kb_documents"
             " (id, title, content, content_hash, origin, source_type, source_name,"
-            "  chunk_count, created_at)"
-            " VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)"
+            "  chunk_count, created_at, category)"
+            " VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)"
             " ON CONFLICT (id) DO NOTHING RETURNING id",
             doc["id"], doc["title"], doc["content"], doc["content_hash"],
             doc.get("origin", "original"), doc.get("source_type", ""),
             doc.get("source_name", ""), doc.get("chunk_count", 0), doc["created_at"],
+            doc.get("category", ""),
         )
         return row is not None
 
@@ -791,9 +849,11 @@ class PgStore:
 
     async def kb_doc_list(
         self, terms: list[str], limit: int, offset: int = 0, with_content: bool = False,
+        category_in: list[str] | None = None, category_not_in: list[str] | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
-        where, order = doc_filter_sql(terms, lambda i: f"${i + 1}")
-        params = [like_pattern(t) for t in terms]
+        where, order, params = doc_filter_sql(
+            terms, lambda i: f"${i + 1}", category_in, category_not_in
+        )
         body = ", content" if with_content else ""
         total = await self._db.fetchrow(
             f"SELECT COUNT(*) AS n FROM kb_documents {where}", *params
@@ -807,6 +867,13 @@ class PgStore:
             *params, limit, offset,
         )
         return [dict(r) for r in rows], total["n"]
+
+    async def kb_doc_category_counts(self, terms: list[str]) -> dict[str, int]:
+        where, _, params = doc_filter_sql(terms, lambda i: f"${i + 1}")
+        rows = await self._db.fetch(
+            f"SELECT category, COUNT(*) AS n FROM kb_documents {where} GROUP BY category", *params
+        )
+        return {r["category"]: r["n"] for r in rows}
 
     async def kb_doc_briefs(self, doc_ids: list[str]) -> list[dict[str, Any]]:
         if not doc_ids:

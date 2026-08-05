@@ -50,7 +50,17 @@ _ROOT = str(pathlib.Path(__file__).resolve().parents[2])
 
 import uvicorn
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, File, Header, HTTPException, Response, Security, UploadFile
+from fastapi import (
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    Response,
+    Security,
+    UploadFile,
+)
 from fastapi import Request as HttpRequest
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -523,7 +533,11 @@ from app.core.metrics import (  # noqa: E402
     observe_http,
 )
 from app.core.telemetry import setup_telemetry  # noqa: E402
-from app.tools.knowledge_base import document_excerpt, should_use_knowledge  # noqa: E402
+from app.tools.knowledge_base import (  # noqa: E402
+    UnknownCategory,
+    document_excerpt,
+    should_use_knowledge,
+)
 from app.tools.tool_manager import PASSAGE_CHARS  # noqa: E402
 
 # OTel：配置 OTEL_EXPORTER_OTLP_ENDPOINT 后启用 FastAPI/httpx/redis/asyncpg
@@ -1839,14 +1853,20 @@ def _require_knowledge_base():
 
 
 class DocInput(BaseModel):
-    """单篇文档输入。"""
+    """单篇文档输入。category 可省（未分类），写 key、中文名或英文名都认。"""
     title:   str
     content: str
+    category: str | None = None
 
 
 class BatchDocInput(BaseModel):
     """批量文档导入请求体。"""
     documents: list[DocInput]
+
+
+class DocumentPatch(BaseModel):
+    """改一篇文档。现在只能改分类：空串是未分类。"""
+    category: str
 
 
 class EvalIntentInput(BaseModel):
@@ -1880,32 +1900,41 @@ async def add_knowledge(body: BatchDocInput):
 
     文档会自动切片（每片 500 字），由 Embedder 生成向量后存入 pgvector（或 SQLite 兜底）。
 
+    每篇可以带 `category`（分类，见 `GET /knowledge/categories`），写 key、中文名、
+    英文名都行，省略是未分类。任何一篇的分类写错了，整批都不导入，返回 400。
+
     示例请求体：
     ```json
     {
       "documents": [
-        {"title": "补件流程", "content": "缺件需在验收单注明并提供订单号、柜号和装箱单编号..."},
-        {"title": "交期说明", "content": "标准交期 4-6 周，以工厂排产确认为准..."}
+        {"title": "补件流程", "content": "缺件需在验收单注明并提供订单号、柜号和装箱单编号...",
+         "category": "delivery"},
+        {"title": "交期说明", "content": "标准交期 4-6 周，以工厂排产确认为准...",
+         "category": "生产与交期"}
       ]
     }
     ```
     """
     kb = _require_knowledge_base()
     results = await _import_or_503(
-        kb, [{"title": d.title, "content": d.content} for d in body.documents],
+        kb,
+        [{"title": d.title, "content": d.content, "category": d.category} for d in body.documents],
         source_type="manual",
     )
     return await _import_response(kb, results)
 
 
 @app.post("/knowledge/upload", tags=["知识库"], dependencies=[Depends(require_api_key)])
-async def upload_knowledge(file: UploadFile = File(...)):
+async def upload_knowledge(file: UploadFile = File(...), category: str = Form("")):
     """
     上传文件导入知识库。
 
     支持格式：
     - `.txt` / `.md`：整个文件作为一篇文档，文件名作为标题
-    - `.json`：JSON 数组格式 `[{"title": "...", "content": "..."}, ...]`
+    - `.json`：JSON 数组格式 `[{"title": "...", "content": "...", "category": "..."}, ...]`
+
+    表单里的 `category` 是这次导入的分类：txt / md 就落在这一类；JSON 里每篇自己写了
+    `category` 的用自己的，没写的用它。都不给是未分类。
 
     文件大小限制：10MB
     """
@@ -1932,7 +1961,9 @@ async def upload_knowledge(file: UploadFile = File(...)):
         title = filename.rsplit(".", 1)[0] if "." in filename else filename
         docs = [{"title": title, "content": text}]
 
-    results = await _import_or_503(kb, docs, source_type="upload", source_name=filename)
+    results = await _import_or_503(
+        kb, docs, source_type="upload", source_name=filename, category=category
+    )
     return await _import_response(kb, results, f"文件 {filename} 导入成功")
 
 
@@ -1952,6 +1983,9 @@ async def _import_or_503(kb, docs: list[dict[str, Any]], **source) -> list[dict[
         )
     try:
         return await kb.import_documents(docs, **source)
+    except UnknownCategory as ex:
+        # 导入前就校验了，这时库里什么都没写
+        raise HTTPException(400, f"{ex}这一批没有导入任何文档。") from ex
     except EmbeddingUnavailable as ex:
         logger.warning(f"知识库导入中断，Embedding 不可用: {ex}")
         raise HTTPException(
@@ -1987,10 +2021,15 @@ async def knowledge_stats():
 
 
 @app.get("/knowledge/documents", tags=["知识库"], dependencies=[Depends(require_api_key)])
-async def list_knowledge_documents(q: str = "", limit: int = 100, offset: int = 0):
+async def list_knowledge_documents(
+    q: str = "", limit: int = 100, offset: int = 0, category: str = "",
+):
     """
     知识库里有哪些文档。不带 `q` 是浏览全部（新导入的在前）；带 `q` 时按空白
     拆成词，每个词都要在标题或正文里出现，响应里说明是标题命中还是正文命中。
+
+    `category` 只看一个分类（`uncategorized` 是未分类）；不认识的分类返回空列表。
+    响应里的 `categories` 是每个分类里满足 `q` 的篇数，不受 `category` 影响。
 
     这是**按字面找文档**。"用一句问题找相关段落"是另一件事，走 `POST /search`
     ——那条链路会改写问题、做语义召回和重排，对话里用的也是它。
@@ -2001,8 +2040,38 @@ async def list_knowledge_documents(q: str = "", limit: int = 100, offset: int = 
     """
     kb = _require_knowledge_base()
     return await kb.list_documents(
-        query=q.strip()[:200], limit=max(1, min(limit, 500)), offset=max(0, offset)
+        query=q.strip()[:200], limit=max(1, min(limit, 500)), offset=max(0, offset),
+        category=category.strip()[:64] or None,
     )
+
+
+@app.get("/knowledge/categories", tags=["知识库"], dependencies=[Depends(require_api_key)])
+async def list_knowledge_categories():
+    """
+    知识库的分类（按客户从咨询到售后的顺序）和每类的篇数，外加未分类的篇数。
+
+    分类是固定的一组，用来整理和浏览文档；检索不看分类。
+    """
+    kb = _require_knowledge_base()
+    return await kb.category_overview()
+
+
+@app.patch("/knowledge/documents/{doc_id}", tags=["知识库"],
+           dependencies=[Depends(require_api_key)])
+async def update_knowledge_document(doc_id: str, body: DocumentPatch):
+    """
+    改一篇文档的分类（`{"category": "delivery"}`，空串是未分类）。
+
+    只改分类：正文、分片、向量和关键词索引都不动，检索结果不受影响。
+    """
+    kb = _require_knowledge_base()
+    try:
+        document = await kb.set_document_category(doc_id, body.category)
+    except UnknownCategory as ex:
+        raise HTTPException(400, str(ex)) from ex
+    if document is None:
+        raise HTTPException(404, f"文档不存在: {doc_id}")
+    return document
 
 
 @app.get("/knowledge/documents/{doc_id}", tags=["知识库"],

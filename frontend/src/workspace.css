@@ -329,6 +329,74 @@ section > .state-block { margin-top: 14px; }
 .passage-head strong { font-weight: 600; color: var(--color-text-secondary); }
 .passage-text { margin-top: 8px; font-size: 13px; line-height: 1.7; color: var(--color-text-secondary); white-space: pre-wrap; overflow-wrap: anywhere; }
 
+/* Knowledge: categories. A category rail beside the list; the list is grouped
+   rows, not cards — fifty documents should fit in a few screens, not twenty.
+   The rail folds into a row of chips when the browse area is narrow (container
+   query, so it follows the space left by the app rail, not the window). */
+.kb-browse-wrap { container-type: inline-size; }
+.kb-browse { display: grid; grid-template-columns: 212px minmax(0, 1fr); gap: 28px; align-items: start; margin-top: 4px; }
+.kb-browse.is-flat { grid-template-columns: minmax(0, 1fr); }
+.kb-cats { position: sticky; top: 12px; display: grid; gap: 2px; padding-top: 4px; }
+.kb-cat { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 12px; border-radius: 10px; color: var(--color-text-secondary); font-size: 13px; text-decoration: none; }
+.kb-cat:hover { background: var(--alpha-06); color: var(--color-text); }
+.kb-cat[aria-current="page"] { background: var(--alpha-08); color: var(--color-text); font-weight: 600; }
+.kb-cat-name { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.kb-cat-count { margin-left: auto; font-size: 12px; font-weight: 400; color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
+.kb-cat.is-empty:not([aria-current="page"]) { color: var(--color-text-tertiary); }
+.kb-cat.is-loose { margin-top: 8px; position: relative; }
+.kb-cat.is-loose::before { content: ""; position: absolute; top: -5px; left: 12px; right: 12px; border-top: 1px solid var(--color-border-subtle); }
+.kb-docs { display: grid; gap: 14px; min-width: 0; }
+.kb-docs[aria-busy="true"] .doc-rows { opacity: .6; transition: opacity .15s; }
+.kb-docs > .filterbar { margin-top: 0; }
+.kb-docs > .list-summary { margin: 0; }
+.kb-list-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.kb-list-title h3 { font-size: 15px; }
+.kb-groups { display: grid; gap: 22px; }
+.kb-group { display: grid; gap: 8px; }
+.kb-group-head { display: flex; align-items: baseline; gap: 8px; }
+.kb-group-head h3 { font-size: 13px; font-weight: 600; }
+.kb-group-head a { color: var(--color-text); text-decoration: none; }
+.kb-group-head a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.kb-group-count { font-size: 12px; font-weight: 400; color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
+.kb-group-note { font-size: 12px; line-height: 1.6; color: var(--color-text-secondary); }
+.doc-rows { margin: 0; padding: 0; list-style: none; overflow: hidden; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-surface); }
+.doc-row { position: relative; display: grid; gap: 2px; padding: 11px 16px; transition: background .15s; }
+.doc-row + .doc-row { border-top: 1px solid var(--color-border-subtle); }
+.doc-row:hover { background: var(--color-surface-secondary); }
+.doc-row-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.doc-row-head a { font-size: 14px; font-weight: 600; line-height: 1.5; color: var(--color-text); text-decoration: none; overflow-wrap: anywhere; }
+/* The title is the link; this stretches its hit area over the whole row. */
+.doc-row-head a::after { content: ""; position: absolute; inset: 0; }
+.doc-row-head a:focus-visible { outline: none; }
+.doc-row-head a:focus-visible::after { outline: 2px solid var(--color-ring); outline-offset: -2px; }
+.doc-row-text { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12px; line-height: 1.6; color: var(--color-text-secondary); }
+.doc-row-text.is-match { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; overflow-wrap: anywhere; }
+.doc-row-meta { font-size: 11px; color: var(--color-text-tertiary); overflow-wrap: anywhere; }
+.doc-row mark { background: var(--accent-soft); color: var(--color-text); text-decoration: underline; text-underline-offset: 2px; border-radius: 2px; }
+.field-row > .field-label { font-size: 12px; color: var(--color-text-tertiary); }
+@container (max-width: 720px) {
+  .kb-browse { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .kb-cats { position: static; display: flex; gap: 6px; overflow-x: auto; padding: 2px; scrollbar-width: none; }
+  .kb-cats::-webkit-scrollbar { display: none; }
+  .kb-cat { flex-shrink: 0; min-height: 34px; border: 1px solid var(--color-border); border-radius: 999px; }
+  .kb-cat[aria-current="page"] { border-color: var(--color-solid); }
+  .kb-cat-count { margin-left: 2px; }
+  .kb-cat.is-loose { margin-top: 0; }
+  .kb-cat.is-loose::before { display: none; }
+  .doc-row { padding: 11px 14px; }
+}
+
+/* Knowledge: reader location and category */
+.crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; justify-self: start; font-size: 13px; }
+.crumbs > a:not(.back-link) { color: var(--color-text); font-weight: 500; text-decoration: none; }
+.crumbs > a:not(.back-link):hover { text-decoration: underline; text-underline-offset: 3px; }
+.crumbs-sep { color: var(--color-text-tertiary); }
+.category-field { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.field.field-compact { width: auto; min-height: 30px; padding: 3px 8px; font-size: 13px; }
+.category-status { font-size: 12px; color: var(--color-text-tertiary); }
+.category-status:empty { display: none; }
+.category-error { flex-basis: 100%; font-size: 12px; line-height: 1.6; color: var(--color-text-danger); }
+
 /* Conversations: what backs a reply */
 .thread-empty h2 { font-size: clamp(22px, 2.4vw, 30px); }
 .starter-section h3.starter-label { font-weight: 600; letter-spacing: .02em; }

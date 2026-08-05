@@ -13,7 +13,7 @@ export type KnowledgeMode = 'browse' | 'ask'
 
 export type Route =
   | { view: 'chat' }
-  | { view: 'knowledge'; mode: KnowledgeMode; docId?: string }
+  | { view: 'knowledge'; mode: KnowledgeMode; docId?: string; category?: string }
   | { view: 'tickets'; ticketId?: string }
   | { view: 'admin'; tab: AdminTab }
 
@@ -25,6 +25,7 @@ export function parseRoute(hash: string): Route {
   })
   if (head === 'knowledge') {
     if (second === 'doc' && third) return { view: 'knowledge', mode: 'browse', docId: third }
+    if (second === 'category' && third) return { view: 'knowledge', mode: 'browse', category: third }
     return { view: 'knowledge', mode: second === 'ask' ? 'ask' : 'browse' }
   }
   if (head === 'tickets') return second ? { view: 'tickets', ticketId: second } : { view: 'tickets' }
@@ -40,6 +41,8 @@ export const href = {
   chat: () => '#/chat',
   knowledge: (mode: KnowledgeMode = 'browse') => (mode === 'ask' ? '#/knowledge/ask' : '#/knowledge'),
   document: (docId: string) => `#/knowledge/doc/${encodeURIComponent(docId)}`,
+  /** 浏览某一个分类；`uncategorized` 是未分类 */
+  category: (key: string) => `#/knowledge/category/${encodeURIComponent(key)}`,
   tickets: () => '#/tickets',
   ticket: (ticketId: string) => `#/tickets/${encodeURIComponent(ticketId)}`,
   admin: (tab: AdminTab = 'overview') => (tab === 'overview' ? '#/admin' : `#/admin/${tab}`),

@@ -54,6 +54,8 @@ def client(main):
 STAFF_ONLY = [
     ("GET", "/knowledge/documents"),
     ("GET", "/knowledge/documents/doc_x"),
+    ("PATCH", "/knowledge/documents/doc_x"),
+    ("GET", "/knowledge/categories"),
     ("GET", "/sops"),
     ("POST", "/search"),
     ("POST", "/knowledge/add"),
@@ -89,7 +91,7 @@ def test_import_then_browse_then_read(client, kb):
     ]}).json()
     created, blank = added["documents"]
     assert created["status"] == "created" and created["chunks"] == 1
-    assert blank == {"id": None, "title": "blank", "status": "empty", "chunks": 0}
+    assert blank == {"id": None, "title": "blank", "status": "empty", "chunks": 0, "category": ""}
     assert added["added_documents"] == 1 and added["added_chunks"] == 1
     assert (added["total_documents"], added["total_chunks"]) == (1, 1)
 
@@ -111,6 +113,7 @@ def test_import_then_browse_then_read(client, kb):
     ]}).json()
     assert again["documents"][0] == {
         "id": created["id"], "title": "fulfillment", "status": "duplicate", "chunks": 0,
+        "category": "",
     }
     assert again["added_documents"] == 0 and again["total_documents"] == 1
 
@@ -151,6 +154,71 @@ def test_upload_keeps_the_file_name_as_source(client, kb):
     resp = client.post("/knowledge/upload", files={"file": ("batch.JSON", batch.encode(), "application/json")})
     assert [d["status"] for d in resp.json()["documents"]] == ["created", "created"]
     assert resp.json()["total_documents"] == 3
+
+
+def test_documents_are_filed_and_moved_through_the_api(client, kb):
+    added = client.post("/knowledge/add", json={"documents": [
+        {"title": "fee", "content": "送货费按距离计。", "category": "delivery"},
+        {"title": "hinge", "content": "铰链三个方向可调。", "category": "安装与验收"},
+        {"title": "loose", "content": "还没归类。"},
+    ]}).json()
+    assert [d["category"] for d in added["documents"]] == ["delivery", "installation", ""]
+
+    overview = client.get("/knowledge/categories").json()
+    assert [c["key"] for c in overview["categories"]][:3] == ["products", "design", "orders"]
+    counts = {c["key"]: c["documents"] for c in overview["categories"]}
+    assert (counts["delivery"], counts["installation"], overview["uncategorized"]) == (1, 1, 1)
+    assert next(c for c in overview["categories"] if c["key"] == "delivery")["name"] == "送货与收货"
+
+    delivery = client.get("/knowledge/documents", params={"category": "delivery"}).json()
+    assert [d["title"] for d in delivery["documents"]] == ["fee"] and delivery["category"] == "delivery"
+    loose = client.get("/knowledge/documents", params={"category": "uncategorized"}).json()
+    assert [d["title"] for d in loose["documents"]] == ["loose"]
+    everything = client.get("/knowledge/documents", params={"category": ""}).json()
+    assert everything["category"] is None and everything["matched"] == 3
+
+    moved = client.patch(f"/knowledge/documents/{added['documents'][2]['id']}",
+                         json={"category": "售后与保修"})
+    assert moved.status_code == 200 and moved.json()["category"] == "aftersales"
+    assert client.get("/knowledge/categories").json()["uncategorized"] == 0
+
+    wrong = client.patch(f"/knowledge/documents/{added['documents'][2]['id']}", json={"category": "售后"})
+    assert wrong.status_code == 400 and "售后与保修" in wrong.json()["detail"]
+    assert client.patch("/knowledge/documents/doc_missing", json={"category": ""}).status_code == 404
+
+
+def test_a_wrong_category_rejects_the_whole_batch(client, kb):
+    resp = client.post("/knowledge/add", json={"documents": [
+        {"title": "ok", "content": "没问题的一篇。", "category": "orders"},
+        {"title": "typo", "content": "分类拼错了。", "category": "送货"},
+    ]})
+    assert resp.status_code == 400
+    assert "《typo》" in resp.json()["detail"] and "没有导入任何文档" in resp.json()["detail"]
+    assert client.get("/knowledge/documents").json()["total_documents"] == 0
+
+
+def test_upload_files_documents_under_the_chosen_category(client, kb):
+    resp = client.post("/knowledge/upload", data={"category": "installation"}, files={
+        "file": ("hinge.md", io.BytesIO("# Hinge\n\n先查柜体水平。".encode()), "text/markdown"),
+    })
+    assert resp.status_code == 200 and resp.json()["documents"][0]["category"] == "installation"
+
+    # JSON 里每篇自己写的分类优先，没写的用表单里选的
+    batch = json.dumps([
+        {"title": "a", "content": "甲", "category": "报价与订单"},
+        {"title": "b", "content": "乙"},
+    ])
+    resp = client.post("/knowledge/upload", data={"category": "products"},
+                       files={"file": ("batch.json", batch.encode(), "application/json")})
+    assert [d["category"] for d in resp.json()["documents"]] == ["orders", "products"]
+
+    bad = json.dumps([{"title": "c", "content": "丙", "category": "nope"}])
+    resp = client.post("/knowledge/upload", files={"file": ("bad.json", bad.encode(), "application/json")})
+    assert resp.status_code == 400 and "nope" in resp.json()["detail"]
+    resp = client.post("/knowledge/upload", data={"category": "nope"},
+                       files={"file": ("x.md", b"# X\n\nbody", "text/markdown")})
+    assert resp.status_code == 400
+    assert client.get("/knowledge/documents").json()["total_documents"] == 3
 
 
 @pytest.mark.parametrize("payload", ['{"title": "not a list"}', '["just", "strings"]', "{broken"])

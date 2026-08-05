@@ -378,18 +378,39 @@ export interface KnowledgeDocument {
   chunks: number
   chars: number
   created_at: number
+  /** 大类的 key，空串是未分类。加分类之前的后端不返回 */
+  category?: string
   /** 只在带筛选词时返回 */
   match?: { title: boolean; snippet: string }
+}
+
+/** 知识库的一个大类。顺序由后端定（按客户从咨询到售后），界面照着列。 */
+export interface KnowledgeCategory {
+  key: string
+  name: string
+  name_en: string
+  /** 这一类的篇数。文档列表里给的是满足筛选词的篇数 */
+  documents: number
+}
+
+export interface KnowledgeCategoryOverview {
+  categories: KnowledgeCategory[]
+  uncategorized: number
 }
 
 export interface KnowledgeDocumentList {
   query: string
   documents: KnowledgeDocument[]
-  /** 符合筛选条件的文档数（不受分页影响） */
+  /** 符合筛选条件（筛选词 + 分类）的文档数，不受分页影响 */
   matched: number
   total_documents: number
   legacy_documents: number
   total_chunks: number
+  /** 下面三项加分类之前的后端不返回。category：当前只看哪一类，null 是全部 */
+  category?: string | null
+  /** 每个大类里满足筛选词的篇数，不受 category 影响 */
+  categories?: KnowledgeCategory[]
+  uncategorized?: number
 }
 
 export interface KnowledgePassage {
@@ -416,6 +437,8 @@ export interface ImportedDocument {
   /** created 新建；duplicate 已存在；restored 补全了一篇历史文档；empty 正文为空 */
   status: 'created' | 'duplicate' | 'restored' | 'empty' | string
   chunks: number
+  /** 这篇文档现在所在的分类（已存在的那篇不会因为重新导入而挪走） */
+  category?: string
 }
 
 export interface ImportResult {

@@ -21,12 +21,17 @@ from app.core.lexical import index_text
 from app.storage.vector_store import LocalStore, like_pattern
 from app.tools import knowledge_base as kbmod
 from app.tools.knowledge_base import (
+    CATEGORY_KEYS,
+    UNCATEGORIZED,
     KnowledgeBase,
+    UnknownCategory,
     document_excerpt,
     document_hash,
     document_heading,
     match_snippet,
+    normalize_category,
     split_heading,
+    stored_category,
 )
 
 TEST_PG_DSN = os.getenv("TEST_POSTGRES_DSN", "").strip()
@@ -178,7 +183,8 @@ async def test_reimport_is_idempotent(kb, store):
     [first] = await kb.import_documents([doc])
     before = await store.kb_count()
     [again] = await kb.import_documents([doc])
-    assert again == {"id": first["id"], "title": title, "status": "duplicate", "chunks": 0}
+    assert again == {"id": first["id"], "title": title, "status": "duplicate", "chunks": 0,
+                     "category": ""}
     assert await store.kb_count() == before
     assert await kb.add_documents_async([doc]) == 0   # 旧接口的口径不变：新增片段数
 
@@ -292,6 +298,142 @@ async def test_listing_is_paged(kb):
     assert first["matched"] == rest["matched"] == 3
     assert len(first["documents"]) == 2 and len(rest["documents"]) == 1
     assert not {d["id"] for d in first["documents"]} & {d["id"] for d in rest["documents"]}
+
+
+# ── 分类 ──────────────────────────────────────────────────────────────────────
+
+def test_category_accepts_key_chinese_name_and_english_name():
+    assert normalize_category("delivery") == "delivery"
+    assert normalize_category(" 送货与收货 ") == "delivery"
+    assert normalize_category("DELIVERY & receiving") == "delivery"
+    for blank in (None, "", "  ", "未分类", "uncategorized"):
+        assert normalize_category(blank) == ""
+    with pytest.raises(UnknownCategory) as caught:
+        normalize_category("送货")              # 少两个字也不猜
+    assert "送货与收货" in str(caught.value) and "delivery" in str(caught.value)
+    # 库里留着的旧分类按未分类给
+    assert stored_category("retired") == "" and stored_category("orders") == "orders"
+
+
+async def test_import_files_documents_under_their_category(kb):
+    tag = uuid.uuid4().hex[:8]
+    results = await kb.import_documents([
+        {"title": uniq("fee"), "content": f"{tag} 送货费按距离计。", "category": "送货与收货"},
+        {"title": uniq("hinge"), "content": f"{tag} 铰链三个方向可调。"},            # 用批次的默认分类
+        {"title": uniq("loose"), "content": f"{tag} 还没归类的资料。", "category": ""},
+    ], category="installation")
+    assert [r["category"] for r in results] == ["delivery", "installation", "installation"]
+
+    listing = await kb.list_documents(query=tag)
+    assert {d["id"]: d["category"] for d in listing["documents"]} \
+        == {r["id"]: r["category"] for r in results}
+    # 每类的篇数按筛选词算，所有大类都列出来，顺序就是 CATEGORIES 的顺序
+    assert [c["key"] for c in listing["categories"]] == list(CATEGORY_KEYS)
+    counts = {c["key"]: c["documents"] for c in listing["categories"]}
+    assert counts["delivery"] == 1 and counts["installation"] == 2 and counts["orders"] == 0
+    assert listing["uncategorized"] == 0 and listing["category"] is None
+
+    only = await kb.list_documents(query=tag, category="installation")
+    assert only["category"] == "installation" and only["matched"] == 2
+    assert {d["category"] for d in only["documents"]} == {"installation"}
+    # 选中一类时，其它类的篇数照样给（工作台的分类目录要用）
+    assert {c["key"]: c["documents"] for c in only["categories"]} == counts
+
+
+async def test_uncategorized_covers_blank_and_retired_categories(kb, store):
+    tag = uuid.uuid4().hex[:8]
+    blank, retired, filed = await kb.import_documents([
+        {"title": uniq("blank"), "content": f"{tag} 没有分类。"},
+        {"title": uniq("retired"), "content": f"{tag} 分类后来撤掉了。"},
+        {"title": uniq("filed"), "content": f"{tag} 已归类。", "category": "orders"},
+    ])
+    await store.kb_doc_update(retired["id"], {"category": "showroom"})   # 一个已经不存在的分类
+
+    listing = await kb.list_documents(query=tag)
+    assert listing["uncategorized"] == 2
+    assert {d["id"]: d["category"] for d in listing["documents"]}[retired["id"]] == ""
+
+    loose = await kb.list_documents(query=tag, category=UNCATEGORIZED)
+    assert loose["category"] == UNCATEGORIZED
+    assert {d["id"] for d in loose["documents"]} == {blank["id"], retired["id"]}
+    assert (await kb.list_documents(query=tag, category="未分类"))["matched"] == 2
+
+    # 不认识的分类不报错，就是里面什么都没有——包括按旧分类的名字去找
+    for name in ("showroom", "no-such-category"):
+        gone = await kb.list_documents(query=tag, category=name)
+        assert gone["documents"] == [] and gone["matched"] == 0 and gone["category"] == name
+        assert gone["uncategorized"] == 2      # 分类目录照常给
+    assert [d["id"] for d in (await kb.list_documents(query=tag, category="报价与订单"))["documents"]] \
+        == [filed["id"]]
+
+
+async def test_a_wrong_category_imports_nothing(kb, store):
+    before = await store.kb_count()
+    with pytest.raises(UnknownCategory) as caught:
+        await kb.import_documents([
+            {"title": uniq("ok"), "content": "这一篇没问题。", "category": "orders"},
+            {"title": "写错分类的那篇", "content": "分类拼错了。", "category": "送货"},
+        ])
+    assert "写错分类的那篇" in str(caught.value)
+    assert await store.kb_count() == before
+    with pytest.raises(UnknownCategory):
+        await kb.import_documents([{"title": uniq("x"), "content": "默认分类也校验。"}], category="nope")
+    assert await store.kb_count() == before
+
+
+async def test_reimporting_does_not_move_a_filed_document(kb):
+    doc = {"title": uniq("warranty"), "content": "五金件质保 3 年。", "category": "aftersales"}
+    [first] = await kb.import_documents([doc])
+    [again] = await kb.import_documents([{**doc, "category": "products"}])
+    assert again["status"] == "duplicate" and again["category"] == "aftersales"
+    assert (await kb.get_document(first["id"]))["category"] == "aftersales"
+
+
+async def test_moving_a_document_leaves_retrieval_untouched(kb, store):
+    tag = uuid.uuid4().hex[:8]
+    [doc] = await kb.import_documents([{"title": uniq("rush"), "content": f"{tag} 加急订单 10 个工作日。"}])
+    passages = await store.kb_doc_chunks(doc["id"])
+
+    moved = await kb.set_document_category(doc["id"], "生产与交期")
+    assert moved["id"] == doc["id"] and moved["category"] == "production"
+    assert (await kb.get_document(doc["id"]))["category"] == "production"
+    assert await store.kb_doc_chunks(doc["id"]) == passages         # 分片和关键词索引一行没动
+    hits = await kb.search_async(f"{tag} 加急订单", top_k=3)
+    assert hits[0]["doc_id"] == doc["id"]
+
+    assert (await kb.set_document_category(doc["id"], ""))["category"] == ""
+    with pytest.raises(UnknownCategory):
+        await kb.set_document_category(doc["id"], "rush")
+    assert (await kb.get_document(doc["id"]))["category"] == ""
+    assert await kb.set_document_category("doc_missing", "orders") is None
+
+
+async def test_category_overview_counts_the_whole_library(kb):
+    before = await kb.category_overview()
+    await kb.import_documents([
+        {"title": uniq("a"), "content": "甲。", "category": "products"},
+        {"title": uniq("b"), "content": "乙。"},
+    ])
+    after = await kb.category_overview()
+    assert [c["key"] for c in after["categories"]] == list(CATEGORY_KEYS)
+    assert all(c["name"] and c["name_en"] for c in after["categories"])
+    delta = {c["key"]: c["documents"] for c in after["categories"]}
+    for c in before["categories"]:
+        delta[c["key"]] -= c["documents"]
+    assert delta["products"] == 1 and sum(delta.values()) == 1
+    assert after["uncategorized"] - before["uncategorized"] == 1
+
+
+def test_bundled_documents_are_all_filed():
+    """内置示例和仿真资料每篇都有分类，而且是认得的分类：导入完不该有一堆未分类。"""
+    import json
+    import pathlib
+
+    demo = pathlib.Path(__file__).resolve().parents[1] / "data" / "demo_docs"
+    for name in ("sample_ca_factory_knowledge.json", "sample_knowledge.json"):
+        docs = json.loads((demo / name).read_text(encoding="utf-8"))
+        assert all(normalize_category(d["category"]) for d in docs), name
+    assert all(normalize_category(d["category"]) for d in kbmod._DEFAULT_DOCS)
 
 
 async def test_search_hits_point_back_to_their_document(kb):
@@ -624,6 +766,90 @@ async def test_existing_sqlite_file_is_upgraded_in_place(tmp_path):
         await reopened.close()
 
 
+PRE_CATEGORY_DOCUMENTS = """
+CREATE TABLE kb_documents (
+    id           TEXT PRIMARY KEY,
+    title        TEXT NOT NULL DEFAULT '',
+    content      TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    origin       TEXT NOT NULL DEFAULT 'original',
+    source_type  TEXT NOT NULL DEFAULT '',
+    source_name  TEXT NOT NULL DEFAULT '',
+    chunk_count  INTEGER NOT NULL DEFAULT 0,
+    created_at   {real} NOT NULL
+);
+"""
+
+
+async def test_sqlite_document_table_without_categories_is_upgraded(tmp_path):
+    """加分类之前的库（有文档表、没有 category 列）：打开后补列，已有文档都是未分类，能归类。"""
+    path = tmp_path / "pre-category.db"
+    seeded = LocalStore(db_path=str(path))
+    kb = KnowledgeBase(store=seeded, embedder=Embedder())
+    [doc] = await kb.import_documents([{"title": "交期说明", "content": "标准交期 4 周。"}])
+    await seeded.close()
+    with sqlite3.connect(path) as conn:      # 退回到没有 category 列的样子
+        conn.executescript(
+            "ALTER TABLE kb_documents RENAME TO kb_documents_new;"
+            + PRE_CATEGORY_DOCUMENTS.format(real="REAL")
+            + "INSERT INTO kb_documents SELECT id, title, content, content_hash, origin, source_type,"
+              " source_name, chunk_count, created_at FROM kb_documents_new;"
+              " DROP TABLE kb_documents_new;"
+        )
+        assert "category" not in {r[1] for r in conn.execute("PRAGMA table_info(kb_documents)")}
+
+    store = LocalStore(db_path=str(path))
+    try:
+        kb = KnowledgeBase(store=store, embedder=Embedder())
+        listing = await kb.list_documents()
+        assert [(d["id"], d["category"]) for d in listing["documents"]] == [(doc["id"], "")]
+        assert listing["uncategorized"] == 1
+        await kb.set_document_category(doc["id"], "production")
+        assert (await kb.list_documents(category="production"))["matched"] == 1
+    finally:
+        await store.close()
+
+
+@pytest.mark.skipif(not TEST_PG_DSN, reason="未设置 TEST_POSTGRES_DSN")
+async def test_postgres_document_table_without_categories_is_upgraded():
+    """生产库现在的样子：kb_documents 没有 category 列。连上之后补列，文档、分片原样。"""
+    import asyncpg
+
+    from app.storage.pg import Database
+    from app.storage.vector_store import PgStore
+
+    schema = f"precat_{uuid.uuid4().hex[:8]}"
+    raw = await asyncpg.connect(TEST_PG_DSN)
+    try:
+        await raw.execute("CREATE EXTENSION IF NOT EXISTS vector")
+        await raw.execute(f"CREATE SCHEMA {schema}")
+        await raw.execute(f"SET search_path TO {schema}, public")
+        await raw.execute(PRE_CATEGORY_DOCUMENTS.format(real="DOUBLE PRECISION"))
+        await raw.execute(
+            "INSERT INTO kb_documents (id, title, content, content_hash, created_at)"
+            " VALUES ('doc_old', '交期说明', '标准交期 4 周。', 'h', 1759617315)"
+        )
+
+        joiner = "&" if "?" in TEST_PG_DSN else "?"
+        db = Database(f"{TEST_PG_DSN}{joiner}search_path={schema},public")
+        await db.connect(embedding_dim=256)
+        try:
+            store = PgStore(db)
+            kb = KnowledgeBase(store=store, embedder=Embedder())
+            listing = await kb.list_documents()
+            assert [(d["id"], d["category"]) for d in listing["documents"]] == [("doc_old", "")]
+            assert listing["uncategorized"] == 1
+            moved = await kb.set_document_category("doc_old", "production")
+            assert moved["category"] == "production"
+            await db._init_schema(256)               # 再启动一次：补列是幂等的，分类还在
+            assert (await kb.category_overview())["uncategorized"] == 0
+        finally:
+            await db.close()
+    finally:
+        await raw.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
+        await raw.close()
+
+
 OLD_PG_SCHEMA = """
 CREATE TABLE kb_chunks (
     id           TEXT PRIMARY KEY,
@@ -717,6 +943,10 @@ async def test_seeded_library_is_browsable(tmp_path):
         assert listing["total_documents"] == len(kbmod._DEFAULT_DOCS)
         assert listing["legacy_documents"] == 0
         assert {d["source_type"] for d in listing["documents"]} == {"seed"}
+        # 内置文档带着分类进来，空库启动后不是一堆未分类
+        assert listing["uncategorized"] == 0
+        assert {d["category"] for d in listing["documents"]} \
+            == {d["category"] for d in kbmod._DEFAULT_DOCS}
         await kb.ensure_seeded()
         assert (await kb.list_documents())["total_documents"] == len(kbmod._DEFAULT_DOCS)
     finally:

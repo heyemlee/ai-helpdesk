@@ -90,11 +90,24 @@ export function useRunEval(base: string) {
  * placeholderData 保留上一次的结果：筛选框每敲一个字就换一次 queryKey，
  * 不留着的话列表会在每次按键之间闪成"加载中"。
  */
-export function useDocuments(base: string, query: string) {
+export function useDocuments(base: string, query: string, category = '') {
   return useQuery({
-    queryKey: ['knowledge-documents', base, query],
-    queryFn: () => api.documents(base, query),
+    queryKey: ['knowledge-documents', base, query, category],
+    queryFn: () => api.documents(base, query, category),
     placeholderData: (previous) => previous,
+    retry: false,
+  })
+}
+
+/**
+ * 分类和每类的篇数。导入框和阅读页用它列分类；老后端没有这个接口（404），
+ * 调用方拿不到数据就不显示分类，其余照常。
+ */
+export function useCategories(base: string) {
+  return useQuery({
+    queryKey: ['knowledge-categories', base],
+    queryFn: () => api.categories(base),
+    staleTime: 30_000,
     retry: false,
   })
 }
@@ -108,19 +121,21 @@ export function useDocument(base: string, docId: string | undefined) {
   })
 }
 
-/** 导入成功后列表和统计都要重新取——"进去了没有"得当场看得见。 */
+/** 导入、改分类之后列表、分类篇数和统计都要重新取——"进去了没有、挪过去了没有"得当场看得见。 */
 function useInvalidateKnowledge(base: string) {
   const qc = useQueryClient()
   return () => Promise.all([
     qc.invalidateQueries({ queryKey: ['knowledge-stats', base] }),
     qc.invalidateQueries({ queryKey: ['knowledge-documents', base] }),
+    qc.invalidateQueries({ queryKey: ['knowledge-categories', base] }),
   ])
 }
 
 export function useAddKnowledge(base: string) {
   const invalidate = useInvalidateKnowledge(base)
   return useMutation({
-    mutationFn: (docs: Array<{ title: string; content: string }>) => api.addKnowledge(base, docs),
+    mutationFn: (docs: Array<{ title: string; content: string; category?: string }>) =>
+      api.addKnowledge(base, docs),
     onSuccess: invalidate,
   })
 }
@@ -128,8 +143,21 @@ export function useAddKnowledge(base: string) {
 export function useUploadKnowledge(base: string) {
   const invalidate = useInvalidateKnowledge(base)
   return useMutation({
-    mutationFn: (file: File) => api.uploadKnowledge(base, file),
+    mutationFn: ({ file, category }: { file: File; category?: string }) =>
+      api.uploadKnowledge(base, file, category),
     onSuccess: invalidate,
+  })
+}
+
+export function useSetDocumentCategory(base: string, docId: string) {
+  const qc = useQueryClient()
+  const invalidate = useInvalidateKnowledge(base)
+  return useMutation({
+    mutationFn: (category: string) => api.setDocumentCategory(base, docId, category),
+    onSuccess: () => Promise.all([
+      invalidate(),
+      qc.invalidateQueries({ queryKey: ['knowledge-document', base, docId] }),
+    ]),
   })
 }
 

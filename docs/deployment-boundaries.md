@@ -92,8 +92,9 @@ The frontend (`frontend/`) is the **staff workspace**: conversations, knowledge,
 "Admin & diagnostics". It is not a customer entrance, and a UI switch cannot turn it into one —
 who may see what is decided by the backend.
 
-**What the backend already enforces for staff data.** Document list and text
-(`GET /knowledge/documents*`), question-based retrieval (`POST /search`), knowledge import, SOP
+**What the backend already enforces for staff data.** Document list, text and categories
+(`GET /knowledge/documents*`, `GET /knowledge/categories`, `PATCH /knowledge/documents/{doc_id}`),
+question-based retrieval (`POST /search`), knowledge import, SOP
 text (`GET /sops`), tickets and conversation transcripts all require `X-API-Key`. On an instance
 with `AI_HELPDESK_API_KEY` set (the customer-facing one is), requests without the key get 401, and
 the public nginx only forwards `/chat`, `/chat/stream` and `/health`. Internal purchasing and cost

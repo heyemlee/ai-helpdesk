@@ -208,7 +208,8 @@ export default function App() {
           />
         </div>
         {route.view === 'knowledge' && (
-          <KnowledgePanel base={settings.apiBaseUrl} mode={route.mode} docId={route.docId} navigate={navigate} />
+          <KnowledgePanel base={settings.apiBaseUrl} mode={route.mode} docId={route.docId}
+                          category={route.category} navigate={navigate} />
         )}
         {route.view === 'tickets' && <TicketsPanel base={settings.apiBaseUrl} ticketId={route.ticketId} />}
         {route.view === 'admin' && (

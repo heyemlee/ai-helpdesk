@@ -499,11 +499,13 @@ http://localhost/docs
 | `GET` | `/skills` | 无 | 查看当前加载的 Skills、匹配关键词和解析错误 | 确认动态能力是否生效 |
 | `GET` | `/sops` | 无 | SOP（即加载的 Skills）全文，只读；需要 `X-API-Key` | 工作台的 SOP 只读入口 |
 | `POST` | `/skills/reload` | 无 | 运行时重新扫描 Skill 目录；同时解除模型凭证不可用保护 | 修改业务规则后热加载；凭证或额度修好后不重启恢复 |
-| `POST` | `/knowledge/add` | JSON Body | 批量导入文档到 Postgres(pgvector) 知识库 | 程序化导入文档 |
-| `POST` | `/knowledge/upload` | Form File | 上传 `.txt`、`.md`、`.json` 文件导入知识库 | 手动上传知识库文件 |
+| `POST` | `/knowledge/add` | JSON Body | 批量导入文档到 Postgres(pgvector) 知识库；每篇可带 `category` | 程序化导入文档 |
+| `POST` | `/knowledge/upload` | Form File（+ `category`） | 上传 `.txt`、`.md`、`.json` 文件导入知识库；表单里的 `category` 是这次导入的分类 | 手动上传知识库文件 |
 | `GET` | `/knowledge/stats` | 无 | 文档数、片段数，以及其中由历史分片归档的文档数 | 确认知识库是否有数据 |
-| `GET` | `/knowledge/documents` | Query `q` / `limit` / `offset` | 文档列表；`q` 按空白拆词，每个词都要出现在标题或正文里。需要 `X-API-Key` | 浏览知识库里有什么 |
-| `GET` | `/knowledge/documents/{doc_id}` | Path | 单篇文档的正文、来源、导入时间和检索片段。需要 `X-API-Key` | 阅读原文、核对回答依据 |
+| `GET` | `/knowledge/documents` | Query `q` / `category` / `limit` / `offset` | 文档列表；`q` 按空白拆词，每个词都要出现在标题或正文里；`category` 只看一类（`uncategorized` 是未分类）；响应里的 `categories` 是每类满足 `q` 的篇数。需要 `X-API-Key` | 浏览知识库里有什么 |
+| `GET` | `/knowledge/documents/{doc_id}` | Path | 单篇文档的正文、来源、导入时间、分类和检索片段。需要 `X-API-Key` | 阅读原文、核对回答依据 |
+| `GET` | `/knowledge/categories` | 无 | 固定的 7 个分类（按客户从咨询到售后的顺序）、每类篇数和未分类篇数。需要 `X-API-Key` | 导入时选分类、看各类有多少 |
+| `PATCH` | `/knowledge/documents/{doc_id}` | JSON `{"category": "..."}` | 改一篇文档的分类（空串是未分类）。只改分类，分片、向量和检索不受影响。需要 `X-API-Key` | 整理知识库 |
 | `POST` | `/eval/run` | 无 | 运行内置意图识别和端到端对话评测 | 四维 LLM-as-Judge + 回归检测 |
 | `GET` | `/eval/baseline` | 无 | 查看当前对比基线 | 回归结论都是相对这份数据得出的 |
 | `POST` | `/eval/promote` | 无 | 把最近一次评测提升为新基线 | 人工确认分数可接受后调用 |
@@ -674,18 +676,21 @@ curl -X POST http://localhost:8080/search \
 
 用途：通过 JSON 批量导入知识库。
 
-请求体：
+请求体（`category` 可省，省了是未分类；写 key、中文名、英文名都认，见 `GET /knowledge/categories`）：
 
 ```json
 {
   "documents": [
     {
       "title": "补件流程",
-      "content": "缺件需在验收单注明并提供订单号、柜号和装箱单编号..."
+      "content": "缺件需在验收单注明并提供订单号、柜号和装箱单编号...",
+      "category": "delivery"
     }
   ]
 }
 ```
+
+分类只用来整理和浏览，检索不看它。任何一篇的分类写错了，整批都不导入，返回 400。
 
 ### 5.7 `/knowledge/upload`
 
@@ -697,13 +702,25 @@ curl -X POST http://localhost:8080/search \
 |------|------|
 | `.txt` | 整个文件作为一篇文档 |
 | `.md` | 整个文件作为一篇文档 |
-| `.json` | JSON 数组，格式为 `[{ "title": "...", "content": "..." }]` |
+| `.json` | JSON 数组，格式为 `[{ "title": "...", "content": "...", "category": "..." }]`（`category` 可省） |
+
+表单里可以再带一个 `category`：txt / md 就落在这一类；JSON 里每篇自己写了分类的用自己的，没写的用它。
 
 示例：
 
 ```bash
 curl -X POST http://localhost:8080/knowledge/upload \
   -F "file=@data/demo_docs/sample_knowledge.json"
+
+curl -X POST http://localhost:8080/knowledge/upload \
+  -F "file=@data/demo_docs/troubleshooting.md" -F "category=installation"
+```
+
+加分类之前导入的文档都在"未分类"里。仓库自带的资料每篇都写着分类，可以照着补：
+
+```bash
+python scripts/assign_categories.py            # 只打印计划：只认一字不差的标题，只动未分类的
+python scripts/assign_categories.py --apply    # 照计划归类（走接口，不用停服务，不调用模型）
 ```
 
 ### 5.8 `/knowledge/stats`

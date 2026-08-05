@@ -10,7 +10,7 @@ Postgres 库（pgvector 扩展做向量检索），替换掉 chromadb 容器和
 tsvector 用 'simple' 配置——中文分词由 core/lexical.py 在写入前完成
 （字符二元组），不依赖 zhparser/pg_bigm 这类需要单独编译的扩展。
 
-片段之上还有一张文档表（kb_documents）：存导入时的原文、来源和时间，
+片段之上还有一张文档表（kb_documents）：存导入时的原文、来源、时间和分类，
 片段用 doc_id 指回去。它不参与检索，只回答"知识库里到底有哪些文档"。
 
 维度契约：向量列的维度在建表时由当前 Embedder 决定。启动时校验现有
@@ -113,10 +113,13 @@ CREATE TABLE IF NOT EXISTS kb_documents (
     source_type  TEXT NOT NULL DEFAULT '',
     source_name  TEXT NOT NULL DEFAULT '',
     chunk_count  INTEGER NOT NULL DEFAULT 0,
-    created_at   DOUBLE PRECISION NOT NULL
+    created_at   DOUBLE PRECISION NOT NULL,
+    category     TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_kb_docs_hash ON kb_documents (content_hash);
 CREATE INDEX IF NOT EXISTS idx_kb_docs_created ON kb_documents (created_at);
+-- 分类：工作台整理文档用，检索不看它。老表补出来是空串（未分类），同样不重写表。
+ALTER TABLE kb_documents ADD COLUMN IF NOT EXISTS category TEXT NOT NULL DEFAULT '';
 
 CREATE TABLE IF NOT EXISTS memory_episodic (
     id        TEXT PRIMARY KEY,

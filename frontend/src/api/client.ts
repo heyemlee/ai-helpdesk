@@ -1,6 +1,7 @@
 import type {
   ChatModelBody, ChatRequest, ChatResponse, ConversationResponse, EmbeddingModelBody, EvalReport,
-  HealthResponse, ImportResult, KnowledgeDocumentDetail, KnowledgeDocumentList, ModelStatus,
+  HealthResponse, ImportResult, KnowledgeCategoryOverview, KnowledgeDocument, KnowledgeDocumentDetail,
+  KnowledgeDocumentList, ModelStatus,
   ModelTestResult, MonitorSummary, SearchResponse, SopList, StreamEvent, TicketDetail, TicketList,
 } from './types'
 
@@ -124,20 +125,32 @@ export const api = {
 
   runEval: (base: string) => request<EvalReport>(base, '/eval/run', json({})),
 
-  documents: (base: string, query = '') =>
+  documents: (base: string, query = '', category = '') =>
     request<KnowledgeDocumentList>(
-      base, `/knowledge/documents?limit=200${query ? `&q=${encodeURIComponent(query)}` : ''}`,
+      base,
+      `/knowledge/documents?limit=200${query ? `&q=${encodeURIComponent(query)}` : ''}`
+        + (category ? `&category=${encodeURIComponent(category)}` : ''),
     ),
 
   document: (base: string, docId: string) =>
     request<KnowledgeDocumentDetail>(base, `/knowledge/documents/${encodeURIComponent(docId)}`),
 
-  addKnowledge: (base: string, documents: Array<{ title: string; content: string }>) =>
+  categories: (base: string) => request<KnowledgeCategoryOverview>(base, '/knowledge/categories'),
+
+  /** 只改分类：正文、片段和检索都不受影响。空串是未分类。 */
+  setDocumentCategory: (base: string, docId: string, category: string) =>
+    request<KnowledgeDocument>(
+      base, `/knowledge/documents/${encodeURIComponent(docId)}`, json({ category }, 'PATCH'),
+    ),
+
+  addKnowledge: (base: string, documents: Array<{ title: string; content: string; category?: string }>) =>
     request<ImportResult>(base, '/knowledge/add', json({ documents })),
 
-  uploadKnowledge: (base: string, file: File) => {
+  /** category 是这次导入的分类；JSON 文件里每篇自己写了 category 的以它为准。 */
+  uploadKnowledge: (base: string, file: File, category = '') => {
     const form = new FormData()
     form.append('file', file)
+    if (category) form.append('category', category)
     return request<ImportResult>(base, '/knowledge/upload', { method: 'POST', body: form })
   },
 

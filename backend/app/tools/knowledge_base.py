@@ -68,6 +68,60 @@ SOURCE_UPLOAD = "upload"   # 上传文件
 SOURCE_SEED = "seed"       # 空库时导入的内置示例
 SOURCE_LEGACY = "legacy"   # 加文档表之前导入的，来源当时没记
 
+# 文档的大类（kb_documents.category），按客户从咨询到售后的顺序排，工作台也按这个
+# 顺序列。分类只用来整理和浏览，检索不看它：改分类不碰分片、向量和关键词索引。
+# 库里存的是 key——改名只改 name / name_en，key 不能动。空串 = 未分类。
+CATEGORIES: tuple[dict[str, str], ...] = (
+    {"key": "products", "name": "产品与材料", "name_en": "Products & materials"},
+    {"key": "design", "name": "咨询与设计", "name_en": "Consultation & design"},
+    {"key": "orders", "name": "报价与订单", "name_en": "Quotes & orders"},
+    {"key": "production", "name": "生产与交期", "name_en": "Production & lead times"},
+    {"key": "delivery", "name": "送货与收货", "name_en": "Delivery & receiving"},
+    {"key": "installation", "name": "安装与验收", "name_en": "Installation & sign-off"},
+    {"key": "aftersales", "name": "售后与保修", "name_en": "After-sales & warranty"},
+)
+CATEGORY_KEYS = tuple(c["key"] for c in CATEGORIES)
+# 按"未分类"筛选时用的保留字。它不会存进库里：未分类在库里就是空串。
+UNCATEGORIZED = "uncategorized"
+_UNCATEGORIZED_ALIASES = {UNCATEGORIZED, "未分类", "none"}
+
+
+class UnknownCategory(ValueError):
+    """导入或改分类时给了一个不认识的分类。"""
+
+    def __init__(self, value: str, title: str = ""):
+        self.value = value
+        self.title = title
+        names = "、".join(c["name"] for c in CATEGORIES)
+        where = f"《{title}》的" if title else ""
+        super().__init__(
+            f"{where}分类「{value}」不认识。可用的分类：{names}，"
+            f"也可以写 key（{', '.join(CATEGORY_KEYS)}）；留空是未分类。"
+        )
+
+
+def normalize_category(value: Any) -> str:
+    """
+    导入文件和请求里写的分类 → 库里存的 key。
+
+    认 key（delivery）、中文名（送货与收货）和英文名（Delivery & receiving，不分大小写）——
+    手写 JSON 的人多半写中文名。空值和"未分类"都是空串。不认识的抛 UnknownCategory，
+    不悄悄当成未分类：拼错一个字，整批文档就全进了未分类，还没人知道为什么。
+    """
+    text = str(value or "").strip()
+    if not text or text.lower() in _UNCATEGORIZED_ALIASES:
+        return ""
+    lowered = text.lower()
+    for c in CATEGORIES:
+        if lowered in (c["key"], c["name_en"].lower()) or text == c["name"]:
+            return c["key"]
+    raise UnknownCategory(text)
+
+
+def stored_category(value: Any) -> str:
+    """库里存的分类 → 接口里给的。已经撤掉的旧分类按未分类给，不让文档挂在一个看不见的类下。"""
+    return value if value in CATEGORY_KEYS else ""
+
 CHUNK_SIZE = 500
 
 # 正文第一行多长以内才当标题用
@@ -326,16 +380,17 @@ class KnowledgeBase:
         documents: list[dict[str, str]],
         source_type: str = SOURCE_MANUAL,
         source_name: str = "",
+        category: str = "",
     ) -> int:
         """
         批量导入文档，按内容去重，返回新增片段数。
 
-        documents 格式: [{"title": "...", "content": "..."}, ...]
-        长文档自动切片（每片 500 字）。需要知道每篇各自落成了什么，用
-        import_documents。
+        documents 格式: [{"title": "...", "content": "...", "category": "..."}, ...]
+        （category 可省）。长文档自动切片（每片 500 字）。需要知道每篇各自落成了
+        什么，用 import_documents。
         """
         results = await self.import_documents(
-            documents, source_type=source_type, source_name=source_name
+            documents, source_type=source_type, source_name=source_name, category=category
         )
         return sum(r["chunks"] for r in results if r["status"] == "created")
 
@@ -344,32 +399,49 @@ class KnowledgeBase:
         documents: list[dict[str, str]],
         source_type: str = SOURCE_MANUAL,
         source_name: str = "",
+        category: str = "",
     ) -> list[dict[str, Any]]:
         """
-        批量导入文档，逐篇返回结果 [{id, title, status, chunks}]。
+        批量导入文档，逐篇返回结果 [{id, title, status, chunks, category}]。
 
         status:
           created    新文档，已切片入库；
           duplicate  标题和正文都与已有文档相同，没有重复写入，id 指向已有的那篇；
           restored   与一篇历史文档逐片相同——把这份原文补给它，不另立一篇；
           empty      正文为空，跳过（id 为 None）。
+
+        分类：每篇自己写了 category 用它的，没写的用参数 category（导入框里选的那个）。
+        只有新建的文档会落到这个分类里；已经在库里的那篇（duplicate / restored）分类
+        不动——它可能是有人特意归过的，重新导入一遍不该把它挪走。结果里的 category
+        是那篇文档现在实际所在的分类。任何一篇的分类写错了（UnknownCategory），
+        整批一篇都不导：先校验，再动库。
         """
+        default_category = normalize_category(category)
+        wanted: list[str] = []
+        for doc in documents:
+            try:
+                wanted.append(normalize_category(doc["category"]) if doc.get("category")
+                              else default_category)
+            except UnknownCategory as ex:
+                raise UnknownCategory(ex.value, str(doc.get("title") or "").strip()) from None
+
         # 历史分片先归档：判重看的是文档表，升级后第一次导入时表里还是空的，
         # 不先归档的话整个老知识库会被原样再导一遍。
         await self.ensure_documents()
 
         results: list[dict[str, Any]] = []
-        batch: dict[str, str] = {}  # 本批内已处理的哈希 → 文档 id
-        for doc in documents:
+        batch: dict[str, tuple[str, str]] = {}  # 本批内已处理的哈希 → (文档 id, 分类)
+        for doc, doc_category in zip(documents, wanted):
             title = str(doc.get("title") or "").strip()
             content = str(doc.get("content") or "")
             chunks = self._chunk_text(content, chunk_size=CHUNK_SIZE)
             if not chunks:
-                results.append({"id": None, "title": title, "status": "empty", "chunks": 0})
+                results.append({"id": None, "title": title, "status": "empty", "chunks": 0,
+                                "category": ""})
                 continue
 
             digest = document_hash(title, content)
-            known_id = batch.get(digest)
+            known_id, known_category = batch.get(digest, (None, ""))
             if known_id is None:
                 known = await self._store.kb_doc_find_by_hash(digest)
                 if known and not known["chunks"]:
@@ -385,15 +457,18 @@ class KnowledgeBase:
                     await self._store.kb_doc_update(
                         known["id"], {"content": content, "origin": ORIGIN_ORIGINAL}
                     )
-                known_id = known["id"] if known else None
+                if known:
+                    known_id, known_category = known["id"], stored_category(known["category"])
             if known_id is not None:
-                results.append({"id": known_id, "title": title, "status": "duplicate", "chunks": 0})
+                results.append({"id": known_id, "title": title, "status": "duplicate", "chunks": 0,
+                                "category": known_category})
                 continue
 
             restored = await self._restore_legacy(title, content, chunks, digest)
             if restored is not None:
                 batch[digest] = restored
-                results.append({"id": restored, "title": title, "status": "restored", "chunks": 0})
+                results.append({"id": restored[0], "title": title, "status": "restored", "chunks": 0,
+                                "category": restored[1]})
                 continue
 
             # 文档 ID 由标题和正文算出来，不是随机数。导入因此在并发下也是幂等的：
@@ -433,6 +508,7 @@ class KnowledgeBase:
                 "source_name": source_name,
                 "chunk_count": len(rows),
                 "created_at": now,
+                "category": doc_category,
             })
             try:
                 # 文档记录是别人刚写的也照样写分片：ID 相同，已有的不会重复，
@@ -443,12 +519,17 @@ class KnowledgeBase:
                 if inserted:
                     await self._store.kb_doc_delete(doc_id)
                 raise
-            batch[digest] = doc_id
+            if not inserted:
+                # 记录是并发导入的另一边写的，分类以它写进去的为准
+                existing = await self._store.kb_doc_get(doc_id)
+                doc_category = stored_category(existing["category"]) if existing else doc_category
+            batch[digest] = (doc_id, doc_category)
             results.append({
                 "id": doc_id, "title": title,
                 # 记录不是这次写进去的 = 同一篇被并发导入抢先了一步，算重复
                 "status": "created" if inserted else "duplicate",
                 "chunks": len(rows) if inserted else 0,
+                "category": doc_category,
             })
 
         created = [r for r in results if r["status"] == "created"]
@@ -461,9 +542,9 @@ class KnowledgeBase:
 
     async def _restore_legacy(
         self, title: str, content: str, chunks: list[str], digest: str
-    ) -> str | None:
+    ) -> tuple[str, str] | None:
         """
-        这次导入的如果正是某篇历史文档，把原文补给它，返回它的 id。
+        这次导入的如果正是某篇历史文档，把原文补给它，返回它的 (id, 分类)。
 
         长文档的历史分片拼不回原文（切片时换行变成了句号），所以它的哈希和
         重新导入的这份对不上，按文档判重会漏过去，老文档就在库里出现两次。
@@ -484,7 +565,7 @@ class KnowledgeBase:
             "content": content, "content_hash": digest, "origin": ORIGIN_ORIGINAL,
         })
         logger.info(f"历史文档 {doc['id']}（{title!r}）已由重新导入的原文补全")
-        return doc["id"]
+        return doc["id"], stored_category(doc["category"])
 
     async def ensure_documents(self) -> int:
         """
@@ -580,18 +661,47 @@ class KnowledgeBase:
             "chunks": row.get("chunks", row["chunk_count"]),
             "chars": row.get("chars", len(head)),
             "created_at": row["created_at"],
+            "category": stored_category(row.get("category", "")),
         }
 
+    @staticmethod
+    def _category_facets(counts: dict[str, int]) -> tuple[list[dict[str, Any]], int]:
+        """按分类的篇数 → (每个大类一项，按 CATEGORIES 的顺序、没有文档的也列出, 未分类篇数)。"""
+        facets = [{**c, "documents": counts.get(c["key"], 0)} for c in CATEGORIES]
+        uncategorized = sum(n for key, n in counts.items() if key not in CATEGORY_KEYS)
+        return facets, uncategorized
+
     async def list_documents(
-        self, query: str = "", limit: int = 100, offset: int = 0
+        self, query: str = "", limit: int = 100, offset: int = 0, category: str | None = None,
     ) -> dict[str, Any]:
         """
         文档列表。query 为空是浏览全部（新导入的在前）；非空时按空白拆成词，
         每个词都要在标题或正文里出现，并说明是标题命中还是正文命中。
+
+        category 为空是不分类别；给了就只列这一类，UNCATEGORIZED 是未分类。
+        不认识的分类不报错，按"这一类里没有文档"给——地址栏里留着一个已经撤掉的
+        分类时，页面照常打开，告诉人这个分类不存在，而不是整页报错。
+
+        `categories` 是每个大类里满足筛选词的篇数，不受 category 影响——工作台
+        拿它画分类目录：选中了"送货与收货"，其它分类各有几篇匹配也照样看得见。
         """
         terms = [t for t in (query or "").split() if t][:8]
+        selected = (category or "").strip()
+        filters: dict[str, list[str]] = {}
+        applied: str | None = None
+        if selected and selected.lower() in _UNCATEGORIZED_ALIASES:
+            filters["category_not_in"] = list(CATEGORY_KEYS)
+            applied = UNCATEGORIZED
+        elif selected:
+            try:
+                key = normalize_category(selected)
+            except UnknownCategory:
+                key = ""
+            filters["category_in"] = [key] if key else []
+            applied = key or selected
+
         rows, matched = await self._store.kb_doc_list(
-            terms, limit=limit, offset=offset, with_content=bool(terms)
+            terms, limit=limit, offset=offset, with_content=bool(terms), **filters
         )
         documents = []
         for row in rows:
@@ -603,15 +713,42 @@ class KnowledgeBase:
                     "snippet": match_snippet(row.get("content", ""), terms),
                 }
             documents.append(item)
+        facets, uncategorized = self._category_facets(
+            await self._store.kb_doc_category_counts(terms)
+        )
         stats = await self._store.kb_doc_stats()
         return {
             "query": " ".join(terms),
+            "category": applied,
             "documents": documents,
             "matched": matched,
+            "categories": facets,
+            "uncategorized": uncategorized,
             "total_documents": stats["total"],
             "legacy_documents": stats["legacy"],
             "total_chunks": await self._store.kb_count(),
         }
+
+    async def category_overview(self) -> dict[str, Any]:
+        """全部大类（按 CATEGORIES 的顺序）和各自的篇数，外加未分类的篇数。"""
+        facets, uncategorized = self._category_facets(await self._store.kb_doc_category_counts([]))
+        return {"categories": facets, "uncategorized": uncategorized}
+
+    async def set_document_category(self, doc_id: str, category: Any) -> dict[str, Any] | None:
+        """
+        把一篇文档挪到另一个分类（空值 = 未分类），返回改完的文档摘要；文档不存在返回 None。
+
+        只改文档表的分类这一列：分片、向量、关键词索引都不动，检索结果不受影响。
+        分类不认识抛 UnknownCategory。
+        """
+        key = normalize_category(category)
+        row = await self._store.kb_doc_get(doc_id)
+        if row is None:
+            return None
+        if row.get("category", "") != key:
+            await self._store.kb_doc_update(doc_id, {"category": key})
+            logger.info(f"文档 {doc_id} 的分类改为 {key or '未分类'}")
+        return self._present({**row, "category": key})
 
     async def get_document(self, doc_id: str) -> dict[str, Any] | None:
         """一篇文档的正文和它名下的分片。不存在返回 None。"""
@@ -818,6 +955,7 @@ class KnowledgeBase:
 _DEFAULT_DOCS = [
     {
         "title": "定制流程与节点",
+        "category": "design",
         "content": (
             "定制橱柜从下单到完工共七个节点。"
             "量尺：需要房屋已交付、墙面地面基本完工、水电点位已定。"
@@ -831,6 +969,7 @@ _DEFAULT_DOCS = [
     },
     {
         "title": "交期说明",
+        "category": "production",
         "content": (
             "交期说明。"
             "在图纸确认且定金到账后，标准线的标准交期为 4 周，进阶线为 5 周，定制线为 6 周，"
@@ -843,6 +982,7 @@ _DEFAULT_DOCS = [
     },
     {
         "title": "报价构成与变更加价",
+        "category": "orders",
         "content": (
             "橱柜报价由六部分构成，报价单上分项列出："
             "柜体、门板饰面、台面（含水槽和灶台开孔）、五金、送货费、安装费。"
@@ -855,6 +995,7 @@ _DEFAULT_DOCS = [
     },
     {
         "title": "缺件漏发与补件流程",
+        "category": "delivery",
         "content": (
             "收货时须按装箱单当场清点。"
             "发现缺件、漏发或错发，需在验收单上注明并提供订单号、柜号、缺失部件名称、"
@@ -868,6 +1009,7 @@ _DEFAULT_DOCS = [
     },
     {
         "title": "安装与常见现场问题",
+        "category": "installation",
         "content": (
             "现场问题分三类，责任方不同：做错了（按错图纸或错尺寸生产）、"
             "运输损（出厂合格、途中磕碰）、装歪了（产品合格、现场安装或墙面地面不平）。"
@@ -881,6 +1023,7 @@ _DEFAULT_DOCS = [
     },
     {
         "title": "保修范围与除外情形",
+        "category": "aftersales",
         "content": (
             "柜体和门板质保 5 年，五金件质保 3 年，台面质保 1 年，自安装验收签字之日起算。"
             "保修范围包括：正常使用下的柜体结构开裂、门板脱胶起层、饰面非人为起泡、"

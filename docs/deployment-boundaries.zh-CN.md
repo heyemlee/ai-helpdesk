@@ -71,7 +71,8 @@
 前端（`frontend/`）是**员工工作台**：对话、知识库、工单，加上「管理与诊断」。它不是客户入口，
 也不能靠一个界面开关变成客户入口——谁能看什么是后端判的。
 
-**员工侧已经由后端把住的：** 知识文档的列表与正文（`GET /knowledge/documents*`）、按问题检索
+**员工侧已经由后端把住的：** 知识文档的列表、正文与分类（`GET /knowledge/documents*`、
+`GET /knowledge/categories`、`PATCH /knowledge/documents/{doc_id}`）、按问题检索
 （`POST /search`）、知识导入、SOP 正文（`GET /sops`）、工单与对话原文，全部要求 `X-API-Key`。
 配了 `AI_HELPDESK_API_KEY` 的实例（面向客户的那个就是）上，不带钥匙一律 401；对外的 nginx 只放行
 `/chat`、`/chat/stream`、`/health`。所以内部的采购、成本规则和 SOP 没有任何一条匿名可读的接口。
