@@ -432,6 +432,116 @@ async def test_embedding_probe_reports_the_real_dimension(api):
     assert KEY not in json.dumps(denied)
 
 
+# ── 可选的模型（下拉框）────────────────────────────────────────────────────────
+
+LISTED = ["gpt-6-luna", "gpt-5.6-luna", "text-embedding-3-small", "Qwen/Qwen3-Embedding-0.6B",
+          "BAAI/bge-reranker-v2-m3", "gpt-image-1", "gpt-4o-mini-tts", "whisper-1", "bad name!"]
+
+
+class _FakeModelsAPI:
+    def __init__(self):
+        self.status = 200
+        self.body: object = {"object": "list", "data": [{"id": name, "object": "model"} for name in LISTED]}
+        self.requests: list[httpx.Request] = []
+
+    def handle(self, request):
+        self.requests.append(request)
+        if self.status != 200:
+            return httpx.Response(self.status, json={"error": {"message": f"Incorrect API key provided: {KEY}"}})
+        if isinstance(self.body, str):
+            return httpx.Response(200, text=self.body, headers={"content-type": "text/html"})
+        return httpx.Response(200, json=self.body)
+
+
+@pytest.fixture
+def models_api(monkeypatch):
+    fake = _FakeModelsAPI()
+    real = httpx.AsyncClient
+
+    def factory(*args, **kwargs):
+        kwargs.setdefault("transport", httpx.MockTransport(fake.handle))
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(httpx, "AsyncClient", factory)
+    return fake
+
+
+async def test_model_lists_are_filtered_per_section_and_reuse_the_saved_key(settings_file, store, models_api,
+                                                                           monkeypatch):
+    ms.save_section(settings_file, "chat", {"provider": "openai", "base_url": "https://relay.example.com",
+                                            "api_key": KEY, "model": "gpt-5.6-luna"})
+    ms.save_section(settings_file, "embedding", {"base_url": "https://relay.example.com/v1", "api_key": KEY,
+                                                 "model": "text-embedding-3-small", "dim": 8,
+                                                 "query_prefix": ""})
+    runtime = _runtime(settings_file, store)
+    async with _client(runtime, monkeypatch) as client:
+        chat = await client.post("/admin/model/chat/models", json={
+            "provider": "openai", "base_url": "https://relay.example.com", "api_key": ""})
+        embedding = await client.post("/admin/model/embedding/models", json={
+            "base_url": "https://relay.example.com/v1", "api_key": ""})
+
+    assert chat.status_code == 200, chat.text
+    assert chat.json()["models"] == ["gpt-5.6-luna", "gpt-6-luna"]      # 向量、重排、图像、语音都不列
+    assert chat.json()["total"] == 8                                     # 写法不合规的那条不算
+    assert embedding.json()["models"] == ["Qwen/Qwen3-Embedding-0.6B", "text-embedding-3-small"]
+    # 只写到主机的地址补 /v1；Key 留空 = 同一台主机上沿用保存的那把
+    assert [str(r.url) for r in models_api.requests] == ["https://relay.example.com/v1/models"] * 2
+    assert all(r.headers["authorization"] == f"Bearer {KEY}" for r in models_api.requests)
+    assert KEY not in chat.text + embedding.text
+
+
+async def test_listing_models_on_another_host_needs_its_own_key(settings_file, store, models_api, monkeypatch):
+    ms.save_section(settings_file, "chat", {"provider": "openai", "base_url": "https://api.openai.com/v1",
+                                            "api_key": KEY, "model": "gpt-5.6-luna"})
+    runtime = _runtime(settings_file, store)
+    async with _client(runtime, monkeypatch) as client:
+        moved = await client.post("/admin/model/chat/models", json={
+            "provider": "openai", "base_url": "https://gateway.example.com/v1", "api_key": ""})
+        foreign = await client.post("/admin/model/chat/models", headers={"origin": "https://evil.example"},
+                                    json={"provider": "openai", "base_url": "https://evil.example/v1",
+                                          "api_key": ""})
+    assert moved.status_code == 422 and moved.json()["detail"]["code"] == "api_key_required"
+    assert foreign.status_code == 403 and foreign.json()["detail"]["code"] == "cross_origin"
+    assert models_api.requests == []                                   # 两次都没有把 Key 发出去
+
+
+@pytest.mark.parametrize("status,body,outcome", [
+    (401, None, "auth_failed"),
+    (404, None, "list_unsupported"),                                   # 中转站没开列模型的接口
+    (200, "<!doctype html><title>Relay</title>", "not_api_response"),
+    (200, {"message": "ok"}, "not_api_response"),
+])
+async def test_a_model_list_that_cannot_be_read_is_reported_not_raised(models_api, status, body, outcome):
+    models_api.status = status
+    if body is not None:
+        models_api.body = body
+    result = await model_admin.list_models(
+        {"provider": "openai", "base_url": "https://relay.example.com/v1", "api_key": KEY, "warnings": []}, "chat")
+    assert result["ok"] is False and result["models"] == [] and result["outcome"] == outcome
+    assert KEY not in json.dumps(result)
+
+
+async def test_anthropic_model_lists_use_its_own_headers(models_api):
+    models_api.body = {"data": [{"type": "model", "id": "claude-sonnet-5-5"}, {"type": "model", "id": "claude-opus-5-5"}],
+                       "has_more": False}
+    result = await model_admin.list_models(
+        {"provider": "anthropic", "base_url": "https://relay.example.com/api", "api_key": KEY, "warnings": []},
+        "chat")
+    assert result["models"] == ["claude-opus-5-5", "claude-sonnet-5-5"]
+    request = models_api.requests[0]
+    assert str(request.url) == "https://relay.example.com/api/v1/models?limit=1000"
+    assert request.headers["x-api-key"] == KEY and request.headers["anthropic-version"] == "2023-06-01"
+    assert "authorization" not in request.headers
+
+
+async def test_a_list_without_any_embedding_names_is_offered_whole(models_api):
+    models_api.body = [{"id": "house-vectors-v2"}, "house-chat-v1"]          # 直接回数组的中转站
+    result = await model_admin.list_models(
+        {"provider": "openai", "base_url": "https://relay.example.com/v1", "api_key": KEY, "warnings": []},
+        "embedding")
+    assert result["ok"] is True and result["models"] == ["house-chat-v1", "house-vectors-v2"]
+
+
 # ── 向量连接：切换、恢复、另一个实例跟上 ──────────────────────────────────────
 
 async def test_saving_embedding_rebuilds_vectors_then_switches(settings_file, store, api, monkeypatch):

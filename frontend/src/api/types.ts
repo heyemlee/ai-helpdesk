@@ -590,19 +590,36 @@ export interface ModelTestResult {
   dim?: number
 }
 
-export interface ChatModelBody {
+export interface ChatConnectionBody {
   provider: ModelProvider
   base_url: string
   /** 留空 = 沿用现在这一把（只在协议和主机都没换时允许） */
   api_key: string
+}
+
+export interface ChatModelBody extends ChatConnectionBody {
   model: string
 }
 
-export interface EmbeddingModelBody {
+export interface EmbeddingConnectionBody {
   base_url: string
   api_key: string
+}
+
+export interface EmbeddingModelBody extends EmbeddingConnectionBody {
   model: string
   /** 0 = 按测试时模型实际返回的维度 */
   dim: number
   query_prefix: string
+}
+
+/** 接口自己报的可用模型（GET /models），已按这一组筛过。读不到时 ok 为 false、给出结果代号。 */
+export interface ModelListResult {
+  ok: boolean
+  models: string[]
+  /** 接口一共报了多少个（筛选之前） */
+  total: number
+  outcome: string
+  status: number | null
+  detail: string
 }

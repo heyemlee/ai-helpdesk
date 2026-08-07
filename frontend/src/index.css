@@ -85,8 +85,52 @@
 .progress-steps li.done svg { color: var(--color-success, currentColor); }
 .progress-steps li.active { color: var(--color-text-primary); }
 
-/* 管理与诊断 → 模型连接 */
-.model-form { margin-top: 14px; }
-.model-form textarea.field { resize: vertical; font-family: var(--font-mono, ui-monospace, monospace); }
+/* 管理与诊断 → 模型连接：先写清楚现在用的是哪个模型，再用下拉框换；
+   接口地址和 Key 不常改，收在「连接设置」里。 */
+.model-now {
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; padding: 14px 16px;
+  border-radius: var(--radius-lg); background: var(--color-surface-secondary);
+}
+.model-now-label { font-size: var(--text-2xs); color: var(--color-text-tertiary); }
+.model-now-main { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; }
+.model-now-name { font-size: var(--text-lg); font-weight: var(--fw-semibold); line-height: 1.4; overflow-wrap: anywhere; }
+.model-now-meta { font-size: var(--text-xs); line-height: 1.8; color: var(--color-text-secondary); }
+.model-now-meta > span:not(.model-now-sep) { white-space: nowrap; }
+.model-now-sep { margin: 0 2px; color: var(--color-text-tertiary); }
+.model-form { display: grid; gap: 12px; margin-top: 16px; }
+.model-pick { display: grid; gap: 6px; }
+.model-pick-label { font-size: 12px; color: var(--color-text-tertiary); }
+.model-pick-row { display: flex; align-items: center; gap: 8px; }
+.model-pick-row > .field { flex: 1; min-width: 0; }
+.model-pick-source {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; min-height: 16px;
+  font-size: var(--text-2xs); color: var(--color-text-tertiary);
+}
+.link-btn {
+  padding: 0; border: 0; background: none; font: inherit; cursor: pointer;
+  color: var(--color-text-secondary); text-decoration: underline; text-underline-offset: 2px;
+}
+.link-btn:hover { color: var(--color-text); }
+.model-confirm { display: grid; gap: 10px; }
+.model-confirm-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.model-advanced { border-top: 1px solid var(--color-border-subtle); padding-top: 12px; }
+.model-advanced > summary {
+  cursor: pointer; list-style: none; width: fit-content;
+  font-size: var(--text-xs); color: var(--color-text-secondary);
+}
+.model-advanced > summary::-webkit-details-marker { display: none; }
+.model-advanced > summary::before { content: "▸ "; color: var(--color-text-tertiary); }
+.model-advanced[open] > summary::before { content: "▾ "; }
+.model-advanced > summary:hover { color: var(--color-text); }
+.model-advanced-body { display: grid; gap: 14px; margin-top: 14px; }
+.model-advanced-body textarea.field { resize: vertical; font-family: var(--font-mono, ui-monospace, monospace); }
+.model-advanced-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.model-form .note p > svg { display: inline-block; vertical-align: -2px; margin-right: 6px; }
+.model-latency, .model-warn { color: var(--color-text-secondary); }
+.model-warn { margin-top: 4px; }
 .model-checks { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 2px; }
 .model-switch { margin: 12px 0 4px; }
+@media (max-width: 560px) {
+  .model-pick-row { flex-wrap: wrap; }
+  .model-pick-row > .field { flex-basis: 100%; }
+}

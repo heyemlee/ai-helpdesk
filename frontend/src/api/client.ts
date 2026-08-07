@@ -1,8 +1,9 @@
 import type {
-  ChatModelBody, ChatRequest, ChatResponse, ConversationResponse, EmbeddingModelBody, EvalReport,
-  HealthResponse, ImportResult, KnowledgeCategoryOverview, KnowledgeDocument, KnowledgeDocumentDetail,
-  KnowledgeDocumentList, ModelStatus,
-  ModelTestResult, MonitorSummary, SearchResponse, SopList, StreamEvent, TicketDetail, TicketList,
+  ChatConnectionBody, ChatModelBody, ChatRequest, ChatResponse, ConversationResponse,
+  EmbeddingConnectionBody, EmbeddingModelBody, EvalReport, HealthResponse, ImportResult,
+  KnowledgeCategoryOverview, KnowledgeDocument, KnowledgeDocumentDetail, KnowledgeDocumentList,
+  ModelListResult, ModelStatus, ModelTestResult, MonitorSummary, SearchResponse, SopList, StreamEvent,
+  TicketDetail, TicketList,
 } from './types'
 
 const DEFAULT_API_BASE = import.meta.env.VITE_API_BASE_URL || '/api'
@@ -167,6 +168,10 @@ export const api = {
 
   // ── 模型连接（管理与诊断 → 模型连接）。Key 只往里送，响应里永远没有它 ──
   modelStatus: (base: string) => request<ModelStatus>(base, '/admin/model'),
+  listChatModels: (base: string, body: ChatConnectionBody) =>
+    request<ModelListResult>(base, '/admin/model/chat/models', json(body)),
+  listEmbeddingModels: (base: string, body: EmbeddingConnectionBody) =>
+    request<ModelListResult>(base, '/admin/model/embedding/models', json(body)),
   testChatModel: (base: string, body: ChatModelBody) =>
     request<ModelTestResult>(base, '/admin/model/chat/test', json(body)),
   saveChatModel: (base: string, body: ChatModelBody & { force?: boolean }) =>

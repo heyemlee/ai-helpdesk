@@ -2,9 +2,11 @@
 模型连接的管理接口：看现在用的是哪一份、保存前先试一下、换一份、恢复为服务端配置。
 
     GET    /admin/model                    两组连接的现状（不含 Key）、能不能改、向量切换的进度
+    POST   /admin/model/chat/models        这个对话连接有哪些模型（给页面的下拉框），不保存
     POST   /admin/model/chat/test          用提交的对话连接发两条极短的请求（普通 + 结构化输出），不保存
     PUT    /admin/model/chat               保存并立刻生效（不用重启）
     DELETE /admin/model/chat               丢掉页面保存的那一组，回到 `.env`
+    POST   /admin/model/embedding/models   这个向量连接有哪些向量模型，不保存
     POST   /admin/model/embedding/test     用提交的向量连接算一个向量，报回实际维度，不保存
     PUT    /admin/model/embedding          测试通过后开始切换：重算全部向量、整批换上、再生效
     DELETE /admin/model/embedding          切换回 `.env` 里的向量配置（同样要重算）
@@ -31,6 +33,7 @@ from __future__ import annotations
 import ipaddress
 import json
 import logging
+import re
 import time
 from typing import Any
 from urllib.parse import urlsplit
@@ -63,6 +66,18 @@ router = APIRouter(prefix="/admin/model", tags=["模型连接"])
 
 # 测试连接时一条请求最多等多久。比正式调用短：测试是人在页面前等着看结果。
 PROBE_TIMEOUT_S = 25.0
+# 列模型只是问一句「有哪些模型」，不花 token，等得更短。
+LIST_TIMEOUT_S = 15.0
+MAX_LISTED_MODELS = 500
+
+# 按名字猜哪些是向量模型、哪些不能拿来对话。只用来给下拉框筛选：猜错了无非列表里
+# 多一项或少一项，页面上永远可以手动填模型名，保存前的测试连接才是准的。
+_EMBEDDING_NAME = re.compile(r"embed|bge|gte-|m3e|(^|[/-])e5-", re.IGNORECASE)
+_NOT_CHAT_NAME = re.compile(
+    r"embed|bge|gte-|m3e|(^|[/-])e5-|rerank|whisper|tts|speech|transcri|audio|dall-e|image|"
+    r"moderation|realtime|sora|stable-diffusion|flux|kolors|video",
+    re.IGNORECASE,
+)
 
 DEFAULT_EMBEDDING = {"base_url": ms.OFFICIAL_BASE_URL["openai"], "model": "text-embedding-3-small", "dim": 1536}
 
@@ -187,16 +202,15 @@ def describe(runtime: ModelRuntime, request: Request) -> dict[str, Any]:
 
 # ── 提交的连接 → 一份完整的候选 ───────────────────────────────────────────────
 
-def chat_candidate(body: dict[str, Any], runtime: ModelRuntime) -> dict[str, Any]:
+def chat_connection(body: dict[str, Any], runtime: ModelRuntime) -> dict[str, Any]:
     """
-    页面提交的对话连接 → 一份完整的候选（含 Key）。
+    页面提交的对话连接（协议、地址、Key）→ 校验过的一份（含 Key）。
 
     Key 没填表示"沿用现在这一把"——只在协议和主机都没换时才允许：换了主机还沿用，
     等于把现有的 Key 交给一台新主机。
     """
     provider = ms.clean_provider(body.get("provider"))
     base_url, warnings = ms.validate_base_url(body.get("base_url") or ms.OFFICIAL_BASE_URL[provider])
-    model = ms.clean_model_name(body.get("model"))
     key = ms.clean_api_key(body.get("api_key"))
     if not key:
         current = runtime.chat
@@ -206,27 +220,35 @@ def chat_candidate(body: dict[str, Any], runtime: ModelRuntime) -> dict[str, Any
                 "api_key_required", "接口地址换了主机或换了协议，要重新填 Key。"
             )
         key = current["api_key"]
-    return {"provider": provider, "base_url": base_url, "model": model, "api_key": key,
-            "warnings": warnings}
+    return {"provider": provider, "base_url": base_url, "api_key": key, "warnings": warnings}
 
 
-def embedding_candidate(body: dict[str, Any], runtime: ModelRuntime) -> dict[str, Any]:
-    """页面提交的向量连接 → 一份完整的候选（含 Key）。规则同 chat_candidate。"""
+def chat_candidate(body: dict[str, Any], runtime: ModelRuntime) -> dict[str, Any]:
+    """页面提交的对话连接 → 一份完整的候选（连接 + 模型名）。"""
+    connection = chat_connection(body, runtime)
+    return {**connection, "model": ms.clean_model_name(body.get("model"))}
+
+
+def embedding_connection(body: dict[str, Any], runtime: ModelRuntime) -> dict[str, Any]:
+    """页面提交的向量连接（地址、Key）→ 校验过的一份（含 Key）。规则同 chat_connection。"""
     base_url, warnings = ms.validate_base_url(body.get("base_url") or DEFAULT_EMBEDDING["base_url"])
-    model = ms.clean_model_name(body.get("model"))
     key = ms.clean_api_key(body.get("api_key"))
     if not key:
         current = runtime.embedder
         if not current._api_key or not ms.same_address(current._base_url or "", base_url):
             raise ms.ModelSettingsError("api_key_required", "接口地址换了主机，要重新填 Key。")
         key = current._api_key
+    return {"base_url": base_url, "api_key": key, "warnings": warnings}
+
+
+def embedding_candidate(body: dict[str, Any], runtime: ModelRuntime) -> dict[str, Any]:
+    """页面提交的向量连接 → 一份完整的候选（连接 + 模型名、维度、查询前缀）。"""
+    connection = embedding_connection(body, runtime)
     return {
-        "base_url": base_url,
-        "model": model,
-        "api_key": key,
+        **connection,
+        "model": ms.clean_model_name(body.get("model")),
         "dim": ms.clean_dim(body.get("dim")),
         "query_prefix": ms.clean_query_prefix(body.get("query_prefix")),
-        "warnings": warnings,
     }
 
 
@@ -404,6 +426,72 @@ async def probe_embedding(candidate: dict[str, Any]) -> dict[str, Any]:
     return {"ok": True, "checks": [check], "dim": dim, "warnings": candidate["warnings"]}
 
 
+# ── 可选的模型 ────────────────────────────────────────────────────────────────
+
+def _model_names(payload: Any) -> list[str]:
+    """
+    `GET /models` 的回答 → 模型名。OpenAI 和 Anthropic 都是 `{"data": [{"id": ...}]}`；
+    有的中转站直接回数组、或者把名字放在 `name` / `model` 里。认不出、写法不合规的条目跳过。
+    """
+    items = payload.get("data", payload.get("models")) if isinstance(payload, dict) else payload
+    if not isinstance(items, list):
+        raise ValueError("回答里没有模型列表")
+    names: list[str] = []
+    for item in items:
+        name = (item.get("id") or item.get("name") or item.get("model")) if isinstance(item, dict) else item
+        if not isinstance(name, str):
+            continue
+        try:
+            names.append(ms.clean_model_name(name))
+        except ms.ModelSettingsError:
+            continue
+    return names
+
+
+def _suits(kind: str, name: str) -> bool:
+    if kind == "embedding":
+        return bool(_EMBEDDING_NAME.search(name)) and "rerank" not in name.lower()
+    return not _NOT_CHAT_NAME.search(name)
+
+
+async def list_models(connection: dict[str, Any], kind: str) -> dict[str, Any]:
+    """
+    问接口有哪些模型，给页面的下拉框用。只读：不发对话、不花 token、不保存。
+
+    读不到（中转站没开这个接口、Key 不对……）不算接口错误：页面照样能手动填模型名，
+    所以和测试连接一样只报结果代号。按名字筛出适合这一组的；一个也筛不出来时给全部，
+    让人自己挑。
+    """
+    key = connection["api_key"]
+    started = time.monotonic()
+    try:
+        async with httpx.AsyncClient(timeout=LIST_TIMEOUT_S) as client:
+            if connection.get("provider") == "anthropic":
+                resp = await client.get(
+                    f"{connection['base_url'].rstrip('/')}/v1/models", params={"limit": 1000},
+                    headers={"x-api-key": key, "anthropic-version": "2023-06-01"},
+                )
+            else:
+                resp = await client.get(f"{ms.api_root(connection['base_url'])}/models",
+                                        headers={"Authorization": f"Bearer {key}"})
+            resp.raise_for_status()
+            names = _model_names(resp.json())
+    except (ValueError, TypeError) as ex:
+        # 200 但不是 JSON 或没有列表：多半是网页（地址少了 /v1）或者这家没有列模型的接口
+        return {"ok": False, "models": [], "total": 0, "outcome": "not_api_response", "status": 200,
+                "detail": _scrub(str(ex), key)[:300]}
+    except Exception as ex:  # noqa: BLE001
+        failure = _failure("models", ex, key, started)
+        outcome = "list_unsupported" if failure["status"] in (404, 405) else failure["outcome"]
+        return {"ok": False, "models": [], "total": 0, "outcome": outcome, "status": failure["status"],
+                "detail": failure["detail"]}
+
+    unique = sorted(set(names), key=str.lower)
+    suited = [name for name in unique if _suits(kind, name)] or unique
+    return {"ok": True, "models": suited[:MAX_LISTED_MODELS], "total": len(unique), "outcome": "ok",
+            "status": resp.status_code, "detail": ""}
+
+
 # ── 接口 ──────────────────────────────────────────────────────────────────────
 
 @router.get("")
@@ -412,6 +500,19 @@ async def model_status(request: Request, response: Response):
     # 切换进度要轮询，别让浏览器或代理拿缓存糊弄
     response.headers["Cache-Control"] = "no-store"
     return describe(runtime, request)
+
+
+@router.post("/chat/models")
+async def chat_models(request: Request):
+    """这个对话连接有哪些模型。Key 留空的规则和测试连接一样：只在主机没换时沿用现在那把。"""
+    runtime = _require_runtime()
+    _require_edit(request)
+    body = await _json_object(request)
+    try:
+        connection = chat_connection(body, runtime)
+    except ms.ModelSettingsError as ex:
+        raise _invalid(ex) from None
+    return await list_models(connection, "chat")
 
 
 @router.post("/chat/test")
@@ -473,6 +574,19 @@ async def clear_chat(request: Request):
     runtime._stamp = ms.file_stamp(runtime.path)
     logger.info(f"model_settings.cleared section=chat by={_saved_by(request)}")
     return describe(runtime, request)
+
+
+@router.post("/embedding/models")
+async def embedding_models(request: Request):
+    """这个向量连接有哪些向量模型。向量接口一律按 OpenAI 兼容的写法问。"""
+    runtime = _require_runtime()
+    _require_edit(request)
+    body = await _json_object(request)
+    try:
+        connection = embedding_connection(body, runtime)
+    except ms.ModelSettingsError as ex:
+        raise _invalid(ex) from None
+    return await list_models(connection, "embedding")
 
 
 @router.post("/embedding/test")
