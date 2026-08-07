@@ -4,6 +4,7 @@
 全部离线：对话模型的测试连接打桩在探测函数上，向量模型是接在 HTTP 客户端上的假端点，
 存储是临时 SQLite。
 """
+import asyncio
 import json
 import os
 import stat
@@ -16,7 +17,7 @@ from starlette.requests import Request
 
 from app.api import model_admin
 from app.core import model_settings as ms
-from app.core.embedder import Embedder
+from app.core.embedder import Embedder, EmbeddingUnavailable
 from app.core.model_runtime import ModelRuntime, chat_config_from, embedder_from
 from app.core.openai_compat import AsyncOpenAICompat
 from app.storage.vector_store import EMBEDDING_SIGNATURE_KEY, LocalStore, check_embedding_signature
@@ -664,3 +665,162 @@ async def test_search_keeps_working_while_an_instance_lags_behind_a_switch(setti
     )
     hits = await lagging.search_async("铰链怎么调", top_k=3)
     assert hits and hits[0]["title"] == "安装调整"
+
+
+# ── 评审跟进：同一模型换连接、配置写不进去、切换瞬间的在途写入 ────────────────────
+
+_REMOTE = {"base_url": "https://api.openai.com/v1", "api_key": KEY, "model": "text-embedding-3-small"}
+
+
+async def test_the_other_instance_follows_a_new_key_host_or_prefix_on_the_same_model(
+    settings_file, store, api, monkeypatch
+):
+    """
+    Key 被停用后换一把、或者只改地址和查询前缀：模型和维度没变，向量不用重算，
+    但客户实例必须用上新的连接——否则它一直拿作废的 Key 去查，检索悄悄退成只走关键词。
+    """
+    staff = _runtime(settings_file, store)
+    customer = _runtime(settings_file, store, editable=False)
+    async with _client(staff, monkeypatch) as client:
+        await client.put("/admin/model/embedding", json=_REMOTE)
+        await staff._task
+        await customer.sync()
+        assert customer.embedder._api_key == KEY
+
+        await client.put("/admin/model/embedding", json={
+            **_REMOTE, "api_key": OTHER_KEY, "base_url": "https://embeddings.example.org/v1",
+            "query_prefix": "Query: "})
+        await staff._task
+    assert staff.job.state == "succeeded"
+    await customer.sync()
+
+    assert customer.embedder._api_key == OTHER_KEY
+    assert customer.embedder._base_url == "https://embeddings.example.org/v1"
+    assert customer.embedder._query_prefix == "Query: "
+    assert customer.embedder.signature == staff.embedder.signature
+
+
+async def test_restoring_embedding_with_the_same_model_really_uses_the_env_connection(
+    settings_file, store, api, monkeypatch
+):
+    """页面存的和 .env 是同一个模型：恢复时不重算，但运行中的连接也得换回 .env 那一份。"""
+    monkeypatch.setenv("EMBEDDING_BASE_URL", "https://env.example.org/v1")
+    monkeypatch.setenv("EMBEDDING_API_KEY", KEY)
+    monkeypatch.setenv("EMBEDDING_MODEL", "text-embedding-3-small")
+    monkeypatch.setenv("EMBEDDING_DIM", str(api.dim))
+    runtime = _runtime(settings_file, store)
+    async with _client(runtime, monkeypatch) as client:
+        resp = await client.put("/admin/model/embedding", json={
+            **_REMOTE, "api_key": OTHER_KEY, "base_url": "https://page.example.org/v1"})
+        assert resp.status_code == 202, resp.text
+        await runtime._task
+        assert runtime.embedder._api_key == OTHER_KEY
+
+        resp = await client.delete("/admin/model/embedding")
+        assert resp.status_code == 202, resp.text
+        if runtime.switching:
+            await runtime._task
+        status = (await client.get("/admin/model")).json()
+
+    assert status["embedding"]["source"] == "env"
+    assert runtime.embedder._api_key == KEY
+    assert runtime.embedder._base_url == "https://env.example.org/v1"
+
+
+async def test_a_config_file_that_cannot_be_written_after_the_vectors_switched_is_reported_truthfully(
+    settings_file, store, api, monkeypatch
+):
+    """
+    向量已经在一个事务里换成新模型了，这时配置文件写不进去（磁盘满、挂载权限变了）：
+    不能报"库没有改动"、也不能让运行中的实例继续用旧模型去查新向量。
+    """
+    runtime = _runtime(settings_file, store)
+    real_save = ms.save_section
+
+    def denied(*args, **kwargs):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(ms, "save_section", denied)
+    async with _client(runtime, monkeypatch) as client:
+        await client.put("/admin/model/embedding", json=_REMOTE)
+        await runtime._task
+
+    signature = f"text-embedding-3-small/{api.dim}"
+    assert await store.meta_get(EMBEDDING_SIGNATURE_KEY) == signature
+    assert runtime.embedder.signature == signature          # 运行中的实例和库一致
+    job = runtime.job.public()
+    assert job["committed"] is True
+    assert "没有改动" not in job["error"] and "Permission denied" in job["error"]
+
+    # 文件恢复可写之后自己补写，重启就不会因为"库是新的、配置是旧的"起不来
+    monkeypatch.setattr(ms, "save_section", real_save)
+    await runtime.sync()
+    saved = ms.load_store(settings_file)["embedding"]["values"]
+    assert saved["model"] == "text-embedding-3-small"
+    restarted, _ = embedder_from(ms.load_store(settings_file))
+    await check_embedding_signature(store, restarted)
+
+
+async def test_a_document_embedded_before_the_cutover_never_lands_with_old_vectors(
+    settings_file, store, api, monkeypatch
+):
+    """导入里"算向量"和"写库"之间隔着切换：这篇不能带着旧模型的向量写进新库。"""
+    runtime = _runtime(settings_file, store)
+    kb = KnowledgeBase(store=store, embedder=runtime.embedder)
+    embedded, release = asyncio.Event(), asyncio.Event()
+    real_embed_many = runtime.embedder.embed_many
+
+    async def held(texts):
+        vectors = await real_embed_many(texts)
+        embedded.set()
+        await release.wait()
+        return vectors
+
+    monkeypatch.setattr(runtime.embedder, "embed_many", held)
+    importing = asyncio.create_task(kb.import_documents([{"title": "补件流程", "content": "补件需要提供订单号和照片"}]))
+    await embedded.wait()
+
+    async with _client(runtime, monkeypatch) as client:
+        await client.put("/admin/model/embedding", json=_REMOTE)
+        await runtime._task
+    assert runtime.job.state == "succeeded"
+
+    release.set()
+    with pytest.raises(EmbeddingUnavailable):
+        await importing
+    state = await store.vector_state()
+    assert state["kb_chunks"] == {"rows": 2, "dim": api.dim}   # 没有多出一篇、也没有混进旧维度的行
+
+
+async def test_an_episodic_summary_embedded_before_the_cutover_is_re_embedded(
+    settings_file, store, api, monkeypatch
+):
+    from app.memory.conversation_memory import MemoryManager
+
+    runtime = _runtime(settings_file, store)
+    memory = MemoryManager(store=store, embedder=runtime.embedder, api_key="test-key")
+    embedded, release = asyncio.Event(), asyncio.Event()
+    real_embed = runtime.embedder.embed
+
+    async def held(text):
+        vector = await real_embed(text)
+        embedded.set()
+        await release.wait()
+        return vector
+
+    monkeypatch.setattr(runtime.embedder, "embed", held)
+    storing = asyncio.create_task(memory._store_episodic("u2", "c2", "原文", "客户问了补件进度"))
+    await embedded.wait()
+
+    async with _client(runtime, monkeypatch) as client:
+        await client.put("/admin/model/embedding", json=_REMOTE)
+        await runtime._task
+
+    monkeypatch.setattr(runtime.embedder, "embed", real_embed)   # 重算时用新的
+    release.set()
+    await storing
+    dims = {
+        row["summary"]: len(json.loads(row["embedding"]))
+        for row in store._db.execute("SELECT summary, embedding FROM memory_episodic")
+    }
+    assert dims == {"客户问过补件进度": api.dim, "客户问了补件进度": api.dim}

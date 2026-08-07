@@ -25,6 +25,7 @@
 （EMBEDDING_DIM 变了老向量就没有意义）：用 scripts/reembed.py。启动时
 Database.init_schema 会校验现有表维度，不一致直接报错而不是静默存入错位向量。
 """
+import asyncio
 import hashlib
 import logging
 import os
@@ -74,6 +75,10 @@ class Embedder:
         self._query_prefix = query_prefix if self._remote else ""
         self._down_until = 0.0   # time.monotonic() 时刻；在这之前不再打远端
         self._last_error = ""
+        # 向量空间换过几次手。写库的人在"算向量"前后各看一眼：不一样，说明这中间
+        # 发生过切换，手里的向量可能是旧模型的，不能直接写进去。见 mark_cutover。
+        self.epoch = 0
+        self._cutting_over = False
 
     @classmethod
     def from_env(cls) -> "Embedder":
@@ -108,6 +113,39 @@ class Embedder:
         self._query_prefix = other._query_prefix
         self._down_until = 0.0
         self._last_error = ""
+        self.epoch += 1
+        self._cutting_over = False
+
+    def mark_cutover(self) -> None:
+        """
+        库里的向量即将整批换成新模型（切换任务在提交事务之前调用）。
+
+        在这之前算好向量、这之后才落库的写入（文档导入、情景记忆）手里是旧模型的向量，
+        存储层看不出来。epoch 在提交之前就加一，写入方落库后对一下就知道要不要作废重来。
+        """
+        self.epoch += 1
+        self._cutting_over = True
+
+    def abort_cutover(self) -> None:
+        """提交没成（要重试或整个失败）：还是旧模型。epoch 不回退，在途写入多重来一次无妨。"""
+        self.epoch += 1
+        self._cutting_over = False
+
+    async def settled(self, timeout: float = 30.0) -> None:
+        """等切换那一下过去（adopt 或 abort）。写入方要用新模型重算向量时先等这个。"""
+        deadline = time.monotonic() + timeout
+        while self._cutting_over and time.monotonic() < deadline:
+            await asyncio.sleep(0.05)
+
+    def connection_identity(self) -> tuple[str, str, str, int, str, bool]:
+        """
+        连接本身是不是同一份：地址、Key、模型、维度、查询前缀。
+
+        signature 只说"向量在哪个空间"——同一个模型换一把 Key、换一个地址、改查询前缀，
+        signature 不变、库里的向量也不用重算，但这几项变了就得用新的。Key 只留摘要。
+        """
+        digest = hashlib.sha256((self._api_key or "").encode("utf-8")).hexdigest()
+        return (self._base_url or "", digest, self._model, self.dim, self._query_prefix, self._remote)
 
     @property
     def backend(self) -> str:

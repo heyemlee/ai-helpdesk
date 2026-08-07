@@ -647,6 +647,8 @@ async def clear_embedding(request: Request):
     if target.signature == runtime.embedder.signature:
         # 现在用的就是 .env 那一份（比如页面保存的和 .env 恰好一样）：不用重算，只删文件里那组
         ms.clear_section(runtime.path, "embedding")
+        # 向量空间一样，但 Key、地址、查询前缀可能是页面上改过的：运行中的连接也要换回 .env
+        runtime.embedder.adopt(target)
         runtime.embedding_meta = {"source": "env", "saved_at": "", "saved_by": ""}
         runtime._stamp = ms.file_stamp(runtime.path)
         return describe(runtime, request)

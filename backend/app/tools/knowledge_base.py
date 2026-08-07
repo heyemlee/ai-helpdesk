@@ -481,6 +481,7 @@ class KnowledgeBase:
             # 文档记录和它的分片之间就只隔着两次写入。整篇的分片一批送去算；
             # 远端 Embedding 这时不可用会抛 EmbeddingUnavailable，这一篇什么都不写
             # ——没有向量的分片进了库，稠密那一路永远召不回它。
+            epoch = getattr(self._embedder, "epoch", 0)
             embeddings = await self._embedder.embed_many(
                 [self.embedding_text(title, chunk) for chunk in chunks]
             )
@@ -514,10 +515,17 @@ class KnowledgeBase:
                 # 文档记录是别人刚写的也照样写分片：ID 相同，已有的不会重复，
                 # 缺的补上——两边谁先谁后，最后都是完整的一篇。
                 await self._store.kb_add(rows)
-            except Exception:
+                if getattr(self._embedder, "epoch", 0) != epoch:
+                    # 算向量和写库之间向量模型换过：这些行带的是旧模型的向量，存储层
+                    # 看不出来（同维度时不报错），留下就是永远召不回的分片
+                    raise EmbeddingUnavailable("向量模型在导入过程中切换了，这篇没有写入")
+            except Exception as ex:
                 # 分片没写成：这篇文档检索不到，留着记录等于在列表里摆一篇假的
                 if inserted:
                     await self._store.kb_doc_delete(doc_id)
+                if getattr(self._embedder, "epoch", 0) != epoch and not isinstance(ex, EmbeddingUnavailable):
+                    # 换维度时旧向量写不进新列，同一件事的另一种表现
+                    raise EmbeddingUnavailable("向量模型在导入过程中切换了，这篇没有写入") from ex
                 raise
             if not inserted:
                 # 记录是并发导入的另一边写的，分类以它写进去的为准

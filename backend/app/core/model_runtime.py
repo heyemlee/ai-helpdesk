@@ -9,8 +9,8 @@
   工具管理（改写、重排）、记忆（摘要、画像）、评测（判分），各有一个 `reconfigure_llm`。
   正在处理的请求手里拿的是旧客户端，照样跑完。
 - **向量**：新旧模型的向量不在一个空间里，不能只改配置。切换任务先用新模型把知识库分片和
-  情景记忆的向量全部重算，在存储层一个事务里整批换上，再写配置文件，最后让共享的 Embedder
-  原地换过去。重算期间检索照常用旧模型对旧向量；文档导入暂停——重算到一半进来的分片没有
+  情景记忆的向量全部重算，在存储层一个事务里整批换上，随后让共享的 Embedder 原地换过去，
+  最后写配置文件（写不进去就记着，文件可写后自动补写）。重算期间检索照常用旧模型对旧向量；文档导入暂停——重算到一半进来的分片没有
   新向量，那次切换就换不上。
 
 两个实例怎么一致：每个实例每隔几秒看一眼配置文件。员工实例保存之后，客户实例下一次看的时候
@@ -115,6 +115,7 @@ class SwitchJob:
     total: int = 0
     done: int = 0
     error: str = ""
+    committed: bool = False      # True：库里的向量已经换成新模型（之后再出错也不能说"没有改动"）
     started_at: str = ""
     finished_at: str = ""
 
@@ -148,6 +149,8 @@ class ModelRuntime:
         self._llm_info = llm_info
         self._stamp = ms.file_stamp(path)
         self._task: asyncio.Task | None = None
+        # 向量已经换上、配置文件却没写进去时，等文件可写了补写的那一组：(values 或 None, saved_by)
+        self._unsaved: tuple[dict[str, Any] | None, str] | None = None
 
     # ── 对话 ──────────────────────────────────────────────────────────────────
 
@@ -203,6 +206,8 @@ class ModelRuntime:
                 )
                 # 情景记忆的向量是按摘要算的，见 MemoryManager._store_episodic
                 episodic_vectors = await self._embed_all(target, [r["summary"] for r in episodic_rows])
+                # 提交之前先告诉在途的写入：从这里起它们手里的向量可能是旧模型的
+                self.embedder.mark_cutover()
                 try:
                     await self._store.replace_embeddings(
                         target.dim,
@@ -211,32 +216,64 @@ class ModelRuntime:
                         target.signature,
                     )
                     break
-                except VectorsChangedError:
-                    if attempt == REEMBED_ATTEMPTS:
-                        raise
-                    logger.info("向量重算期间库里多了行，重读一遍再算")
+                except BaseException as ex:
+                    self.embedder.abort_cutover()
+                    if isinstance(ex, VectorsChangedError) and attempt < REEMBED_ATTEMPTS:
+                        logger.info("向量重算期间库里多了行，重读一遍再算")
+                        continue
+                    raise
 
-            # 库里的向量已经是新模型的了。先写配置（客户实例看到它才会跟），再换自己的。
-            if values is not None:
-                ms.save_section(self.path, "embedding", values, saved_by=saved_by)
-            else:
-                ms.clear_section(self.path, "embedding")
-            self._stamp = ms.file_stamp(self.path)
+            # 库里的向量已经是新模型的了。先让运行中的实例跟库一致——不管配置文件
+            # 写不写得进去，查询向量都不能再用旧模型去比新向量。
+            job.committed = True
             self.embedder.adopt(target)
             self.embedding_meta = {
                 "source": "page" if values is not None else "env",
                 "saved_at": _now() if values is not None else "",
                 "saved_by": saved_by if values is not None else "",
             }
+            try:
+                self._write_embedding_section(values, saved_by)
+            except Exception as ex:  # noqa: BLE001 —— 磁盘满、挂载权限变了……
+                self._unsaved = (values, saved_by)
+                job.state, job.finished_at = "failed", _now()
+                job.error = (
+                    f"向量已经换成新模型并在使用，但配置文件没有写进去：{type(ex).__name__}: {ex}。"
+                    "文件恢复可写后会自动补写；补写之前不要重启服务。"
+                )[:300]
+                logger.error(f"向量已换成 {target.signature}，配置文件写入失败，等可写后补写: {job.error}")
+                return
             job.state, job.finished_at = "succeeded", _now()
             logger.info(
                 f"model_settings.embedding_switched to={target.signature} rows={job.total} "
                 f"source={self.embedding_meta['source']} by={saved_by or '-'}"
             )
-        except Exception as ex:  # noqa: BLE001 —— 任何失败都只记在任务上，库没换就是没换
+        except Exception as ex:  # noqa: BLE001 —— 提交之前的失败：库没换就是没换
             job.state, job.finished_at = "failed", _now()
             job.error = f"{type(ex).__name__}: {ex}"[:300]
             logger.warning(f"向量模型切换失败，库里的向量没有改动: {job.error}")
+
+    def _write_embedding_section(self, values: dict[str, Any] | None, saved_by: str) -> None:
+        """把这次切换的结果写进配置文件（客户实例看文件跟）。values 为 None = 删掉那一组。"""
+        if values is not None:
+            ms.save_section(self.path, "embedding", values, saved_by=saved_by)
+        else:
+            ms.clear_section(self.path, "embedding")
+        self._stamp = ms.file_stamp(self.path)
+
+    def _retry_unsaved(self) -> None:
+        """上一次切换提交之后配置文件没写进去：文件可写了就补上，再报成功。"""
+        if self._unsaved is None:
+            return
+        values, saved_by = self._unsaved
+        try:
+            self._write_embedding_section(values, saved_by)
+        except Exception as ex:  # noqa: BLE001
+            logger.warning(f"配置文件仍然写不进去，稍后再试: {type(ex).__name__}: {ex}")
+            return
+        self._unsaved = None
+        self.job.state, self.job.error = "succeeded", ""
+        logger.info("model_settings.embedding_config_saved_late")
 
     # ── 跟上配置文件 ──────────────────────────────────────────────────────────
 
@@ -247,6 +284,7 @@ class ModelRuntime:
         """
         if not self.path or self.switching:
             return
+        self._retry_unsaved()
         stamp = ms.file_stamp(self.path)
         if stamp == self._stamp:
             return
@@ -277,6 +315,11 @@ class ModelRuntime:
                 # 配置已经是新的，库里的向量还不是——另一个实例的切换还没换上。下次再看。
                 synced = False
         else:
+            if target.connection_identity() != self.embedder.connection_identity():
+                # 同一个模型、同一个维度：库里的向量不用动，但 Key、地址或查询前缀换了，
+                # 这个实例不跟的话会一直拿作废的 Key 去查，检索悄悄退成只走关键词
+                self.embedder.adopt(target)
+                logger.info(f"model_settings.embedding_connection_followed model={target.signature}")
             self.embedding_meta = meta
         if synced:
             self._stamp = stamp

@@ -960,7 +960,7 @@ class PgStore:
             "INSERT INTO memory_episodic"
             " (id, user_id, conv_id, summary, full_text, ts, embedding)"
             " VALUES ($1, $2, $3, $4, $5, $6, $7::vector)"
-            " ON CONFLICT (id) DO UPDATE SET summary = EXCLUDED.summary",
+            " ON CONFLICT (id) DO UPDATE SET summary = EXCLUDED.summary, embedding = EXCLUDED.embedding",
             doc_id, user_id, conv_id, summary, full_text[:500], time.time(),
             self._vec(embedding),
         )

@@ -276,6 +276,36 @@ describe('对话模型', () => {
     expect(await card.findByRole('alert')).toHaveTextContent('different host or protocol, so enter its key')
   })
 
+  it('测试没通过之后恢复为服务端配置：旧的"仍然保存"不能留着，一点就把恢复撤销', async () => {
+    const saved = { ...STATUS, chat: { ...STATUS.chat, source: 'page' as const, saved_at: '2026-10-14T10:00:00-07:00' } }
+    const failed: ModelTestResult = {
+      ok: false, warnings: [],
+      checks: [
+        { check: 'chat', outcome: 'timeout', status: null, detail: '', latency_ms: 30000 },
+        { check: 'structured', outcome: 'skipped', status: null, detail: '', latency_ms: 0 },
+      ],
+    }
+    mocks.modelStatus.mockResolvedValue(saved)
+    mocks.saveChatModel.mockRejectedValueOnce(
+      new ApiError(422, '422', { code: 'test_failed', message: 'x', test: failed }),
+    )
+    mocks.clearChatModel.mockResolvedValue(STATUS)
+    show()
+    const card = within(await waitFor(chatCard))
+    await card.findByText('3 models offered by this endpoint.')
+    await userEvent.selectOptions(card.getByLabelText('Model'), 'claude-sonnet-5-5')
+    await userEvent.click(card.getByRole('button', { name: 'Save' }))
+    expect(await card.findByRole('button', { name: 'Save anyway' })).toBeInTheDocument()
+
+    await userEvent.click(card.getByText('Connection settings'))
+    await userEvent.click(card.getByRole('button', { name: 'Restore server configuration' }))
+    await userEvent.click(within(card.getByRole('alertdialog')).getByRole('button', { name: 'Restore' }))
+    expect(await card.findByText('From server configuration')).toBeInTheDocument()
+
+    expect(card.queryByRole('button', { name: 'Save anyway' })).not.toBeInTheDocument()
+    expect(mocks.saveChatModel).toHaveBeenCalledTimes(1)       // 只有第一次那个被拒的保存
+  })
+
   it('恢复为服务端配置要在页面里确认', async () => {
     const saved = { ...STATUS, chat: { ...STATUS.chat, source: 'page' as const, saved_at: '2026-10-14T10:00:00-07:00' } }
     mocks.modelStatus.mockResolvedValue(saved)

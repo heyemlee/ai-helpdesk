@@ -448,10 +448,24 @@ class MemoryManager:
             text = self._safe_text(text)
             summary = self._safe_text(summary)
             doc_id = hashlib.md5(f"{user_id}{conv_id}{time.time()}".encode()).hexdigest()
-            embedding = await self._embedder.embed(summary)
-            await self._store.episodic_add(
-                doc_id, user_id, conv_id, summary, text, embedding
-            )
+            # 算向量和落库之间向量模型被切换了：向量是旧模型的，存储层看不出来。
+            # 等切换过去，用新模型重算再写一次（同一个 id，覆盖）。
+            for attempt in range(2):
+                epoch = getattr(self._embedder, "epoch", 0)
+                embedding = await self._embedder.embed(summary)
+                try:
+                    await self._store.episodic_add(
+                        doc_id, user_id, conv_id, summary, text, embedding
+                    )
+                except Exception:
+                    if attempt == 0 and getattr(self._embedder, "epoch", 0) != epoch:
+                        await self._embedder.settled()
+                        continue
+                    raise
+                if attempt == 0 and getattr(self._embedder, "epoch", 0) != epoch:
+                    await self._embedder.settled()
+                    continue
+                break
         except Exception as ex:
             logger.warning(f"存储情景记忆失败: {ex}")
 
