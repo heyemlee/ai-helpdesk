@@ -3,8 +3,10 @@ OpenAI 兼容层：把 messages 形状的调用翻译成 /chat/completions 是�
 
 这层一旦翻错，症状是"换个供应商就静默降级"——正文抽不出来、token 计量归零、
 max_tokens 耗尽不报错。所以逐项钉住：system 位置、stop_reason 映射、usage 字段、
-流式增量与最终消息。全部用假 SDK 客户端，不发网络请求。
+流式增量与最终消息。用假 SDK 客户端或真 SDK 加假传输层，不发网络请求。
 """
+import json
+
 import httpx
 import pytest
 from openai import BadRequestError
@@ -434,3 +436,45 @@ async def test_a_gateway_that_honours_the_schema_keeps_the_strict_path(monkeypat
                                          max_tokens=512, messages=[{"role": "user", "content": "x"}])
     assert resp.parsed_output.queries == ["a"] and resp.schema_enforced is True
     assert client.chat.completions.calls[0]["response_format"] is QueryRewritePayload
+
+
+# ── 流式：200 却不是事件流（网页、JSON 报错信封） ──────────────────────────────
+# 用真的 openai SDK + 假传输层：SDK 遇到没有 data: 行的响应时什么事件都不给，
+# 手写的假客户端模拟不出这一点。
+
+def _sdk_client(status, content_type, body):
+    def handle(request):
+        return httpx.Response(status, headers={"content-type": content_type}, content=body.encode())
+
+    return AsyncOpenAICompat(
+        api_key="sk-test", base_url="https://relay.example/v1", max_retries=0,
+        http_client=httpx.AsyncClient(transport=httpx.MockTransport(handle)),
+    )
+
+
+async def _stream_text(client):
+    async with client.messages.stream(
+        model="m", max_tokens=64, messages=[{"role": "user", "content": "补件"}]
+    ) as stream:
+        return "".join([t async for t in stream.text_stream])
+
+
+@pytest.mark.parametrize("content_type, body", [
+    ("text/html; charset=utf-8", "<!doctype html><html><title>Relay</title></html>"),
+    ("application/json", '{"error": {"message": "upstream unavailable", "type": "server_error"}}'),
+])
+async def test_a_stream_that_is_not_an_event_stream_fails_instead_of_answering_blank(content_type, body):
+    """以前这里静默得到空回复、记成功，客户看到一条空白回答。"""
+    with pytest.raises(openai_compat.GatewayResponseError, match="流式"):
+        await _stream_text(_sdk_client(200, content_type, body))
+
+
+async def test_a_real_event_stream_still_streams():
+    def event(delta, finish=None):
+        return "data: " + json.dumps({
+            "id": "c1", "object": "chat.completion.chunk", "created": 0, "model": "m",
+            "choices": [{"index": 0, "delta": delta, "finish_reason": finish}],
+        }) + "\n\n"
+
+    body = event({"content": "补件"}) + event({"content": "已登记。"}) + event({}, "stop") + "data: [DONE]\n\n"
+    assert await _stream_text(_sdk_client(200, "text/event-stream", body)) == "补件已登记。"

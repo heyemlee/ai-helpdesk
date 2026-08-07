@@ -43,6 +43,10 @@ class GatewayResponseError(RuntimeError):
 _NOT_API_RESPONSE = (
     "接口返回的不是 JSON（多半是一张网页）：接口地址可能少了 /v1，或者指到了别的服务上。"
 )
+_NOT_EVENT_STREAM = (
+    "流式接口回了 200，却没有任何流式数据（Content-Type: {content_type}）：多半是一张网页或一段报错，"
+    "接口地址可能少了 /v1，或者指到了别的服务上。"
+)
 
 # OpenAI 新模型把 max_tokens 换成了 max_completion_tokens，而各家兼容网关支持的
 # 那一个并不统一。首次被网关拒绝时翻转这个开关，本进程后续请求都用新字段名，
@@ -380,6 +384,7 @@ class _MessageStream:
         self._text: list[str] = []
         self._stop_reason = "end_turn"
         self._usage = _Usage()
+        self._finished = False   # 收到过 finish_reason：真正的事件流结尾都会带一个
 
     async def __aenter__(self) -> _MessageStream:
         try:
@@ -415,10 +420,17 @@ class _MessageStream:
             choices = getattr(chunk, "choices", None) or []
             if choices and getattr(choices[0], "finish_reason", None):
                 self._stop_reason = _stop_reason(choices[0].finish_reason)
+                self._finished = True
             text = _delta_text(chunk)
             if text:
                 self._text.append(text)
                 yield text
+        if not self._text and not self._finished:
+            # SDK 遇到没有 data: 行的响应（网页、没套事件格式的 JSON 报错）一个事件都不给，
+            # 照常结束。不在这里拦住，调用方就拿一条空回复当成功发给客户。
+            response = getattr(self._stream, "response", None)
+            content_type = getattr(response, "headers", {}).get("content-type", "") or "未知"
+            raise GatewayResponseError(_NOT_EVENT_STREAM.format(content_type=content_type))
 
     async def get_final_message(self) -> _Message:
         return _Message(
