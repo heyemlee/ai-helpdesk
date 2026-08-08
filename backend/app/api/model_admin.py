@@ -149,6 +149,14 @@ async def _json_object(request: Request) -> dict[str, Any]:
     return body
 
 
+def _require_readable(runtime: ModelRuntime) -> None:
+    """配置文件存在却读不出来：不保存也不恢复，原样留着等人看（见 model_settings._read_document）。"""
+    try:
+        ms.ensure_readable(runtime.path)
+    except ms.ModelSettingsError as ex:
+        raise HTTPException(409, {"code": ex.code, "message": ex.message}) from None
+
+
 def _invalid(error: ms.ModelSettingsError) -> HTTPException:
     return HTTPException(422, {"code": error.code, "message": error.message})
 
@@ -535,6 +543,7 @@ async def save_chat(request: Request):
     """
     runtime = _require_runtime()
     _require_edit(request)
+    _require_readable(runtime)
     body = await _json_object(request)
     try:
         candidate = chat_candidate(body, runtime)
@@ -547,7 +556,10 @@ async def save_chat(request: Request):
 
     previous = runtime.chat
     values = {name: candidate[name] for name in ms.FIELDS["chat"]}
-    entry = ms.save_section(runtime.path, "chat", values, saved_by=_saved_by(request))
+    try:
+        entry = ms.save_section(runtime.path, "chat", values, saved_by=_saved_by(request))
+    except ms.ModelSettingsError as ex:
+        raise HTTPException(409, {"code": ex.code, "message": ex.message}) from None
     store = ms.load_store(runtime.path)
     runtime.apply_chat(chat_config_from(store))
     runtime._stamp = ms.file_stamp(runtime.path)
@@ -564,12 +576,16 @@ async def clear_chat(request: Request):
     """恢复为服务端配置（`.env`）。`.env` 本身没配好时不允许——恢复之后对话就全断了。"""
     runtime = _require_runtime()
     _require_edit(request)
+    _require_readable(runtime)
     try:
         env_cfg = chat_config_from({})
     except RuntimeError as ex:
         raise HTTPException(409, {"code": "env_incomplete",
                                   "message": f"服务端没有可用的对话模型配置：{ex}"}) from None
-    ms.clear_section(runtime.path, "chat")
+    try:
+        ms.clear_section(runtime.path, "chat")
+    except ms.ModelSettingsError as ex:
+        raise HTTPException(409, {"code": ex.code, "message": ex.message}) from None
     runtime.apply_chat(env_cfg)
     runtime._stamp = ms.file_stamp(runtime.path)
     logger.info(f"model_settings.cleared section=chat by={_saved_by(request)}")
@@ -609,6 +625,7 @@ async def save_embedding(request: Request):
     """
     runtime = _require_runtime()
     _require_edit(request)
+    _require_readable(runtime)
     if runtime.switching:
         raise HTTPException(409, {"code": "switch_in_progress", "message": "上一次切换还没结束。"})
     body = await _json_object(request)
@@ -641,12 +658,16 @@ async def clear_embedding(request: Request):
     """切换回 `.env` 里的向量配置。和保存一样要重算全部向量，所以也是后台任务。"""
     runtime = _require_runtime()
     _require_edit(request)
+    _require_readable(runtime)
     if runtime.switching:
         raise HTTPException(409, {"code": "switch_in_progress", "message": "上一次切换还没结束。"})
     target = Embedder.from_env()
     if target.signature == runtime.embedder.signature:
         # 现在用的就是 .env 那一份（比如页面保存的和 .env 恰好一样）：不用重算，只删文件里那组
-        ms.clear_section(runtime.path, "embedding")
+        try:
+            ms.clear_section(runtime.path, "embedding")
+        except ms.ModelSettingsError as ex:
+            raise HTTPException(409, {"code": ex.code, "message": ex.message}) from None
         # 向量空间一样，但 Key、地址、查询前缀可能是页面上改过的：运行中的连接也要换回 .env
         runtime.embedder.adopt(target)
         runtime.embedding_meta = {"source": "env", "saved_at": "", "saved_by": ""}

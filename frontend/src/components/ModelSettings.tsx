@@ -35,6 +35,7 @@ const ERROR_TEXT: Record<string, Key> = {
   api_key_required: 'ms.err.api_key_required',
   switch_in_progress: 'ms.err.switch_in_progress',
   env_incomplete: 'ms.err.env_incomplete',
+  settings_unreadable: 'ms.err.settings_unreadable',
   not_local: 'ms.reason.not_local',
   cross_origin: 'ms.reason.cross_origin',
   read_only_instance: 'ms.reason.read_only_instance',

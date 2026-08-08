@@ -351,7 +351,20 @@ def _write_document(path: str, document: dict[str, Any]) -> None:
         with os.fdopen(handle, "w", encoding="utf-8") as stream:
             json.dump(document, stream, ensure_ascii=False, indent=2)
             stream.write("\n")
+            # 先落盘再改名：断电时宁可是旧文件，也别是一份截断的新文件
+            stream.flush()
+            os.fsync(stream.fileno())
         os.replace(temporary, target)
+        try:
+            directory = os.open(target.parent, os.O_RDONLY)
+        except OSError:
+            return
+        try:
+            os.fsync(directory)
+        except OSError:
+            pass
+        finally:
+            os.close(directory)
     except BaseException:
         try:
             os.unlink(temporary)
@@ -360,12 +373,40 @@ def _write_document(path: str, document: dict[str, Any]) -> None:
         raise
 
 
+def _unreadable(path: str, why: str) -> ModelSettingsError:
+    return ModelSettingsError(
+        "settings_unreadable",
+        f"模型连接配置文件{why}，这次没有写入——照原样覆盖会丢掉文件里的另一组连接。"
+        f"请先修好或删掉 {path} 再保存。",
+    )
+
+
 def _read_document(path: str) -> dict[str, Any]:
+    """
+    读整份文件，用来"改一组、留一组"。
+
+    文件不存在 = 空的。存在却读不出来（截断、手改坏了、权限）就报错，不能当成空的：
+    当成空的写回去，另一组连接就悄悄没了，下次重启还会因为向量配置对不上起不来。
+    """
     try:
-        document = json.loads(Path(path).read_text(encoding="utf-8"))
-    except (FileNotFoundError, ValueError):
+        raw = Path(path).read_text(encoding="utf-8")
+    except FileNotFoundError:
         return {}
-    return document if isinstance(document, dict) else {}
+    except OSError as exc:
+        raise _unreadable(path, f"读不了（{type(exc).__name__}）") from None
+    try:
+        document = json.loads(raw)
+    except ValueError:
+        raise _unreadable(path, "不是合法的 JSON（可能被截断了）") from None
+    if not isinstance(document, dict):
+        raise _unreadable(path, "格式不对")
+    return document
+
+
+def ensure_readable(path: str) -> None:
+    """保存或恢复之前先看一眼：文件读不出来就别开始（尤其是要重算全部向量的切换）。"""
+    if path:
+        _read_document(path)
 
 
 def save_section(path: str, section: str, values: dict[str, Any], *, saved_by: str = "") -> dict[str, Any]:

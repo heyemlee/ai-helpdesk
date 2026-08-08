@@ -289,6 +289,12 @@ class ModelRuntime:
         if stamp == self._stamp:
             return
         store = ms.load_store(self.path)
+        unreadable = (store.get("problems") or {}).get("file")
+        if unreadable:
+            # 文件坏了不等于有人要恢复 .env：保持现在用的那一份，等文件修好（修好后时间戳会变）
+            logger.warning(f"模型连接配置文件{unreadable}，保持现在用的连接不变，等文件修好")
+            self._stamp = stamp
+            return
         for section, problem in (store.get("problems") or {}).items():
             logger.warning(f"控制台保存的模型连接（{section}）读不出来，按没有处理: {problem}")
 

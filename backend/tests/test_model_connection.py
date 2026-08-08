@@ -824,3 +824,69 @@ async def test_an_episodic_summary_embedded_before_the_cutover_is_re_embedded(
         for row in store._db.execute("SELECT summary, embedding FROM memory_episodic")
     }
     assert dims == {"客户问过补件进度": api.dim, "客户问了补件进度": api.dim}
+
+
+# ── 配置文件读不出来时：不覆盖、不跟 ─────────────────────────────────────────
+
+_CHAT = {"provider": "openai", "base_url": "https://api.openai.com/v1", "api_key": KEY, "model": "gpt-6-luna"}
+_EMBEDDING = {"base_url": "https://api.openai.com/v1", "api_key": KEY, "model": "text-embedding-3-small",
+              "dim": 8, "query_prefix": ""}
+
+
+def _corrupt(path):
+    """异常断电之类留下的半截文件。"""
+    with open(path, "r+", encoding="utf-8") as stream:
+        stream.truncate(40)
+    with open(path, encoding="utf-8") as stream:
+        return stream.read()
+
+
+def test_a_save_never_overwrites_a_settings_file_it_cannot_read(settings_file):
+    """以前读不出来就当成空的，写回去时另一组（比如向量那组）就悄悄没了。"""
+    ms.save_section(settings_file, "chat", _CHAT)
+    ms.save_section(settings_file, "embedding", _EMBEDDING)
+    broken = _corrupt(settings_file)
+
+    with pytest.raises(ms.ModelSettingsError) as raised:
+        ms.save_section(settings_file, "chat", {**_CHAT, "model": "gpt-6.1-sol"})
+    assert raised.value.code == "settings_unreadable"
+    with pytest.raises(ms.ModelSettingsError):
+        ms.clear_section(settings_file, "chat")
+    with open(settings_file, encoding="utf-8") as stream:
+        assert stream.read() == broken                       # 原样留着，等人来看
+
+
+async def test_the_console_refuses_to_save_over_an_unreadable_settings_file(settings_file, store, api, monkeypatch):
+    ms.save_section(settings_file, "embedding", _EMBEDDING)
+    runtime = _runtime(settings_file, store)
+    broken = _corrupt(settings_file)
+    async with _client(runtime, monkeypatch) as client:
+        chat = await client.put("/admin/model/chat", json=_CHAT)
+        embedding = await client.put("/admin/model/embedding", json={
+            "base_url": "https://api.openai.com/v1", "api_key": KEY, "model": "text-embedding-3-small"})
+        restore = await client.delete("/admin/model/chat")
+
+    for resp in (chat, embedding, restore):
+        assert resp.status_code == 409, resp.text
+        assert resp.json()["detail"]["code"] == "settings_unreadable"
+    assert runtime.job.state == "idle"                       # 向量切换根本没开始
+    with open(settings_file, encoding="utf-8") as stream:
+        assert stream.read() == broken
+
+
+async def test_an_unreadable_settings_file_does_not_flip_the_running_instances_to_env(
+    settings_file, store, monkeypatch
+):
+    """文件坏了不等于用户要恢复 .env：两个实例都保持现在用的那一份。"""
+    monkeypatch.setenv("LLM_PROVIDER", "anthropic")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "env-key")
+    ms.save_section(settings_file, "chat", _CHAT)
+    components = [_Component()]
+    customer = _runtime(settings_file, store, components=components, editable=False)
+    assert customer.chat["source"] == "page"
+
+    _corrupt(settings_file)
+    await customer.sync()
+
+    assert customer.chat["source"] == "page" and customer.chat["model"] == "gpt-6-luna"
+    assert components[0].calls == []
