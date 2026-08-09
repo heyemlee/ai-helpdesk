@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# EchoMind 智能客服系统 - Docker 部署脚本
+# ai-helpdesk 智能客服系统 - Docker 部署脚本
 
 
 set -e
@@ -11,10 +11,39 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-# 配置
-PROJECT_NAME="echomind"
-COMPOSE_FILE="docker-compose.yml"
-ENV_FILE=".env"
+# 路径全部从脚本自身位置推导，因此在任何目录执行都成立。
+# compose 文件在仓库根，.env / data / logs / config 在 backend/。
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+BACKEND="$ROOT/backend"
+
+PROJECT_NAME="ai-helpdesk"
+COMPOSE_FILE="$ROOT/docker-compose.yml"
+ENV_FILE="$BACKEND/.env"
+# Compose 只读 compose 文件同目录的 .env 做 ${VAR} 替换，和上面那份用途不同。
+ROOT_ENV_FILE="$ROOT/.env"
+
+# Redis 开了 requirepass。compose 里写的是 ${REDIS_PASSWORD:-aihelpdesk123}，
+# 这里用同一套取值规则，否则 redis-cli 会拿到 NOAUTH。
+REDIS_PASSWORD="${REDIS_PASSWORD:-aihelpdesk123}"
+
+# Compose v2 是 docker 的子命令，v1 是独立可执行文件，两者都接受。
+if docker compose version &> /dev/null; then
+    COMPOSE_BIN=(docker compose)
+elif command -v docker-compose &> /dev/null; then
+    COMPOSE_BIN=(docker-compose)
+else
+    COMPOSE_BIN=()
+fi
+
+# 所有 compose 调用都显式带上文件和项目名，不依赖工作目录，
+# 也不受仓库目录改名影响。
+compose() {
+    if [ ${#COMPOSE_BIN[@]} -eq 0 ]; then
+        print_error "Docker Compose 未安装，请先安装 Docker Compose"
+        exit 1
+    fi
+    "${COMPOSE_BIN[@]}" -f "$COMPOSE_FILE" -p "$PROJECT_NAME" "$@"
+}
 
 # 函数：打印信息
 print_info() {
@@ -38,8 +67,8 @@ check_dependencies() {
         exit 1
     fi
 
-    if ! command -v docker-compose &> /dev/null; then
-        print_error "Docker Compose 未安装，请先安装 Docker Compose"
+    if [ ${#COMPOSE_BIN[@]} -eq 0 ]; then
+        print_error "Docker Compose 未安装（docker compose 和 docker-compose 都不可用）"
         exit 1
     fi
 
@@ -50,12 +79,12 @@ check_dependencies() {
 create_directories() {
     print_info "创建必要的目录..."
 
-    mkdir -p data/chroma
-    mkdir -p logs
-    mkdir -p config/nginx/ssl
-    mkdir -p config/grafana/provisioning
-    mkdir -p config/grafana/dashboards
-    mkdir -p config/alerts
+    mkdir -p "$BACKEND/data/chroma"
+    mkdir -p "$BACKEND/logs"
+    mkdir -p "$BACKEND/config/nginx/ssl"
+    mkdir -p "$BACKEND/config/grafana/provisioning"
+    mkdir -p "$BACKEND/config/grafana/dashboards"
+    mkdir -p "$BACKEND/config/alerts"
 
     print_info "目录创建完成"
 }
@@ -64,15 +93,26 @@ create_directories() {
 check_env_file() {
     print_info "检查环境变量配置..."
 
-    if [ ! -f "$ENV_FILE" ]; then
-        print_warn ".env 文件不存在，从 .env.example 创建..."
+    # 仓库根的 .env：只供 compose 做 ${VAR} 替换。缺失时 compose 会静默回退到
+    # 内置默认值，不算致命，但会让这里配的密码看起来"不生效"，所以一并补上。
+    if [ ! -f "$ROOT_ENV_FILE" ]; then
+        if [ -f "$ROOT/.env.example" ]; then
+            cp "$ROOT/.env.example" "$ROOT_ENV_FILE"
+            print_info "已创建 $ROOT_ENV_FILE（compose 变量替换）"
+        else
+            print_warn "仓库根缺少 .env 和 .env.example，compose 将使用内置默认值"
+        fi
+    fi
 
-        if [ -f ".env.example" ]; then
-            cp .env.example .env
-            print_info "已创建 .env 文件，请编辑配置"
+    if [ ! -f "$ENV_FILE" ]; then
+        print_warn "backend/.env 不存在，从 backend/.env.example 创建..."
+
+        if [ -f "$BACKEND/.env.example" ]; then
+            cp "$BACKEND/.env.example" "$ENV_FILE"
+            print_info "已创建 $ENV_FILE，请编辑配置"
             print_warn "特别注意：请设置 ANTHROPIC_API_KEY"
         else
-            print_error ".env.example 文件不存在"
+            print_error "backend/.env.example 不存在"
             exit 1
         fi
     else
@@ -84,7 +124,7 @@ check_env_file() {
 build_images() {
     print_info "构建 Docker 镜像..."
 
-    docker-compose build --no-cache
+    compose build --no-cache
 
     print_info "镜像构建完成"
 }
@@ -93,7 +133,7 @@ build_images() {
 start_services() {
     print_info "启动服务..."
 
-    docker-compose up -d
+    compose up -d
 
     print_info "服务启动完成"
 }
@@ -102,7 +142,7 @@ start_services() {
 stop_services() {
     print_info "停止服务..."
 
-    docker-compose down
+    compose down
 
     print_info "服务已停止"
 }
@@ -111,7 +151,7 @@ stop_services() {
 restart_services() {
     print_info "重启服务..."
 
-    docker-compose restart
+    compose restart
 
     print_info "服务已重启"
 }
@@ -120,7 +160,7 @@ restart_services() {
 status_services() {
     print_info "服务状态:"
 
-    docker-compose ps
+    compose ps
 }
 
 # 函数：查看日志
@@ -129,10 +169,10 @@ view_logs() {
 
     if [ -z "$service" ]; then
         print_info "查看所有服务日志..."
-        docker-compose logs -f
+        compose logs -f
     else
         print_info "查看 $service 服务日志..."
-        docker-compose logs -f "$service"
+        compose logs -f "$service"
     fi
 }
 
@@ -151,7 +191,7 @@ health_check() {
     fi
 
     # 检查 Redis
-    if docker-compose exec -T redis redis-cli ping | grep -q PONG; then
+    if compose exec -T redis redis-cli --no-auth-warning -a "$REDIS_PASSWORD" ping | grep -q PONG; then
         print_info "✓ Redis 健康"
     else
         print_error "✗ Redis 不健康"
@@ -180,7 +220,7 @@ cleanup() {
     echo
 
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        docker-compose down -v
+        compose down -v
         print_info "清理完成"
     else
         print_info "清理已取消"
@@ -189,22 +229,22 @@ cleanup() {
 
 # 函数：备份数据
 backup_data() {
-    local backup_dir="backups/$(date +%Y%m%d_%H%M%S)"
+    local backup_dir="$ROOT/backups/$(date +%Y%m%d_%H%M%S)"
 
     print_info "备份数据到 $backup_dir..."
 
     mkdir -p "$backup_dir"
 
     # 备份 Redis 数据
-    docker-compose exec -T redis redis-cli SAVE
-    docker cp echomind-redis:/data/dump.rdb "$backup_dir/"
+    compose exec -T redis redis-cli --no-auth-warning -a "$REDIS_PASSWORD" SAVE
+    docker cp ai-helpdesk-redis:/data/dump.rdb "$backup_dir/"
 
     # 备份 ChromaDB 数据
-    docker cp echomind-chromadb:/chroma/chroma "$backup_dir/"
+    docker cp ai-helpdesk-chromadb:/chroma/chroma "$backup_dir/"
 
     # 备份配置
-    cp .env "$backup_dir/"
-    cp -r config "$backup_dir/"
+    cp "$ENV_FILE" "$backup_dir/"
+    cp -r "$BACKEND/config" "$backup_dir/"
 
     print_info "备份完成: $backup_dir"
 }
@@ -218,6 +258,9 @@ restore_data() {
         exit 1
     fi
 
+    # 相对路径按仓库根解析，backups/ 就建在那里
+    [[ "$backup_dir" != /* ]] && backup_dir="$ROOT/$backup_dir"
+
     if [ ! -d "$backup_dir" ]; then
         print_error "备份目录不存在: $backup_dir"
         exit 1
@@ -229,21 +272,21 @@ restore_data() {
 
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         # 停止服务
-        docker-compose stop
+        compose stop
 
         # 恢复 Redis 数据
-        docker cp "$backup_dir/dump.rdb" echomind-redis:/data/
+        docker cp "$backup_dir/dump.rdb" ai-helpdesk-redis:/data/
 
         # 恢复 ChromaDB 数据
-        docker cp "$backup_dir/chroma" echomind-chromadb:/chroma/
+        docker cp "$backup_dir/chroma" ai-helpdesk-chromadb:/chroma/
 
         # 恢复配置
-        cp "$backup_dir/.env" .env
-        rm -rf config
-        cp -r "$backup_dir/config" config
+        cp "$backup_dir/.env" "$ENV_FILE"
+        rm -rf "$BACKEND/config"
+        cp -r "$backup_dir/config" "$BACKEND/config"
 
         # 启动服务
-        docker-compose start
+        compose start
 
         print_info "恢复完成"
     else
@@ -254,7 +297,7 @@ restore_data() {
 # 函数：显示帮助信息
 show_help() {
     cat << EOF
-EchoMind 智能客服系统 - Docker 部署脚本
+ai-helpdesk 智能客服系统 - Docker 部署脚本
 
 用法: ./docker-deploy.sh [命令]
 
@@ -275,7 +318,7 @@ EchoMind 智能客服系统 - Docker 部署脚本
 示例:
     ./docker-deploy.sh install
     ./docker-deploy.sh start
-    ./docker-deploy.sh logs echomind
+    ./docker-deploy.sh logs ai-helpdesk
     ./docker-deploy.sh backup
     ./docker-deploy.sh restore backups/20231201_120000
 

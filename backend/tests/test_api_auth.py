@@ -9,10 +9,10 @@ from fastapi.testclient import TestClient
 def _load_app(monkeypatch, api_key: str = "", protect_chat: str = "false"):
     """按指定环境变量重新导入 api.main —— 鉴权配置是模块级读取的。"""
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-    monkeypatch.setenv("ECHOMIND_API_KEY", api_key)
-    monkeypatch.setenv("ECHOMIND_PROTECT_CHAT", protect_chat)
+    monkeypatch.setenv("AI_HELPDESK_API_KEY", api_key)
+    monkeypatch.setenv("AI_HELPDESK_PROTECT_CHAT", protect_chat)
     # 避免挂载前端产物干扰路由断言
-    monkeypatch.setenv("ECHOMIND_FRONTEND_DIST", "/nonexistent")
+    monkeypatch.setenv("AI_HELPDESK_FRONTEND_DIST", "/nonexistent")
     sys.modules.pop("api.main", None)
     return importlib.import_module("api.main")
 

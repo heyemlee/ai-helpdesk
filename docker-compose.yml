@@ -1,4 +1,4 @@
-# EchoMind 智能客服系统 — Docker Compose 服务编排
+# ai-helpdesk 智能客服系统 — Docker Compose 服务编排
 # 三级记忆架构：Redis（工作记忆）+ ChromaDB（情景记忆 + 用户画像）
 
 services:
@@ -6,17 +6,17 @@ services:
   # ── Redis 缓存（工作记忆）────────────────────────────────────────────────────
   redis:
     image: redis:7-alpine
-    container_name: echomind-redis
+    container_name: ai-helpdesk-redis
     ports:
       - "6379:6379"
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-echomind123}
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-aihelpdesk123}
     volumes:
       - redis-data:/data
     restart: unless-stopped
     networks:
-      - echomind-network
+      - ai-helpdesk-network
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-echomind123}", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-aihelpdesk123}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -24,7 +24,7 @@ services:
   # ── ChromaDB 向量数据库（情景记忆 + 用户画像）────────────────────────────────
   chromadb:
     image: chromadb/chroma:0.5.23
-    container_name: echomind-chromadb
+    container_name: ai-helpdesk-chromadb
     ports:
       - "8001:8000"
     environment:
@@ -35,7 +35,7 @@ services:
       - chromadb-data:/chroma/chroma
     restart: unless-stopped
     networks:
-      - echomind-network
+      - ai-helpdesk-network
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8000/api/v1/heartbeat || exit 1"]
       interval: 30s
@@ -46,7 +46,7 @@ services:
   # ── Prometheus 监控 ─────────────────────────────────────────────────────────
   prometheus:
     image: prom/prometheus:latest
-    container_name: echomind-prometheus
+    container_name: ai-helpdesk-prometheus
     ports:
       - "9090:9090"
     command:
@@ -59,7 +59,7 @@ services:
       - prometheus-data:/prometheus
     restart: unless-stopped
     networks:
-      - echomind-network
+      - ai-helpdesk-network
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:9090/-/healthy || exit 1"]
       interval: 30s
@@ -67,23 +67,23 @@ services:
       retries: 3
       start_period: 10s
 
-  # ── EchoMind 主应用 ─────────────────────────────────────────────────────────
-  echomind:
+  # ── ai-helpdesk 主应用 ─────────────────────────────────────────────────────────
+  ai-helpdesk:
     build:
       context: ./backend
       dockerfile: Dockerfile
       target: production
-    container_name: echomind-app
+    container_name: ai-helpdesk-app
     ports:
       - "8000:8000"
     env_file:
       - ./backend/.env
     environment:
       # 容器内固定值，覆盖 .env 中的本地路径
-      - REDIS_URL=redis://:${REDIS_PASSWORD:-echomind123}@redis:6379/0
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-aihelpdesk123}@redis:6379/0
       - CHROMA_PERSIST_DIRECTORY=/app/data/chroma
       - EVAL_BASELINE_PATH=/app/data/eval/baseline.json
-      - ECHOMIND_SKILLS_DIR=/app/skills
+      - AI_HELPDESK_SKILLS_DIR=/app/skills
     volumes:
       - ./backend/data/chroma:/app/data/chroma
       - ./backend/data/eval:/app/data/eval
@@ -96,7 +96,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     networks:
-      - echomind-network
+      - ai-helpdesk-network
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
       interval: 30s
@@ -106,24 +106,24 @@ services:
 
   # ── 前端控制台（Vite 构建 + Nginx 托管）──────────────────────────────────────
   # 和后端放在同一个 compose 里，`docker compose up` 一条命令起全栈。
-  # 前端容器内的 Nginx 把 /api/ 反代到 echomind:8000，走 Docker 内网，
+  # 前端容器内的 Nginx 把 /api/ 反代到 ai-helpdesk:8000，走 Docker 内网，
   # 因此不需要 host.docker.internal，也不受宿主机端口占用影响。
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
       target: production
-    container_name: echomind-frontend
+    container_name: ai-helpdesk-frontend
     ports:
       - "5174:80"
     environment:
-      - API_UPSTREAM=echomind:8000
+      - API_UPSTREAM=ai-helpdesk:8000
     depends_on:
-      echomind:
+      ai-helpdesk:
         condition: service_healthy
     restart: unless-stopped
     networks:
-      - echomind-network
+      - ai-helpdesk-network
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost/ || exit 1"]
       interval: 30s
@@ -134,18 +134,18 @@ services:
   # ── Nginx 反向代理 ──────────────────────────────────────────────────────────
   nginx:
     image: nginx:alpine
-    container_name: echomind-nginx
+    container_name: ai-helpdesk-nginx
     ports:
       - "80:80"
     volumes:
       - ./backend/config/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - nginx-logs:/var/log/nginx
     depends_on:
-      echomind:
+      ai-helpdesk:
         condition: service_healthy
     restart: unless-stopped
     networks:
-      - echomind-network
+      - ai-helpdesk-network
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost/health || exit 1"]
       interval: 30s
@@ -155,7 +155,7 @@ services:
 
 # ── 网络 ────────────────────────────────────────────────────────────────────
 networks:
-  echomind-network:
+  ai-helpdesk-network:
     driver: bridge
     ipam:
       config:

@@ -4,7 +4,7 @@ import type {
 } from './types'
 
 const DEFAULT_API_BASE = import.meta.env.VITE_API_BASE_URL || '/api'
-const STORAGE_KEY = 'echomind.console.settings.v2'
+const STORAGE_KEY = 'ai-helpdesk.console.settings.v2'
 
 export interface Settings {
   userId: string

@@ -1,5 +1,5 @@
 """
-EchoMind 智能客服系统 — FastAPI 入口
+ai-helpdesk 智能客服系统 — FastAPI 入口
 
 启动时打印小熊饼干图案。
 所有核心组件在 lifespan 中初始化，通过环境变量配置。
@@ -40,8 +40,8 @@ logger = logging.getLogger(__name__)
 BANNER = r"""
     ʕ•ᴥ•ʔ  ʕ•ᴥ•ʔ  ʕ•ᴥ•ʔ
    ╔══════════════════════╗
-   ║   EchoMind  v2.0     ║
-   ║   智能客服 AI 系统    ║
+   ║   ai-helpdesk  v2.0  ║
+   ║   智能客服 AI 系统   ║
    ╚══════════════════════╝
     ʕ•ᴥ•ʔ  ʕ•ᴥ•ʔ  ʕ•ᴥ•ʔ
 """
@@ -128,10 +128,10 @@ async def lifespan(app: FastAPI):
     logger.info(f"意图 Embedding 后端: {_recognizer.embedding_backend}")
 
     # Skills：启动时从目录加载业务能力说明，并在 Agent 调用 LLM 时动态注入。
-    skills_dir = os.getenv("ECHOMIND_SKILLS_DIR", str(pathlib.Path(_ROOT) / "skills"))
+    skills_dir = os.getenv("AI_HELPDESK_SKILLS_DIR", str(pathlib.Path(_ROOT) / "skills"))
     _skill_manager = SkillManager(
         root_dir=skills_dir,
-        max_prompt_chars=int(os.getenv("ECHOMIND_SKILLS_MAX_PROMPT_CHARS", "5000")),
+        max_prompt_chars=int(os.getenv("AI_HELPDESK_SKILLS_MAX_PROMPT_CHARS", "5000")),
     )
     _skill_manager.load()
 
@@ -147,9 +147,9 @@ async def lifespan(app: FastAPI):
         model=cfg["model"],
         skill_manager=_skill_manager,
         # 每种 Agent 起几个实例。>1 时 Monitor 的在线表现反馈才真正影响路由选择。
-        replicas=int(os.getenv("ECHOMIND_AGENT_REPLICAS", "2")),
+        replicas=int(os.getenv("AI_HELPDESK_AGENT_REPLICAS", "2")),
         replica_models=[
-            m.strip() for m in os.getenv("ECHOMIND_AGENT_REPLICA_MODELS", "").split(",") if m.strip()
+            m.strip() for m in os.getenv("AI_HELPDESK_AGENT_REPLICA_MODELS", "").split(",") if m.strip()
         ] or None,
         policy=answer_policy,
         recognizer=_recognizer,
@@ -226,7 +226,7 @@ async def lifespan(app: FastAPI):
         base_url=cfg.get("base_url"),
         model=cfg["model"],
         baseline_path=os.getenv("EVAL_BASELINE_PATH", "/app/data/eval/baseline.json"),
-        release=os.getenv("ECHOMIND_RELEASE", app.version),
+        release=os.getenv("AI_HELPDESK_RELEASE", app.version),
     )
 
     if _API_KEY:
@@ -234,21 +234,21 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning(
             "鉴权未开启：/skills/reload、/knowledge/upload、/eval/promote 等端点对任何人开放。"
-            "公网部署请设置 ECHOMIND_API_KEY。"
+            "公网部署请设置 AI_HELPDESK_API_KEY。"
         )
 
-    logger.info("EchoMind 已就绪")
+    logger.info("ai-helpdesk 已就绪")
     yield
 
     await _monitor.stop()
     if _memory is not None:
         await _memory.close()
-    logger.info("EchoMind 已关闭")
+    logger.info("ai-helpdesk 已关闭")
 
 
 # ── FastAPI ───────────────────────────────────────────────────────────────────
 app = FastAPI(
-    title="EchoMind 智能客服",
+    title="ai-helpdesk 智能客服",
     version="2.0.0",
     lifespan=lifespan,
     docs_url="/docs",
@@ -268,19 +268,19 @@ app.add_middleware(
 
 
 # ── 鉴权 ──────────────────────────────────────────────────────────────────────
-# 写操作和管理端点需要 X-API-Key。ECHOMIND_API_KEY 未设置时鉴权关闭，
+# 写操作和管理端点需要 X-API-Key。AI_HELPDESK_API_KEY 未设置时鉴权关闭，
 # 方便本地联调；生产部署必须设置，否则 /skills/reload、/knowledge/upload、
 # /eval/promote 这类会改变服务行为的接口对任何人开放。
-_API_KEY = os.getenv("ECHOMIND_API_KEY", "").strip()
+_API_KEY = os.getenv("AI_HELPDESK_API_KEY", "").strip()
 # 是否同时保护 /chat。默认不保护：demo 场景希望打开就能聊；
 # 但 /chat 每次都会真实调用 LLM，公网暴露时应该设为 true。
-_PROTECT_CHAT = os.getenv("ECHOMIND_PROTECT_CHAT", "false").strip().lower() in {"1", "true", "yes", "on"}
+_PROTECT_CHAT = os.getenv("AI_HELPDESK_PROTECT_CHAT", "false").strip().lower() in {"1", "true", "yes", "on"}
 
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
 def require_api_key(api_key: str | None = Security(_api_key_header)) -> None:
-    """写操作/管理端点的鉴权依赖。未配置 ECHOMIND_API_KEY 时直接放行。"""
+    """写操作/管理端点的鉴权依赖。未配置 AI_HELPDESK_API_KEY 时直接放行。"""
     if not _API_KEY:
         return
     if not api_key or not secrets.compare_digest(api_key, _API_KEY):
@@ -288,7 +288,7 @@ def require_api_key(api_key: str | None = Security(_api_key_header)) -> None:
 
 
 def protect_chat(api_key: str | None = Security(_api_key_header)) -> None:
-    """/chat 的可选鉴权，由 ECHOMIND_PROTECT_CHAT 控制。"""
+    """/chat 的可选鉴权，由 AI_HELPDESK_PROTECT_CHAT 控制。"""
     if not _PROTECT_CHAT:
         return
     require_api_key(api_key)
@@ -871,10 +871,10 @@ def _mount_frontend(application: FastAPI) -> None:
     必须在所有 API 路由注册完之后调用：Starlette 按注册顺序匹配，
     挂在 "/" 的 StaticFiles 会吃掉所有未匹配路径，提前挂载会遮蔽 /chat 等接口。
 
-    默认找 ../frontend/dist，可用 ECHOMIND_FRONTEND_DIST 覆盖。
+    默认找 ../frontend/dist，可用 AI_HELPDESK_FRONTEND_DIST 覆盖。
     目录不存在时静默跳过——纯后端部署（docker compose 里前端是独立容器）不受影响。
     """
-    configured = os.getenv("ECHOMIND_FRONTEND_DIST", "").strip()
+    configured = os.getenv("AI_HELPDESK_FRONTEND_DIST", "").strip()
     candidates = [pathlib.Path(configured)] if configured else [
         pathlib.Path(_ROOT) / "static",
         pathlib.Path(_ROOT).parent / "frontend" / "dist",
@@ -894,7 +894,7 @@ _mount_frontend(app)
 # ── 交互式 CLI ────────────────────────────────────────────────────────────────
 async def _cli():
     print(BANNER)
-    print("EchoMind CLI — 输入 quit 退出\n")
+    print("ai-helpdesk CLI — 输入 quit 退出\n")
 
     from agents.agent_orchestrator import AgentOrchestrator, Request
     from core.skill_loader import SkillManager
@@ -902,8 +902,8 @@ async def _cli():
 
     cfg = _anthropic_cfg()
     skill_manager = SkillManager(
-        root_dir=os.getenv("ECHOMIND_SKILLS_DIR", str(pathlib.Path(_ROOT) / "skills")),
-        max_prompt_chars=int(os.getenv("ECHOMIND_SKILLS_MAX_PROMPT_CHARS", "5000")),
+        root_dir=os.getenv("AI_HELPDESK_SKILLS_DIR", str(pathlib.Path(_ROOT) / "skills")),
+        max_prompt_chars=int(os.getenv("AI_HELPDESK_SKILLS_MAX_PROMPT_CHARS", "5000")),
     )
     skill_manager.load()
     orch = AgentOrchestrator(
@@ -945,7 +945,7 @@ async def _cli():
         await mem.add_message(user_id, conv_id, MsgRole.USER, msg)
         await mem.add_message(user_id, conv_id, MsgRole.ASSISTANT, result.response)
 
-        print(f"\nEchoMind [{result.agent_type.value}]: {result.response}\n")
+        print(f"\nai-helpdesk [{result.agent_type.value}]: {result.response}\n")
 
     await mem.close()
 

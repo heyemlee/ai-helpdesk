@@ -378,7 +378,7 @@ class BaseAgent:
 class GeneralAgent(BaseAgent):
     agent_type    = AgentType.GENERAL
     system_prompt = (
-        "你是 EchoMind 智能客服。友好、简洁地回答用户问题。"
+        "你是 ai-helpdesk 智能客服。友好、简洁地回答用户问题。"
         "如果问题超出你的能力范围，明确说明并建议转接专业客服。"
     )
 

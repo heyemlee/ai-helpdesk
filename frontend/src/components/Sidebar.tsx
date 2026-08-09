@@ -17,7 +17,7 @@ export function Sidebar({ settings, onChange }: {
           EM
         </div>
         <div className="min-w-0">
-          <h1 className="text-sm font-semibold text-slate-100">EchoMind Console</h1>
+          <h1 className="text-sm font-semibold text-slate-100">ai-helpdesk Console</h1>
           <p className="truncate text-[11px] text-slate-500">工单分流 · Agent 编排 · 可观测</p>
         </div>
       </div>
