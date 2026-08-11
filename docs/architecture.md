@@ -1,6 +1,6 @@
 # 架构图
 
-README 使用 [Archify 总览图](diagrams/README.md)，保留可编辑 JSON、交互 HTML 和静态 SVG。
+README 使用手写的动态图 [architecture.svg](architecture.svg)；[Archify 总览图](diagrams/README.md) 保留可编辑 JSON、交互 HTML 和静态 SVG。
 本页以 GitHub 原生支持的 Mermaid 补充请求链路、路由、存储与部署细节；修改架构时需同步更新两处。
 
 ## 1. 总体架构

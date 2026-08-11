@@ -1,6 +1,6 @@
 # Retrieval smoke measurement
 
-[English README](../../README.md#evaluation-and-current-limits) · [中文 README](../../README.zh-CN.md#评测与当前边界)
+[English README](../../README.md#retrieval) · [中文 README](../../README.zh-CN.md#检索)
 
 This is a small, deterministic comparison of recall strategies. It does not run answer generation, query rewriting, or reranking.
 

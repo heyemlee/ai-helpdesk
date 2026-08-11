@@ -1,6 +1,6 @@
 # Retrieval measurement on a simulated factory knowledge base
 
-[English README](../../README.md#evaluation-and-current-limits) · [中文 README](../../README.zh-CN.md#评测与当前边界) · [Earlier 8-query smoke record](retrieval-smoke.md)
+[English README](../../README.md#retrieval) · [中文 README](../../README.zh-CN.md#检索) · [Earlier 8-query smoke record](retrieval-smoke.md) · [Same suite with a remote embedding model](retrieval-remote-embedding.md)
 
 A deterministic comparison of recall strategies on a corpus large enough that each retrieval leg can no longer return everything. It does not run answer generation, query rewriting, or reranking.
 

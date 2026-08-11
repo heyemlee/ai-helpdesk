@@ -2,7 +2,7 @@
 
 [← English README](../../README.md) · [← 中文 README](../../README.zh-CN.md)
 
-The README overview is generated with [Archify](https://github.com/tt-a1i/archify), pinned to commit `5289f6867f048a7450ec5718f58459613a84cf41`. Its bundled viewer is distributed under the [MIT license](ARCHIFY-LICENSE.txt).
+These overviews are generated with [Archify](https://github.com/tt-a1i/archify), pinned to commit `5289f6867f048a7450ec5718f58459613a84cf41`. Its bundled viewer is distributed under the [MIT license](ARCHIFY-LICENSE.txt). The README itself shows the hand-written animated [architecture.svg](../architecture.svg).
 
 | Language | Editable source | Interactive viewer | GitHub image |
 | --- | --- | --- | --- |
@@ -48,6 +48,6 @@ Repeat with `architecture.en` for English. Open the delivered HTML, choose **Exp
 
 The checked-in receipt distinguishes deterministic validation (9/9 showcase checks, zero errors/warnings), automated browser containment/readability (four desktop viewports), and visual review. It describes these diagram artifacts only, not application test coverage.
 
-## Replace the screenshot
+## README image and recordings
 
-Save a real screenshot as `docs/images/main-interface.png`, then change `docs/images/screenshot-placeholder.svg` to that path in both root READMEs. The placeholder is an intentional empty slot, not a mock screenshot. A wide capture showing chat and the routing inspector works well; remove the placeholder caption when adding the real image.
+The README's architecture image is [architecture.svg](../architecture.svg): hand-written SVG animated with CSS only, because GitHub shows it through `<img>`, which loads no scripts or web fonts. Edit it by hand, then open it in Chromium and check that no labels overlap. The recordings in [screenshots](../screenshots) were made against a mocked API with made-up data.
