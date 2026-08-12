@@ -351,9 +351,44 @@ describe('准备阶段的进度', () => {
     expect(steps()).toEqual([
       'done: Understanding the question',
       'active: Searching the knowledge base and looking up order data',
-      'done: 正在生成查询（ERP 订单库）',          // 下游的阶段名归契约管，用后端给的说法
-      'active: 正在查询（ERP 订单库）',
+      'done: Writing the query for the ERP order database',
+      'active: Querying the ERP order database',
     ])
+  })
+
+  it('下游认得出的阶段按界面语言说，不照搬后端的中文 label', () => {
+    const progress = [
+      { stage: 'routing', label: '正在判断问题类型' },
+      { stage: 'retrieval', label: '正在检索知识库' },
+      { stage: 'planning', label: '正在规划查询步骤' },
+      { stage: 'execution', label: '正在查询（生产库）', database: 'prod_db', step: 2 },
+      { stage: 'repair', label: '查询出错，正在重试', database: 'prod_db', step: 2 },
+    ]
+    const { unmount } = render(<MessageBubble message={waiting(progress)} />, { lang: 'en' })
+    expect(steps()).toEqual([
+      'done: Working out what kind of question it is',
+      'done: Finding the relevant tables',
+      'done: Planning the query steps',
+      'done: Querying the production database',
+      'active: The query failed; fixing it and retrying',
+    ])
+    unmount()
+    render(<MessageBubble message={waiting(progress)} />, { lang: 'zh' })
+    expect(steps()).toEqual([
+      'done: 正在判断问题类型',
+      'done: 正在查找相关的数据表',
+      'done: 正在规划查询步骤',
+      'done: 正在查询（生产库）',
+      'active: 查询出错，正在重试',
+    ])
+  })
+
+  it('认不出的库照写标识符；没带库的查询步骤不硬拼', () => {
+    render(<MessageBubble message={waiting([
+      { stage: 'generation', label: '正在生成查询（crm_db）', database: 'crm_db' },
+      { stage: 'execution', label: '正在查询' },
+    ])} />, { lang: 'en' })
+    expect(steps()).toEqual(['done: Writing the query for crm_db', 'active: Running the query'])
   })
 
   it('不认识的阶段用后端给的 label，不吞掉', () => {

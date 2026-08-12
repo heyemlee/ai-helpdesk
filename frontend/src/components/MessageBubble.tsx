@@ -67,17 +67,45 @@ function Sources({ sources }: { sources: KnowledgeSource[] }) {
  * 没接、没查、下游判断不用查，都不是需要提醒的事，学习模式里才讲。
  */
 /**
- * 准备阶段每一步的说法。本系统自己的阶段（`helpdesk.*`）按界面语言出文案；
- * 下游透传上来的阶段用后端给的 label——那套阶段名归两边的契约管，这里不另译一份。
+ * 下游（SQL Agent）透传上来的阶段。契约 §4.5 只把 stage 值当契约面，文案归调用方；
+ * 后端给的 label 只有中文，以前照搬它，英文界面里这几步就是中文。
+ * 不在表里的阶段（契约以后新增的）仍用后端给的 label，不吞掉。
  */
-function progressLabel(p: StreamProgressEvent, t: (key: Key) => string): string {
+const DOWNSTREAM_STAGES: Record<string, { plain: Key; withDb?: Key }> = {
+  routing: { plain: 'cw.progress.sql.routing' },
+  retrieval: { plain: 'cw.progress.sql.retrieval' },
+  planning: { plain: 'cw.progress.sql.planning' },
+  generation: { plain: 'cw.progress.sql.generation', withDb: 'cw.progress.sql.generation.db' },
+  execution: { plain: 'cw.progress.sql.execution', withDb: 'cw.progress.sql.execution.db' },
+  repair: { plain: 'cw.progress.sql.repair' },
+  answering: { plain: 'cw.progress.sql.answering' },
+}
+
+/** 库标识符的叫法。契约只钉了形状（`*_db`），新增的库照常出现，认不出就显示标识符本身。 */
+const DATABASE_NAMES: Record<string, Key> = {
+  erp_db: 'cw.db.erp_db',
+  wms_db: 'cw.db.wms_db',
+  prod_db: 'cw.db.prod_db',
+  svc_db: 'cw.db.svc_db',
+}
+
+/** 准备阶段每一步的说法：本系统自己的阶段和下游认得出的阶段都按界面语言出文案。 */
+function progressLabel(
+  p: StreamProgressEvent, t: (key: Key, vars?: Record<string, string | number>) => string,
+): string {
   if (p.stage === 'helpdesk.understanding') return t('cw.progress.understanding')
   if (p.stage === 'helpdesk.gathering') {
     if (p.knowledge && p.order_data) return t('cw.progress.both')
     if (p.order_data) return t('cw.progress.data')
     if (p.knowledge) return t('cw.progress.knowledge')
   }
-  return p.label
+  const known = DOWNSTREAM_STAGES[p.stage]
+  if (!known) return p.label
+  if (known.withDb && p.database) {
+    const name = DATABASE_NAMES[p.database]
+    return t(known.withDb, { db: name ? t(name) : p.database })
+  }
+  return t(known.plain)
 }
 
 /** 对话请求失败时，按状态码给的下一步；0 是根本没连上服务端 */

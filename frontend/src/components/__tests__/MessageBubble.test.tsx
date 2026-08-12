@@ -60,7 +60,7 @@ describe('准备阶段的进度', () => {
       id: 'p1', role: 'assistant', content: '',
       progress: [
         { stage: 'routing', label: '正在判断问题类型' },
-        { stage: 'execution', label: '正在查询（ERP 订单库）' },
+        { stage: 'execution', label: '正在查询（ERP 订单库）', database: 'erp_db' },
       ],
     }} />)
     expect(screen.getByText('正在判断问题类型')).toBeInTheDocument()
