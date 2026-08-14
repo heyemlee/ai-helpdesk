@@ -2,9 +2,9 @@
 
 # AI Helpdesk
 
-**Support answers grounded in your knowledge base and live order data, with a ticket when a person should step in.**
+**Multi-agent customer support: routed specialist agents, a peer SQL agent over A2A, a guard on every sentence, and a person when confidence runs out.**
 
-A multi-agent support service: FastAPI routes each question to specialist agents, retrieves from a hybrid pgvector and keyword index, checks every sentence for unsupported price and lead-time promises before it streams, and opens a ticket when confidence is low. A React console covers chat, the knowledge base, tickets and model settings.
+A FastAPI agent service routes each question through an intent vote, runs its tools concurrently (hybrid knowledge search with a corrective retry, and data lookups delegated to a separate SQL agent over the A2A protocol), lets specialist agents answer, in parallel when a question spans domains, and checks every sentence before it streams. A React console shows each agent decision as it happens.
 
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)](backend/Dockerfile)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.119-009688?style=flat-square&logo=fastapi&logoColor=white)](backend/requirements.txt)
@@ -19,52 +19,73 @@ A multi-agent support service: FastAPI routes each question to specialist agents
 </div>
 
 <p align="center">
-  <img src="docs/screenshots/chat.webp" width="960" alt="Three questions in the AI Helpdesk console with Learning mode on: a delivery-policy answer streams sentence by sentence with its sources while the answer guard removes an unsupported $95 promise, an order-status answer is looked up live from the order databases, and a request for a person opens a ticket whose notification is delivered" />
+  <img src="docs/screenshots/chat.webp" width="960" alt="Three questions in the AI Helpdesk console with Learning mode on: a cracked-countertop question is answered by two specialist agents in parallel after a corrective search, with an unsupported date promise replaced; an order-status question is delegated to the SQL agent, whose table search, planning, queries and repair stream into the console; and a request for a person opens a ticket whose notification is delivered" />
 </p>
 
-<p align="center"><sub>A made-up cabinet company, with its orders, tickets and knowledge base served by a mocked API.</sub></p>
+<p align="center"><sub>A made-up company with made-up orders and documents, served by a mocked API.</sub></p>
 
 ## Highlights
 
-- **Hybrid retrieval, measured.** pgvector cosine and a PostgreSQL `tsvector` index (BM25 on the SQLite fallback), fused by reciprocal rank fusion. On 108 questions over a 56-passage knowledge base, the right document is in the top three for 101 with Qwen3-Embedding-0.6B, against 77 with local vectors.
-- **A cheap path for routine questions.** 19 intents decided by a weighted vote of an LLM, embeddings and rules (0.7 / 0.2 / 0.1); a rule anchor skips the intent model, query rewriting and reranking. Three specialist agents compete for each question, with a generalist fallback.
-- **Checked before it streams.** Answers stream over SSE one sentence at a time. A rule-based guard holds back any price or lead-time promise whose number and unit don't appear together in the retrieved passages, the SOP or verified order data.
-- **Fails closed when the model is down.** A rejected key (401, 402 or an explicit 403) stops calls for that configuration; a 429 backs off for at most 900 s. An outage reply opens no ticket, and an evaluation run stops without writing its baseline.
-- **Tested against real services in CI.** 953 backend tests with pgvector in a service container, 216 frontend tests, consumer tests against the cross-repo A2A contract pinned at `v1.12`, and both Docker images built on every push.
+- **A router and parallel specialists.** An LLM, embeddings and rules vote (0.7 / 0.2 / 0.1) on 19 intents, 77 of 90 labelled messages right with gpt-6-luna. Domain scores pick one of three specialist agents; a second runs in parallel when it scores at least 0.45 and 55% of the first, and a generalist covers failures.
+- **Agent-to-agent delegation.** Data questions go to a separate SQL agent that plans, writes, runs and repairs its own queries, streaming each stage back over A2A. Agent Card discovery, a `message/send` fallback, silence and deadline timeouts, and contract tests pinned at `v1.12` in CI.
+- **Trust between agents fails closed.** A delegated result is evidence only with a success or partial-success status and no risk or degraded flag; a missing field counts against it. Only evidence, retrieved passages and SOPs can ground a price or a date.
+- **Retrieval with a corrective loop.** Three sub-queries over pgvector and a keyword index, an LLM rerank that judges whether the evidence is enough, and one more round for what is missing: the right document is in the top three for 101 of 108 test questions.
+- **Guardrails and a human in the loop.** Answers stream a sentence at a time, and a rule-based guard replaces unsupported price or date promises before they are sent. Low confidence opens a ticket; a model outage stops calls and opens none.
 
 ## Architecture
 
 <p align="center">
-  <img src="docs/architecture.svg" width="960" alt="The staff console and customer clients reach a FastAPI service deployed with Docker Compose as a staff instance and a customer instance; each question passes identity and memory, an intent vote, hybrid retrieval, specialist agents and the answer guard, and ends in a reply or a handoff ticket; Redis holds working memory, PostgreSQL with pgvector holds knowledge, memory, tickets and audit records, and telemetry goes to Tempo, Prometheus, Loki and Grafana; the service calls a chat model and an embedding model, asks ai-sql-agent for order data from the staff instance only, and sends handoff alerts to a webhook" />
+  <img src="docs/architecture.svg" width="960" alt="The staff console and customer clients reach an agent service deployed with Docker Compose as a staff and a customer instance; a router votes on the intent, tools run concurrently (knowledge search, and an order lookup delegated over A2A to a peer SQL agent that plans, writes, runs and repairs its own queries), specialist agents answer, in parallel across domains, and an answer guard with confidence gates returns a reply or opens a handoff ticket; Redis holds working memory, PostgreSQL with pgvector holds knowledge, memory, tickets and audit records, and telemetry goes to Tempo, Prometheus, Loki and Grafana" />
 </p>
 
-A question reaches the staff instance from the console, or the customer instance through Nginx on port 80. The service reads working memory from Redis, votes on the intent, retrieves passages from PostgreSQL and runs the specialist agents against the chat model. On the staff instance, order questions go to [ai-sql-agent](https://github.com/heyemlee/ai-sql-agent) over A2A. The reply streams back sentence by sentence, or a ticket is opened and its webhook queued in an outbox.
+A question reaches the staff instance from the console, or the customer instance through Nginx on port 80. The service loads working memory from Redis and runs the router; the tools it picks run concurrently, a hybrid search in PostgreSQL and, on the staff instance, a lookup delegated to [ai-sql-agent](https://github.com/heyemlee/ai-sql-agent) over A2A. Specialist agents answer with their own SOPs, and the guard checks each sentence before it streams back, or a ticket is opened and its webhook queued in an outbox.
 
-- **Two entrances, one image.** The customer instance never asks the SQL agent and keeps no memory across sessions: its user IDs come from the request body, so a guessed staff ID would otherwise pull a staff member's history into a customer's context. Only Nginx on port 80 accepts connections from other machines.
-- **A handoff is a decision; an outage is not.** Low confidence (intent < 0.45, routing < 0.35, agent < 0.70) or an explicit request opens a ticket. When the model is unavailable, the reply says the question was not answered and opens nothing, so a revoked key can't flood the ticket queue.
+- **Rules pick the tools; models write the answers.** Whether to search or query data is decided from the voted intent and its entities before any agent runs, so a turn costs a predictable number of model calls and both lookups run at once. The agents don't call tools themselves; the open-ended loop, planning and repairing SQL, lives in the SQL agent behind a pinned contract.
+- **Two entrances, one image.** The customer instance never delegates to the SQL agent and keeps no memory across sessions, because its user IDs come from the request body and a guessed staff ID would otherwise pull in staff history. Only Nginx on port 80 accepts connections from other machines.
 
 ## Tech stack
 
-| Layer       | Technology                                                                   | Role                                                                                      |
-| ----------- | ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| API         | Python 3.12 · FastAPI · Pydantic 2 · Uvicorn                                 | Chat and SSE streaming, knowledge, tickets, evaluation and model-connection endpoints     |
-| Agents      | asyncio orchestration · Anthropic SDK · OpenAI SDK                           | Intent vote, specialist routing and fallback, query rewriting, reranking, LLM-as-judge    |
-| Retrieval   | PostgreSQL 16 · pgvector · `tsvector` · BM25 · RRF                           | Hybrid search over knowledge passages; SQLite with BM25 as a local fallback               |
-| State       | Redis 7 · asyncpg                                                            | Working memory, rate limits and shared circuit-breaker state; memory, tickets and audit   |
-| Console     | React 18 · TypeScript · Vite 6 · TanStack Query 5 · Tailwind CSS 4           | Chat, knowledge base, tickets, admin and diagnostics, in English and Chinese              |
-| Integration | A2A over HTTP · HMAC user tokens · webhooks                                  | Order lookups in ai-sql-agent, signed user identities, ticket notifications via an outbox |
-| Operations  | Docker Compose · Nginx · OpenTelemetry · Prometheus · Grafana · Tempo · Loki | 12 services in one deploy, with traces, metrics, logs and alert rules                     |
-| Quality     | pytest · Ruff · Vitest · Testing Library · GitHub Actions                    | Backend, frontend, contract and image checks on every push                                |
+| Layer          | Technology                                                                   | Role                                                                                           |
+| -------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Agent service  | Python 3.12 · FastAPI · Pydantic 2 · asyncio                                 | Router, concurrent tools, parallel specialists, fallback and handoff, SSE streaming            |
+| Models         | Anthropic SDK · OpenAI SDK                                                   | Intent vote, query rewriting, reranking, specialist answers, LLM-as-judge; switchable live     |
+| Agent protocol | A2A over JSON-RPC (`message/stream`, `message/send`) · Agent Card            | Delegation to the SQL agent, with streamed progress and a contract pinned in CI                |
+| Retrieval      | PostgreSQL 16 · pgvector · `tsvector` · BM25 · RRF                           | Hybrid search over knowledge passages; SQLite with BM25 as a local fallback                    |
+| Memory, state  | Redis 7 · asyncpg                                                            | Working memory, summaries and user profiles; rate limits and shared circuit-breaker state      |
+| Guardrails     | Rule-based answer policy · confidence gates · HMAC user tokens               | Sentence-level checks, handoff decisions, signed identities                                    |
+| Console        | React 18 · TypeScript · Vite 6 · TanStack Query 5 · Tailwind CSS 4           | Chat with per-turn agent explanations, knowledge, tickets and model settings, in two languages |
+| Operations     | Docker Compose · Nginx · OpenTelemetry · Prometheus · Grafana · Tempo · Loki | 12 services in one deploy, with traces, metrics, logs and alert rules                          |
+| Quality        | pytest · Ruff · Vitest · Testing Library · GitHub Actions                    | Unit, contract and image checks in CI; retrieval and end-to-end evaluations                    |
 
 ## Features
 
+### Agent orchestration
+
+A streamed turn arrives as `progress → meta → routing → delta → result`: the console shows each stage live, and Learning mode explains every decision.
+
+- **Routing.** A rule anchor fixes the intent without a model call and skips rewriting and reranking; conflicting anchors fall back to the full vote, and unclear questions get a clarifying reply.
+- **Collaboration and fallback.** Parallel specialists' answers are merged, each marked with its role. A failing specialist is replaced by the generalist, except mid-stream, where sent text can't be recalled and the turn is reported as not answered.
+- **Memory and skills.** Working memory stays in Redis for 24 hours and is summarised by the model at 15 messages; past sessions and a user profile return to the context. Each specialist loads its own SOPs from reloadable `SKILL.md` files.
+
+| One run with gpt-6-luna             | Result                                                                            |
+| ----------------------------------- | --------------------------------------------------------------------------------- |
+| Intent vote on 90 labelled messages | 77 correct (85.6%), macro-F1 0.798                                                |
+| LLM-judged dialog turns             | 14 of the 15 that completed pass; 1 of 16 was cut by an upstream connection error |
+
+The judge is the model under test and the cases are in Chinese; see the [evaluation record](docs/evaluation/end-to-end.md). The bundled intents, specialists, SOPs and knowledge describe a manufacturer's support desk; another domain needs its own intents and specialists in code, not only new documents.
+
+### Agent-to-agent delegation
+
+Data questions on the staff instance go to [ai-sql-agent](https://github.com/heyemlee/ai-sql-agent), which measures itself with a release gate.
+
+- **Streaming with fallbacks.** The Agent Card is cached for 30 s, and each stage (table search, planning, SQL, queries, repair) reaches the console in the interface language. A `-32004` before the stream opens switches to `message/send`; silence or a hard deadline ends the call.
+- **Evidence rules.** Beyond the status and flags, a partial result limits what may be said about the failed steps, and a truncated one rules out totals.
+- **One contract.** Consumer tests run the golden fixtures of [a2a-contract](https://github.com/heyemlee/a2a-contract), pinned at `v1.12`, and fail rather than skip when they are missing.
+
 ### Retrieval
 
-Every answer is built from passages retrieved for it, and the console lists them under the reply.
-
-- **Two legs, fused by rank.** Dense (pgvector cosine) and lexical (`ts_rank_cd`, or BM25 over Chinese character bigrams on SQLite), ten candidates each, fused by rank rather than by incompatible scores. With only local n-gram vectors, keyword matches come first and vectors fill the rest.
-- **One corrective round.** Complex questions are rewritten into three sub-queries and reranked; when the evidence is judged insufficient, one more round searches for what is missing.
-- **Model switches without downtime.** Changing the embedding model re-embeds every stored vector while the service keeps answering, then cuts over. The service refuses to start on vectors another model produced.
+- **Two legs, fused by rank.** Dense (pgvector) and lexical (`ts_rank_cd`, or BM25 over Chinese bigrams on SQLite), ten candidates each, fused by rank rather than by incompatible scores. With local n-gram vectors, keyword matches lead and vectors fill in.
+- **Model switches without downtime.** A new embedding model re-embeds every stored vector while the service keeps answering, then cuts over; vectors from another model stop the service from starting.
 
 Top-three hits on PostgreSQL, by question type:
 
@@ -78,39 +99,39 @@ Top-three hits on PostgreSQL, by question type:
 | Current vs. superseded version |       4 |                    3 |                    4 |
 | **All**                        | **108** |               **77** |              **101** |
 
-The 52 documents and 122 questions (14 with no answer in the corpus) are simulated and were written for testing. Even with the remote model, a superseded document ranks ahead of the current one in 4 of 6 cases. Conditions and reproduction: [local vectors](docs/evaluation/retrieval-ca-factory.md), [remote embedding](docs/evaluation/retrieval-remote-embedding.md).
+The 52 documents and 122 questions (14 with no answer) are simulated test data. Even with the remote model, a superseded document outranks the current one in 4 of 6 cases. Records: [local vectors](docs/evaluation/retrieval-ca-factory.md), [remote embedding](docs/evaluation/retrieval-remote-embedding.md).
 
-### Routing, answer guard and handoff
+### Guardrails and handoff
 
-- **Intent and routing.** Conflicting rule anchors give up and fall back to the full vote. Product & Install, Quotes & Billing and Order Fulfilment compete on domain scores; a second specialist joins in parallel when a question spans domains, and monitor penalties steer traffic away from a degraded instance.
-- **Answer guard.** A sentence is removed only when it has an amount or a time, a commitment verb, no hedge and no source. The customer never sees it; staff see what was removed and why.
-- **Handoff.** Tickets move through open, assigned, resolved and cancelled. Each notification is written to an outbox before delivery, with retries and the HTTP status recorded, and the console shows whether it arrived.
+- **Answer guard.** A sentence with an amount or a time, a commitment verb, no hedge and no source is replaced with one that defers to the quote or the schedule; staff see the original and the rule that caught it.
+- **Gates and tickets.** Intent < 0.45, routing < 0.35 or agent < 0.70 hands off; these are heuristic signals, not calibrated probabilities. Tickets move through four states, and notifications go through an outbox with retries.
+- **Failing closed.** A rejected key stops calls for that configuration until reset; a 429 backs off 5–60 s and an unexplained 403 30–600 s, honouring `retry-after` up to 900 s.
 
 ### Knowledge base, tickets and admin
 
 <p align="center">
-  <img src="docs/screenshots/workspace.webp" width="960" alt="Browsing the Delivery and receiving category and asking the knowledge base a question that returns three ranked passages, opening a ticket and marking it assigned, then switching the embedding model, which rebuilds 312 vectors with a progress bar before it cuts over" />
+  <img src="docs/screenshots/workspace.webp" width="960" alt="Browsing a knowledge category and asking the knowledge base a question that returns three ranked passages, opening a ticket and marking it assigned, then switching the embedding model, which rebuilds 312 vectors with a progress bar before it cuts over" />
 </p>
 
 <p align="center"><sub>The same made-up company and mocked API.</sub></p>
 
-**Knowledge base** keeps the documents the assistant answers from.
+**Knowledge base**
 
-- Seven fixed categories for browsing; moving a document between them leaves retrieval untouched.
-- **Ask a question** runs the same retrieval as the chat path and shows the passages, scores and legs it would return.
-- Import `.txt`, `.md` or JSON document lists; re-importing identical text changes nothing.
+- Browse by fixed category; recategorising a document never touches retrieval.
+- **Ask a question** shows the passages and scores the chat path would retrieve.
+- Import `.txt`, `.md` or JSON document lists; identical text is not imported twice.
 
-**Tickets** are where people pick up what the assistant handed off.
+**Tickets**
 
-- Filter by status; each ticket offers only the transitions the backend's state machine allows.
-- The detail shows why it was handed off, the full conversation and the notification's delivery record.
-- A handoff in chat links straight to its ticket, and the card updates when the ticket moves.
+- Filter by status; only the transitions the backend's state machine allows are offered.
+- Each ticket shows the handoff reason, the conversation and the notification's delivery record.
+- The ticket card in chat links to the ticket and follows its status.
 
-**Admin & diagnostics** is for supervisors and developers.
+**Admin & diagnostics**
 
-- Model connections are tested before they are saved: a plain reply and a structured-output call for the chat model, one request for the embedding model. Keys are write-only; the page shows only the last four characters.
-- An LLM-as-judge evaluation scores 16 dialog turns on relevance, accuracy, completeness and helpfulness, plus intent accuracy on 90 labelled messages; the baseline changes only on an explicit promote.
-- Monitoring, SOPs and an orchestration inspector that shows the routing scores and policy findings of any reply.
+- Model connections are tested before they are saved; keys are write-only.
+- An LLM-as-judge evaluation whose baseline changes only on an explicit promote.
+- Monitoring, SOPs and an inspector for any reply's routing scores and policy findings.
 
 ## Develop
 
@@ -130,10 +151,11 @@ Configuration, model providers, importing knowledge, local setup without Docker 
 scripts/ci-local.sh                         # the CI checks; --with-images adds both image builds
 cd backend && .venv/bin/python -m pytest    # backend tests; TEST_POSTGRES_DSN adds the pgvector ones
 .venv/bin/python scripts/eval_retrieval.py  # retrieval hit@3 and MRR, no model calls
+.venv/bin/python scripts/run_eval.py        # end-to-end evaluation; calls the model
 cd ../frontend && npm test                  # console tests
 ```
 
-CI runs Ruff and the backend tests against pgvector, the console tests and production build, the A2A contract fixtures and both Docker images. The LLM-as-judge evaluation calls the model, so it runs only on request (`POST /eval/run`).
+CI runs Ruff, 953 backend tests against pgvector, 218 console tests, the production build, the A2A contract fixtures and both Docker images. The end-to-end evaluation spends model calls, so it runs only on request.
 
 ## Deploy
 
