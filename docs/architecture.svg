@@ -1,13 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 592" width="960" height="592" role="img" aria-labelledby="title desc">
   <title id="title">AI Helpdesk architecture</title>
-  <desc id="desc">The staff console and customer clients reach a FastAPI service deployed with Docker Compose as a staff instance and a customer instance. Each question passes identity and memory, intent voting, hybrid retrieval, specialist agents, the answer guard, and ends in a reply or a handoff ticket. Redis holds working memory, PostgreSQL with pgvector holds knowledge, memory, tickets and audit records, and traces, metrics and logs go to the observability stack. The service calls a chat model and an embedding model, delegates order questions to ai-sql-agent from the staff instance only, and sends handoff notifications to a webhook.</desc>
+  <desc id="desc">A question from the staff console or a customer client reaches the agent service, deployed with Docker Compose as a staff and a customer instance. A router votes on the intent, tools run concurrently (knowledge search, and an order lookup delegated over A2A to a separate SQL agent that plans, writes, runs and repairs its own queries), specialist agents answer, in parallel when a question spans domains, and an answer guard with confidence gates returns a reply or opens a handoff ticket. Redis holds working memory, PostgreSQL with pgvector holds knowledge, memory, tickets and audit records, and telemetry goes to Tempo, Prometheus, Loki and Grafana.</desc>
   <style>
     text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif; }
     .eyebrow { font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; fill: #8e8e93; }
     .title { font-size: 16px; font-weight: 600; fill: #1d1d1f; }
     .name { font-size: 14px; font-weight: 600; fill: #1d1d1f; }
     .sub { font-size: 12.5px; fill: #6e6e73; }
-    .step { font-size: 12.5px; fill: #3a3a3c; }
+    .step { font-size: 12.5px; font-weight: 600; fill: #1d1d1f; }
+    .note { font-size: 11.5px; fill: #6e6e73; }
     .num { font-size: 11px; font-weight: 600; fill: #8e8e93; }
     .edge { font-size: 11px; fill: #8e8e93; }
     .card { fill: #ffffff; stroke: #e3e3e8; stroke-width: 1; }
@@ -59,119 +60,120 @@
   <rect x="300" y="28" width="360" height="540" rx="18" fill="#fafafb" stroke="#e3e3e8" />
 
   <!-- Wires -->
-  <path class="wire" d="M240,168 L320,168" />
-  <path class="wire" d="M240,300 L320,300" />
-  <path class="wire" d="M392,340 L392,376" />
-  <path class="wire" d="M568,340 L568,376" />
-  <path class="wire" d="M480,340 L480,488" />
-  <path class="wire" d="M640,116 L720,116" />
-  <path class="wire" d="M640,192 L720,192" />
-  <path class="wire" d="M640,277 L720,277" />
-  <path class="wire" d="M640,326 C680,326 680,362 720,362" />
+  <path class="wire" d="M240,160 L320,160" />
+  <path class="wire" d="M240,292 L320,292" />
+  <path class="wire" d="M392,352 L392,384" />
+  <path class="wire" d="M568,352 L568,384" />
+  <path class="wire" d="M480,352 L480,492" />
+  <path class="wire" d="M640,158 C680,158 680,126 720,126" />
+  <path class="wire" d="M640,212 L720,212" />
+  <path class="wire" d="M640,264 C680,264 680,300 720,300" />
+  <path class="wire" d="M640,316 C680,316 680,380 720,380" />
 
-  <text class="edge" x="270" y="160" text-anchor="middle">/api · SSE</text>
-  <text class="edge" x="270" y="292" text-anchor="middle">Nginx :80</text>
-  <text class="edge" x="400" y="362">memory</text>
-  <text class="edge" x="576" y="362">search</text>
-  <text class="edge" x="690" y="108" text-anchor="middle">prompts</text>
-  <text class="edge" x="690" y="184" text-anchor="middle">texts</text>
-  <text class="edge" x="690" y="269" text-anchor="middle">orders</text>
-  <text class="edge" x="690" y="320" text-anchor="middle">handoff</text>
+  <text class="edge" x="270" y="152" text-anchor="middle">/api · SSE</text>
+  <text class="edge" x="270" y="284" text-anchor="middle">Nginx :80</text>
+  <text class="edge" x="400" y="372">memory</text>
+  <text class="edge" x="576" y="372">search</text>
+  <text class="edge" x="690" y="118" text-anchor="middle">vectors</text>
+  <text class="edge" x="690" y="204" text-anchor="middle">A2A</text>
+  <text class="edge" x="690" y="258" text-anchor="middle">prompts</text>
+  <text class="edge" x="690" y="322" text-anchor="middle">handoff</text>
 
-  <!-- Pulses, in the order of one staff question: in from the console, memory, embeddings for intent and search,
-       the search itself, the chat model, an order lookup, the streamed reply, a handoff alert, then telemetry -->
-  <path class="pulse data" pathLength="1" filter="url(#glow)" d="M240,168 L320,168" style="animation-delay: 0s" />
-  <path class="pulse data" pathLength="1" filter="url(#glow)" d="M392,340 L392,376" style="animation-delay: 0.8s" />
-  <path class="pulse ai" pathLength="1" filter="url(#glow)" d="M640,192 L720,192" style="animation-delay: 1.6s" />
-  <path class="pulse data" pathLength="1" filter="url(#glow)" d="M568,340 L568,376" style="animation-delay: 2.4s" />
-  <path class="pulse ai" pathLength="1" filter="url(#glow)" d="M640,116 L720,116" style="animation-delay: 3.2s" />
-  <path class="pulse service" pathLength="1" filter="url(#glow)" d="M640,277 L720,277" style="animation-delay: 4s" />
-  <path class="pulse data" pathLength="1" filter="url(#glow)" d="M320,168 L240,168" style="animation-delay: 4.8s" />
-  <path class="pulse service" pathLength="1" filter="url(#glow)" d="M640,326 C680,326 680,362 720,362" style="animation-delay: 5.6s" />
-  <path class="pulse service" pathLength="1" filter="url(#glow)" d="M480,340 L480,488" style="animation-delay: 6.4s" />
+  <!-- Pulses, in the order of one question that needs knowledge and order data: in from the console, memory,
+       embeddings for the vote and the search, the search, the order lookup out to the SQL agent and its progress
+       streaming back, the specialist agents' model calls, the reply, a handoff alert, then telemetry -->
+  <path class="pulse data" pathLength="1" filter="url(#glow)" d="M240,160 L320,160" style="animation-delay: 0s" />
+  <path class="pulse data" pathLength="1" filter="url(#glow)" d="M392,352 L392,384" style="animation-delay: 0.7s" />
+  <path class="pulse ai" pathLength="1" filter="url(#glow)" d="M640,158 C680,158 680,126 720,126" style="animation-delay: 1.3s" />
+  <path class="pulse data" pathLength="1" filter="url(#glow)" d="M568,352 L568,384" style="animation-delay: 2s" />
+  <path class="pulse service" pathLength="1" filter="url(#glow)" d="M640,212 L720,212" style="animation-delay: 2.5s" />
+  <path class="pulse service" pathLength="1" filter="url(#glow)" d="M720,212 L640,212" style="animation-delay: 3.2s" />
+  <path class="pulse ai" pathLength="1" filter="url(#glow)" d="M640,264 C680,264 680,300 720,300" style="animation-delay: 4s" />
+  <path class="pulse data" pathLength="1" filter="url(#glow)" d="M320,160 L240,160" style="animation-delay: 5.2s" />
+  <path class="pulse service" pathLength="1" filter="url(#glow)" d="M640,316 C680,316 680,380 720,380" style="animation-delay: 5.9s" />
+  <path class="pulse service" pathLength="1" filter="url(#glow)" d="M480,352 L480,492" style="animation-delay: 6.6s" />
 
   <!-- Clients -->
   <g filter="url(#lift)">
-    <rect class="card" x="32" y="112" width="208" height="112" rx="14" />
-    <rect class="card" x="32" y="252" width="208" height="96" rx="14" />
+    <rect class="card" x="32" y="104" width="208" height="112" rx="14" />
+    <rect class="card" x="32" y="244" width="208" height="96" rx="14" />
   </g>
-  <text class="eyebrow" x="52" y="138">BROWSER · STAFF</text>
-  <text class="title" x="52" y="162">Support console</text>
-  <text class="sub" x="52" y="186">React 18 · TanStack Query</text>
-  <text class="sub" x="52" y="206">chat · knowledge · tickets</text>
+  <text class="eyebrow" x="52" y="130">BROWSER · STAFF</text>
+  <text class="title" x="52" y="154">Support console</text>
+  <text class="sub" x="52" y="178">React 18 · TanStack Query</text>
+  <text class="sub" x="52" y="198">chat · knowledge · tickets</text>
 
-  <text class="eyebrow" x="52" y="278">CUSTOMERS</text>
-  <text class="title" x="52" y="302">Your site or app</text>
-  <text class="sub" x="52" y="326">POST /chat · /chat/stream</text>
+  <text class="eyebrow" x="52" y="270">CUSTOMERS</text>
+  <text class="title" x="52" y="294">Your site or app</text>
+  <text class="sub" x="52" y="318">POST /chat · /chat/stream</text>
 
   <!-- The deployment -->
   <circle class="live" cx="322" cy="54" r="4.5" fill="#2496ed" />
   <text class="name" x="334" y="59">Docker Compose</text>
   <text class="edge" x="640" y="59" text-anchor="end">one deploy</text>
 
-  <rect class="card" x="320" y="76" width="320" height="264" rx="14" filter="url(#lift)" />
-  <text class="name" x="340" y="102">FastAPI service</text>
+  <rect class="card" x="320" y="76" width="320" height="276" rx="14" filter="url(#lift)" />
+  <text class="name" x="340" y="102">Agent service · FastAPI</text>
   <text class="sub" x="340" y="122">staff and customer instances, one image</text>
 
-  <rect class="chip" x="336" y="136" width="288" height="26" rx="8" style="animation-delay: 0.8s" />
-  <rect class="chip" x="336" y="168" width="288" height="26" rx="8" style="animation-delay: 1.6s" />
-  <rect class="chip" x="336" y="200" width="288" height="26" rx="8" style="animation-delay: 2.4s" />
-  <rect class="chip" x="336" y="232" width="288" height="26" rx="8" style="animation-delay: 3.2s" />
-  <rect class="chip" x="336" y="264" width="288" height="26" rx="8" style="animation-delay: 4.4s" />
-  <rect class="chip" x="336" y="296" width="288" height="26" rx="8" style="animation-delay: 5.2s" />
-  <text class="num" x="348" y="153">1</text>
-  <text class="step" x="364" y="153">Identity · rate limit · memory</text>
-  <text class="num" x="348" y="185">2</text>
-  <text class="step" x="364" y="185">Intent vote: rules · embedding · LLM</text>
-  <text class="num" x="348" y="217">3</text>
-  <text class="step" x="364" y="217">Hybrid retrieval, rank fusion</text>
-  <text class="num" x="348" y="249">4</text>
-  <text class="step" x="364" y="249">Specialist agents + fallback</text>
-  <text class="num" x="348" y="281">5</text>
-  <text class="step" x="364" y="281">Answer guard, sentence by sentence</text>
-  <text class="num" x="348" y="313">6</text>
-  <text class="step" x="364" y="313">Reply, or a handoff ticket</text>
+  <rect class="chip" x="336" y="136" width="288" height="44" rx="8" style="animation-delay: 1.3s" />
+  <rect class="chip" x="336" y="188" width="288" height="48" rx="8" style="animation-delay: 2s" />
+  <rect class="chip" x="336" y="244" width="288" height="44" rx="8" style="animation-delay: 4s" />
+  <rect class="chip" x="336" y="296" width="288" height="44" rx="8" style="animation-delay: 5s" />
+  <text class="num" x="348" y="154">1</text>
+  <text class="step" x="364" y="154">Router</text>
+  <text class="note" x="364" y="171">intent vote: LLM · embeddings · rules</text>
+  <text class="num" x="348" y="207">2</text>
+  <text class="step" x="364" y="207">Tools, run concurrently</text>
+  <text class="note" x="364" y="225">knowledge search · order lookup</text>
+  <text class="num" x="348" y="262">3</text>
+  <text class="step" x="364" y="262">Specialist agents ×3 · fallback</text>
+  <text class="note" x="364" y="279">in parallel across domains</text>
+  <text class="num" x="348" y="314">4</text>
+  <text class="step" x="364" y="314">Answer guard · confidence gates</text>
+  <text class="note" x="364" y="331">reply, or a handoff ticket</text>
 
   <!-- Storage -->
-  <rect class="card" x="320" y="376" width="144" height="92" rx="14" filter="url(#lift)" />
-  <text class="name" x="338" y="404">Redis 7</text>
-  <text class="sub" x="338" y="425">working memory</text>
-  <text class="sub" x="338" y="444">shared state</text>
+  <rect class="card" x="320" y="384" width="144" height="88" rx="14" filter="url(#lift)" />
+  <text class="name" x="338" y="411">Redis 7</text>
+  <text class="sub" x="338" y="432">working memory</text>
+  <text class="sub" x="338" y="451">shared state</text>
 
   <g filter="url(#lift)">
-    <path d="M496,388 V460 A72,12 0 0 0 640,460 V388" fill="#ffffff" stroke="#e3e3e8" />
-    <ellipse cx="568" cy="388" rx="72" ry="12" fill="#fafafb" stroke="#e3e3e8" />
+    <path d="M496,396 V460 A72,12 0 0 0 640,460 V396" fill="#ffffff" stroke="#e3e3e8" />
+    <ellipse cx="568" cy="396" rx="72" ry="12" fill="#fafafb" stroke="#e3e3e8" />
   </g>
-  <text class="name" x="568" y="422" text-anchor="middle">PostgreSQL 16</text>
-  <text class="sub" x="568" y="441" text-anchor="middle">pgvector · tsvector</text>
-  <text class="sub" x="568" y="458" text-anchor="middle" style="font-size: 11.5px">tickets · audit · memory</text>
+  <text class="name" x="568" y="428" text-anchor="middle">PostgreSQL 16</text>
+  <text class="sub" x="568" y="446" text-anchor="middle">pgvector · tsvector</text>
+  <text class="sub" x="568" y="462" text-anchor="middle" style="font-size: 11.5px">tickets · audit · memory</text>
 
-  <rect class="card" x="320" y="488" width="320" height="64" rx="14" filter="url(#lift)" />
-  <text class="name" x="340" y="514">Observability</text>
-  <text class="edge" x="620" y="514" text-anchor="end">OTLP · /metrics · logs</text>
-  <text class="sub" x="340" y="535">Tempo · Prometheus · Loki · Grafana</text>
+  <rect class="card" x="320" y="492" width="320" height="60" rx="14" filter="url(#lift)" />
+  <text class="name" x="340" y="516">Observability</text>
+  <text class="edge" x="620" y="516" text-anchor="end">OTLP · /metrics · logs</text>
+  <text class="sub" x="340" y="537">Tempo · Prometheus · Loki · Grafana</text>
 
   <!-- Outside the deployment -->
   <g filter="url(#lift)">
-    <rect class="card" x="720" y="84" width="208" height="64" rx="14" />
-    <rect class="card" x="720" y="160" width="208" height="64" rx="14" />
-    <rect class="card" x="720" y="236" width="208" height="82" rx="14" />
-    <rect class="card" x="720" y="330" width="208" height="64" rx="14" />
+    <rect class="card" x="720" y="94" width="208" height="64" rx="14" />
+    <rect class="card" x="720" y="170" width="208" height="88" rx="14" />
+    <rect class="card" x="720" y="268" width="208" height="64" rx="14" />
+    <rect class="card" x="720" y="348" width="208" height="64" rx="14" />
   </g>
-  <circle cx="740" cy="108" r="4.5" fill="#d97757" />
-  <text class="name" x="752" y="113">Chat model</text>
-  <text class="sub" x="740" y="135">OpenAI or Anthropic API</text>
+  <circle cx="740" cy="118" r="4.5" fill="#d97757" />
+  <text class="name" x="752" y="123">Embedding model</text>
+  <text class="sub" x="740" y="145">any /embeddings endpoint</text>
 
-  <circle cx="740" cy="184" r="4.5" fill="#d97757" />
-  <text class="name" x="752" y="189">Embedding model</text>
-  <text class="sub" x="740" y="211">any /embeddings endpoint</text>
+  <circle cx="740" cy="194" r="4.5" fill="#0d9488" />
+  <text class="name" x="752" y="199">SQL agent</text>
+  <text class="edge" x="908" y="199" text-anchor="end">peer agent</text>
+  <text class="sub" x="740" y="221">ai-sql-agent over A2A</text>
+  <text class="sub" x="740" y="241" style="font-size: 12px">plan → SQL → run → repair</text>
 
-  <circle cx="740" cy="260" r="4.5" fill="#0d9488" />
-  <text class="name" x="752" y="265">ai-sql-agent</text>
-  <text class="sub" x="740" y="287">live order data over A2A</text>
-  <text class="sub" x="740" y="306">staff instance only</text>
+  <circle cx="740" cy="292" r="4.5" fill="#d97757" />
+  <text class="name" x="752" y="297">Chat model</text>
+  <text class="sub" x="740" y="319">OpenAI or Anthropic API</text>
 
-  <circle cx="740" cy="354" r="4.5" fill="#0d9488" />
-  <text class="name" x="752" y="359">Ticket webhook</text>
-  <text class="sub" x="740" y="381">outbox, retried delivery</text>
+  <circle cx="740" cy="372" r="4.5" fill="#0d9488" />
+  <text class="name" x="752" y="377">Ticket webhook</text>
+  <text class="sub" x="740" y="399">outbox, retried delivery</text>
 </svg>
