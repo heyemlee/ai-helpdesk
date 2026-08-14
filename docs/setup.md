@@ -76,7 +76,7 @@ Knowledge supplies reference material; SOPs define handling steps and escalation
 
 The bundled domain is cabinet manufacturing and fulfilment. Replacing the knowledge and SOPs adapts the content; a different intent taxonomy or specialist lineup also needs changes to intent recognition and routing.
 
-For live order data, set `SQL_AGENT_URL` and its credentials to connect [ai-sql-agent](https://github.com/heyemlee/ai-sql-agent). The identity requirements are in [sql-agent-identity-requirements.md](integrations/sql-agent-identity-requirements.md).
+For live order data, set `SQL_AGENT_URL` and its credentials to connect [ai-sql-agent](https://github.com/heyemlee/ai-sql-agent). Set `SQL_AGENT_TRANSPORT=a2a` to reach it over A2A, which streams its stages (table search, planning, SQL, queries, repair) to the console; the default, `query`, calls its synchronous HTTP `/query` and shows no progress. The identity requirements are in [sql-agent-identity-requirements.md](integrations/sql-agent-identity-requirements.md).
 
 ## Run from source
 
