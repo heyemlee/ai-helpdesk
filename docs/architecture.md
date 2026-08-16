@@ -7,26 +7,31 @@ README 使用手写的动态图 [architecture.svg](architecture.svg)；[Archify 
 
 ```mermaid
 flowchart LR
-    U[用户] --> FE[前端控制台<br/>React + TS]
-    FE -->|/api/*| NG[Nginx]
-    NG --> APP[FastAPI 服务]
-    APP --> AUTH[HMAC 令牌校验 + 每用户限流]
+    U[员工] --> FE[员工工作台<br/>React + TS]
+    C[客户端] --> NG[Nginx :80]
+    FE -->|/api/* · SSE| APP[员工实例<br/>FastAPI]
+    NG --> CUS[客户实例<br/>同一镜像]
+    APP & CUS --> AUTH[HMAC 令牌校验 + 每用户限流]
 
-    APP --> R[(Redis<br/>工作记忆 · 限流计数<br/>熔断与降权共享状态)]
-    APP --> PG[(PostgreSQL + pgvector<br/>知识向量 / 情景记忆 / 画像<br/>工单 / 审计日志)]
-    APP --> LLM[[LLM<br/>Anthropic / OpenAI 两套协议<br/>LLM_PROVIDER 一行切换]]
+    APP & CUS --> R[(Redis<br/>工作记忆 · 限流计数<br/>熔断与路由扣分共享状态)]
+    APP & CUS --> PG[(PostgreSQL + pgvector<br/>知识向量 / 情景记忆 / 画像<br/>工单 / 审计日志)]
+    APP & CUS --> LLM[[对话模型<br/>Anthropic / OpenAI 两套协议<br/>控制台可在线切换]]
+    APP & CUS --> EMB[[Embedding / Rerank API<br/>没配时用本地向量 / LLM 重排]]
+    APP -->|A2A message/stream<br/>或 HTTP /query| SQL[[ai-sql-agent<br/>规划 · 写 SQL · 执行 · 自修]]
 
-    APP -->|/metrics| P[Prometheus]
-    APP -->|OTLP trace| OC[OTel Collector] --> TP[Tempo]
-    APP -->|JSON 日志| PT[Promtail] --> LK[Loki]
+    APP & CUS -->|/metrics| P[Prometheus]
+    APP & CUS -->|OTLP trace| OC[OTel Collector] --> TP[Tempo]
+    APP & CUS -->|JSON 日志| PT[Promtail] --> LK[Loki]
     P & TP & LK --> GF[Grafana]
 
     classDef store fill:#1e293b,stroke:#475569,color:#e2e8f0
     class R,PG store
 ```
 
+客户实例和员工实例是同一个镜像，区别有两处：不委派 SQL Agent（`SQL_AGENT_URL` 留空），关掉跨会话记忆（它的 user_id 取自请求体）。委派走哪条传输由 `SQL_AGENT_TRANSPORT` 决定：`a2a` 走 `message/stream`，把下游每个阶段实时转给工作台；默认的 `query` 调同步的 `POST /query`，没有进度事件。
+
 对外接口：`/chat`、`/chat/stream`、`/auth/token`、`/search`、`/skills`、`/sops`、
-`/knowledge/*`、`/tickets`、`/conversations/{conv_id}`、`/eval/run`、`/eval/promote`、`/monitor`、`/metrics`。
+`/knowledge/*`、`/tickets`、`/conversations/{conv_id}`、`/eval/run`、`/eval/promote`、`/admin/model*`、`/health`、`/monitor`、`/metrics`。
 
 ## 2. `/chat` 主链路
 
@@ -35,27 +40,31 @@ flowchart TD
     A[请求进入] --> A2[HMAC 令牌推导 user_id<br/>每用户限流]
     A2 --> B[读取三级记忆]
     B --> C{意图识别}
-    C -->|规则锚点命中| D[快通道<br/>零网络调用]
-    C -->|否则| E[三路融合<br/>规则 10% + Embedding 20% + LLM 70%]
-    D --> F{需要检索知识库?}
+    C -->|规则锚点命中且不冲突| D[快通道<br/>零模型调用]
+    C -->|否则| E[三路投票<br/>规则 10% + Embedding 20% + LLM 70%]
+    D --> F[按意图和实体决定这一轮用哪些工具<br/>纯规则判断]
     E --> F
-    F -->|快通道| G[直接检索<br/>跳过改写与重排]
-    F -->|完整链路| H[查询改写 → 并行召回 → 去重 → LLM 重排]
-    F -->|问候/转人工等| I[不检索]
-    G --> J[领域打分路由]
-    H --> J
-    I --> J
+    F --> G[知识检索]
+    F --> W[委派 SQL Agent 查业务数据<br/>A2A 或 /query]
+    G -->|快通道| G1[直接检索<br/>跳过改写与重排]
+    G -->|完整链路| G2[改写成三个子查询 → 并行召回 → 去重<br/>→ cross-encoder 重排，没配时 LLM 重排]
+    G2 --> G3{依据够吗<br/>LLM 判定或分数阈值}
+    G3 -->|不够| G4[针对缺口再检索一轮]
+    W --> W1[证据判定<br/>success/partial 且无风险、无降级才算证据]
+    G1 & G3 & G4 & W1 --> J[领域打分路由]
     J --> K{置信度够吗}
     K -->|意图落到 OTHER 且置信度低| L[澄清追问]
-    K -->|够| M[主 Agent + 辅助 Agent 执行<br/>注入 Skill SOP]
-    M --> N[答案策略守卫<br/>拦截无依据的价格/时效承诺]
-    N --> O{三路置信度<br/>都达标?}
-    O -->|否| P[转人工 → 建工单<br/>四态状态机 + webhook]
-    O -->|是| Q[返回回复]
+    K -->|够| M[主专家 + 辅助专家并行执行<br/>按路由分选副本，注入各自的 SOP]
+    M --> N[答案策略守卫逐句检查<br/>无依据的价格/时效承诺替换成安全说法]
+    N --> O{专家声明要人工？<br/>三路置信度都达标？}
+    O -->|要人工 / 不达标| P[转人工 → 建工单<br/>四态状态机 + outbox 通知]
+    O -->|否| Q[返回回复]
     Q --> S[写入记忆 · 异步更新画像]
     S --> S2[对话审计原文留档]
-    S2 --> T[Monitor 采集 → 路由惩罚写回]
+    S2 --> T[Monitor 采集 → 路由扣分写回]
 ```
+
+知识检索和委派查库在专家运行之前就并发跑完：查不查由规则决定，所以每一轮的模型调用次数可预期。专家本身不调用工具；开放式的循环（规划 SQL、出错自修）在 SQL Agent 里，由钉住版本的契约约束。模型服务不可用时这一轮返回"没有作答"，不建工单。
 
 ## 3. Agent 阵容与路由
 
@@ -63,10 +72,10 @@ flowchart TD
 flowchart TD
     I[意图 + 实体 + 关键词] --> S[领域打分]
 
-    S --> T["技术可靠性 Agent<br/>TechnicalAgent"]
-    S --> B["收入与合规 Agent<br/>BillingAgent"]
+    S --> T["产品与安装 Agent<br/>TechnicalAgent"]
+    S --> B["报价与账款 Agent<br/>BillingAgent"]
     S --> O["订单履约 Agent<br/>OrderAgent"]
-    S -.三个专家都不达标.-> G["运营协调 Agent<br/>GeneralAgent（兜底）"]
+    S -.三个专家都不达标.-> G["展厅接待 Agent<br/>GeneralAgent（兜底）"]
 
     T -.执行失败.-> G
     B -.执行失败.-> G
@@ -89,8 +98,10 @@ flowchart TD
 要点：
 
 - **三个专家按领域分竞争主 Agent**，General 只拿固定基准分，不参与专家域竞争。
-- 跨域工单里达到门槛的其他专家升为**辅助 Agent**，与主 Agent 并行执行后合并结果。
-- 每种类型可起多个实例；Monitor 观测到某实例劣化后，流量自动倒向同类型的健康实例。
+- 跨域问题里分数不低于 0.45、且不低于主专家 55% 的其他专家升为**辅助 Agent**，与主 Agent 并行执行后合并结果。并行的结果一次性返回，单个专家的回答才逐句流式输出。
+- 每种类型默认起两个实例（`AI_HELPDESK_AGENT_REPLICAS`）。路由分 = (成功率 × 0.7 + 延迟分 × 0.3) × (1 − 监控扣分)；成功率低于 90% 或变慢时 Monitor 扣分，最多 0.9，流量自动倒向同类型的健康实例，同分时轮询。
+- 专家在回答末尾用 `[[handoff:yes|no]]` 声明要不要人工，这个标记在流里就被摘掉；声明要人工时自评置信度降到 0.65，低于 0.70 的门槛。标记缺失时退回关键词判断。
+- 流式输出到一半失败时不降级重跑（已经发出去的内容收不回来），如实报告没有答完。
 - Skill 按 `agents` 和 `keywords` 匹配，避免不同领域的规则互相污染。
 
 ## 4. 数据与存储
@@ -143,8 +154,9 @@ flowchart LR
 ```mermaid
 flowchart TD
     subgraph compose[docker compose up]
-        FE[ai-helpdesk-frontend<br/>:5174]
-        APP[ai-helpdesk-app<br/>:8080→8000]
+        FE[ai-helpdesk-frontend<br/>127.0.0.1:5174]
+        APP[ai-helpdesk-app 员工实例<br/>127.0.0.1:8080→8000]
+        CUS[ai-helpdesk-customer 客户实例<br/>127.0.0.1:8081→8000]
         NG[ai-helpdesk-nginx<br/>:80]
         R[redis]
         PG[postgres<br/>pgvector 扩展]
@@ -156,18 +168,18 @@ flowchart TD
         GF[grafana<br/>:3000]
     end
     FE -->|/api/ 走内网| APP
-    NG --> APP
-    APP --> R
-    APP --> PG
-    APP --> OC --> TP
+    NG --> CUS
+    APP & CUS --> R
+    APP & CUS --> PG
+    APP & CUS --> OC --> TP
+    APP -.->|host.docker.internal:8000| SQL[ai-sql-agent<br/>同机另一个服务]
     PT --> LK
     P & TP & LK --> GF
 ```
 
-共 11 个服务。观测栈（Collector / Tempo / Loki / Promtail / Grafana）与业务无耦合，
-不需要时删掉对应 service 即可，应用侧只是少了 trace 上报目标。
+共 12 个服务。只有 Nginx 的 80 端口对外，其余端口只绑本机：员工实例和工作台背后没有 API key，不能直接开放给其他机器。两个实例共用 Redis 和 PostgreSQL，并挂同一个模型设置目录：员工工作台保存模型连接后，客户实例几秒内跟上。观测栈（Collector / Tempo / Loki / Promtail / Grafana）与业务无耦合，不需要时删掉对应 service 即可，应用侧只是少了 trace 上报目标。
 
-挂载 `./backend/skills`（热加载 SOP）、`./backend/data/eval`（评测基线）、
+挂载 `./backend/skills`（热加载 SOP）、`./backend/data/eval`（评测基线）、`./backend/data/runtime`（模型设置）、
 `./backend/logs`（供 Promtail 采集）。
 
 前端容器的 Nginx 用变量 + `resolver` **在请求时**解析后端地址而不是启动时：
