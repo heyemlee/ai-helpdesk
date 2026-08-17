@@ -131,7 +131,7 @@ def should_query_business_data(message: str, intent=None, entities=None) -> bool
     给了客户。实体是规则提取的，不依赖模型，正好补上这个洞。
 
     误判的代价是有限的：ai-sql-agent 自己还有一层路由，它认为不需要查库时会
-    返回 queried_database=False，调用方据此丢弃（见 _build_order_data_context）。
+    返回 queried_database=False，调用方据此丢弃（见 turn_tools.delegate_order_query）。
     所以这里放宽一点，最坏是多一次下游调用，不会产出错误答案。
     """
     if not (message or "").strip():

@@ -71,8 +71,7 @@ from pydantic import BaseModel, Field
 
 load_dotenv()
 
-from app.core import evidence, llm_guard  # noqa: E402
-from app.core.evidence import assess  # noqa: E402
+from app.core import llm_guard  # noqa: E402
 from app.core.llm_utils import resolve_llm_config  # noqa: E402
 from app.core.preflight import (  # noqa: E402
     TOKEN_ISSUER_CIDRS_VAR,
@@ -525,6 +524,7 @@ app.add_middleware(
 )
 
 
+from app.agents.turn_prep import TurnDeps, prepare_turn  # noqa: E402
 from app.core.metrics import (  # noqa: E402
     RATE_LIMIT_HITS,
     TICKET_NOTIFY_FAILURES,
@@ -533,12 +533,8 @@ from app.core.metrics import (  # noqa: E402
     observe_http,
 )
 from app.core.telemetry import setup_telemetry  # noqa: E402
-from app.tools.knowledge_base import (  # noqa: E402
-    UnknownCategory,
-    document_excerpt,
-    should_use_knowledge,
-)
-from app.tools.tool_manager import PASSAGE_CHARS  # noqa: E402
+from app.tools.knowledge_base import UnknownCategory  # noqa: E402
+from app.tools.turn_tools import Prefetch  # noqa: E402
 
 # OTel：配置 OTEL_EXPORTER_OTLP_ENDPOINT 后启用 FastAPI/httpx/redis/asyncpg
 # 自动埋点 + 业务 span；未配置时零开销。
@@ -962,150 +958,36 @@ def _model_unavailable_reason() -> str:
     return reason() if callable(reason) else ""
 
 
-# ── 准备阶段的进度 ────────────────────────────────────────────────────────────
-#
-# 意图识别、检索改写、重排各是一次模型往返，加起来十几秒到一分钟。这段时间流里
-# 以前什么都不发——只有委派查库走 A2A 时，下游的阶段才会透传上来。于是只问知识的
-# 问题（最常见的一类）在出第一个字之前，页面上只有一句不动的"正在处理"，
-# 看不出是在干活还是卡住了。
-#
-# 阶段名带 `helpdesk.` 前缀，和下游透传的阶段名（契约 §4.5）分开，两边各改各的
-# 不会撞。`label` 是给不认识这个阶段的旧前端看的；新前端按 stage 自己出文案，
-# 跟着界面语言走。
-STAGE_UNDERSTANDING = "helpdesk.understanding"
-STAGE_GATHERING = "helpdesk.gathering"
-_STAGE_LABEL = {
-    STAGE_UNDERSTANDING: "正在理解问题",
-    STAGE_GATHERING: "正在查找回答需要的资料",
-}
+def _prefetch() -> Prefetch:
+    """
+    规则预取那两路查询，绑定到当前进程的工具上（实现见 tools/turn_tools.py）。
 
-
-def _report_stage(progress_cb, stage: str, **detail: Any) -> None:
-    """把"现在在做哪一步"放进进度队列。非流式没有队列（progress_cb 为 None），什么都不做。"""
-    if progress_cb is None:
-        return
-    try:
-        progress_cb({"stage": stage, "label": _STAGE_LABEL.get(stage, ""), **detail})
-    except Exception:
-        # 进度是增强项：报不出去不能连累这一轮回答
-        logger.debug("进度上报失败: %s", stage, exc_info=True)
-
-
-def _will_query_business_data(message: str, intent=None, entities=None) -> bool:
-    """这一轮会不会去委派查业务数据。和 `_build_order_data_context` 开头的三道门是同一套判断。"""
-    from app.tools.sql_agent_client import should_query_business_data
-
-    if _tool_manager is None or _sql_agent is None or not _sql_agent.enabled:
-        return False
-    return bool(should_query_business_data(message, intent=intent, entities=entities))
+    每次现取、不缓存：换模型、测试替换改的都是这几个模块级变量。
+    """
+    return Prefetch(tool_manager=_tool_manager, sql_agent=_sql_agent, label_sources=_label_sources)
 
 
 async def _prepare_request(req: "ChatRequest", conv_id: str, user_id: str, progress_cb=None):
     """
-    /chat 和 /chat/stream 共用的准备阶段：
-      读取三级记忆 → 意图识别 → 按需 RAG → 组装编排请求
+    /chat 和 /chat/stream 共用的准备阶段，实现见 `agents/turn_prep.prepare_turn`。
 
-    返回 (编排请求, 意图结果, 是否用到知识库, 依据记录)。
-    抽出来是为了让流式和非流式共用同一套上下文构造——两条链路一旦漂移，
-    就会出现"流式和非流式对同一个问题给出不同答案"的问题。
-
-    依据记录是 `{"knowledge": {...}, "business_data": {...}}`：这一轮检索到了
-    哪几段知识、业务数据委派有没有发起、结果算不算数。它们原样进响应，
-    工作台显示的"回答依据"和学习模式的讲解都只来自这里——前端自己推断不出
-    这一轮有没有查库，推断出来的也不能当事实显示。
+    返回 (编排请求, 意图结果, 是否用到知识库, 依据记录)。这里只按当前进程的单例
+    装配依赖：记忆、意图识别、模型服务的保护状态、两路预取。
     """
-    from app.agents.agent_orchestrator import Request as OrcReq
-
-    _report_stage(progress_cb, STAGE_UNDERSTANDING)
-
-    # 1. 读取记忆上下文
-    mem_ctx = await _memory.get_context(user_id, conv_id, query=req.message)
-
-    # 2. 对话历史，用于意图识别上下文
-    history = [
-        {"role": m.role.value, "content": m.content}
-        for m in mem_ctx.recent_messages[-5:]
-    ] if mem_ctx.recent_messages else None
-
-    intent_result = await _orchestrator.recognize_intent(req.message, history=history)
-
-    knowledge_trace: dict[str, Any] = {}
-    data_trace: dict[str, Any] = {}
-    outage = _model_unavailable_reason()
-    if outage:
-        # 模型服务不可用：这一轮作答不了（编排器会直接返回"不可用"，或按规则转人工），
-        # 检索和委派查库拿回来的东西没有人读。尤其是委派——它会让下游为一个注定
-        # 用不上的答案把自己的模型跑一遍。
-        knowledge_text, knowledge_used, order_text, order_is_evidence = "", False, "", False
-        knowledge_trace.update(attempted=False, mode="", sources=[], reranked=False,
-                               corrected=False, evidence_ok=None, degraded=False)
-        data_trace.update(enabled=bool(_sql_agent is not None and _sql_agent.enabled),
-                          attempted=False, outcome="model_unavailable", reason=outage)
-    else:
-        # 接下来要查什么，动手之前就定得下来：两个门控都是同步的纯判断，和下面两个
-        # 构建函数里用的是同一对函数。两路是并发跑的，所以合成一条进度报出去，
-        # 不拆成两条——拆开的话先报的那条会被界面当成"已经做完了"。
-        searching = _tool_manager is not None and should_use_knowledge(
-            req.message, intent=intent_result.intent)
-        querying = _will_query_business_data(
-            req.message, intent=intent_result.intent, entities=intent_result.entities)
-        if searching or querying:
-            _report_stage(progress_cb, STAGE_GATHERING, knowledge=searching, order_data=querying)
-
-        # 规则通道命中说明意图已经确定，检索这边也跟着走短链路：
-        # 直接检索，跳过"查询改写 + LLM 重排"两次额外的 LLM 往返。
-        # 知识检索和业务数据查询互不依赖，并发跑。串起来的话查库那 17.7s（契约 §2）
-        # 会整段叠在检索之后，用户等待时间白白多出一截。
-        (knowledge_text, knowledge_used), (order_text, order_is_evidence) = await asyncio.gather(
-            _build_knowledge_context(
-                req.message,
-                intent=intent_result.intent,
-                fast_path=intent_result.fast_path,
-                trace=knowledge_trace,
-            ),
-            _build_order_data_context(
-                req.message,
-                intent=intent_result.intent,
-                entities=intent_result.entities,
-                user_id=user_id,
-                conv_id=conv_id,
-                progress_cb=progress_cb,
-                trace=data_trace,
-            ),
-        )
-    context_parts = [mem_ctx.to_prompt_text()]
-    if knowledge_text:
-        context_parts.append(knowledge_text)
-    if order_text:
-        context_parts.append(order_text)
-    full_context = "\n\n".join(part for part in context_parts if part)
-
-    orch_req = OrcReq(
-        message=req.message,
+    return await prepare_turn(
+        req.message,
         user_id=user_id,
         conv_id=conv_id,
         # 与响应头 X-Request-ID 同源，编排器日志和 API 日志能互相对上
         request_id=current_request_id(),
-        context=full_context,
-        history=history,
-        entities=intent_result.entities,
-        intent=intent_result.intent,
-        intent_group=intent_result.intent_group,
-        urgency=intent_result.urgency,
-        intent_confidence=intent_result.confidence,
-        # 意图那一路模型没答上来时，这个意图是降级凑出来的——编排器据此不去追问
-        intent_degraded=bool(getattr(intent_result, "llm_failed", False)),
-        # 只有检索到的知识和**真的查回来的**业务数据才算"出处"，记忆和历史不能
-        # 作为价格/时效的依据。业务数据必须在这里——否则真实交期会被答案策略
-        # 当成无依据承诺替换掉。反过来，委派失败时那段降级提示进的是上下文而
-        # 不是这里：它是指令不是证据，`order_is_evidence` 就是这个开关。
-        # 见 _build_order_data_context 的说明。
-        grounding_sources=[
-            t for t in (knowledge_text, order_text if order_is_evidence else "") if t
-        ],
+        deps=TurnDeps(
+            load_memory=_memory.get_context,
+            recognize_intent=_orchestrator.recognize_intent,
+            outage_reason=_model_unavailable_reason,
+            prefetch=_prefetch(),
+        ),
+        progress_cb=progress_cb,
     )
-    evidence_trace = {"knowledge": knowledge_trace, "business_data": data_trace}
-    return orch_req, intent_result, knowledge_used, evidence_trace
 
 
 def _evidence_fields(evidence_trace: dict[str, Any]) -> dict[str, Any]:
@@ -1366,127 +1248,9 @@ async def _build_knowledge_context(
     fast_path: bool = False,
     trace: dict[str, Any] | None = None,
 ) -> tuple[str, bool]:
-    """
-    为 /chat 主链路构建 RAG 知识上下文。
-
-    完整链路会复用 ToolManager 的查询改写、并行召回、重排 + 证据判定、
-    自纠错、fallback；fast_path=True 时走单次直检，用两次 LLM 往返换检索
-    广度——意图已经由规则通道确定的高频问题不需要多角度改写。
-
-    注意这里少掉的只是**改写和重排**这两次 LLM 往返。混合检索（稠密向量 +
-    关键词双路 RRF 融合）发生在存储层，不花任何 LLM 调用，所以快通道同样
-    享受到它带来的召回提升，零网络往返的承诺不受影响。
-
-    `trace` 传进来的话，这一轮检索的经过会记在里面：走的哪条路、放进上下文的
-    是哪几段（`sources`，每段带文档和分片 id）。**只记真的进了上下文的片段**
-    ——召回了但被重排挤掉的不算，降级占位的那一条（知识库不可用时的兜底）
-    也不算：它不是知识，不能被显示成"回答的依据"。
-    """
-    info = trace if trace is not None else {}
-    info.update(attempted=False, mode="", sources=[], reranked=False,
-                corrected=False, evidence_ok=None, degraded=False)
-    if _tool_manager is None:
-        return "", False
-    if not should_use_knowledge(message, intent=intent):
-        return "", False
-    info.update(attempted=True, mode="direct" if fast_path else "rewrite_rerank")
-    try:
-        if fast_path:
-            result = await _tool_manager.call(
-                "knowledge_search", {"query": message, "top_k": top_k}
-            )
-        else:
-            result = await _tool_manager.search_with_rewrite(
-                "knowledge_search", message, top_k=top_k
-            )
-        if not result.success or not isinstance(result.data, list) or not result.data:
-            return "", False
-        info.update(reranked=result.reranked, corrected=result.corrected,
-                    evidence_ok=result.evidence_ok)
-
-        parts = ["[知识库检索结果]"]
-        sources: list[dict[str, Any]] = []
-        used = False
-        for i, item in enumerate(result.data[:top_k], start=1):
-            if not isinstance(item, dict):
-                continue
-            title = str(item.get("title", "未命名文档"))
-            content = str(item.get("content", "")).strip()
-            score = item.get("score", "")
-            if not content:
-                continue
-            used = True
-            # 只走了关键词一路的结果没有向量分（score 是 None），不给模型看一行"相关度: None"
-            relevance = f"   相关度: {score}\n" if isinstance(score, (int, float)) else ""
-            parts.append(f"{i}. 标题: {title}\n{relevance}   内容: {content[:PASSAGE_CHARS]}")
-            if item.get("fallback"):
-                info["degraded"] = True
-                continue
-            sources.append({
-                "doc_id": str(item.get("doc_id") or ""),
-                "chunk_id": str(item.get("chunk_id") or ""),
-                "title": title,
-                "passage": item.get("chunk", 0),
-                "score": score if isinstance(score, (int, float)) else None,
-                "retrieval": str(item.get("retrieval") or ""),
-                # 给人看的摘录去掉开头的标题行和 Markdown 记号；喂给模型的那份（上面的
-                # parts）不动。截断处带省略号——硬切在词中间（"…Curbsi"）读起来像
-                # 段落本身坏了，而被切掉的往往正是回答依据的那一句
-                "excerpt": document_excerpt(content, 240),
-            })
-
-        if not used:
-            return "", False
-        info["sources"] = await _label_sources(sources)
-        parts.append("请优先依据以上知识库内容回答；如果知识库内容不足，再结合通用客服能力说明。")
-        return "\n".join(parts), True
-    except Exception as ex:
-        logger.warning(f"构建知识库上下文失败: {ex}")
-        return "", False
-
-
-def _currency_note(data: dict) -> str:
-    """
-    金额币种的说明句。**币种的来源必须在句子里可见。**
-
-    契约 §4.6.5 把这一条单独立了一节，理由是它已经出过一次业务事故：下游只
-    返回数字不返回币种，中文回答就默认写成「元」，接美国厂的库时报给 builder
-    的金额带了错误的币种。当时的补救是在调用方配一个全局常量
-    `SQL_AGENT_CURRENCY` 顶上——**那是个跨仓库配置在替契约打补丁**：
-    它是**部署**的属性不是**数据**的属性，一个部署里只要有多币种的库，
-    它必然给出错误答案，而且报出去的金额看起来完全正常。
-
-    契约 v1.8 把这一条改成**按来源三分**，来源判定在
-    `core.evidence.resolve_currency()`（`currency_source`，与 `status_source`
-    同构）；这里只负责把那个来源**说进句子里**：
-
-    1. `contract` —— 数据自己声明了 `currency` → 按数据说，可以当事实；
-    2. `deployment_config` —— 部署配了全局币种 → 可以用，但**明写它来自部署
-       配置**、不是本次查询返回的字段；
-    3. `unknown` —— 两者都没有 → 只写数字，并**主动禁止**语言的默认值。
-
-    第三档是一条**指令**不是一条禁令。契约 v1.6/v1.7 那条"不得补币种"是禁令，
-    而自然语言有自己的默认值：中文回答不说币种就会写成「元」。
-    "不说"会被默认值填上，所以规则必须写成"说什么"。
-    """
-    configured = _sql_agent.currency if _sql_agent is not None else ""
-    currency, source = evidence.resolve_currency(data, configured)
-    if source == evidence.CURRENCY_CONTRACT:
-        return (
-            f"以上金额的币种是 {currency}（本次查询随数据一同返回）。"
-            f"提到金额时按 {currency} 表述，不要换算，也不要写成其它币种。"
-        )
-    if source == evidence.CURRENCY_DEPLOYMENT_CONFIG:
-        return (
-            f"以上金额按 {currency} 表述，不要换算，也不要写成其它币种。"
-            f"但请注意：{currency} 来自本部署的配置（SQL_AGENT_CURRENCY），"
-            "**不是**本次查询返回的字段——业务系统目前不返回币种。"
-            "因此不得把币种说成系统核实过的结果；客户对币种有疑问时请转人工确认。"
-        )
-    return (
-        "业务系统不返回币种，本部署也没有声明。提到金额时**只写数字，不要补"
-        "任何币种符号或单位**（不要默认写成「元」），并说明币种需要人工确认。"
-    )
+    """规则预取的知识库那一路，用当前进程的工具。见 `tools/turn_tools.Prefetch.knowledge_context`。"""
+    return await _prefetch().knowledge_context(
+        message, intent=intent, top_k=top_k, fast_path=fast_path, trace=trace)
 
 
 async def _build_order_data_context(
@@ -1498,192 +1262,10 @@ async def _build_order_data_context(
     progress_cb=None,
     trace: dict[str, Any] | None = None,
 ) -> tuple[str, bool]:
-    """
-    为 /chat 主链路构建业务数据上下文：把问题委派给 ai-sql-agent 查真实数据。
-
-    返回 `(上下文文本, 是否可作为依据)`。**第二个值不是"用没用到"，是"能不能
-    当出处"**——调用方据此决定要不要放进 `grounding_sources`。两种非空返回：
-
-    - **真数据** → `(数据块, True)`，进上下文也进 grounding sources；
-    - **降级提示** → `(提示块, False)`，只进上下文**不进** grounding sources。
-      它是写给 Agent 的指令而不是证据，混进 sources 会让答案策略拿它去给
-      价格/日期"找出处"，等于用一句"查询失败了"来批准一个凭空的数字。
-
-    任何一环不成立都返回空——这是增强项，拿不到数据时链路照常走知识库 + SOP，
-    不能因此中断。
-
-    **"拿到了响应但不该当依据"的情况，都要挡在这里。** 判定不在这个函数里
-    自己写，统一走 `core.evidence.assess()`——三个承载者共用同一套口径
-    （契约 §4.4.1），否则回滚（§6.2）会变成静默的信任口径切换。分四类：
-
-    1. `unavailable` —— 下游挂了或熔断，fallback 给的占位结果。返回降级提示；
-    2. `not_applicable` —— ai-sql-agent 自己判断这问题不需要查库，走了对话
-       路径。那个 answer 是模型说的话，**不是数据**，把它当依据注入等于给
-       一段没有出处的文本盖了"实时数据"的章。**连上下文都不进**；
-    3. `failed` —— 说查了库，但一步都没成。**这一类以前看不见**：
-       `queried_database` 的服务端定义只有一行 `pipeline_result is not None`，
-       SQL 全跑挂了它也是 `true`，终态照发 `completed`。于是模型编的话会被
-       当成"业务系统查到的真实数据"讲给客户。现在按 §4.6.1 的判据从
-       `steps[]` 判出来，返回一段明写"没查成"的提示，**不作为出处**；
-    4. `has_risk` / `degraded` / 缺字段 / 字符串布尔 —— 数据**进上下文**
-       （丢掉比现状更糟，§4.6.1），但**不进 grounding_sources**，
-       并带上明确的不确定表述约束。以前这两个标志只追加一句提示、
-       函数照样返回 True，等于带风险的数据和已核实的金额共享同一个可信标志。
-
-    另外，空 answer 直接返回空：查了但没有可讲的内容。
-
-    **关于把它放进 grounding_sources（安全相关，别随手改）。** AnswerPolicy 会
-    拦截"无依据的价格/时效承诺"，判据是承诺里的数字能不能在本轮 grounding
-    sources 里找到出处。订单交期、账款金额恰好就是这两类数字——如果查回来的
-    真实数据不进 sources，客服说"您的柜体 9 月 15 日出厂"会被当成无依据承诺
-    替换成安全话术，整条委派看起来就像没生效。所以这段文本必须进 sources；
-    反过来，上面第 2 条那种"不是数据的文本"绝不能进。
-
-    `trace` 传进来的话，这次委派的结局会记在 `outcome` 里，供响应如实报告：
-    `not_configured`（这个实例没接业务数据）、`skipped`（这个问题不需要查）、
-    `model_unavailable`（本方模型服务不可用，这一轮根本没来委派——由 `_prepare_request`
-    直接记下，不经过这个函数）、
-    `evidence`（查到了，可作依据）、`unverified`（查到了，没过可信校验）、
-    `failed` / `unavailable` / `error`（没查成）、`not_applicable`（下游判断
-    不需要查库）、`empty`（查了，没有内容）。和上面的返回值是同一次判定的
-    两种说法——一个给 Agent 读，一个给工作台读，不许各判各的。
-    """
-    from app.tools.sql_agent_client import should_query_business_data
-
-    info = trace if trace is not None else {}
-    info.update(enabled=False, attempted=False, outcome="not_configured")
-    if _tool_manager is None or _sql_agent is None or not _sql_agent.enabled:
-        return "", False
-    info.update(enabled=True, outcome="skipped")
-    if not should_query_business_data(message, intent=intent, entities=entities):
-        return "", False
-    info.update(attempted=True, outcome="error")
-
-    try:
-        result = await _tool_manager.call(
-            "order_data_query",
-            {"query": message, "user_id": user_id, "session_id": conv_id},
-            # 走 A2A 流式时，下游的阶段进度经这个回调进 /chat/stream 的 progress 事件
-            context={"progress_cb": progress_cb} if progress_cb else None,
-        )
-        data = result.data if isinstance(result.data, dict) else {}
-
-        # 委派失败（超时、熔断、下游异常）。**不静默**——实测里最危险的一种
-        # 形态就是这个：下游其实查完了（HTTP 200），只是调用方先放弃，客户
-        # 拿到一段听起来完全合理、实则没有任何系统依据的回答，客户和坐席
-        # 都分辨不出来。这里把失败明写进上下文，要求 Agent 说出来。
-        if data.get("unavailable") or (not result.success and not data):
-            reason = str(data.get("error") or result.error or "未知原因")
-            info.update(outcome="unavailable", reason=reason)
-            return "\n".join([
-                "[业务系统查询未完成]",
-                f"本轮尝试查询订单/生产/库存/账款系统，但没有拿到结果（{reason}）。",
-                "回答时必须做到两点：",
-                "1. 不要给出任何具体的订单状态、日期、金额、库存数字——这些本轮没有系统依据；",
-                "2. 明确告诉客户这次没能查到系统记录，建议由人工跟进核实，不要让客户以为"
-                "你说的内容已经过系统核对。",
-            ]), False
-
-        # 信任判定（契约 §4.6）。**唯一的一处**——三个承载者
-        # （stream / send / 直连 /query）走的是同一个 assess()，
-        # 因为回滚会让流量在它们之间切换（契约 §6.2 与 §4.4.1），
-        # 判定要是分了叉，回滚就成了静默的信任口径切换。
-        verdict = assess(data)
-
-        # 下游自己判断这问题不需要查库（走了对话路径）。不是故障，不提示。
-        # 那段 answer 是模型说的话不是数据，连上下文都不该进。
-        if verdict.execution_status == evidence.NOT_APPLICABLE:
-            info.update(outcome="not_applicable")
-            return "", False
-
-        trace_id = str(data.get("trace_id", "") or "")
-        info.update(
-            trace_id=trace_id,
-            databases=[str(d) for d in data.get("selected_databases") or []],
-            execution_status=verdict.execution_status,
-        )
-
-        # 查库路径但一步都没成。这里**必须**和"查到了但没有记录"分开：
-        # `queried_database` 两种情况下都是 true（服务端定义只有一行
-        # `pipeline_result is not None`），只看它会把"查挂了"讲成真实数据。
-        if verdict.execution_status == evidence.FAILED:
-            logger.warning(
-                "业务数据查询未成功，不作为出处 trace_id=%s status=%s(%s) 原因=%s",
-                trace_id, verdict.execution_status, verdict.status_source,
-                "；".join(verdict.reasons) or "-",
-            )
-            info.update(outcome="failed", reasons=list(verdict.reasons))
-            return "\n".join([
-                "[业务系统查询未成功]",
-                f"本轮查询业务系统的每一个步骤都没有成功执行（trace_id: {trace_id or '未知'}）。",
-                "回答时必须做到两点：",
-                "1. 不要给出任何具体的订单状态、日期、金额、库存数字——这些本轮没有系统依据；",
-                "2. 明确告诉客户这次没能查到系统记录，建议由人工跟进核实，不要让客户以为"
-                "你说的内容已经过系统核对。",
-            ]), False
-
-        answer = str(data.get("answer", "")).strip()
-        if not answer:
-            info.update(outcome="empty")
-            return "", False
-
-        # ai-sql-agent 的 answer 里嵌的是查询结果的 JSON 原文，行数多的时候
-        # 能到几万字符（它那边 max_rows 默认 10000）。整段塞进 prompt 会把
-        # 上下文顶爆，也会把知识库那部分挤掉，所以这里截断。
-        # 截断阈值调大之前先想清楚：真正该做的是让下游少返点行，不是这边多收点。
-        limit = int(os.getenv("SQL_AGENT_MAX_CONTEXT_CHARS", "2000"))
-        if len(answer) > limit:
-            answer = answer[:limit] + f"\n…（结果过长已截断，完整结果见 trace_id {trace_id}）"
-
-        databases = ", ".join(str(d) for d in data.get("selected_databases") or []) or "未标明"
-        # 标题就把可信度写在第一行：可作出处的那段叫「实时数据」，不可作出处的
-        # 那段绝不能也叫这个名字——Agent 读到的第一行决定它怎么措辞。
-        header = "[业务系统实时数据]" if verdict.usable_as_source else "[业务系统数据（未通过可信校验，仅供参考）]"
-        parts = [
-            header,
-            f"来源: ai-sql-agent（命中库: {databases}；trace_id: {trace_id}；"
-            f"执行状态: {verdict.execution_status}）",
-            answer,
-        ]
-        if verdict.has_risk:
-            parts.append(
-                "注意: 这条查询结果带有异常提示（空结果 / 基数异常 / 语义不一致），"
-                "SQL 跑通了但答的可能不是问的那件事。**不得**把其中的金额、日期、"
-                "订单状态说成已核实的结论，只能说明系统里查到了这些内容、需要人工核对。"
-            )
-        if verdict.degraded:
-            parts.append(
-                f"注意: 数据服务处于降级状态（{data.get('degrade_reason', '') or '原因未说明'}），"
-                "结果可能来自历史查询重放，可能已经过期。**不得**表述为当前状态，"
-                "必须请客户以正式单据为准。"
-            )
-        parts.extend(f"注意: {c}" for c in verdict.caveats)
-        parts.append(_currency_note(data))
-        parts.append(
-            "以上是业务系统查到的真实数据，回答订单/交期/库存/账款问题时优先依据它。"
-            if verdict.usable_as_source else
-            "以上内容**没有通过可信校验**，不能当作已核实的系统依据。"
-            "涉及具体日期、金额、库存数字时必须明说这一点，并建议人工核实。"
-        )
-        if not verdict.usable_as_source:
-            logger.warning(
-                "业务数据未通过可信校验，不进 grounding_sources trace_id=%s status=%s(%s) 原因=%s",
-                trace_id, verdict.execution_status, verdict.status_source,
-                "；".join(verdict.reasons) or "-",
-            )
-        info.update(
-            outcome="evidence" if verdict.usable_as_source else "unverified",
-            has_risk=verdict.has_risk,
-            degraded=verdict.degraded,
-            reasons=list(verdict.reasons),
-        )
-        return "\n".join(p for p in parts if p), verdict.usable_as_source
-    except Exception as ex:
-        logger.warning(f"构建业务数据上下文失败: {ex}")
-        info.update(outcome="error", reason=str(ex) or type(ex).__name__)
-        return "", False
-
-
+    """规则预取的业务数据那一路，用当前进程的工具。见 `tools/turn_tools.Prefetch.order_data_context`。"""
+    return await _prefetch().order_data_context(
+        message, intent=intent, entities=entities, user_id=user_id, conv_id=conv_id,
+        progress_cb=progress_cb, trace=trace)
 
 
 @app.get("/monitor")

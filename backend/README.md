@@ -129,7 +129,7 @@ pip install -r requirements.txt && pytest
 | 三路融合（规则 / Embedding / LLM） | `IntentRecognizer._vote`，权重 `_VOTE_WEIGHTS` | 响应里的 `intent_source_scores` 三项都非空 |
 | 换供应商后 Embedding 一路不失效 | `_embed_texts` 远端优先、本地 n-gram 兜底，消息和模板始终在同一个向量空间里比 | `test_embedding_signal_stays_enabled_with_third_party_base_url`、`test_intent_never_compares_vectors_from_two_spaces` |
 | 零延迟规则通道 | `IntentRecognizer._fast_path`，锚点表 `_FAST_PATH_RULES` | `test_fast_path_makes_zero_network_calls`；响应里 `intent_strategy=fast_path` |
-| 快通道联动省掉查询改写和重排 | `app/api/main.py::_build_knowledge_context(fast_path=True)` | 对比两条通道的 `latency_ms` |
+| 快通道联动省掉查询改写和重排 | `app/tools/turn_tools.py::Prefetch.knowledge_context(fast_path=True)` | 对比两条通道的 `latency_ms` |
 | 三个专家 Agent + 领域分路由 | `AgentOrchestrator._domain_scores` / `_route_decision` | `test_domain_score_picks_primary_agent` |
 | 跨域工单提名主 + 辅 Agent | `RoutingDecision.supporting_agents`、`run_parallel` | `test_cross_domain_promotes_supporting_agent` |
 | 低置信度澄清 | `AgentOrchestrator._needs_clarification` | `test_low_confidence_other_intent_asks_for_clarification` |

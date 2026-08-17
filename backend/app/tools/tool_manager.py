@@ -57,8 +57,8 @@ logger = logging.getLogger(__name__)
 # 通常只是同领域的泛泛内容而不是能回答该问题的具体条款。
 EVIDENCE_MIN_SCORE = float(os.getenv("RAG_EVIDENCE_MIN_SCORE", "0.5"))
 
-# 一条知识片段给模型看多少字，LLM 重排和最后交给 Agent 的上下文（api/main.py 的
-# _build_knowledge_context）用同一个数。重排那次调用顺带判"这些内容够不够回答"，
+# 一条知识片段给模型看多少字，LLM 重排和最后交给 Agent 的上下文（tools/turn_tools.py 的
+# knowledge_lookup）用同一个数。重排那次调用顺带判"这些内容够不够回答"，
 # 它读到的就得是之后真正拿去回答的那一段——读得比 Agent 少，条款的后半句
 # （"但已开料的不退"）它看不见，会把够用的证据判成不足、白补一轮检索；
 # 读得比 Agent 多，又会拿 Agent 看不到的内容判"充分"。

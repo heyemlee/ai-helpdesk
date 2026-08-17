@@ -128,7 +128,7 @@ General 重试——已经吐出去的半截回答收不回来，重跑会让用
 
 | 看什么 | 符号 |
 |---|---|
-| 共用准备阶段 | `_prepare_request` |
+| 共用准备阶段 | `_prepare_request`（实现在 `app/agents/turn_prep.py::prepare_turn`，两路预取在 `app/tools/turn_tools.py`） |
 | 流式端点 | `chat_stream`、`_sse` |
 | 鉴权 | `require_api_key`、`protect_chat` |
 | 知识门控 | `_should_use_knowledge` |

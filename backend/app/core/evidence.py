@@ -386,7 +386,7 @@ def resolve_currency(data: Mapping | None, configured: str = "") -> tuple[str, s
     | 数据没声明、部署配了 | `deployment_config` | 不能，但可以用，必须写明来源 |
     | 两者都没有 | `unknown` | 只写数字，且**主动禁止**语言默认值 |
 
-    第三档不是沉默。沉默正是事故的形态。措辞见 `api/main.py::_currency_note`。
+    第三档不是沉默。沉默正是事故的形态。措辞见 `tools/turn_tools.py::currency_note`。
     """
     declared = declared_currency(data)
     if declared:
