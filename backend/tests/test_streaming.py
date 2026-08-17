@@ -35,6 +35,22 @@ class TestPolicyStreamGuard:
         assert "不能在未确认前承诺" in out
         assert [v.rule for v in guard.violations] == ["lead_time_commitment"]
 
+    def test_sources_added_mid_answer_count_for_later_sentences_only(self):
+        """工具循环里中途查回来的数据：之后的句子按它判，已经发出去的不重判。"""
+        guard = PolicyStreamGuard(AnswerPolicy(), [KB])
+        before = guard.feed("补件会在3个工作日内送到。")
+        guard.add_sources(["系统记录：补件 3 个工作日内送到。"])
+        after = guard.feed("补件会在3个工作日内送到。")
+        assert "3个工作日" not in before and "3个工作日" in after
+        assert len(guard.violations) == 1
+
+    def test_discard_pending_drops_only_the_unfinished_half(self):
+        guard = PolicyStreamGuard(AnswerPolicy(), [KB])
+        assert guard.feed("我帮您查一下。先看") == "我帮您查一下。"
+        assert guard.discard_pending() == "先看"
+        assert guard.feed("已出库。") == "已出库。"
+        assert guard.flush() == ""
+
     def test_allows_sourced_statement(self):
         guard = PolicyStreamGuard(AnswerPolicy(), [KB])
         out = guard.feed("补件确认后 7 个工作日内从工厂发出。")

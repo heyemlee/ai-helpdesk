@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any, NamedTuple
 
 if TYPE_CHECKING:
     from app.agents.agent_orchestrator import Request
+    from app.agents.tool_loop import LoopSetup, TurnContext
     from app.tools.turn_tools import Prefetch
 
 logger = logging.getLogger(__name__)
@@ -63,6 +64,9 @@ class TurnDeps:
     outage_reason: Callable[[], str]
     # 规则预取那两路查询，绑定在这一份工具上
     prefetch: Prefetch
+    # 工具循环：打开时是这一轮能用的工具和边界，编排请求上会挂一份 TurnContext；
+    # 关着（默认）为 None，专家照旧只做一次生成
+    loop: LoopSetup | None = None
 
 
 class PreparedTurn(NamedTuple):
@@ -184,5 +188,39 @@ async def prepare_turn(
             t for t in (knowledge_text, order_text if order_is_evidence else "") if t
         ],
     )
+    if deps.loop is not None:
+        orch_req.turn = _turn_context(
+            message, user_id, conv_id, intent_result, progress_cb, deps.loop,
+            knowledge=(knowledge_text, knowledge_used, knowledge_trace),
+            order=(order_text, order_is_evidence, data_trace),
+        )
     evidence_trace = {"knowledge": knowledge_trace, "business_data": data_trace}
     return PreparedTurn(orch_req, intent_result, knowledge_used, evidence_trace)
+
+
+def _turn_context(
+    message: str,
+    user_id: str,
+    conv_id: str,
+    intent_result: Any,
+    progress_cb: Callable[[dict[str, Any]], Any] | None,
+    loop: LoopSetup,
+    *,
+    knowledge: tuple[str, bool, dict[str, Any]],
+    order: tuple[str, bool, dict[str, Any]],
+) -> TurnContext:
+    """工具循环这一轮共用的上下文：可信身份、可用工具，轨迹和去重表从规则预取开始。"""
+    from app.agents.tool_loop import TurnContext
+    from app.tools.turn_tools import seed_from_prefetch
+
+    intent = getattr(intent_result, "intent", None)
+    turn = TurnContext(
+        user_id=user_id,
+        conv_id=conv_id,
+        tools=dict(loop.tools),
+        config=loop.config,
+        intent=getattr(intent, "value", intent),
+        progress_cb=progress_cb,
+    )
+    seed_from_prefetch(turn, message, knowledge=knowledge, order=order)
+    return turn

@@ -515,6 +515,33 @@ async def test_preparation_does_not_announce_a_lookup_that_will_not_happen(main,
     assert trace["knowledge"]["attempted"] is False and trace["business_data"]["attempted"] is False
 
 
+@pytest.mark.parametrize("switch, tools", [
+    (None, None),                                            # 默认关闭：编排请求上不挂 TurnContext
+    ("on", ["knowledge_search", "order_data_query"]),
+])
+async def test_the_tool_loop_is_wired_only_when_switched_on(monkeypatch, switch, tools):
+    from app.tools.sql_agent_client import SQLAgentClient
+
+    if switch is None:
+        monkeypatch.delenv("AI_HELPDESK_TOOL_LOOP", raising=False)
+    else:
+        monkeypatch.setenv("AI_HELPDESK_TOOL_LOOP", switch)
+    main = _load_main(monkeypatch)
+    monkeypatch.setattr(main, "_memory", _Memory())
+    monkeypatch.setattr(main, "_orchestrator", _Orchestrator("order_status"))
+    monkeypatch.setattr(main, "_tool_manager", _DataTools(dict(OK_DATA)))
+    monkeypatch.setattr(main, "_sql_agent", SQLAgentClient(base_url="http://x:8000"))
+
+    req = main.ChatRequest(message="订单 SO-2024-001 到哪个工序了", user_id="u1")
+    orch_req = (await main._prepare_request(req, "conv-1", "u1"))[0]
+    if tools is None:
+        assert orch_req.turn is None
+    else:
+        assert sorted(orch_req.turn.tools) == tools
+        assert (orch_req.turn.user_id, orch_req.turn.conv_id) == ("u1", "conv-1")
+        assert [r["tool"] for r in orch_req.turn.trajectory] == ["knowledge_search", "order_data_query"]
+
+
 async def test_progress_is_optional_and_never_breaks_the_turn(main, monkeypatch):
     # 非流式没有进度队列
     monkeypatch.setattr(main, "_memory", _Memory())

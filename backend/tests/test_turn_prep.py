@@ -5,12 +5,13 @@
 test_sql_agent_delegation 已经覆盖。这里直接装配依赖，确认评测之类的调用方
 不起 FastAPI、不碰 main 的模块级变量，也能复刻同一个准备阶段。
 """
+from app.agents.tool_loop import LoopConfig, LoopSetup
 from app.agents.turn_prep import PreparedTurn, TurnDeps, prepare_turn
 from app.core.intent_recognizer import IntentCategory, UrgencyLevel
 from app.memory.conversation_memory import MemoryContext, Message, MsgRole
 from app.tools.sql_agent_client import SQLAgentClient
 from app.tools.tool_manager import ToolResult
-from app.tools.turn_tools import Prefetch, delegate_order_query
+from app.tools.turn_tools import Prefetch, delegate_order_query, loop_tools, order_outcome
 
 KNOWLEDGE = [{"title": "补件流程", "content": "缺件补发在核实后安排。", "score": 0.6,
               "doc_id": "doc_1", "chunk_id": "c1", "chunk": 0, "retrieval": "hybrid"}]
@@ -55,7 +56,7 @@ def _memory(turns: int) -> MemoryContext:
     )
 
 
-def _deps(tools, *, outage: str = "", seen: list | None = None, turns: int = 0) -> TurnDeps:
+def _deps(tools, *, outage: str = "", seen: list | None = None, turns: int = 0, loop: bool = False) -> TurnDeps:
     async def load_memory(user_id, conv_id, query=""):
         return _memory(turns)
 
@@ -64,11 +65,13 @@ def _deps(tools, *, outage: str = "", seen: list | None = None, turns: int = 0) 
             seen.append(history)
         return _Intent()
 
+    prefetch = Prefetch(tool_manager=tools, sql_agent=SQLAgentClient(base_url="http://x:8000"))
     return TurnDeps(
         load_memory=load_memory,
         recognize_intent=recognize_intent,
         outage_reason=lambda: outage,
-        prefetch=Prefetch(tool_manager=tools, sql_agent=SQLAgentClient(base_url="http://x:8000")),
+        prefetch=prefetch,
+        loop=LoopSetup(tools=loop_tools(prefetch), config=LoopConfig()) if loop else None,
     )
 
 
@@ -136,3 +139,44 @@ async def test_delegation_itself_has_no_gate():
     assert [name for name, _ in tools.calls] == ["order_data_query"]
     assert is_evidence is True and "9 月 15 日" in text
     assert trace["attempted"] is True and trace["outcome"] == "evidence"
+
+
+async def test_the_tool_loop_is_off_unless_the_caller_switches_it_on():
+    turn = await prepare_turn("SO-2024-006 补件到哪了", user_id="u1", conv_id="c1", request_id="r",
+                              deps=_deps(_Tools()))
+    assert turn.request.turn is None
+
+
+async def test_the_loop_context_starts_from_what_the_rules_fetched():
+    message = "SO-2024-006 少发的门板补到哪了"
+    turn = await prepare_turn(message, user_id="u1", conv_id="c1", request_id="r",
+                              deps=_deps(_Tools(), loop=True))
+    context = turn.request.turn
+
+    assert (context.user_id, context.conv_id, context.intent) == ("u1", "c1", "missing_part")
+    assert sorted(context.tools) == ["knowledge_search", "order_data_query"]
+    assert [(r["actor"], r["tool"], r["outcome"]) for r in context.trajectory] == [
+        ("rule", "knowledge_search", "found"), ("rule", "order_data_query", "evidence")]
+    # 去重表也从预取开始：模型拿这句原话再查，不会再花一次
+    tools = context.tools
+    assert tools["knowledge_search"].memo_key(tools["knowledge_search"].params(query=message)) in context.memo
+    assert tools["order_data_query"].memo_key(tools["order_data_query"].params(query=message)) in context.memo
+
+
+async def test_nothing_is_seeded_while_the_model_is_unavailable():
+    turn = await prepare_turn("SO-2024-006 补件到哪了", user_id="u1", conv_id="c1", request_id="r",
+                              deps=_deps(_Tools(), outage="credential_rejected", loop=True))
+    assert turn.request.turn.trajectory == [] and turn.request.turn.memo == {}
+
+
+def test_what_the_model_is_told_when_a_delegation_brings_nothing_back():
+    applicable = order_outcome("", False, {"outcome": "not_applicable"})
+    assert (applicable.is_error, applicable.evidence) == (False, "")
+    assert "不需要查库" in applicable.content
+
+    failed = order_outcome("", False, {"outcome": "error", "reason": "ReadTimeout"})
+    assert failed.is_error is True and "ReadTimeout" in failed.content
+    assert "不要给出任何具体" in failed.content
+
+    unverified = order_outcome("[业务系统数据（未通过可信校验，仅供参考）]…", False, {"outcome": "unverified"})
+    assert unverified.is_error is False and unverified.evidence == ""

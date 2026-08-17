@@ -524,6 +524,7 @@ app.add_middleware(
 )
 
 
+from app.agents.tool_loop import LoopConfig, LoopSetup  # noqa: E402
 from app.agents.turn_prep import TurnDeps, prepare_turn  # noqa: E402
 from app.core.metrics import (  # noqa: E402
     RATE_LIMIT_HITS,
@@ -534,7 +535,7 @@ from app.core.metrics import (  # noqa: E402
 )
 from app.core.telemetry import setup_telemetry  # noqa: E402
 from app.tools.knowledge_base import UnknownCategory  # noqa: E402
-from app.tools.turn_tools import Prefetch  # noqa: E402
+from app.tools.turn_tools import Prefetch, loop_tools  # noqa: E402
 
 # OTel：配置 OTEL_EXPORTER_OTLP_ENDPOINT 后启用 FastAPI/httpx/redis/asyncpg
 # 自动埋点 + 业务 span；未配置时零开销。
@@ -967,13 +968,26 @@ def _prefetch() -> Prefetch:
     return Prefetch(tool_manager=_tool_manager, sql_agent=_sql_agent, label_sources=_label_sources)
 
 
+# 工具循环（agents/tool_loop.py）：AI_HELPDESK_TOOL_LOOP 没打开时为 None，默认关闭。
+# 进程启动时读一次，改了要重启。
+_LOOP_CONFIG = LoopConfig.from_env()
+
+
+def _loop_setup(prefetch: Prefetch) -> LoopSetup | None:
+    """工具循环打开时，这一轮能用的工具（绑定当前进程的工具）和边界；关着返回 None。"""
+    if _LOOP_CONFIG is None:
+        return None
+    return LoopSetup(tools=loop_tools(prefetch), config=_LOOP_CONFIG)
+
+
 async def _prepare_request(req: "ChatRequest", conv_id: str, user_id: str, progress_cb=None):
     """
     /chat 和 /chat/stream 共用的准备阶段，实现见 `agents/turn_prep.prepare_turn`。
 
     返回 (编排请求, 意图结果, 是否用到知识库, 依据记录)。这里只按当前进程的单例
-    装配依赖：记忆、意图识别、模型服务的保护状态、两路预取。
+    装配依赖：记忆、意图识别、模型服务的保护状态、两路预取，以及工具循环（打开时）。
     """
+    prefetch = _prefetch()
     return await prepare_turn(
         req.message,
         user_id=user_id,
@@ -984,7 +998,8 @@ async def _prepare_request(req: "ChatRequest", conv_id: str, user_id: str, progr
             load_memory=_memory.get_context,
             recognize_intent=_orchestrator.recognize_intent,
             outage_reason=_model_unavailable_reason,
-            prefetch=_prefetch(),
+            prefetch=prefetch,
+            loop=_loop_setup(prefetch),
         ),
         progress_cb=progress_cb,
     )

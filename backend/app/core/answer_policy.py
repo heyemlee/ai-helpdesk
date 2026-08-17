@@ -474,6 +474,23 @@ class PolicyStreamGuard:
         tail, self._buffer = self._buffer, ""
         return self._check(tail)
 
+    def add_sources(self, texts: Iterable[str]) -> None:
+        """
+        回答中途拿到了新的出处（工具循环里查回来的数据）。之后的句子按新出处判；
+        已经发出去的句子不重判——它们说出口的时候，这份出处还不存在。
+        """
+        self._sources.extend(t for t in texts if t)
+
+    def discard_pending(self) -> str:
+        """
+        丢掉缓冲区里还没凑成整句的部分，返回丢掉的内容（给调用方记日志）。
+
+        工具循环里模型先写了半句再去调工具时用：那半句不会再接着写完，留在缓冲区里
+        会和下一步的回答黏成一句。
+        """
+        pending, self._buffer = self._buffer, ""
+        return pending
+
     def _check(self, sentence: str) -> str:
         result = self._policy.enforce(sentence, self._sources)
         self.violations.extend(result.violations)

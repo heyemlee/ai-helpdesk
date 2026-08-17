@@ -18,6 +18,8 @@
     Agent 读的文本。
 
 后一半不含门控：不管这一轮是谁决定要查，查法、信任判定和给 Agent 的措辞都只有这一处。
+规则预取用它；工具循环里模型自己发起的调用（文件末尾的 KnowledgeSearchTool /
+OrderDataQueryTool）也用它。
 """
 from __future__ import annotations
 
@@ -27,8 +29,12 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
+from pydantic import BaseModel, Field
+
+from app.agents.tool_loop import LoopTool, ToolOutcome, TurnContext
 from app.core import evidence
 from app.core.evidence import assess
+from app.core.preflight import outer_tool_timeout_s
 from app.tools.knowledge_base import document_excerpt, should_use_knowledge
 from app.tools.tool_manager import PASSAGE_CHARS
 
@@ -441,3 +447,158 @@ async def delegate_order_query(
         logger.warning(f"构建业务数据上下文失败: {ex}")
         info.update(outcome="error", reason=str(ex) or type(ex).__name__)
         return "", False
+
+
+# ── 工具循环里模型能调的两个工具 ──────────────────────────────────────────────
+#
+# 查法、信任判定和给模型的措辞都复用上面那两半，和规则预取一字不差：模型拿到的
+# 是和背景信息里同样格式的资料，答案守卫拿到的是同样口径的出处。
+#
+# 模型能填的只有查询词。身份（user_id / conv_id）从 TurnContext 取——那是服务端从
+# 请求里推导出来的可信身份，不在模型看得到的参数里，提示注入改不了。
+
+class KnowledgeSearchArgs(BaseModel):
+    query: str = Field(min_length=1, max_length=200,
+                       description="完整的检索句：补上前文提到的产品、订单或问题，不要只是原样重复客户这句话")
+    top_k: int = Field(default=3, ge=1, le=5, description="要几段，默认 3")
+
+
+class OrderDataQueryArgs(BaseModel):
+    query: str = Field(min_length=1, max_length=300,
+                       description="一句完整的查询，写上能定位单据的信息：订单号、柜号或日期")
+
+
+def knowledge_outcome(text: str, used: bool, trace: dict[str, Any]) -> ToolOutcome:
+    """一次知识库检索 → 交给模型的结果。检索到的片段和规则预取一样算出处。"""
+    if used and text:
+        return ToolOutcome(content=text, evidence=text, trace=trace, outcome="found")
+    return ToolOutcome(content="知识库里没有找到相关内容。", trace=trace, outcome="empty")
+
+
+_ORDER_FAILED = frozenset({"unavailable", "failed", "error"})
+_ORDER_NO_TEXT = {
+    "not_applicable": "业务系统判断这个问题不需要查库，没有返回数据。",
+    "empty": "业务系统查了，但没有可以讲的内容。",
+}
+
+
+def order_outcome(text: str, is_evidence: bool, trace: dict[str, Any]) -> ToolOutcome:
+    """
+    一次业务数据委派 → 交给模型的结果。
+
+    能不能当出处完全照 `delegate_order_query` 的判定；没查成的那几种标成 is_error，
+    内容里照旧是那两段"不要给具体数字"的指令。
+    """
+    outcome = str(trace.get("outcome") or "")
+    if text:
+        content = text
+    elif outcome == "error":
+        content = (f"业务系统查询出错（{trace.get('reason') or '未知原因'}）。"
+                   "不要给出任何具体的订单状态、日期、金额、库存数字。")
+    else:
+        content = _ORDER_NO_TEXT.get(outcome, "业务系统没有返回数据。")
+    return ToolOutcome(content=content, is_error=outcome in _ORDER_FAILED,
+                       evidence=text if is_evidence else "", trace=trace, outcome=outcome)
+
+
+class KnowledgeSearchTool(LoopTool):
+    name = "knowledge_search"
+    description = (
+        "检索知识库：产品规格、安装调整、售后流程和政策。背景信息里已经有按客户这句话检索到的结果，"
+        "只有那些不够回答时才用，换一个更完整的检索句。"
+    )
+    params = KnowledgeSearchArgs
+
+    def __init__(self, tool_manager: Any, label_sources: LabelSources | None = None):
+        self.tool_manager = tool_manager
+        self.label_sources = label_sources
+
+    async def run(self, args: KnowledgeSearchArgs, turn: TurnContext) -> ToolOutcome:
+        # 直接检索，不再跑 LLM 改写和重排：查询词是模型写的（相当于改写），结果也由它
+        # 自己读（相当于判断证据够不够）。再跑一遍，每次检索要多两次 LLM 调用。
+        trace: dict[str, Any] = {"attempted": True, "mode": "model", "sources": [], "reranked": False,
+                                 "corrected": False, "evidence_ok": None, "degraded": False}
+        text, used = await knowledge_lookup(self.tool_manager, args.query, top_k=args.top_k,
+                                            fast_path=True, trace=trace, label_sources=self.label_sources)
+        return knowledge_outcome(text, used, trace)
+
+
+class OrderDataQueryTool(LoopTool):
+    name = "order_data_query"
+    description = (
+        "查业务系统里的订单、生产、送货、补件、账款记录（只读）。背景信息里没有需要的系统数据时才用。"
+        "报价不走这里。"
+    )
+    params = OrderDataQueryArgs
+    slow = True
+
+    def __init__(self, tool_manager: Any, sql_agent: Any):
+        self.tool_manager = tool_manager
+        self.sql_agent = sql_agent
+        self.timeout_s = outer_tool_timeout_s()
+
+    def refuse(self, turn: TurnContext) -> str:
+        # 和 sql_agent_client.DEFAULT_DATA_INTENTS 把报价排除在外是同一个理由：报价是对外
+        # 承诺，出口要走正式报价单，不该由一句自然语言查询直接给数。
+        if (turn.intent or "") == "quote_pricing":
+            return ("报价不通过系统查询：报价是对外承诺，必须由销售出具正式报价单。"
+                    "不要给出任何具体金额。")
+        return ""
+
+    async def run(self, args: OrderDataQueryArgs, turn: TurnContext) -> ToolOutcome:
+        trace: dict[str, Any] = {"enabled": True}
+        text, is_evidence = await delegate_order_query(
+            self.tool_manager, args.query, user_id=turn.user_id, conv_id=turn.conv_id,
+            progress_cb=turn.progress_cb, trace=trace, currency=self.sql_agent.currency,
+        )
+        return order_outcome(text, is_evidence, trace)
+
+
+def loop_tools(prefetch: Prefetch) -> dict[str, LoopTool]:
+    """这一份工具上模型能调的工具。没接业务数据的实例（比如客户实例）没有 order_data_query。"""
+    if prefetch.tool_manager is None:
+        return {}
+    tools: dict[str, LoopTool] = {
+        "knowledge_search": KnowledgeSearchTool(prefetch.tool_manager, prefetch.label_sources),
+    }
+    if prefetch.data_enabled:
+        tools["order_data_query"] = OrderDataQueryTool(prefetch.tool_manager, prefetch.sql_agent)
+    return tools
+
+
+def _rule_record(tool: str, message: str, outcome: ToolOutcome) -> dict[str, Any]:
+    return {
+        "step": 0, "call_id": "", "actor": "rule", "agent": None, "tool": tool,
+        "args": {"query": message}, "outcome": outcome.outcome, "is_error": outcome.is_error,
+        "evidence": bool(outcome.evidence), "dedup": False, "latency_ms": None, "trace": outcome.trace,
+    }
+
+
+def seed_from_prefetch(
+    turn: TurnContext,
+    message: str,
+    *,
+    knowledge: tuple[str, bool, dict[str, Any]],
+    order: tuple[str, bool, dict[str, Any]],
+) -> None:
+    """
+    把规则预取记进这一轮的轨迹和去重表。
+
+    轨迹因此从"规则查了什么"开始；模型再拿客户这句原话查同一样东西时直接复用，
+    不再花一次——委派一次要十几秒。只记真的查了的那一路。
+    """
+    text, used, trace = knowledge
+    if trace.get("attempted"):
+        outcome = knowledge_outcome(text, used, trace)
+        turn.trajectory.append(_rule_record("knowledge_search", message, outcome))
+        if "knowledge_search" in turn.tools:
+            args = KnowledgeSearchArgs.model_construct(query=message, top_k=3)
+            turn.remember(turn.tools["knowledge_search"].memo_key(args), outcome)
+
+    text, is_evidence, trace = order
+    if trace.get("attempted"):
+        outcome = order_outcome(text, is_evidence, trace)
+        turn.trajectory.append(_rule_record("order_data_query", message, outcome))
+        if "order_data_query" in turn.tools:
+            args = OrderDataQueryArgs.model_construct(query=message)
+            turn.remember(turn.tools["order_data_query"].memo_key(args), outcome)

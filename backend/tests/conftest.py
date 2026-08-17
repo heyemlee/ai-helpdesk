@@ -219,3 +219,85 @@ def relay(monkeypatch) -> FakeRelay:
 
     monkeypatch.setattr(llm_utils, "anthropic_client_kwargs", _kwargs)
     return fake
+
+
+# ── 脚本化的假模型（工具循环用）─────────────────────────────────────────────────
+
+class Block:
+    """回复里的一个内容块，属性名和 anthropic SDK 的块一致（type / text / id / name / input）。"""
+
+    def __init__(self, **fields):
+        self.__dict__.update(fields)
+
+
+def text_step(*chunks, stop_reason="end_turn", usage=(20, 8)):
+    """模型这一步只说话：chunks 是流式的文字分片。"""
+    return {"text": list(chunks), "calls": [], "stop_reason": stop_reason, "usage": usage}
+
+
+def tool_step(*calls, text=(), stop_reason="tool_use", usage=(30, 12)):
+    """模型这一步调工具：calls 是 (id, name, input) 三元组，或者直接给一个 Block。"""
+    return {"text": list(text), "calls": list(calls), "stop_reason": stop_reason, "usage": usage}
+
+
+def _final_message(step):
+    content = []
+    text = "".join(step["text"])
+    if text:
+        content.append(Block(type="text", text=text))
+    for call in step["calls"]:
+        if isinstance(call, Block):
+            content.append(call)
+        else:
+            call_id, name, args = call
+            content.append(Block(type="tool_use", id=call_id, name=name, input=args))
+    usage = Block(input_tokens=step["usage"][0], output_tokens=step["usage"][1])
+    return Block(content=content, stop_reason=step["stop_reason"], usage=usage)
+
+
+class _ScriptedStream:
+    def __init__(self, step):
+        self._step = step
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    @property
+    def text_stream(self):
+        async def _gen():
+            for chunk in self._step["text"]:
+                yield chunk
+        return _gen()
+
+    async def get_final_message(self):
+        return _final_message(self._step)
+
+
+class ScriptedModel:
+    """
+    按脚本一步一步回的假模型，实现 `messages.stream`（text_stream + get_final_message）
+    和 `messages.create` 两个入口，记下每次请求的参数和当时的消息列表。不发任何网络请求。
+
+    `fail_at=(n, exc)`：第 n 次请求（从 1 数）抛这个异常，用来模拟中途模型不可用。
+    """
+
+    def __init__(self, *steps, fail_at=None):
+        self.steps = list(steps)
+        self.requests: list[dict] = []
+        self.messages = self
+        self._fail_at = fail_at
+
+    def _next(self, kwargs):
+        self.requests.append({**kwargs, "messages": list(kwargs.get("messages", []))})
+        if self._fail_at is not None and len(self.requests) == self._fail_at[0]:
+            raise self._fail_at[1]
+        return self.steps.pop(0)
+
+    def stream(self, **kwargs):
+        return _ScriptedStream(self._next(kwargs))
+
+    async def create(self, **kwargs):
+        return _final_message(self._next(kwargs))
