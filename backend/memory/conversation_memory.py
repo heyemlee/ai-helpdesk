@@ -80,8 +80,8 @@ class MemoryManager:
     工作记忆存 Redis（TTL 24h），情景记忆和用户画像存 ChromaDB（持久化）。
     """
 
-    WORKING_MAX   = 20    # 工作记忆最大条数，超过则触发压缩
-    COMPRESS_AT   = 15    # 达到此条数时压缩，保留摘要 + 最近 5 条
+    COMPRESS_AT   = 15    # 达到此条数时压缩，保留摘要 + 最近 KEEP_RECENT 条
+    KEEP_RECENT   = 5     # 压缩后保留的最近消息条数
     HISTORY_TOP_K = 5     # 情景记忆检索返回条数
 
     def __init__(
@@ -254,8 +254,8 @@ class MemoryManager:
         if len(messages) < self.COMPRESS_AT:
             return
 
-        to_compress = messages[:-5]   # 保留最近 5 条
-        keep        = messages[-5:]
+        to_compress = messages[:-self.KEEP_RECENT]
+        keep        = messages[-self.KEEP_RECENT:]
 
         # LLM 摘要
         text = self._safe_text("\n".join(f"{m.role.value}: {m.content}" for m in to_compress))
@@ -278,7 +278,7 @@ class MemoryManager:
         # 旧消息存入情景记忆
         await self._store_episodic(user_id, conv_id, text, summary)
 
-        # 重置工作记忆为最近 5 条
+        # 重置工作记忆为最近 KEEP_RECENT 条
         key = self._wm_key(user_id, conv_id)
         await self._redis.delete(key)
         for m in reversed(keep):
@@ -293,7 +293,8 @@ class MemoryManager:
 
     async def _get_working_memory(self, user_id: str, conv_id: str) -> list[Message]:
         key  = self._wm_key(user_id, conv_id)
-        raws = await self._redis.lrange(key, 0, self.WORKING_MAX - 1)
+        # 压缩阈值已经限住了列表长度，这里直接取全部
+        raws = await self._redis.lrange(key, 0, -1)
         msgs = []
         for raw in reversed(raws):  # Redis lpush 最新在前，reversed 还原时序
             d = json.loads(raw)
