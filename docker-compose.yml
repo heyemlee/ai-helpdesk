@@ -1,5 +1,9 @@
 # ai-helpdesk 智能客服系统 — Docker Compose 服务编排
-# 三级记忆架构：Redis（工作记忆）+ ChromaDB（情景记忆 + 用户画像）
+#
+# 存储：Redis（工作记忆/限流/熔断共享）+ Postgres+pgvector（工单/审计/
+#       KB 向量/情景记忆/用户画像，存储收敛后的唯一持久化数据库）
+# 观测：Prometheus（指标）+ OTel Collector → Tempo（trace）+
+#       Promtail → Loki（日志）+ Grafana（统一面板，含 trace 跳转）
 
 services:
 
@@ -21,26 +25,26 @@ services:
       timeout: 5s
       retries: 5
 
-  # ── ChromaDB 向量数据库（情景记忆 + 用户画像）────────────────────────────────
-  chromadb:
-    image: chromadb/chroma:0.5.23
-    container_name: ai-helpdesk-chromadb
+  # ── Postgres + pgvector（存储收敛：工单/审计/KB 向量/记忆/画像）──────────────
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: ai-helpdesk-postgres
     ports:
-      - "8001:8000"
+      - "5432:5432"
     environment:
-      - IS_PERSISTENT=TRUE
-      - PERSIST_DIRECTORY=/chroma/chroma
-      - ANONYMIZED_TELEMETRY=FALSE
+      - POSTGRES_USER=${POSTGRES_USER:-aihelpdesk}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-aihelpdesk123}
+      - POSTGRES_DB=${POSTGRES_DB:-aihelpdesk}
     volumes:
-      - chromadb-data:/chroma/chroma
+      - postgres-data:/var/lib/postgresql/data
     restart: unless-stopped
     networks:
       - ai-helpdesk-network
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8000/api/v1/heartbeat || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aihelpdesk} -d ${POSTGRES_DB:-aihelpdesk}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
       start_period: 10s
 
   # ── Prometheus 监控 ─────────────────────────────────────────────────────────
@@ -56,6 +60,7 @@ services:
       - '--web.enable-lifecycle'
     volumes:
       - ./backend/config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./backend/config/alerts:/etc/prometheus/alerts:ro
       - prometheus-data:/prometheus
     restart: unless-stopped
     networks:
@@ -81,18 +86,20 @@ services:
     environment:
       # 容器内固定值，覆盖 .env 中的本地路径
       - REDIS_URL=redis://:${REDIS_PASSWORD:-aihelpdesk123}@redis:6379/0
-      - CHROMA_PERSIST_DIRECTORY=/app/data/chroma
+      - POSTGRES_DSN=postgresql://${POSTGRES_USER:-aihelpdesk}:${POSTGRES_PASSWORD:-aihelpdesk123}@postgres:5432/${POSTGRES_DB:-aihelpdesk}
       - EVAL_BASELINE_PATH=/app/data/eval/baseline.json
       - AI_HELPDESK_SKILLS_DIR=/app/skills
+      # 观测：JSON 日志给 Promtail/Loki，trace 发 OTel Collector
+      - LOG_FORMAT=json
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
     volumes:
-      - ./backend/data/chroma:/app/data/chroma
       - ./backend/data/eval:/app/data/eval
       - ./backend/skills:/app/skills
       - ./backend/logs:/app/logs
     depends_on:
       redis:
         condition: service_healthy
-      chromadb:
+      postgres:
         condition: service_healthy
     restart: unless-stopped
     networks:
@@ -153,6 +160,82 @@ services:
       retries: 3
       start_period: 10s
 
+  # ── OTel Collector（trace 汇聚，转发 Tempo）─────────────────────────────────
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.116.0
+    container_name: ai-helpdesk-otel
+    command: ["--config=/etc/otelcol/config.yml"]
+    volumes:
+      - ./backend/config/otel-collector.yml:/etc/otelcol/config.yml:ro
+    ports:
+      - "4318:4318"   # OTLP HTTP（后端 SDK 上报）
+    depends_on:
+      - tempo
+    restart: unless-stopped
+    networks:
+      - ai-helpdesk-network
+
+  # ── Grafana Tempo（trace 存储）──────────────────────────────────────────────
+  tempo:
+    image: grafana/tempo:2.6.1
+    container_name: ai-helpdesk-tempo
+    command: ["-config.file=/etc/tempo/tempo.yml"]
+    volumes:
+      - ./backend/config/tempo.yml:/etc/tempo/tempo.yml:ro
+      - tempo-data:/var/tempo
+    restart: unless-stopped
+    networks:
+      - ai-helpdesk-network
+
+  # ── Loki（日志存储）─────────────────────────────────────────────────────────
+  loki:
+    image: grafana/loki:3.3.2
+    container_name: ai-helpdesk-loki
+    command: ["-config.file=/etc/loki/loki.yml"]
+    volumes:
+      - ./backend/config/loki.yml:/etc/loki/loki.yml:ro
+      - loki-data:/loki
+    restart: unless-stopped
+    networks:
+      - ai-helpdesk-network
+
+  # ── Promtail（采集容器 JSON 日志推给 Loki）──────────────────────────────────
+  promtail:
+    image: grafana/promtail:3.3.2
+    container_name: ai-helpdesk-promtail
+    command: ["-config.file=/etc/promtail/promtail.yml"]
+    volumes:
+      - ./backend/config/promtail.yml:/etc/promtail/promtail.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
+    restart: unless-stopped
+    networks:
+      - ai-helpdesk-network
+
+  # ── Grafana（统一面板：指标 + 日志 + trace 跳转）─────────────────────────────
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: ai-helpdesk-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-aihelpdesk123}
+      - GF_USERS_DEFAULT_THEME=dark
+    volumes:
+      - ./backend/config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./backend/config/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - tempo
+      - loki
+    restart: unless-stopped
+    networks:
+      - ai-helpdesk-network
+
 # ── 网络 ────────────────────────────────────────────────────────────────────
 networks:
   ai-helpdesk-network:
@@ -164,6 +247,9 @@ networks:
 # ── 数据卷 ──────────────────────────────────────────────────────────────────
 volumes:
   redis-data:
-  chromadb-data:
+  postgres-data:
   prometheus-data:
+  tempo-data:
+  loki-data:
+  grafana-data:
   nginx-logs:

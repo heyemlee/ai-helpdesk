@@ -44,6 +44,10 @@ export interface ChatResponse {
   needs_clarification: boolean
   answer_confidence: number
   policy_violations: PolicyViolation[]
+  /** 请求追踪 id，与响应头 X-Request-ID 一致，报障时携带 */
+  request_id?: string
+  /** 转人工时创建的工单 id；未转人工为 null */
+  ticket_id?: string | null
 }
 
 // ── SSE 事件 ────────────────────────────────────────────────────────────────

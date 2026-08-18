@@ -124,11 +124,16 @@ class PerformanceMonitor:
         interval_s:       float = 10.0,
         webhook_url:      str | None = None,
         prometheus_port:  int | None = None,   # None = 不启动
+        shared_state=None,
     ):
         self._orchestrator = orchestrator
         self._tool_manager = tool_manager
         self._interval     = interval_s
         self._webhook      = webhook_url
+        # 多实例部署时经 SharedState 共享路由惩罚：任一实例观测到某 Agent
+        # 劣化，其余实例在下个采集周期同样降权（取本地与共享的较大值）。
+        # 惩罚带 TTL，实例下线后它贡献的惩罚会自然过期。
+        self._shared_state = shared_state
         self._detector     = AnomalyDetector()
 
         self._alerts:      list[Alert]      = []
@@ -234,10 +239,36 @@ class PerformanceMonitor:
                 ))
 
         # ── 路由优化建议 ──────────────────────────────────────────────────────
+        routing_penalties = await self._merge_shared_penalties(routing_penalties)
         updater = getattr(self._orchestrator, "update_routing_penalties", None)
         if updater:
             updater(routing_penalties)
         self._generate_routing_suggestions(agent_stats)
+
+    async def _merge_shared_penalties(
+        self, local: dict[str, float]
+    ) -> dict[str, float]:
+        """
+        与其他实例交换路由惩罚。
+
+        发布本实例计算的惩罚，读回共享哈希，逐 Agent 取较大值——语义是
+        "任何实例观测到的劣化都值得所有实例规避"。共享哈希带 TTL
+        （3 个采集周期），停止发布的实例的贡献会自然衰减。
+        """
+        if self._shared_state is None:
+            return local
+        try:
+            await self._shared_state.hset_map(
+                "routing_penalties", local, ttl_s=self._interval * 3
+            )
+            shared = await self._shared_state.hget_map("routing_penalties")
+        except Exception as ex:
+            logger.warning(f"共享路由惩罚同步失败，仅用本地值: {ex}")
+            return local
+        return {
+            key: max(local.get(key, 0.0), shared.get(key, 0.0))
+            for key in set(local) | set(shared)
+        }
 
     @staticmethod
     def _routing_penalty(success_rate: float, avg_ms: float) -> float:

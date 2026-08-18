@@ -21,7 +21,8 @@ if _ROOT not in sys.path:
 
 import uvicorn
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, File, HTTPException, Response, Security, UploadFile
+from fastapi import Depends, FastAPI, File, Header, HTTPException, Response, Security, UploadFile
+from fastapi import Request as HttpRequest
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.security import APIKeyHeader
@@ -31,10 +32,16 @@ from pydantic import BaseModel, Field
 
 load_dotenv()
 
-logging.basicConfig(
-    level=getattr(logging, os.getenv("LOG_LEVEL", "INFO")),
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+from core.request_context import (  # noqa: E402
+    current_request_id,
+    new_request_id,
+    request_id_var,
+    setup_logging,
 )
+
+# LOG_FORMAT=json 输出单行 JSON（采集到 ELK/Datadog）；默认文本便于本地阅读。
+# 两种格式都带 request_id，一条日志能定位到一次请求。
+setup_logging(os.getenv("LOG_LEVEL", "INFO"), os.getenv("LOG_FORMAT", "text"))
 logger = logging.getLogger(__name__)
 
 BANNER = r"""
@@ -55,6 +62,13 @@ _evaluator    = None
 _skill_manager = None
 _knowledge_base = None
 _recognizer   = None
+_user_auth    = None
+_rate_limiter = None
+_ticket_store = None
+_shared_state = None
+_infra_redis  = None
+_conv_log     = None
+_pg_database  = None
 
 # 后台任务引用集合。asyncio 只持有 Task 的弱引用，不留强引用的话
 # 任务可能在完成前被 GC 掉，用户画像会静默不更新。
@@ -103,18 +117,75 @@ async def lifespan(app: FastAPI):
 
     print(BANNER, flush=True)
 
+    import redis.asyncio as aioredis
+
     from agents.agent_orchestrator import AgentOrchestrator
     from core.answer_policy import AnswerPolicy
+    from core.auth import RateLimiter, UserTokenAuth
+    from core.embedder import Embedder
     from core.intent_recognizer import IntentRecognizer
+    from core.shared_state import SharedState
     from core.skill_loader import SkillManager
     from evaluation.evaluator import EndToEndEvaluator
     from mcp.knowledge_base import KnowledgeBase
     from mcp.tool_manager import MCPToolManager, Tool
     from memory.conversation_memory import MemoryManager
     from monitor.performance_monitor import PerformanceMonitor
+    from storage.conversation_log import ConversationLog, PgConversationLog
+    from storage.pg import Database
+    from storage.vector_store import LocalStore, PgStore
+    from tickets.ticket_store import PgTicketStore, TicketStore
+
+    global _user_auth, _rate_limiter, _ticket_store, _shared_state, _infra_redis
+    global _conv_log, _pg_database
 
     cfg = _anthropic_cfg()
     logger.info(f"模型: {cfg['model']}  base_url: {cfg.get('base_url', '(官方)')}")
+
+    # 基础设施 Redis 连接：限流计数、熔断状态、路由惩罚共享。
+    # 与 MemoryManager 的连接分开建，记忆和基础设施状态互不干扰。
+    _infra_redis = aioredis.from_url(
+        os.getenv("REDIS_URL", "redis://redis:6379/0"), decode_responses=True
+    )
+    _shared_state = SharedState(_infra_redis)
+
+    # 用户令牌：配置 AI_HELPDESK_AUTH_SECRET 后 user_id 从令牌推导，
+    # 不再信任请求体——没有它任何人都能冒用别人的 user_id 读取记忆上下文。
+    _user_auth = UserTokenAuth(secret=os.getenv("AI_HELPDESK_AUTH_SECRET", ""))
+    if _user_auth.enabled:
+        logger.info("用户令牌鉴权已开启：/chat 从 X-User-Token 推导 user_id")
+    else:
+        logger.warning("用户令牌鉴权未开启：user_id 信任请求体，仅适用于本地联调")
+
+    _rate_limiter = RateLimiter(
+        redis_client=_infra_redis,
+        limit_per_window=int(os.getenv("AI_HELPDESK_RATE_LIMIT_PER_MINUTE", "0")),
+    )
+    if _rate_limiter.enabled:
+        logger.info(f"限流已开启：每用户每分钟 {_rate_limiter.limit} 次")
+
+    # ── 存储装配：配置 POSTGRES_DSN 时全部收敛进 Postgres（pgvector 做向量），
+    #    未配置时退化为 SQLite 单文件（demo / 单测零依赖）。Redis 不参与选择。
+    embedder = Embedder.from_env()
+    postgres_dsn = os.getenv("POSTGRES_DSN", "").strip()
+    if postgres_dsn:
+        _pg_database = Database(postgres_dsn)
+        await _pg_database.connect(embedding_dim=embedder.dim)
+        vector_store = PgStore(_pg_database)
+        _ticket_store = PgTicketStore(_pg_database)
+        _conv_log = PgConversationLog(_pg_database)
+        logger.info(f"存储后端: Postgres+pgvector（向量 {embedder.dim} 维，Embedding {embedder.backend}）")
+    else:
+        vector_store = LocalStore(
+            db_path=os.getenv("VECTOR_STORE_DB_PATH", str(pathlib.Path(_ROOT) / "data" / "vector_store.db"))
+        )
+        _ticket_store = TicketStore(
+            db_path=os.getenv("TICKET_DB_PATH", str(pathlib.Path(_ROOT) / "data" / "tickets.db"))
+        )
+        _conv_log = ConversationLog(
+            db_path=os.getenv("CONVERSATION_LOG_DB_PATH", str(pathlib.Path(_ROOT) / "data" / "conversations.db"))
+        )
+        logger.warning("存储后端: SQLite 本地兜底（未配置 POSTGRES_DSN，仅适用于 demo/联调）")
 
     # 意图识别器：Orchestrator 和 Evaluator 共用同一个实例，
     # 这样 /health 里的规则通道命中率统计反映的是线上真实流量。
@@ -155,30 +226,27 @@ async def lifespan(app: FastAPI):
         recognizer=_recognizer,
     )
 
-    # 记忆管理器（Redis 工作记忆 + ChromaDB 情景记忆/用户画像）
+    # 记忆管理器（Redis 工作记忆 + pgvector/SQLite 情景记忆与画像）
     _memory = MemoryManager(
+        store=vector_store,
+        embedder=embedder,
         redis_url=os.getenv("REDIS_URL", "redis://redis:6379/0"),
-        chroma_host=os.getenv("CHROMA_HOST", "chromadb"),
-        chroma_port=int(os.getenv("CHROMA_PORT", "8000")),
-        chroma_path=os.getenv("CHROMA_PERSIST_DIRECTORY", "/app/data/chroma"),
         api_key=cfg["api_key"],
         base_url=cfg.get("base_url"),
         model=cfg["model"],
     )
 
-    # MCP 工具管理器 + RAG 知识库（基于 ChromaDB 的真实检索）
+    # MCP 工具管理器 + RAG 知识库（pgvector / SQLite 双后端的真实向量检索）
     _tool_manager = MCPToolManager(
         api_key=cfg["api_key"],
         base_url=cfg.get("base_url"),
         model=cfg["model"],
+        shared_state=_shared_state,
     )
-    _knowledge_base = KnowledgeBase(
-        chroma_host=os.getenv("CHROMA_HOST", "chromadb"),
-        chroma_port=int(os.getenv("CHROMA_PORT", "8000")),
-        chroma_path=os.getenv("CHROMA_PERSIST_DIRECTORY", "/app/data/chroma"),
-    )
+    _knowledge_base = KnowledgeBase(store=vector_store, embedder=embedder)
     kb = _knowledge_base
-    logger.info(f"知识库已加载: {await kb.doc_count_async()} 个文档片段")
+    await kb.ensure_seeded()
+    logger.info(f"知识库已加载: {await kb.doc_count_async()} 个文档片段（后端 {kb.backend}）")
 
     def knowledge_fallback(params: dict[str, Any], context: dict[str, Any] | None, error: str):
         query = params.get("query", "")
@@ -192,7 +260,7 @@ async def lifespan(app: FastAPI):
 
     _tool_manager.register(Tool(
         name="knowledge_search",
-        description="搜索知识库（基于 ChromaDB 向量检索）",
+        description="搜索知识库（pgvector 余弦向量检索）",
         handler=kb.search_handler,
         schema={
             "type": "object",
@@ -215,6 +283,7 @@ async def lifespan(app: FastAPI):
         interval_s=float(os.getenv("MONITOR_INTERVAL", "10")),
         webhook_url=os.getenv("ALERT_WEBHOOK_URL") or None,
         prometheus_port=prom_port,
+        shared_state=_shared_state,
     )
     await _monitor.start()
 
@@ -241,8 +310,27 @@ async def lifespan(app: FastAPI):
     yield
 
     await _monitor.stop()
+    # 优雅停机：等后台任务（用户画像更新等）收尾，滚动发布不丢写入。
+    # 设上限防止个别任务挂死阻塞退出。
+    if _background_tasks:
+        logger.info(f"等待 {len(_background_tasks)} 个后台任务完成…")
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*_background_tasks, return_exceptions=True),
+                timeout=float(os.getenv("SHUTDOWN_DRAIN_TIMEOUT_S", "10")),
+            )
+        except TimeoutError:
+            logger.warning("后台任务未在时限内完成，放弃等待")
+    if _ticket_store is not None:
+        await _ticket_store.close()
+    if _conv_log is not None:
+        await _conv_log.close()
+    if _pg_database is not None:
+        await _pg_database.close()
     if _memory is not None:
         await _memory.close()
+    if _infra_redis is not None:
+        await _infra_redis.aclose()
     logger.info("ai-helpdesk 已关闭")
 
 
@@ -265,6 +353,39 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+from core.metrics import RATE_LIMIT_HITS, observe_http  # noqa: E402
+from core.telemetry import setup_telemetry  # noqa: E402
+
+# OTel：配置 OTEL_EXPORTER_OTLP_ENDPOINT 后启用 FastAPI/httpx/redis/asyncpg
+# 自动埋点 + 业务 span；未配置时零开销。
+setup_telemetry(app)
+
+
+@app.middleware("http")
+async def request_id_middleware(request: HttpRequest, call_next):
+    """
+    请求追踪：复用网关传入的 X-Request-ID，没有则生成。
+    写入 contextvar 供日志过滤器读取，并在响应头原样返回，
+    让调用方拿着同一个 id 来报障。同时在这里记录 HTTP QPS/延迟指标。
+    """
+    import time as _time
+    rid = request.headers.get("X-Request-ID") or new_request_id()
+    token = request_id_var.set(rid)
+    t0 = _time.monotonic()
+    status = 500
+    try:
+        response = await call_next(request)
+        status = response.status_code
+    finally:
+        request_id_var.reset(token)
+        route = request.scope.get("route")
+        path_template = getattr(route, "path", request.url.path)
+        if path_template not in ("/metrics", "/health"):  # 探活不计入业务指标
+            observe_http(request.method, path_template, status, _time.monotonic() - t0)
+    response.headers["X-Request-ID"] = rid
+    return response
 
 
 # ── 鉴权 ──────────────────────────────────────────────────────────────────────
@@ -292,6 +413,72 @@ def protect_chat(api_key: str | None = Security(_api_key_header)) -> None:
     if not _PROTECT_CHAT:
         return
     require_api_key(api_key)
+
+
+class TokenRequest(BaseModel):
+    user_id: str
+    ttl_s: int | None = None
+
+
+@app.post("/auth/token", tags=["Auth"], dependencies=[Depends(require_api_key)])
+async def issue_user_token(body: TokenRequest):
+    """
+    为指定用户签发 HMAC 令牌（生产上这一步由登录系统完成，这里由持有
+    API key 的运维/网关侧代发）。未配置 AI_HELPDESK_AUTH_SECRET 时返回 409。
+    """
+    from core.auth import AuthError
+    if _user_auth is None or not _user_auth.enabled:
+        raise HTTPException(409, "未配置 AI_HELPDESK_AUTH_SECRET，令牌鉴权未开启")
+    try:
+        token = _user_auth.issue(body.user_id, ttl_s=body.ttl_s)
+    except AuthError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"user_id": body.user_id, "token": token}
+
+
+async def resolve_user_id(req: "ChatRequest", user_token: str | None) -> str:
+    """从令牌推导可信 user_id；鉴权未开启时保持旧行为。超限抛 429。"""
+    from core.auth import AuthError
+    try:
+        user_id = _user_auth.verify(user_token, req.user_id) if _user_auth else (req.user_id or "anonymous")
+    except AuthError as exc:
+        raise HTTPException(401, str(exc)) from exc
+    if _rate_limiter is not None and not await _rate_limiter.check(user_id):
+        RATE_LIMIT_HITS.labels(user_id=user_id).inc()
+        raise HTTPException(429, f"请求过于频繁：每分钟最多 {_rate_limiter.limit} 次")
+    return user_id
+
+
+async def _create_handoff_ticket(result, user_id: str, conv_id: str, message: str) -> str | None:
+    """转人工时落工单。工单创建失败不能影响用户拿到回复，只记录错误。"""
+    if _ticket_store is None or not result.handoff:
+        return None
+    try:
+        ticket = await _ticket_store.create(
+            conv_id=conv_id,
+            user_id=user_id,
+            reason=result.handoff_reason,
+            request_id=current_request_id(),
+            intent=result.intent.value if result.intent else "",
+            answer_confidence=result.answer_confidence,
+            last_message=message,
+        )
+    except Exception:
+        logger.exception("转人工工单创建失败")
+        return None
+    webhook = os.getenv("TICKET_WEBHOOK_URL", "").strip()
+    if webhook:
+        _spawn_background(_notify_ticket_webhook(webhook, ticket))
+    return ticket.id
+
+
+async def _notify_ticket_webhook(url: str, ticket) -> None:
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            await client.post(url, json={"type": "ticket.created", "ticket": ticket.to_dict()})
+    except Exception as ex:
+        logger.warning(f"工单 webhook 通知失败: {ex}")
 
 
 # ── 请求/响应模型 ─────────────────────────────────────────────────────────────
@@ -327,6 +514,9 @@ class ChatResponse(BaseModel):
     needs_clarification: bool = False
     answer_confidence: float = 1.0
     policy_violations: list[dict[str, str]] = Field(default_factory=list)
+    # 请求追踪 id（与响应头 X-Request-ID 一致）；转人工时创建的工单 id
+    request_id: str = ""
+    ticket_id: str | None = None
 
 
 # ── 路由 ──────────────────────────────────────────────────────────────────────
@@ -334,10 +524,19 @@ class ChatResponse(BaseModel):
 async def health():
     if _orchestrator is None:
         raise HTTPException(503, "服务未就绪")
+    tickets = await _ticket_store.stats() if _ticket_store else {}
+    conversations = await _conv_log.stats() if _conv_log else {}
     return {
         "status": "ok",
         "agents": _orchestrator.get_stats(),
         "routing": _orchestrator.routing_config(),
+        "tickets": tickets,
+        "conversations": conversations,
+        "storage_backend": _knowledge_base.backend if _knowledge_base else "unknown",
+        "auth": {
+            "user_token": _user_auth.enabled if _user_auth else False,
+            "rate_limit_per_minute": _rate_limiter.limit if _rate_limiter else 0,
+        },
     }
 
 
@@ -360,7 +559,7 @@ async def reload_skills():
     return _skill_manager.summary()
 
 
-async def _prepare_request(req: "ChatRequest", conv_id: str):
+async def _prepare_request(req: "ChatRequest", conv_id: str, user_id: str):
     """
     /chat 和 /chat/stream 共用的准备阶段：
       读取三级记忆 → 意图识别 → 按需 RAG → 组装编排请求
@@ -372,7 +571,7 @@ async def _prepare_request(req: "ChatRequest", conv_id: str):
     from agents.agent_orchestrator import Request as OrcReq
 
     # 1. 读取记忆上下文
-    mem_ctx = await _memory.get_context(req.user_id, conv_id, query=req.message)
+    mem_ctx = await _memory.get_context(user_id, conv_id, query=req.message)
 
     # 2. 对话历史，用于意图识别上下文
     history = [
@@ -396,8 +595,10 @@ async def _prepare_request(req: "ChatRequest", conv_id: str):
 
     orch_req = OrcReq(
         message=req.message,
-        user_id=req.user_id,
+        user_id=user_id,
         conv_id=conv_id,
+        # 与响应头 X-Request-ID 同源，编排器日志和 API 日志能互相对上
+        request_id=current_request_id(),
         context=full_context,
         history=history,
         entities=intent_result.entities,
@@ -412,31 +613,39 @@ async def _prepare_request(req: "ChatRequest", conv_id: str):
 
 
 @app.post("/chat", response_model=ChatResponse, dependencies=[Depends(protect_chat)])
-async def chat(req: ChatRequest):
+async def chat(req: ChatRequest, x_user_token: str | None = Header(None, alias="X-User-Token")):
     """
     主对话接口。完整流程：
-      记忆读取 → 意图识别 → Agent 路由 → 执行 → 记忆写入
+      身份解析/限流 → 记忆读取 → 意图识别 → Agent 路由 → 执行 → 工单 → 记忆写入
     """
     if _orchestrator is None or _memory is None:
         raise HTTPException(503, "服务未就绪")
 
     from memory.conversation_memory import MsgRole
 
+    user_id = await resolve_user_id(req, x_user_token)
     conv_id = req.conv_id or str(uuid.uuid4())
-    orch_req, intent_result, knowledge_used = await _prepare_request(req, conv_id)
+    orch_req, intent_result, knowledge_used = await _prepare_request(req, conv_id, user_id)
 
     # 3. 执行
     result = await _orchestrator.run(orch_req)
 
-    # 4. 写入记忆
-    await _memory.add_message(req.user_id, conv_id, MsgRole.USER, req.message)
-    await _memory.add_message(req.user_id, conv_id, MsgRole.ASSISTANT, result.response)
+    # 4. 转人工 → 落工单（失败不影响响应）
+    ticket_id = await _create_handoff_ticket(result, user_id, conv_id, req.message)
 
-    # 5. 异步更新用户画像（不阻塞响应）
-    _spawn_background(_memory.update_profile(req.user_id, conv_id))
+    # 5. 写入记忆 + 审计留档（审计写入不阻塞响应）
+    await _memory.add_message(user_id, conv_id, MsgRole.USER, req.message)
+    await _memory.add_message(user_id, conv_id, MsgRole.ASSISTANT, result.response)
+    _spawn_background(_log_turn(conv_id, user_id, req.message, result.response,
+                                result.agent_type.value, current_request_id()))
+
+    # 6. 异步更新用户画像（不阻塞响应）
+    _spawn_background(_memory.update_profile(user_id, conv_id))
 
     return ChatResponse(
         conv_id=conv_id,
+        request_id=current_request_id(),
+        ticket_id=ticket_id,
         response=result.response,
         intent=result.intent.value if result.intent else "other",
         intent_group=intent_result.intent_group,
@@ -463,7 +672,7 @@ async def chat(req: ChatRequest):
 
 
 @app.post("/chat/stream", dependencies=[Depends(protect_chat)], tags=["对话"])
-async def chat_stream(req: ChatRequest):
+async def chat_stream(req: ChatRequest, x_user_token: str | None = Header(None, alias="X-User-Token")):
     """
     /chat 的流式版本，SSE（text/event-stream）。
 
@@ -481,11 +690,12 @@ async def chat_stream(req: ChatRequest):
 
     from memory.conversation_memory import MsgRole
 
+    user_id = await resolve_user_id(req, x_user_token)
     conv_id = req.conv_id or str(uuid.uuid4())
 
     async def event_source():
         try:
-            orch_req, intent_result, knowledge_used = await _prepare_request(req, conv_id)
+            orch_req, intent_result, knowledge_used = await _prepare_request(req, conv_id, user_id)
             yield _sse("meta", {
                 "conv_id": conv_id,
                 "intent": intent_result.intent.value,
@@ -512,12 +722,17 @@ async def chat_stream(req: ChatRequest):
                 yield _sse("error", {"detail": "编排器未返回结果"})
                 return
 
-            await _memory.add_message(req.user_id, conv_id, MsgRole.USER, req.message)
-            await _memory.add_message(req.user_id, conv_id, MsgRole.ASSISTANT, final.response)
-            _spawn_background(_memory.update_profile(req.user_id, conv_id))
+            ticket_id = await _create_handoff_ticket(final, user_id, conv_id, req.message)
+            await _memory.add_message(user_id, conv_id, MsgRole.USER, req.message)
+            await _memory.add_message(user_id, conv_id, MsgRole.ASSISTANT, final.response)
+            _spawn_background(_log_turn(conv_id, user_id, req.message, final.response,
+                                        final.agent_type.value, current_request_id()))
+            _spawn_background(_memory.update_profile(user_id, conv_id))
 
             yield _sse("result", {
                 "conv_id": conv_id,
+                "request_id": current_request_id(),
+                "ticket_id": ticket_id,
                 "response": final.response,
                 "agent_type": final.agent_type.value,
                 "agent_types": [a.value for a in final.agent_types],
@@ -644,6 +859,66 @@ async def prometheus_metrics():
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
+class TicketStatusRequest(BaseModel):
+    status: str
+
+
+@app.get("/tickets", tags=["Tickets"], dependencies=[Depends(require_api_key)])
+async def list_tickets(status: str | None = None, limit: int = 50):
+    """工单列表（坐席/运维视角），可按状态过滤。"""
+    if _ticket_store is None:
+        raise HTTPException(503, "服务未就绪")
+    tickets = await _ticket_store.list(status=status, limit=min(limit, 200))
+    return {"tickets": [t.to_dict() for t in tickets], "stats": await _ticket_store.stats()}
+
+
+@app.get("/tickets/{ticket_id}", tags=["Tickets"], dependencies=[Depends(require_api_key)])
+async def get_ticket(ticket_id: str):
+    if _ticket_store is None:
+        raise HTTPException(503, "服务未就绪")
+    ticket = await _ticket_store.get(ticket_id)
+    if ticket is None:
+        raise HTTPException(404, f"工单不存在: {ticket_id}")
+    return ticket.to_dict()
+
+
+async def _log_turn(
+    conv_id: str, user_id: str, user_msg: str,
+    assistant_msg: str, agent_type: str, request_id: str,
+) -> None:
+    """把一轮对话写入审计日志（user + assistant 各一条）。"""
+    if _conv_log is None:
+        return
+    await _conv_log.append(conv_id, user_id, "user", user_msg, request_id=request_id)
+    await _conv_log.append(conv_id, user_id, "assistant", assistant_msg,
+                           request_id=request_id, agent_type=agent_type)
+
+
+@app.get("/conversations/{conv_id}", tags=["Tickets"], dependencies=[Depends(require_api_key)])
+async def get_conversation(conv_id: str, limit: int = 500):
+    """完整对话原文（坐席接工单 / 合规审计视角）。工单里的 conv_id 从这里回查。"""
+    if _conv_log is None:
+        raise HTTPException(503, "服务未就绪")
+    entries = await _conv_log.get_conversation(conv_id, limit=min(limit, 2000))
+    if not entries:
+        raise HTTPException(404, f"对话不存在或已超出留存期: {conv_id}")
+    return {"conv_id": conv_id, "messages": [e.to_dict() for e in entries]}
+
+
+@app.post("/tickets/{ticket_id}/status", tags=["Tickets"], dependencies=[Depends(require_api_key)])
+async def update_ticket_status(ticket_id: str, body: TicketStatusRequest):
+    """流转工单状态：open → assigned → resolved / cancelled。"""
+    if _ticket_store is None:
+        raise HTTPException(503, "服务未就绪")
+    try:
+        ticket = await _ticket_store.update_status(ticket_id, body.status)
+    except KeyError as exc:
+        raise HTTPException(404, f"工单不存在: {ticket_id}") from exc
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return ticket.to_dict()
+
+
 class SearchRequest(BaseModel):
     """检索请求体。"""
     query: str
@@ -711,7 +986,7 @@ async def add_knowledge(body: BatchDocInput):
     """
     批量导入文档到知识库。
 
-    文档会自动切片（每片 500 字）并存入 ChromaDB，ChromaDB 内置 Embedding 模型自动向量化。
+    文档会自动切片（每片 500 字），由 Embedder 生成向量后存入 pgvector（或 SQLite 兜底）。
 
     示例请求体：
     ```json
@@ -912,11 +1187,12 @@ async def _cli():
         model=cfg["model"],
         skill_manager=skill_manager,
     )
+    from core.embedder import Embedder as _Embedder
+    from storage.vector_store import LocalStore as _LocalStore
     mem  = MemoryManager(
+        store=_LocalStore(db_path=os.getenv("VECTOR_STORE_DB_PATH", "/tmp/aihd_vector_store.db")),
+        embedder=_Embedder.from_env(),
         redis_url=os.getenv("REDIS_URL", "redis://localhost:6379/0"),
-        chroma_host=os.getenv("CHROMA_HOST", "localhost"),
-        chroma_port=int(os.getenv("CHROMA_PORT", "8000")),
-        chroma_path=os.getenv("CHROMA_PERSIST_DIRECTORY", "/tmp/chroma"),
         api_key=cfg["api_key"],
         base_url=cfg.get("base_url"),
         model=cfg["model"],

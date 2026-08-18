@@ -1,0 +1,39 @@
+# ai-helpdesk 告警规则。prometheus.yml 的 rule_files 指向本目录。
+groups:
+  - name: ai-helpdesk
+    rules:
+      - alert: AgentSuccessRateLow
+        expr: agent_success_rate < 0.90
+        for: 2m
+        labels:
+          severity: error
+        annotations:
+          summary: "Agent {{ $labels.agent }} 成功率低于 90%"
+          description: "当前成功率 {{ $value | humanizePercentage }}，持续 2 分钟。检查 LLM 网关连通性与该 Agent 的错误日志。"
+
+      - alert: AgentLatencyHigh
+        expr: histogram_quantile(0.99, rate(agent_latency_ms_bucket[5m])) > 8000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Agent {{ $labels.agent }} P99 延迟超过 8s"
+          description: "P99 = {{ $value }}ms。检查 LLM 提供方延迟或降低该 Agent 的 max_tokens。"
+
+      - alert: ToolSuccessRateLow
+        expr: tool_success_rate < 0.95
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "工具 {{ $labels.tool }} 成功率低于 95%"
+          description: "熔断器可能即将打开。检查工具依赖服务（ChromaDB / 外部 API）。"
+
+      - alert: ServiceDown
+        expr: up{job="ai-helpdesk-app"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "ai-helpdesk 实例失联"
+          description: "Prometheus 已 1 分钟抓不到 {{ $labels.instance }} 的 /metrics。"

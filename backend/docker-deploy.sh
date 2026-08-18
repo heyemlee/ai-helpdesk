@@ -79,7 +79,7 @@ check_dependencies() {
 create_directories() {
     print_info "创建必要的目录..."
 
-    mkdir -p "$BACKEND/data/chroma"
+    mkdir -p "$BACKEND/data"
     mkdir -p "$BACKEND/logs"
     mkdir -p "$BACKEND/config/nginx/ssl"
     mkdir -p "$BACKEND/config/grafana/provisioning"
@@ -197,11 +197,11 @@ health_check() {
         print_error "✗ Redis 不健康"
     fi
 
-    # 检查 ChromaDB
+    # 检查 Postgres
     if curl -sf http://localhost:8001/api/v1/heartbeat > /dev/null; then
-        print_info "✓ ChromaDB 健康"
+        print_info "✓ Postgres 健康"
     else
-        print_error "✗ ChromaDB 不健康"
+        print_error "✗ Postgres 不健康"
     fi
 
     # 检查 Prometheus
@@ -239,8 +239,8 @@ backup_data() {
     compose exec -T redis redis-cli --no-auth-warning -a "$REDIS_PASSWORD" SAVE
     docker cp ai-helpdesk-redis:/data/dump.rdb "$backup_dir/"
 
-    # 备份 ChromaDB 数据
-    docker cp ai-helpdesk-chromadb:/chroma/chroma "$backup_dir/"
+    # 备份 Postgres 数据
+    docker exec ai-helpdesk-postgres pg_dump -U "${POSTGRES_USER:-aihelpdesk}" "${POSTGRES_DB:-aihelpdesk}" > "$backup_dir/postgres.sql"
 
     # 备份配置
     cp "$ENV_FILE" "$backup_dir/"
@@ -277,8 +277,8 @@ restore_data() {
         # 恢复 Redis 数据
         docker cp "$backup_dir/dump.rdb" ai-helpdesk-redis:/data/
 
-        # 恢复 ChromaDB 数据
-        docker cp "$backup_dir/chroma" ai-helpdesk-chromadb:/chroma/
+        # 恢复 Postgres 数据
+        docker exec -i ai-helpdesk-postgres psql -U "${POSTGRES_USER:-aihelpdesk}" "${POSTGRES_DB:-aihelpdesk}" < "$backup_dir/postgres.sql"
 
         # 恢复配置
         cp "$backup_dir/.env" "$ENV_FILE"
