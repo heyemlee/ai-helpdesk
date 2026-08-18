@@ -13,7 +13,8 @@ SQLite 兜底。向量由 core/embedder.py 统一生成。
 关键设计：
   - 上下文构建时三级记忆融合，按重要性 + 时效性排序
   - 工作记忆超过阈值时自动压缩（LLM 摘要），防止 context 爆炸
-  - 所有 Embedding 通过 Anthropic API 生成，无本地模型
+  - 向量由 core/embedder.py 统一生成：配置了 OpenAI 兼容端点走远端，
+    未配置时退化为本地字符 n-gram 哈希向量
 """
 import hashlib
 import json
@@ -80,7 +81,7 @@ class MemoryManager:
     """
     三级记忆管理器。
 
-    工作记忆存 Redis（TTL 24h），情景记忆和用户画像存 ChromaDB（持久化）。
+    工作记忆存 Redis（TTL 24h），情景记忆和用户画像存向量库（pgvector / SQLite）。
     """
 
     COMPRESS_AT   = 15    # 达到此条数时压缩，保留摘要 + 最近 KEEP_RECENT 条
@@ -141,7 +142,8 @@ class MemoryManager:
     async def update_profile(self, user_id: str, conv_id: str) -> None:
         """
         从当前工作记忆中提炼用户偏好，更新用户画像。
-        用 LLM 提炼偏好，然后存入 ChromaDB（ChromaDB 内置 embedding，不依赖外部 API）。
+        用 LLM 提炼偏好，然后按 user_id 覆盖写入向量库——每用户单条，
+        避免多条并存时取不到最新画像。
         """
         user_id = self._safe_text(user_id)
         conv_id = self._safe_text(conv_id)
@@ -215,7 +217,7 @@ class MemoryManager:
         工作记忆压缩：
           1. 用 LLM 对旧消息生成摘要
           2. 摘要存 Redis（覆盖旧摘要）
-          3. 旧消息存入情景记忆（ChromaDB）供跨会话检索
+          3. 旧消息存入情景记忆（向量库）供跨会话检索
           4. 工作记忆只保留最近 5 条
         """
         messages = await self._get_working_memory(user_id, conv_id)
@@ -290,7 +292,7 @@ class MemoryManager:
             return []
 
     async def _store_episodic(self, user_id: str, conv_id: str, text: str, summary: str) -> None:
-        """将压缩后的对话片段存入情景记忆。ChromaDB 内置 embedding，不依赖外部 API。"""
+        """将压缩后的对话片段存入情景记忆，向量由 core/embedder.py 生成。"""
         try:
             user_id = self._safe_text(user_id)
             conv_id = self._safe_text(conv_id)

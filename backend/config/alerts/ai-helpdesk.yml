@@ -27,7 +27,7 @@ groups:
           severity: warning
         annotations:
           summary: "工具 {{ $labels.tool }} 成功率低于 95%"
-          description: "熔断器可能即将打开。检查工具依赖服务（ChromaDB / 外部 API）。"
+          description: "熔断器可能即将打开。检查工具依赖服务（Postgres / LLM 网关等外部 API）。"
 
       - alert: ServiceDown
         expr: up{job="ai-helpdesk-app"} == 0
