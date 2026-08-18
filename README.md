@@ -1,125 +1,131 @@
-# ai-helpdesk
+# AI Helpdesk
 
-多 Agent 客服工单编排系统。把一条工单从"进来"到"回复出去"的全过程拆成可治理的工程链路：
-细粒度意图识别 → 领域打分路由 → 专家 Agent 协同 → 出站策略校验 → 置信度转人工，
-并配套工单落库、对话审计、在线监控、全链路追踪与 LLM-as-Judge 评测闭环。
+一个面向企业场景的智能客服系统。它能识别用户问题、检索知识库、分配给合适的客服 Agent，并在答案不够可靠时自动转人工。
 
-后端 FastAPI，前端 React + TypeScript 控制台。**179 个后端测试 + 13 个前端测试**
-（含 CI 里跑在真实 pgvector 容器上的存储合同测试）。
+后端使用 FastAPI，前端是 React + TypeScript 控制台；内置工单、知识库、监控、追踪和回归评测能力。
 
-```
-backend/    FastAPI · 意图识别 · Agent 编排 · RAG · 记忆 · 鉴权限流 · 工单 · 监控 · 评测
-frontend/   React 18 + TS 控制台 · 路由检查器 / 监控面板 / 评测面板
-```
+## 项目介绍
 
-## 一条请求的完整链路
+这是一个面向生产环境设计的多 Agent 智能客服与工单编排系统。它把一条客服请求拆成“识别问题、补充上下文、检索知识、专家协作、安全校验、人工接手、质量回归”七个可独立治理的环节，并提供可视化控制台与完整的可观测性能力。
 
-```
-用户请求
-  └─ 身份与限流：HMAC 用户令牌推导 user_id · 每用户每分钟限流（Redis 计数）
-  └─ 意图识别：18 个细粒度意图
-       ├─ 规则快通道命中 ──────────► 零网络调用直接定性
-       └─ 否则三路融合：规则 10% + Embedding 20% + LLM 70% 加权投票
-  └─ 记忆读取：Redis 工作记忆 + pgvector 情景记忆 + 用户画像
-  └─ 按意图门控 RAG：业务问题才检索（pgvector 余弦检索 + 查询改写 + LLM 重排）
-  └─ 领域打分路由
-       ├─ 主 Agent：Technical / Billing / Order 三个专家中得分最高的
-       ├─ 辅助 Agent：跨域工单里达标的其他专家，与主 Agent 并行
-       ├─ 意图落到 OTHER 且置信度不足 → 先澄清追问
-       └─ 专家执行失败 → 降级到 General 兜底重试
-  └─ Agent 生成回复（注入按 Agent 类型隔离的 Markdown SOP，支持热加载）
-  └─ 答案策略守卫：拦截无依据的价格 / 时效承诺
-  └─ 置信度转人工：意图 / 路由 / Agent 自评三路各自对齐阈值
-       └─ 转人工即落工单（四态状态机 + webhook 通知，/tickets 可查可流转）
-  └─ 写入记忆 · 对话审计留档 · Monitor 采集 · Evaluator 回归检测
-     （全程带 X-Request-ID 与 OTel trace，日志可跳转对应 trace）
-```
+- **高可靠意图识别与低延迟路径**：将客服请求细分为 18 类意图，融合 LLM（70%）、向量（20%）和规则（10%）三路信号，输出意图、置信度、来源分数、紧急度及订单号、金额、错误码等结构化实体。针对 9 类高频确定性问题，内置 52 个高精度锚点短语；命中后无需网络调用，并将单次工单的 LLM 往返从 4 次降至 1 次。
+- **按需触发的 RAG 知识库**：仅在业务类意图下检索知识库。系统基于 PostgreSQL + pgvector 的余弦相似度搜索，对查询改写为 3 个子查询并行召回、按内容去重，再由 LLM 重排得到最相关的 3 条资料；未配置 Postgres 时可回退 SQLite，便于零依赖本地开发。知识导入使用内容哈希去重，重复上传不会生成重复文档。
+- **多 Agent 编排与人工兜底**：编排技术、账单、订单物流 3 个专家 Agent 和 1 个通用兜底 Agent。路由会综合意图、40 余个关键词锚点和实体信息选择主 Agent；跨领域问题满足阈值时由辅助 Agent 并行参与。意图不清先追问，任一置信度信号偏低则创建工单转人工。
+- **把回答安全做成硬约束**：出站答案经过零 LLM 的规则守卫逐句检查。对没有知识库或 SOP 依据的价格、时效承诺进行拦截并改写为保守表述，同时记录结构化违规信息；流式 SSE 输出也使用同一套句级校验，避免流式与非流式结果标准不一致。
+- **面向多租户的安全与记忆**：通过 HMAC 签名令牌在服务端推导用户身份，避免客户端伪造 `user_id` 读取他人记忆；Redis 提供按用户限流和 24 小时工作记忆，pgvector 保存情景记忆与用户画像，工单和对话审计日志可持久化回查。
+- **完整工程化闭环**：Monitor 每 10 秒根据 Agent 成功率和延迟调整路由惩罚，并通过 Redis 在多实例间共享；LLM-as-Judge 从相关性、准确性、完整性、帮助性四个维度回放评测，并基于人工提升的基线识别回归。项目包含 179 个后端测试、13 个前端测试、11 服务 Docker Compose 环境，以及 Prometheus、Grafana、Tempo、Loki 和 OpenTelemetry 组成的指标、日志、链路追踪体系。
 
-## 几个值得说的工程决策
+## 一次请求如何流转
 
-**规则快通道不只是省钱。** 高频高确定性工单（转人工、开发票、重复扣款）命中高精度锚点后
-直接定性，跳过 Embedding 和 LLM 两路调用，上层还能据此跳过查询改写与重排。
-业务请求的首字 LLM 往返从 3-4 次降到 1 次。
+```mermaid
+flowchart LR
+    subgraph IN[请求进入]
+        direction TB
+        U[用户提问] --> A[身份校验与限流]
+    end
 
-**答案策略是硬约束，不是 prompt 里的一句话。** SOP 写"禁止承诺到账时间"模型照样会违反。
-守卫逐句扫描出站回复：金额或时效 + 承诺动词 + 无对冲词 + 在本轮检索结果和 SOP 里找不到出处，
-四条同时成立才拦截并替换为保守表述。出处比对刻意不做"数字出现过就算"的宽松匹配——
-知识库写"配送 3-5 个工作日"时，模型说"退款 3 个工作日到账"必须判为无依据。
+    subgraph UNDERSTAND[理解问题]
+        direction TB
+        I{识别意图}
+        F[规则快速识别]
+        M[规则 + 向量 + LLM 综合判断]
+        C[读取历史对话与用户信息]
+        I -->|高确定性问题| F --> C
+        I -->|其他问题| M --> C
+    end
 
-**流式的粒度是句，不是 token。** 因为策略守卫必须看到完整句子才能判断。代价是首字延迟
-变成首句，换来流式与非流式受同一套约束，不会出现"流式能说、非流式不能说"。
+    subgraph RESOLVE[检索与处理]
+        direction TB
+        R{是否需要查知识库？}
+        K[检索并筛选相关知识]
+        O[选择处理方式]
+        R -->|是| K --> O
+        R -->|否| O
+    end
 
-**user_id 从令牌推导，不信任请求体。** 否则任何人传 `user_id=alice` 就能把 Alice 的
-历史摘要和画像注入自己的上下文。配置 `AI_HELPDESK_AUTH_SECRET` 后 `/chat` 只认
-`X-User-Token`（HMAC 三段式，标准库实现）；请求体与令牌不符直接 401，暴露冒用意图
-而不是静默覆盖。
+    subgraph DELIVER[生成与交付]
+        direction TB
+        S[专家 Agent 生成回复]
+        Q[追问用户补充信息]
+        P[答案安全检查]
+        H{答案是否可靠？}
+        D[返回给用户]
+        T[创建工单并转人工]
+        W[保存对话、更新记忆]
+        S --> P --> H
+        H -->|是| D --> W
+        H -->|否| T --> W
+    end
 
-**正确性状态进 Redis，性能缓存留在进程。** 熔断器状态、路由惩罚、限流计数多实例共享——
-实例 A 熔断后实例 B 对同一工具的调用同样被拒绝，这才是"保护下游"的本意。
-意图缓存和工具 TTL 缓存留在进程内：各存一份只影响命中率不影响正确性，
-不值得为它们付出每次读缓存一趟 Redis 往返。
+    A --> I
+    C --> R
+    O -->|技术 / 账单 / 订单| S
+    O -->|不确定| Q --> D
 
-**存储收敛到一个 Postgres，但换嵌入后端会 fail fast。** 工单、审计、KB 向量、情景记忆、
-画像统一进 pgvector（`<=>` 余弦检索）；向量列维度由当前 Embedder 决定并写进 DDL，
-启动时校验现有表维度，不一致直接报错——静默把 256 维向量塞进 1536 维列产生的是
-无意义的检索结果。未配置 `POSTGRES_DSN` 时退化为 SQLite 单文件，clone 下来零依赖能跑，
-且两个后端跑同一组合同测试。
-
-**审计日志和记忆是两个东西。** 记忆面向模型：为下一轮回答组装上下文，允许压缩、摘要、
-遗忘（Redis 24h TTL）；审计面向人和合规：原文 append-only，工单里的 conv_id 能查回
-完整对话，保留期由运维显式 `purge_before` 决定，服务不悄悄删数据。
-
-**回归检测对比存档基线，不是上一次运行。** 基线只在显式 `/eval/promote` 时更新——
-否则每跑完一次就覆盖，"相比基线退化"永远为空。
-
-## 可观测性
-
-`docker compose up` 后自带完整观测栈（11 个服务）：
-
-```
-指标   FastAPI /metrics ──► Prometheus（QPS · p95 · LLM token 花费 · 限流命中 + 4 条告警规则）
-追踪   OTel SDK（FastAPI/httpx/Redis/asyncpg 自动埋点 + intent/rag/agent/memory 业务 span）
-         ──► OTel Collector ──► Grafana Tempo
-日志   LOG_FORMAT=json（带 request_id + trace_id）──► Promtail ──► Loki
-面板   Grafana :3000 自动装配 3 数据源 + 8 面板 dashboard，日志里点 trace_id 直接跳 trace
+    C -.读取.-> Redis[(Redis：短期记忆、限流)]
+    K -.检索.-> PG[(PostgreSQL + pgvector：知识库、工单、审计记录)]
+    W -.写入.-> Redis
+    W -.写入.-> PG
+    A -.全程记录.-> OBS[Prometheus + Grafana + Tempo + Loki]
 ```
 
-压测脚本 `backend/scripts/load_test.py` 输出 RPS 与 P50/P95/P99，
-`--fast-path-only` 控制 LLM 成本。
+简单来说：系统先判断用户要解决什么，再决定是否查资料、交给哪个专家回答；如果回答风险高或信心不足，就交给人工，而不是编造答案。
 
 ## 快速开始
 
+### 用 Docker 运行完整系统
+
+准备 Docker 和 Docker Compose，然后在项目根目录执行：
+
 ```bash
-cp .env.example .env                   # compose 变量替换：Redis/Postgres/Grafana 密码
-cp backend/.env.example backend/.env   # 应用运行时配置：填入 ANTHROPIC_API_KEY
+cp .env.example .env
+cp backend/.env.example backend/.env
+# 编辑 backend/.env，填入 ANTHROPIC_API_KEY
 docker compose up -d --build
 ```
 
-两份 `.env` 用途不同，别混：仓库根这份只用于 `docker-compose.yml` 里的 `${VAR}` 替换
-（Compose 只认 compose 文件同目录的 `.env`）；`backend/.env` 通过 `env_file` 注入应用容器。
-两份都不入库，各自的 `.env.example` 是模板。
+启动后可访问：
 
-| 地址 | 内容 |
-|------|------|
-| http://localhost:5174 | 控制台 |
+| 地址 | 用途 |
+| --- | --- |
+| http://localhost:5174 | 客服控制台 |
 | http://localhost:8000/docs | API 文档 |
-| http://localhost:3000 | Grafana（指标 / 日志 / trace 一站式） |
-| http://localhost:9090 | Prometheus |
+| http://localhost:3000 | Grafana 监控、日志与链路追踪 |
+| http://localhost:9090 | Prometheus 指标 |
 
-生产加固开关（demo 默认全关，行为与旧版一致）：
+### 本地开发
 
-```bash
-AI_HELPDESK_AUTH_SECRET=<32B 随机串>      # 开启 HMAC 用户令牌，/auth/token 签发
-AI_HELPDESK_RATE_LIMIT_PER_MINUTE=20      # 每用户每分钟限流
-AI_HELPDESK_API_KEY=<管理密钥>            # 写操作端点鉴权
-TICKET_WEBHOOK_URL=<值班通知地址>          # 转人工工单 webhook
-```
-
-本地开发（同时起 uvicorn 和 vite，Ctrl-C 一起退）：
+先按 `backend/.env.example` 创建并填写 `backend/.env`，再执行：
 
 ```bash
 ./dev.sh
 ```
+
+这会同时启动后端和前端。浏览器打开 http://localhost:5173 即可。
+
+## 常用能力入口
+
+| 需求 | 入口 |
+| --- | --- |
+| 与客服对话 | 控制台，或 `POST /chat` |
+| 流式对话 | `POST /chat/stream` |
+| 查看知识库 | 控制台，或 `GET /knowledge/stats` |
+| 导入知识 | `POST /knowledge/add`、`POST /knowledge/upload` |
+| 查看人工工单 | `GET /tickets` |
+| 查看服务状态 | `GET /health`、`GET /monitor` |
+| 运行评测 | `POST /eval/run` |
+
+完整接口说明可在启动后打开 http://localhost:8000/docs 查看。
+
+## 核心组件
+
+```text
+backend/         FastAPI 服务、Agent 编排、知识库、记忆、工单与监控
+frontend/        React 管理控制台
+backend/skills/  不同客服 Agent 使用的服务规范（SOP）
+```
+
+系统使用 Redis 保存短期状态，如限流和近期对话；使用 PostgreSQL + pgvector 保存知识库、工单、审计记录和长期记忆。没有配置 Postgres 时，后端可退回 SQLite，方便本地体验。
 
 ## 测试
 
@@ -128,12 +134,6 @@ cd backend && pytest && ruff check .
 cd frontend && npm test && npm run typecheck
 ```
 
-PG 合同测试本地默认跳过；起一个 pgvector 容器后设 `TEST_POSTGRES_DSN` 即可在本地跑，
-CI 里通过 service container 始终执行。
-
 ## 技术栈
 
-FastAPI · Anthropic 兼容协议（可切 DeepSeek 等网关）· PostgreSQL + pgvector · Redis ·
-OpenTelemetry · Prometheus · Grafana（Tempo / Loki / Promtail）·
-React 18 · TypeScript · TanStack Query · Tailwind v4 · Vitest ·
-Docker Compose · GitHub Actions
+FastAPI · React · TypeScript · PostgreSQL + pgvector · Redis · Anthropic 兼容 API · OpenTelemetry · Prometheus · Grafana · Docker Compose
