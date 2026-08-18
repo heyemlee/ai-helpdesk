@@ -18,55 +18,23 @@
 ## 一次请求如何流转
 
 ```mermaid
-flowchart LR
-    subgraph IN[请求进入]
-        direction TB
-        U[用户提问] --> A[身份校验与限流]
-    end
+graph LR;
+    U["用户提问"] --> A["身份校验与限流"] --> I{"识别意图"};
+    I -->|高确定性问题| F["规则快速识别"] --> C["读取历史对话与用户信息"];
+    I -->|其他问题| M["规则 + 向量 + LLM 综合判断"] --> C;
+    C --> R{"是否需要查知识库？"};
+    R -->|是| K["检索并筛选相关知识"] --> O["选择处理方式"];
+    R -->|否| O;
+    O -->|技术 / 账单 / 订单| S["专家 Agent 生成回复"] --> P["答案安全检查"] --> H{"答案是否可靠？"};
+    O -->|不确定| Q["追问用户补充信息"] --> D["返回给用户"];
+    H -->|是| D --> W["保存对话、更新记忆"];
+    H -->|否| T["创建工单并转人工"] --> W;
 
-    subgraph UNDERSTAND[理解问题]
-        direction TB
-        I{识别意图}
-        F[规则快速识别]
-        M[规则 + 向量 + LLM 综合判断]
-        C[读取历史对话与用户信息]
-        I -->|高确定性问题| F --> C
-        I -->|其他问题| M --> C
-    end
-
-    subgraph RESOLVE[检索与处理]
-        direction TB
-        R{是否需要查知识库？}
-        K[检索并筛选相关知识]
-        O[选择处理方式]
-        R -->|是| K --> O
-        R -->|否| O
-    end
-
-    subgraph DELIVER[生成与交付]
-        direction TB
-        S[专家 Agent 生成回复]
-        Q[追问用户补充信息]
-        P[答案安全检查]
-        H{答案是否可靠？}
-        D[返回给用户]
-        T[创建工单并转人工]
-        W[保存对话、更新记忆]
-        S --> P --> H
-        H -->|是| D --> W
-        H -->|否| T --> W
-    end
-
-    A --> I
-    C --> R
-    O -->|技术 / 账单 / 订单| S
-    O -->|不确定| Q --> D
-
-    C -.读取.-> Redis[(Redis：短期记忆、限流)]
-    K -.检索.-> PG[(PostgreSQL + pgvector：知识库、工单、审计记录)]
-    W -.写入.-> Redis
-    W -.写入.-> PG
-    A -.全程记录.-> OBS[Prometheus + Grafana + Tempo + Loki]
+    C -.-> RDS["Redis：短期记忆、限流"];
+    K -.-> PG["PostgreSQL + pgvector：知识库、工单、审计记录"];
+    W -.-> RDS;
+    W -.-> PG;
+    A -.-> OBS["可观测性：Prometheus / Grafana / Tempo / Loki"];
 ```
 
 简单来说：系统先判断用户要解决什么，再决定是否查资料、交给哪个专家回答；如果回答风险高或信心不足，就交给人工，而不是编造答案。
