@@ -1,13 +1,13 @@
 # ai-helpdesk 完整使用指南
 
-本文档说明 ai-helpdesk 的部署、启动、API 调用、知识库使用、ChromaDB 数据查看、监控评测和常见排障。
+本文档说明 ai-helpdesk 的部署、启动、API 调用、知识库使用、Postgres/pgvector 数据查看、监控评测和常见排障。
 
 ai-helpdesk 是一个企业级智能客服系统，核心链路为：
 
 ```text
 用户请求
   -> FastAPI /chat
-  -> MemoryManager 读取 Redis 工作记忆 + ChromaDB 情景记忆 + 用户画像
+  -> MemoryManager 读取 Redis 工作记忆 + pgvector 情景记忆 + 用户画像
   -> IntentRecognizer 分到 18 类细粒度意图
        ├─ 规则通道命中（高精度锚点短语）→ 零网络调用直接返回
        └─ 否则三路融合：规则 10% + Embedding 20% + LLM 70% 加权投票
@@ -19,7 +19,7 @@ ai-helpdesk 是一个企业级智能客服系统，核心链路为：
   -> Agent 生成回复（注入对应 agent 类型的 Markdown SOP，支持热加载）
   -> AnswerPolicy 出站校验：拦截无依据的价格/时效承诺
   -> 综合置信度（意图 / 路由 / Agent 自评取最弱一环）低于阈值 → 转人工
-  -> 写入 Redis，并异步更新 ChromaDB 用户画像
+  -> 写入 Redis，并异步更新 Postgres 用户画像
 ```
 
 一次业务类 `/chat` 请求在首字响应前的 LLM 往返次数：
@@ -36,7 +36,7 @@ ai-helpdesk 是一个企业级智能客服系统，核心链路为：
 
 ```text
 ai-helpdesk/                             # 仓库根
-├── docker-compose.yml                   # 全栈编排：backend / frontend / Redis / ChromaDB / Prometheus / Nginx
+├── docker-compose.yml                   # 全栈编排：backend / frontend / Redis / Postgres(pgvector) / Prometheus / Nginx
 ├── .env.example                         # compose 变量替换的模板（只有 REDIS_PASSWORD）
 ├── .env                                 # 由上一行复制而来，不入库
 ├── dev.sh                               # 本地开发：一条命令同时起 uvicorn 和 vite
@@ -49,9 +49,9 @@ ai-helpdesk/                             # 仓库根
 │   ├── core/skill_loader.py             # Markdown SOP 热加载，按 agent 类型注入
 │   ├── core/llm_utils.py                # LLM 调用封装
 │   ├── agents/agent_orchestrator.py     # 三专家 + 兜底的领域分路由、主辅协作、转人工
-│   ├── memory/conversation_memory.py    # Redis + ChromaDB 记忆管理
+│   ├── memory/conversation_memory.py    # Redis + Postgres(pgvector) 记忆管理
 │   ├── mcp/tool_manager.py              # MCP 工具调用、查询改写、重排、熔断、缓存、降级
-│   ├── mcp/knowledge_base.py            # ChromaDB RAG 知识库
+│   ├── mcp/knowledge_base.py            # Postgres(pgvector) RAG 知识库
 │   ├── monitor/performance_monitor.py   # Agent/工具在线监控
 │   ├── evaluation/evaluator.py          # 四维 LLM-as-Judge + 相对存档基线的回归检测
 │   ├── skills/                          # 四份 SOP，与四个 Agent 一一对应
@@ -91,7 +91,7 @@ ai-helpdesk/                             # 仓库根
 
 ## 1.1 跑测试
 
-测试全部用桩替换 LLM 调用，不需要 API Key、Redis 或 ChromaDB：
+测试全部用桩替换 LLM 调用，不需要 API Key、Redis 或 Postgres(pgvector)：
 
 ```bash
 pip install -r requirements.txt && pytest
@@ -162,7 +162,7 @@ ANTHROPIC_MODEL=deepseek-v4-pro
 ANTHROPIC_API_KEY=your_deepseek_key
 ```
 
-Docker Compose 场景下，Redis 和 ChromaDB 的连接由 `docker-compose.yml` 覆盖为容器内地址。通常不需要手动改：
+Docker Compose 场景下，Redis 和 Postgres(pgvector) 的连接由 `docker-compose.yml` 覆盖为容器内地址。通常不需要手动改：
 
 ```env
 REDIS_PASSWORD=aihelpdesk123
@@ -177,13 +177,13 @@ ai-helpdesk 常用两种 Docker 启动方式：`docker compose up` 全栈部署�
 | 对比项 | Docker Compose 全栈部署 | Docker run 开发模式 |
 |--------|--------------------------|----------------------|
 | 启动命令 | `docker compose up -d --build` | `docker run ... ai-helpdesk ...` |
-| 启动内容 | ai-helpdesk、Redis、ChromaDB、Prometheus、Nginx | 只启动你指定的单个容器 |
-| Redis/ChromaDB | 自动启动并加入同一网络 | 必须先执行 `docker compose up -d redis chromadb` |
+| 启动内容 | ai-helpdesk、Redis、Postgres(pgvector)、Prometheus、Nginx | 只启动你指定的单个容器 |
+| Redis/Postgres(pgvector) | 自动启动并加入同一网络 | 必须先执行 `docker compose up -d redis postgres` |
 | 容器网络 | Compose 自动创建并管理 | 需要手动指定 `--network ai-helpdesk_ai-helpdesk-network` |
-| 服务名解析 | 应用可直接访问 `redis`、`chromadb` | 只有加入同一网络后才可访问 `redis`、`chromadb` |
+| 服务名解析 | 应用可直接访问 `redis`、`postgres` | 只有加入同一网络后才可访问 `redis`、`postgres` |
 | 代码更新 | 通常需要 rebuild 或重启服务 | 挂载 `-v "$(pwd):/workspace"` 后，代码修改可直接生效，重启容器即可 |
 | 适合场景 | 演示、联调、完整部署、HTTP API 服务 | 本地开发、调试 CLI、临时覆盖环境变量 |
-| 常见问题 | API Key 或依赖健康检查失败 | 忘记启动 Redis/ChromaDB，导致 `redis:6379 Name or service not known` |
+| 常见问题 | API Key 或依赖健康检查失败 | 忘记启动 Redis/Postgres(pgvector)，导致 `redis:6379 Name or service not known` |
 
 选择建议：
 
@@ -197,7 +197,7 @@ ai-helpdesk 常用两种 Docker 启动方式：`docker compose up` 全栈部署�
 
 ### 方式 A：一条 compose 起全栈（推荐用于演示）
 
-前端已经作为 `frontend` 服务并入 `docker-compose.yml`（仓库根），和 Redis / ChromaDB /
+前端已经作为 `frontend` 服务并入 `docker-compose.yml`（仓库根），和 Redis / Postgres(pgvector) /
 Prometheus / 后端在同一个网络里：
 
 ```bash
@@ -228,7 +228,7 @@ docker compose up -d --build   # 在仓库根执行
 
 打开 http://localhost:5173 即可，Vite 的 proxy 会把 `/api` 转发到 `:8000`。
 脚本会先检查解释器是否装齐依赖，没装齐会直接打印修复命令。
-Redis 和 ChromaDB 仍需单独起：`docker compose up -d redis chromadb`。
+Redis 和 Postgres(pgvector) 仍需单独起：`docker compose up -d redis postgres`。
 
 ### 方式 C：单进程单端口（后端直接托管前端）
 
@@ -274,7 +274,7 @@ docker compose logs -f ai-helpdesk
 |------|--------|------------|------------|------|
 | ai-helpdesk API | `ai-helpdesk-app` | `8000` | `8000` | 主 API 服务 |
 | Nginx | `ai-helpdesk-nginx` | `80` | `80` | 反向代理 |
-| ChromaDB | `ai-helpdesk-chromadb` | `8001` | `8000` | 向量数据库 |
+| Postgres(pgvector) | `ai-helpdesk-postgres` | `8001` | `8000` | 向量数据库 |
 | Redis | `ai-helpdesk-redis` | `6379` | `6379` | 工作记忆 |
 | Prometheus | `ai-helpdesk-prometheus` | `9090` | `9090` | 监控数据 |
 
@@ -300,10 +300,10 @@ curl http://localhost/health
 
 开发时可以只用 Compose 启动依赖，然后用 `docker run` 挂载当前代码目录。
 
-先启动 Redis 和 ChromaDB：
+先启动 Redis 和 Postgres(pgvector)：
 
 ```bash
-docker compose up -d redis chromadb
+docker compose up -d redis postgres
 ```
 
 构建镜像：
@@ -322,7 +322,7 @@ docker run -it --rm \
   -e ANTHROPIC_API_KEY="your_key" \
   -e ANTHROPIC_MODEL="deepseek-v4-pro" \
   -e REDIS_URL="redis://:aihelpdesk123@redis:6379/0" \
-  -e CHROMA_HOST="chromadb" \
+  -e CHROMA_HOST="postgres" \
   -e CHROMA_PORT="8000" \
   -e CHROMA_PERSIST_DIRECTORY="/workspace/data/chroma" \
   -v "$(pwd):/workspace" \
@@ -339,7 +339,7 @@ docker run -it --rm \
   -e ANTHROPIC_API_KEY="your_key" \
   -e ANTHROPIC_MODEL="deepseek-v4-pro" \
   -e REDIS_URL="redis://:aihelpdesk123@redis:6379/0" \
-  -e CHROMA_HOST="chromadb" \
+  -e CHROMA_HOST="postgres" \
   -e CHROMA_PORT="8000" \
   -v "$(pwd):/workspace" \
   -w /workspace \
@@ -387,7 +387,7 @@ http://localhost/docs
 | `POST` | `/search` | JSON Body | 执行知识库检索优化链路：查询改写、并行召回、合并去重、LLM 重排 | 测试 RAG 检索 |
 | `GET` | `/skills` | 无 | 查看当前加载的 Skills、匹配关键词和解析错误 | 确认动态能力是否生效 |
 | `POST` | `/skills/reload` | 无 | 运行时重新扫描 Skill 目录 | 修改业务规则后热加载 |
-| `POST` | `/knowledge/add` | JSON Body | 批量导入文档到 ChromaDB 知识库 | 程序化导入文档 |
+| `POST` | `/knowledge/add` | JSON Body | 批量导入文档到 Postgres(pgvector) 知识库 | 程序化导入文档 |
 | `POST` | `/knowledge/upload` | Form File | 上传 `.txt`、`.md`、`.json` 文件导入知识库 | 手动上传知识库文件 |
 | `GET` | `/knowledge/stats` | 无 | 查看知识库文档片段总数 | 确认知识库是否有数据 |
 | `POST` | `/eval/run` | 无 | 运行内置意图识别和端到端对话评测 | 四维 LLM-as-Judge + 回归检测 |
@@ -688,7 +688,7 @@ curl -X POST http://localhost:8000/chat \
   }'
 ```
 
-系统会从 Redis 读取当前会话最近消息，并从 ChromaDB 读取相关历史和用户画像，拼成上下文传给 Agent。
+系统会从 Redis 读取当前会话最近消息，并从 Postgres(pgvector) 读取相关历史和用户画像，拼成上下文传给 Agent。
 
 ### 6.3 技术问题示例
 
@@ -734,7 +734,7 @@ curl -X POST http://localhost:8000/chat \
 
 ## 7. 知识库使用
 
-ai-helpdesk 的知识库由 `mcp/knowledge_base.py` 管理，底层使用 ChromaDB collection：
+ai-helpdesk 的知识库由 `mcp/knowledge_base.py` 管理，底层使用 Postgres(pgvector) collection：
 
 ```text
 knowledge_base
@@ -775,7 +775,7 @@ curl -X POST http://localhost:8000/knowledge/add \
   }'
 ```
 
-系统会把长文档切成 500 字左右的片段，并写入 ChromaDB。
+系统会把长文档切成 500 字左右的片段，并写入 Postgres(pgvector)。
 
 ### 7.3 上传文件导入知识库
 
@@ -834,15 +834,15 @@ curl -X POST http://localhost:8000/search \
 ```text
 原始查询
   -> LLM 查询改写成多个角度
-  -> 多个子查询并行召回 ChromaDB
+  -> 多个子查询并行召回 Postgres(pgvector)
   -> 合并去重
   -> LLM 重排
   -> 返回 Top-K
 ```
 
-## 8. ChromaDB 在项目中的用途
+## 8. Postgres(pgvector) 在项目中的用途
 
-ai-helpdesk 使用了三个 ChromaDB collection：
+ai-helpdesk 使用了三个 Postgres(pgvector) collection：
 
 | Collection | 模块 | 作用 |
 |------------|------|------|
@@ -858,12 +858,12 @@ ai-helpdesk 使用了三个 ChromaDB collection：
 | `episodic` | 当前会话工作记忆超过阈值后自动压缩并写入 |
 | `user_profile` | 每次 `/chat` 回复后异步提炼并更新 |
 
-## 9. 在 Docker 中查看 ChromaDB 内容
+## 9. 在 Docker 中查看 Postgres(pgvector) 内容
 
-Compose 中 ChromaDB 容器名是：
+Compose 中 Postgres(pgvector) 容器名是：
 
 ```text
-ai-helpdesk-chromadb
+ai-helpdesk-postgres
 ```
 
 宿主机访问端口是：
@@ -878,7 +878,7 @@ http://localhost:8001
 http://localhost:8000
 ```
 
-### 9.1 查看 ChromaDB 是否存活
+### 9.1 查看 Postgres(pgvector) 是否存活
 
 宿主机执行：
 
@@ -889,7 +889,7 @@ curl http://localhost:8001/api/v1/heartbeat
 容器内执行：
 
 ```bash
-docker exec -it ai-helpdesk-chromadb curl http://localhost:8000/api/v1/heartbeat
+docker exec -it ai-helpdesk-postgres curl http://localhost:8000/api/v1/heartbeat
 ```
 
 ### 9.2 查看所有 collection
@@ -898,7 +898,7 @@ docker exec -it ai-helpdesk-chromadb curl http://localhost:8000/api/v1/heartbeat
 curl http://localhost:8001/api/v1/collections
 ```
 
-如果 ChromaDB 版本返回 tenant/database 相关错误，可以使用 Python 客户端查看，见下一节。
+如果 Postgres(pgvector) 版本返回 tenant/database 相关错误，可以使用 Python 客户端查看，见下一节。
 
 ### 9.3 用 Python 客户端查看 collections
 
@@ -912,9 +912,9 @@ docker exec -it ai-helpdesk-app bash
 
 ```bash
 python - <<'PY'
-import chromadb
+import postgres
 
-client = chromadb.HttpClient(host="chromadb", port=8000)
+client = postgres.HttpClient(host="postgres", port=8000)
 print("heartbeat:", client.heartbeat())
 
 collections = client.list_collections()
@@ -943,9 +943,9 @@ docker exec -it ai-helpdesk-app bash
 
 ```bash
 python - <<'PY'
-import chromadb
+import postgres
 
-client = chromadb.HttpClient(host="chromadb", port=8000)
+client = postgres.HttpClient(host="postgres", port=8000)
 col = client.get_collection("knowledge_base")
 
 data = col.get(limit=10, include=["documents", "metadatas"])
@@ -967,9 +967,9 @@ docker exec -it ai-helpdesk-app bash
 
 ```bash
 python - <<'PY'
-import chromadb
+import postgres
 
-client = chromadb.HttpClient(host="chromadb", port=8000)
+client = postgres.HttpClient(host="postgres", port=8000)
 col = client.get_collection("knowledge_base")
 
 result = col.query(
@@ -1009,9 +1009,9 @@ docker exec -it ai-helpdesk-app bash
 ```bash
 python - <<'PY'
 import json
-import chromadb
+import postgres
 
-client = chromadb.HttpClient(host="chromadb", port=8000)
+client = postgres.HttpClient(host="postgres", port=8000)
 col = client.get_collection("user_profile")
 
 data = col.get(
@@ -1048,9 +1048,9 @@ docker exec -it ai-helpdesk-app bash
 
 ```bash
 python - <<'PY'
-import chromadb
+import postgres
 
-client = chromadb.HttpClient(host="chromadb", port=8000)
+client = postgres.HttpClient(host="postgres", port=8000)
 col = client.get_collection("episodic")
 
 data = col.get(
@@ -1065,39 +1065,39 @@ for i, doc in enumerate(data["documents"]):
 PY
 ```
 
-### 9.8 查看 ChromaDB 持久化文件
+### 9.8 查看 Postgres(pgvector) 持久化文件
 
-ChromaDB 的持久化卷在 Compose 中定义为：
+Postgres(pgvector) 的持久化卷在 Compose 中定义为：
 
 ```yaml
 volumes:
-  chromadb-data:
+  postgres-data:
 ```
 
 查看 Docker volume：
 
 ```bash
-docker volume ls | grep chromadb
-docker volume inspect ai-helpdesk_chromadb-data
+docker volume ls | grep postgres
+docker volume inspect ai-helpdesk_postgres-data
 ```
 
 查看容器内数据目录：
 
 ```bash
-docker exec -it ai-helpdesk-chromadb sh
+docker exec -it ai-helpdesk-postgres sh
 ls -lah /chroma/chroma
 find /chroma/chroma -maxdepth 2 -type f | head
 ```
 
-注意：不建议直接修改这些底层文件。查看和管理数据应优先使用 ChromaDB API 或 Python 客户端。
+注意：不建议直接修改这些底层文件。查看和管理数据应优先使用 Postgres(pgvector) API 或 Python 客户端。
 
-### 9.9 清空 ChromaDB 数据
+### 9.9 清空 Postgres(pgvector) 数据
 
 谨慎操作。停止服务并删除 volume：
 
 ```bash
 docker compose down
-docker volume rm ai-helpdesk_chromadb-data
+docker volume rm ai-helpdesk_postgres-data
 docker compose up -d --build
 ```
 
@@ -1109,9 +1109,9 @@ docker exec -it ai-helpdesk-app bash
 
 ```bash
 python - <<'PY'
-import chromadb
+import postgres
 
-client = chromadb.HttpClient(host="chromadb", port=8000)
+client = postgres.HttpClient(host="postgres", port=8000)
 client.delete_collection("knowledge_base")
 print("deleted knowledge_base")
 PY
@@ -1178,7 +1178,7 @@ COMPRESS_AT = 15
 
 ```text
 旧消息 -> LLM 摘要 -> Redis summary
-旧消息摘要 -> ChromaDB episodic
+旧消息摘要 -> Postgres(pgvector) episodic
 最近 5 条消息 -> 继续保留在 Redis wm 列表
 ```
 
@@ -1235,9 +1235,9 @@ docker exec -it ai-helpdesk-redis redis-cli -a aihelpdesk123 \
 
 - Redis 使用 `LPUSH` 写入，最新消息在列表前面。
 - 代码读取时会 `reversed(raws)` 还原时间顺序。
-- 压缩后 Redis 工作记忆列表只保留最近 5 条；更早的内容会以摘要形式进入 Redis summary 和 ChromaDB `episodic`。
+- 压缩后 Redis 工作记忆列表只保留最近 5 条；更早的内容会以摘要形式进入 Redis summary 和 Postgres(pgvector) `episodic`。
 
-### 11.3 查看 ChromaDB 中的情景记忆摘要
+### 11.3 查看 Postgres(pgvector) 中的情景记忆摘要
 
 如果是全栈部署，应用容器名通常是：
 
@@ -1267,12 +1267,12 @@ docker exec -it <容器名> bash
 
 ```bash
 python - <<'PY'
-import chromadb
+import postgres
 
 user_id = "cli_user"
 conv_id = "5a076f2b-b607-4339-9e9f-f0399862d366"
 
-client = chromadb.HttpClient(host="chromadb", port=8000)
+client = postgres.HttpClient(host="postgres", port=8000)
 col = client.get_collection("episodic")
 
 data = col.get(
@@ -1308,11 +1308,11 @@ docker exec -it ai-helpdesk-app bash
 
 ```bash
 python - <<'PY'
-import chromadb
+import postgres
 
 user_id = "cli_user"
 
-client = chromadb.HttpClient(host="chromadb", port=8000)
+client = postgres.HttpClient(host="postgres", port=8000)
 col = client.get_collection("episodic")
 
 data = col.get(
@@ -1327,12 +1327,12 @@ for i, doc in enumerate(data["documents"]):
 PY
 ```
 
-### 11.5 Redis summary 和 ChromaDB episodic 的区别
+### 11.5 Redis summary 和 Postgres(pgvector) episodic 的区别
 
 | 位置 | 保存内容 | 用途 |
 |------|----------|------|
 | Redis `summary:{user_id}:{conv_id}` | 当前会话压缩摘要 | 下一次同会话请求直接拼入 prompt |
-| ChromaDB `episodic` | 压缩摘要 + metadata | 跨会话按语义检索相关历史 |
+| Postgres(pgvector) `episodic` | 压缩摘要 + metadata | 跨会话按语义检索相关历史 |
 | Redis `wm:{user_id}:{conv_id}` | 最近 5 条消息 | 保持当前对话连贯性 |
 
 ## 12. Monitor 在线监控
@@ -1470,16 +1470,16 @@ docker compose logs -f ai-helpdesk
 
 - `.env` 是否配置 `ANTHROPIC_API_KEY`
 - Redis 是否健康
-- ChromaDB 是否健康
+- Postgres(pgvector) 是否健康
 - 应用容器是否正在反复重启
 
-### 15.2 ChromaDB 连接失败
+### 15.2 Postgres(pgvector) 连接失败
 
-查看 ChromaDB 状态：
+查看 Postgres(pgvector) 状态：
 
 ```bash
-docker compose ps chromadb
-docker compose logs -f chromadb
+docker compose ps postgres
+docker compose logs -f postgres
 curl http://localhost:8001/api/v1/heartbeat
 ```
 
@@ -1488,8 +1488,8 @@ curl http://localhost:8001/api/v1/heartbeat
 ```bash
 docker exec -it ai-helpdesk-app bash
 python - <<'PY'
-import chromadb
-client = chromadb.HttpClient(host="chromadb", port=8000)
+import postgres
+client = postgres.HttpClient(host="postgres", port=8000)
 print(client.heartbeat())
 PY
 ```
