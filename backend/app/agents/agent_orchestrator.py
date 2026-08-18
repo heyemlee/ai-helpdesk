@@ -40,6 +40,7 @@ from app.agents.tool_loop import (
     StepEnd,
     TextDelta,
     ToolEnd,
+    ToolStart,
     TurnContext,
     run_tool_loop,
 )
@@ -54,7 +55,15 @@ from app.core.llm_utils import (
     create_llm_client,
     extract_structured_text,
 )
-from app.core.metrics import record_agent_latency, record_llm_tokens
+from app.core.metrics import (
+    record_agent_latency,
+    record_llm_tokens,
+    record_loop_discard,
+    record_loop_end,
+    record_loop_fallback,
+    record_loop_tool,
+)
+from app.core.openai_compat import ToolsUnsupportedError
 from app.core.telemetry import span
 from app.core.text_lang import detect_language
 
@@ -344,12 +353,12 @@ class BaseAgent:
 
     async def handle(self, req: Request) -> AgentResponse:
         with span("agent.handle", agent=self.agent_type.value):
+            tools = self._loop_tools(req)
+            if tools:
+                return await self._handle_with_tools(req, tools)
             return await self._handle_inner(req)
 
     async def _handle_inner(self, req: Request) -> AgentResponse:
-        tools = self._loop_tools(req)
-        if tools:
-            return await self._handle_with_tools(req, tools)
         t0 = time.monotonic()
         # 统计只在请求结束时记（stats.record），在途期间不动——见 AgentStats.record
         # Skill SOP 既要注入 prompt，也要作为 AnswerPolicy 判断"有无出处"的依据，
@@ -412,10 +421,12 @@ class BaseAgent:
         工具循环打开且这个专家有可用工具时，走 `_stream_with_tools`，多一种 tool 事件。
         """
         tools = self._loop_tools(req)
-        if tools:
-            async for event in self._stream_with_tools(req, tools):
-                yield event
-            return
+        stream = self._stream_with_tools(req, tools) if tools else self._stream_plain(req)
+        async for event in stream:
+            yield event
+
+    async def _stream_plain(self, req: Request) -> AsyncIterator[dict[str, Any]]:
+        """单次生成的流式版本（工具循环关着时的老路径）。"""
         t0 = time.monotonic()
         skill_prompt = self._skill_prompt(req)
 
@@ -629,6 +640,7 @@ class BaseAgent:
     async def _stream_with_tools(self, req: Request, tools: list[LoopTool]) -> AsyncIterator[dict[str, Any]]:
         """
         带工具循环的流式生成。产出 delta / tool / end 三种事件，delta 和 end 的口径同 stream()。
+        tool 事件每次工具调用两条：`phase=start`（要查什么）和 `phase=end`（轨迹里的那一条）。
 
         和单次生成的差别只有三处：
 
@@ -637,6 +649,9 @@ class BaseAgent:
             回答黏成一句。写完的整句已经发出去了，收不回来，照常算进回答；
           - 回答为空时报错（和非流式单次生成里的 extract_structured_text 一致），
             不把空串当成一句回答发给客户。
+
+        模型连接明确不支持工具（网关拒绝 tools，见 core/openai_compat.ToolsUnsupportedError）
+        时，这一轮退回单次生成；兼容层记住了这份配置，之后的轮次在本地就被拒，不再出网。
         """
         t0 = time.monotonic()
         skill_prompt = self._skill_prompt(req)
@@ -645,10 +660,12 @@ class BaseAgent:
             sources.append(skill_prompt)
         guard = PolicyStreamGuard(self._policy, sources)
 
+        agent = self.agent_type.value
         full: list[str] = []
         declared: bool | None = None
         found_evidence = False
         last_stop = ""
+        fallback = False
         try:
             async for event in run_tool_loop(
                 self._client,
@@ -670,20 +687,25 @@ class BaseAgent:
                     if safe:
                         full.append(safe)
                         yield {"type": "delta", "text": safe}
+                elif isinstance(event, ToolStart):
+                    yield {"type": "tool", "phase": "start", "step": event.step, "call_id": event.call_id,
+                           "tool": event.name, "args": event.args, "agent": agent}
                 elif isinstance(event, ToolEnd):
                     if event.outcome.evidence:
                         guard.add_sources([event.outcome.evidence])
                         found_evidence = True
-                    yield {"type": "tool", **event.record}
+                    record_loop_tool(event.name, event.outcome.outcome, dedup=event.record["dedup"])
+                    yield {"type": "tool", "phase": "end", **event.record}
                 elif isinstance(event, StepEnd):
-                    record_llm_tokens(self.agent_type.value, event.input_tokens, event.output_tokens)
+                    record_llm_tokens(agent, event.input_tokens, event.output_tokens)
                     if event.called_tools:
                         dropped = guard.discard_pending()
                         if dropped.strip():
-                            logger.info("%s 调工具前写了半句，作废: %s",
-                                        self.agent_type.value, dropped.strip()[:80])
+                            record_loop_discard(agent)
+                            logger.info("%s 调工具前写了半句，作废: %s", agent, dropped.strip()[:80])
                 elif isinstance(event, LoopEnd):
                     last_stop = event.stop_reason
+                    record_loop_end(agent, event.model_calls, event.forced)
 
             tail = guard.flush()
             if tail:
@@ -727,19 +749,27 @@ class BaseAgent:
                 ),
             }
         except Exception as ex:
-            ms = (time.monotonic() - t0) * 1000
-            reason = self._record_failure(ex, ms, "工具循环处理失败")
-            yield {
-                "type": "end",
-                "response": AgentResponse(
-                    agent_type=self.agent_type,
-                    content=_customer_text(req, "agent_error"),
-                    success=False,
-                    confidence=0.0,
-                    latency_ms=ms,
-                    unavailable_reason=reason,
-                ),
-            }
+            if isinstance(ex, ToolsUnsupportedError) and not full:
+                logger.warning("%s 的模型连接不支持工具调用，这一轮退回单次生成: %s", agent, ex)
+                record_loop_fallback("tools_unsupported")
+                fallback = True
+            else:
+                ms = (time.monotonic() - t0) * 1000
+                reason = self._record_failure(ex, ms, "工具循环处理失败")
+                yield {
+                    "type": "end",
+                    "response": AgentResponse(
+                        agent_type=self.agent_type,
+                        content=_customer_text(req, "agent_error"),
+                        success=False,
+                        confidence=0.0,
+                        latency_ms=ms,
+                        unavailable_reason=reason,
+                    ),
+                }
+        if fallback:
+            async for event in self._stream_plain(req):
+                yield event
 
     @staticmethod
     def _self_confidence(violations: list[PolicyViolation], escalate: bool) -> float:

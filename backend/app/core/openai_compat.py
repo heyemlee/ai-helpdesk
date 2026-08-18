@@ -102,6 +102,11 @@ def _rejects_tools(text: str) -> bool:
     return bool(_TOOL_PARAM_RE.search(text) and _UNSUPPORTED_RE.search(text))
 
 
+def tools_rejected() -> bool:
+    """这个进程里有没有哪份模型配置明确拒绝过工具调用。/health 用，工具循环因此退回了单次生成。"""
+    return bool(_TOOLS_UNSUPPORTED)
+
+
 class _Usage:
     """对齐 anthropic 的 usage.input_tokens / output_tokens（Prometheus 计量要读）。"""
 

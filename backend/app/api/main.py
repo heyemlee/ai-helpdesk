@@ -73,6 +73,7 @@ load_dotenv()
 
 from app.core import llm_guard  # noqa: E402
 from app.core.llm_utils import resolve_llm_config  # noqa: E402
+from app.core.openai_compat import tools_rejected  # noqa: E402
 from app.core.preflight import (  # noqa: E402
     TOKEN_ISSUER_CIDRS_VAR,
     is_production,
@@ -862,6 +863,10 @@ class ChatResponse(BaseModel):
     # 检索和业务数据委派这一轮实际走了哪条路、结果如何（见 _prepare_request）
     knowledge: dict[str, Any] = Field(default_factory=dict)
     business_data: dict[str, Any] = Field(default_factory=dict)
+    # 工具循环打开时才有（见 agents/tool_loop.py）：这一轮的调用轨迹——规则预取的两条
+    # 在前、模型作答时自己发起的在后——和作答阶段的模型用量（调用次数、输入输出 token）
+    trajectory: list[dict[str, Any]] = Field(default_factory=list)
+    answer_usage: dict[str, int] = Field(default_factory=dict)
 
 
 # ── 路由 ──────────────────────────────────────────────────────────────────────
@@ -916,6 +921,12 @@ async def health():
         "capabilities": {
             "business_data": bool(_sql_agent is not None and _sql_agent.enabled),
             "ticket_notifications": _notifications_enabled(),
+        },
+        # 工具循环（AI_HELPDESK_TOOL_LOOP）开没开；tools_rejected 为 true 说明模型网关明确
+        # 拒绝过工具调用，专家因此退回了单次生成——开关开着，实际没在用。
+        "tool_loop": {
+            "enabled": _LOOP_CONFIG is not None,
+            "tools_rejected": tools_rejected(),
         },
     }
 
@@ -1078,6 +1089,8 @@ async def chat(req: ChatRequest, x_user_token: str | None = Header(None, alias="
         policy_violations=[v.to_dict() for v in result.policy_violations],
         service_unavailable=result.service_unavailable,
         unavailable_reason=result.unavailable_reason,
+        trajectory=result.trajectory,
+        answer_usage=result.answer_usage,
     )
 
 
@@ -1128,15 +1141,24 @@ async def chat_stream(req: ChatRequest, x_user_token: str | None = Header(None, 
                 **_evidence_fields(evidence_trace),
             })
 
+            # 作答阶段同样边等边报进度、静默发心跳：工具循环打开时，专家作答中途也可能
+            # 委派查库（一次十几秒到四十多秒），这段时间编排器一个事件都不出。
             final = None
-            async for event in _orchestrator.run_stream(orch_req):
-                kind = event["type"]
+            answer = _pump_answer(_orchestrator.run_stream(orch_req), progress_q,
+                                  heartbeat_s=SSE_HEARTBEAT_S)
+            async for source, item in answer:
+                if source == "frame":
+                    yield item
+                    continue
+                kind = item["type"]
                 if kind == "routing":
-                    yield _sse("routing", {k: v for k, v in event.items() if k != "type"})
+                    yield _sse("routing", {k: v for k, v in item.items() if k != "type"})
                 elif kind == "delta":
-                    yield _sse("delta", {"text": event["text"]})
+                    yield _sse("delta", {"text": item["text"]})
+                elif kind == "tool":
+                    yield _sse("progress", _tool_progress(item))
                 elif kind == "result":
-                    final = event["result"]
+                    final = item["result"]
 
             if final is None:
                 yield _sse("error", {"detail": "编排器未返回结果"})
@@ -1170,6 +1192,8 @@ async def chat_stream(req: ChatRequest, x_user_token: str | None = Header(None, 
                 "service_unavailable": final.service_unavailable,
                 "unavailable_reason": final.unavailable_reason,
                 "latency_ms": round(final.latency_ms, 1),
+                "trajectory": final.trajectory,
+                "answer_usage": final.answer_usage,
             })
         except Exception as ex:
             logger.exception("流式对话失败")
@@ -1193,6 +1217,90 @@ def _sse(event: str, data: dict[str, Any]) -> str:
 
 
 SSE_HEARTBEAT_S = float(os.getenv("SSE_HEARTBEAT_S", "15"))
+
+# 工具循环里的两个进度阶段（见 agents/tool_loop.py）。和准备阶段一样带 `helpdesk.` 前缀；
+# `label` 只给不认识这两个阶段的旧前端兜底，新前端按 stage 和 tool 自己出文案。
+STAGE_TOOL_CALL = "helpdesk.tool_call"
+STAGE_TOOL_RESULT = "helpdesk.tool_result"
+_TOOL_LABEL = {
+    "knowledge_search": "正在检索知识库",
+    "order_data_query": "正在查业务系统",
+}
+
+
+def _tool_progress(event: dict[str, Any]) -> dict[str, Any]:
+    """
+    编排器的 tool 事件 → SSE 的 progress。开始时说查什么，结束时说结局。
+
+    完整的那一条（含检索到的片段、委派的 trace）不在这里发，进 result 事件的 trajectory：
+    进度只为让页面在等的时候有话可说，越小越好。
+    """
+    tool = str(event.get("tool") or "")
+    base = {"tool": tool, "call_id": str(event.get("call_id") or ""), "agent": event.get("agent")}
+    if event.get("phase") == "start":
+        args = event.get("args")
+        query = str(args.get("query") or "") if isinstance(args, dict) else ""
+        return {"stage": STAGE_TOOL_CALL, "label": _TOOL_LABEL.get(tool, "正在查资料"),
+                **base, "query": query[:120]}
+    return {
+        "stage": STAGE_TOOL_RESULT, "label": "查询完成", **base,
+        "outcome": str(event.get("outcome") or ""),
+        "evidence": bool(event.get("evidence")),
+        "is_error": bool(event.get("is_error")),
+        "dedup": bool(event.get("dedup")),
+        "latency_ms": event.get("latency_ms"),
+    }
+
+
+async def _pump_answer(events, progress_q, heartbeat_s: float = 15.0):
+    """
+    作答阶段的泵：编排器的事件流放进一个任务里跑，和进度队列一起等。
+
+    产出 `("event", 编排器事件)` 或 `("frame", 现成的 SSE 帧)`：谁先到先发，两边都静默满
+    heartbeat_s 发一条心跳注释。编排器那边的异常在事件流结束后原样抛出，由调用方照旧报成
+    error 事件。和 `_pump_until_done` 一样，结束前把队列里剩下的进度发完。
+    """
+    events_q: asyncio.Queue = asyncio.Queue()
+    finished = object()
+
+    async def drive():
+        try:
+            async for event in events:
+                events_q.put_nowait(event)
+        finally:
+            events_q.put_nowait(finished)
+
+    task = asyncio.create_task(drive())
+    next_event = next_progress = None
+    try:
+        while True:
+            next_event = asyncio.ensure_future(events_q.get())
+            next_progress = asyncio.ensure_future(progress_q.get())
+            done, pending = await asyncio.wait(
+                {next_event, next_progress}, timeout=heartbeat_s, return_when=asyncio.FIRST_COMPLETED
+            )
+            # 没等到的那一个取消掉：asyncio.Queue 的 get 被取消不会丢东西，下一圈再取
+            for waiter in pending:
+                waiter.cancel()
+            # 同一刻两边都到了，先发事件：编排器的事件先进队列（比如"开始查库"），
+            # 进度是之后才冒出来的（下游查库的分段），按发生的先后发
+            event = next_event.result() if next_event in done else None
+            if event is not None and event is not finished:
+                yield "event", event
+            if next_progress in done:
+                yield "frame", _sse("progress", next_progress.result())
+            if event is finished:
+                break
+            if not done:
+                yield "frame", ": ping\n\n"
+        while not progress_q.empty():
+            yield "frame", _sse("progress", progress_q.get_nowait())
+        await task
+    finally:
+        # 客户端中途断开时停在这里：编排器那边和两个还在等的 get 都别留着
+        for pending_work in (task, next_event, next_progress):
+            if pending_work is not None and not pending_work.done():
+                pending_work.cancel()
 
 
 async def _pump_until_done(task, progress_q, heartbeat_s: float = 15.0):

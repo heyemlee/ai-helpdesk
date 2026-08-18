@@ -110,6 +110,40 @@ export interface ChatResponse {
    */
   service_unavailable?: boolean
   unavailable_reason?: LlmUnavailableReason | ''
+  /**
+   * 工具循环打开时才有（后端 agents/tool_loop.py）：这一轮的调用轨迹，规则预取的两条
+   * （actor = rule）在前，专家作答时自己发起的（actor = model）在后。
+   */
+  trajectory?: TrajectoryEntry[]
+  /** 同上：作答阶段的模型调用次数和 token。循环关着时是空对象 */
+  answer_usage?: Partial<AnswerUsage>
+}
+
+/** 工具循环里的一次工具调用。outcome 的取值随工具：知识库是 found / empty，业务数据同 BusinessDataTrace.outcome */
+export interface TrajectoryEntry {
+  /** 0 = 规则预取；1 起是作答的第几次模型调用 */
+  step: number
+  call_id: string
+  actor: 'rule' | 'model'
+  /** 发起调用的专家；规则预取为 null */
+  agent: string | null
+  tool: string
+  args: Record<string, unknown>
+  /** found / empty / evidence / unverified / failed / ... ；被拦下的是 refused / budget / invalid_args / unavailable_tool */
+  outcome: string
+  is_error: boolean
+  /** 查回来的内容能不能当出处 */
+  evidence: boolean
+  /** 复用了本轮之前同样的查询（含规则预取），没有再查一次 */
+  dedup: boolean
+  latency_ms: number | null
+  trace: Record<string, unknown>
+}
+
+export interface AnswerUsage {
+  model_calls: number
+  input_tokens: number
+  output_tokens: number
 }
 
 /**
@@ -158,6 +192,18 @@ export interface StreamProgressEvent {
   step?: number | null
   database?: string | null
   trace_id?: string | null
+  /** `helpdesk.tool_call` / `helpdesk.tool_result`：工具循环里的一次调用（同一个 call_id 一开一合） */
+  tool?: string
+  call_id?: string
+  agent?: string | null
+  /** tool_call：模型写的查询词（截到 120 字） */
+  query?: string
+  /** tool_result：结局，取值同 TrajectoryEntry.outcome */
+  outcome?: string
+  evidence?: boolean
+  is_error?: boolean
+  dedup?: boolean
+  latency_ms?: number | null
 }
 
 export interface StreamMetaEvent {
@@ -293,6 +339,8 @@ export interface HealthResponse {
     blocked_calls?: number
   }
   capabilities?: { business_data: boolean; ticket_notifications: boolean }
+  /** 工具循环开没开；tools_rejected = 模型网关拒绝过工具调用、实际退回了单次生成。老后端没有 */
+  tool_loop?: { enabled: boolean; tools_rejected: boolean }
 }
 
 // ── 评测 ────────────────────────────────────────────────────────────────────

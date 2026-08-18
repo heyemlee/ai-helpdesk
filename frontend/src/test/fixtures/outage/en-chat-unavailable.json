@@ -54,5 +54,7 @@
     "attempted": false,
     "outcome": "model_unavailable",
     "reason": "credential_rejected"
-  }
+  },
+  "trajectory": [],
+  "answer_usage": {}
 }

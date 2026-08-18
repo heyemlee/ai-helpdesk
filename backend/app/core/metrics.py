@@ -102,3 +102,63 @@ def observe_http(method: str, path: str, status: int, duration_s: float) -> None
     """HTTP 中间件出口调用。path 必须是**路由模板**，见 UNMATCHED_PATH。"""
     HTTP_REQUESTS.labels(method=method, path=path, status=str(status)).inc()
     HTTP_DURATION.labels(method=method, path=path).observe(duration_s)
+
+
+# ── 工具循环（agents/tool_loop.py）────────────────────────────────────────────
+#
+# 开关打开之后看这几条：作答多花了几次模型调用、工具调用怎么收场、多常走到预算尽头、
+# 多常因为网关不认工具退回单次生成。标签都有界：tool 只有本系统注册的那几个，模型
+# 编出来的工具名一律记成 <unknown>，不让它把时序数撑开；outcome 是代码里的固定集合。
+KNOWN_LOOP_TOOLS = frozenset({"knowledge_search", "order_data_query"})
+
+AGENT_LOOP_MODEL_CALLS = Histogram(
+    "agent_loop_model_calls",
+    "工具循环里一个专家一轮作答用掉的模型调用次数",
+    ["agent"],
+    buckets=(1, 2, 3, 4, 5, 6, float("inf")),
+)
+
+AGENT_LOOP_TOOL_CALLS = Counter(
+    "agent_loop_tool_calls_total",
+    "工具循环里模型发起的工具调用，按工具和结局分；dedup 表示复用了本轮之前的结果",
+    ["tool", "outcome"],
+)
+
+AGENT_LOOP_FORCED = Counter(
+    "agent_loop_forced_total",
+    "工具循环走到预算尽头、最后一步被要求直接作答的次数：model_calls / tool_calls / deadline",
+    ["reason"],
+)
+
+AGENT_LOOP_DISCARDED = Counter(
+    "agent_loop_discarded_preamble_total",
+    "模型调工具前写了半句、被作废的次数。持续上升说明提示词里'调工具前不要先写回答'没管住",
+    ["agent"],
+)
+
+AGENT_LOOP_FALLBACK = Counter(
+    "agent_loop_fallback_total",
+    "工具循环退回单次生成的次数。tools_unsupported：网关明确拒绝了工具调用",
+    ["reason"],
+)
+
+
+def record_loop_tool(tool: str, outcome: str, dedup: bool = False) -> None:
+    """工具循环里一次工具调用收场。"""
+    label = tool if tool in KNOWN_LOOP_TOOLS else "<unknown>"
+    AGENT_LOOP_TOOL_CALLS.labels(tool=label, outcome="dedup" if dedup else (outcome or "unknown")).inc()
+
+
+def record_loop_end(agent: str, model_calls: int, forced: str) -> None:
+    """一个专家的工具循环结束。forced 为空说明模型在预算内自己停下了。"""
+    AGENT_LOOP_MODEL_CALLS.labels(agent=agent).observe(model_calls)
+    if forced:
+        AGENT_LOOP_FORCED.labels(reason=forced).inc()
+
+
+def record_loop_discard(agent: str) -> None:
+    AGENT_LOOP_DISCARDED.labels(agent=agent).inc()
+
+
+def record_loop_fallback(reason: str) -> None:
+    AGENT_LOOP_FALLBACK.labels(reason=reason).inc()

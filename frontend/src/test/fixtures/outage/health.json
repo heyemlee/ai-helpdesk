@@ -137,5 +137,9 @@
   "capabilities": {
     "business_data": false,
     "ticket_notifications": false
+  },
+  "tool_loop": {
+    "enabled": false,
+    "tools_rejected": false
   }
 }

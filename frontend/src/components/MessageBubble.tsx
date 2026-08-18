@@ -89,6 +89,38 @@ const DATABASE_NAMES: Record<string, Key> = {
   svc_db: 'cw.db.svc_db',
 }
 
+/** 工具循环里专家作答途中自己发起的查询（后端 helpdesk.tool_call）。 */
+const TOOL_KEYS: Record<string, Key> = {
+  knowledge_search: 'cw.tool.knowledge_search',
+  order_data_query: 'cw.tool.order_data_query',
+}
+
+/** 发了 tool_call、还没等到对应 tool_result 的那些调用。 */
+export function pendingTools(progress: StreamProgressEvent[]): StreamProgressEvent[] {
+  const finished = new Set(
+    progress.filter((p) => p.stage === 'helpdesk.tool_result').map((p) => p.call_id),
+  )
+  return progress.filter((p) => p.stage === 'helpdesk.tool_call' && !finished.has(p.call_id))
+}
+
+/**
+ * 作答途中的状态行。工具循环打开时，专家答到一半可能停下来查东西——查业务系统一次
+ * 十几秒到四十多秒，这段时间回复不动，不说一声的话看起来像卡住了。只说正在查什么，
+ * 查完就消失；查到了什么、算不算依据，等 result 到了由下面的依据和学习模式去说。
+ */
+function ToolStatus({ progress }: { progress: StreamProgressEvent[] }) {
+  const { t } = useT()
+  const pending = pendingTools(progress)
+  const current = pending[pending.length - 1]
+  if (!current) return null
+  return (
+    <div className="thinking" aria-live="polite">
+      <span className="pulse" />
+      {t(TOOL_KEYS[current.tool ?? ''] ?? 'cw.tool.other', { query: current.query ?? '' })}
+    </div>
+  )
+}
+
 /** 准备阶段每一步的说法：本系统自己的阶段和下游认得出的阶段都按界面语言出文案。 */
 function progressLabel(
   p: StreamProgressEvent, t: (key: Key, vars?: Record<string, string | number>) => string,
@@ -376,6 +408,7 @@ export function MessageBubble({ message, onInspect, explain, routingConfig, base
         </div>
         {message.streaming && <span className="caret" />}
       </div>
+      {message.streaming && <ToolStatus progress={message.progress ?? []} />}
 
       {fallback && (
         <p className="note caution">

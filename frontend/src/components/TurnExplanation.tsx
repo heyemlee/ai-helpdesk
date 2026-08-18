@@ -5,7 +5,29 @@ import { llmReasonKey } from '@/lib/llm'
 import { useT } from '@/i18n'
 import type { Key } from '@/i18n/catalog'
 import { fallbackAgent, type ChatMessage } from '@/hooks/useChatStream'
-import type { RoutingConfig } from '@/api/types'
+import type { RoutingConfig, TrajectoryEntry } from '@/api/types'
+
+const TOOL_NAMES: Record<string, Key> = {
+  knowledge_search: 'lm.tools.name.knowledge_search',
+  order_data_query: 'lm.tools.name.order_data_query',
+}
+
+const TOOL_OUTCOMES: Record<string, Key> = {
+  empty: 'lm.tools.empty', evidence: 'lm.tools.evidence', unverified: 'lm.tools.unverified',
+  failed: 'lm.tools.failed', unavailable: 'lm.tools.failed', error: 'lm.tools.failed',
+  not_applicable: 'lm.tools.not_applicable', refused: 'lm.tools.refused', budget: 'lm.tools.budget',
+  invalid_args: 'lm.tools.invalid', unavailable_tool: 'lm.tools.unknown_tool',
+}
+
+/** 一次工具调用的结局。知识库查到了就说几段；认不出的结局照原样写出来，不吞掉。 */
+function toolOutcome(call: TrajectoryEntry, t: ReturnType<typeof useT>['t']): string {
+  if (call.outcome === 'found') {
+    const sources = call.trace?.sources
+    return t('lm.tools.found', { n: Array.isArray(sources) ? sources.length : 0 })
+  }
+  const key = TOOL_OUTCOMES[call.outcome]
+  return key ? t(key) : t('lm.tools.other', { outcome: call.outcome || '—' })
+}
 
 /**
  * 学习模式：把这一轮**实际发生的事**按顺序讲一遍——
@@ -136,6 +158,30 @@ export function TurnExplanation({ message, routingConfig, onInspect }: {
         {data?.trace_id && <> <span className="mono">trace {data.trace_id}</span></>}
       </>
     : t('lm.data.unknown')])
+
+  // 4½. 工具循环：专家作答时自己又查了什么。只在循环打开的轮次有（后端才会报 answer_usage）
+  const usage = result.answer_usage
+  if (usage?.model_calls !== undefined) {
+    const calls = (result.trajectory ?? []).filter((c) => c.actor === 'model')
+    rows.push(['lm.tools', <>
+      {calls.length === 0 ? t('lm.tools.none') : <>
+        {t('lm.tools.calls', { n: calls.length })}{' '}
+        {calls.map((c, i) => {
+          const name = TOOL_NAMES[c.tool]
+          return (
+            <span key={c.call_id || i}>
+              {i > 0 && t('lm.tools.sep')}
+              {name ? t(name) : <code className="mono">{c.tool}</code>}
+              {typeof c.args?.query === 'string' && <> <span className="lm-quote">“{c.args.query}”</span></>}
+              {' → '}{toolOutcome(c, t)}
+              {c.dedup && <> {t('lm.tools.dedup')}</>}
+            </span>
+          )
+        })}
+      </>}
+      {' '}{t('lm.tools.usage', { n: usage.model_calls })}
+    </>])
+  }
 
   // 5. 回答检查
   const cuts = result.policy_violations ?? []
