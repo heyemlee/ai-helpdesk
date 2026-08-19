@@ -987,8 +987,8 @@ async def add_knowledge(body: BatchDocInput):
     ```json
     {
       "documents": [
-        {"title": "退款政策", "content": "用户在购买后 7 天内可以申请无理由退款..."},
-        {"title": "配送说明", "content": "标准配送 3-5 个工作日..."}
+        {"title": "补件流程", "content": "缺件需在验收单注明并提供订单号、柜号和装箱单编号..."},
+        {"title": "交期说明", "content": "标准交期 4-6 周，以工厂排产确认为准..."}
       ]
     }
     ```

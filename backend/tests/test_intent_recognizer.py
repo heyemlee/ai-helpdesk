@@ -82,7 +82,7 @@ async def test_fast_path_can_be_disabled():
     recog = IntentRecognizer(api_key="k", enable_fast_path=False)
     stub_intent(recog, IntentCategory.MISSING_PART)
 
-    result = await recog.recognize("我要退款")
+    result = await recog.recognize("我要补件")
 
     assert result.strategy == "ensemble"
 
@@ -124,7 +124,7 @@ def test_remote_embedding_backend_when_configured():
 
 async def test_embedding_similarity_ranks_paraphrases(recognizer):
     """本地向量至少要能把换了说法的同义句排到对应意图上。"""
-    result = await recognizer._embedding_recognize("我要申请退款")
+    result = await recognizer._embedding_recognize("我要申请补件")
     assert result["confidence"] > 0.0
 
 
@@ -163,8 +163,8 @@ async def test_low_confidence_falls_back_to_other(recognizer):
 async def test_result_is_cached(recognizer):
     stub_intent(recognizer, IntentCategory.QUERY)
 
-    await recognizer.recognize("会员权益是什么")
-    await recognizer.recognize("会员权益是什么")
+    await recognizer.recognize("保修范围是什么")
+    await recognizer.recognize("保修范围是什么")
 
     assert recognizer.cache_hits == 1
 
