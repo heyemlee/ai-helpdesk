@@ -409,25 +409,25 @@ AI_HELPDESK_SKILLS_MAX_PROMPT_CHARS=5000
 推荐结构：
 
 ```text
-skills/refund/SKILL.md
-skills/customer_support/SKILL.md
+skills/order_logistics/SKILL.md
+skills/general_customer_service/SKILL.md
 ```
 
 `SKILL.md` 示例：
 
 ```markdown
 ---
-name: 退款处理流程
-description: 退款场景的客服处理规则
-keywords: 退款,退费,refund
-agents: billing,general
+name: 补件处理流程
+description: 缺件漏发场景的客服处理规则
+keywords: 补件,缺件,少发,漏发,missing part
+agents: order,general
 enabled: true
 ---
 
-# 退款处理流程
+# 补件处理流程
 
-- 先确认订单号和支付方式。
-- 涉及实际退款操作时转人工审核。
+- 先确认订单号、柜号和装箱单编号。
+- 补件到货日期以工厂排产为准，不在登记时承诺日期。
 ```
 
 查看加载结果：
@@ -475,7 +475,7 @@ curl http://localhost:8000/health
 
 ```json
 {
-  "message": "我要退款",
+  "message": "少发了一块门板，补件怎么走？",
   "user_id": "user_001",
   "conv_id": "session_001"
 }
@@ -530,7 +530,7 @@ Query 参数：
 ```bash
 curl -X POST http://localhost:8000/search \
   -H "Content-Type: application/json" \
-  -d '{"query": "退款多久到账", "top_k": 3}'
+  -d '{"query": "补件多久能到", "top_k": 3}'
 ```
 
 ### 5.6 `/knowledge/add`
@@ -543,8 +543,8 @@ curl -X POST http://localhost:8000/search \
 {
   "documents": [
     {
-      "title": "退款政策",
-      "content": "用户在购买后 7 天内可以申请无理由退款..."
+      "title": "补件流程",
+      "content": "缺件需在验收单注明并提供订单号、柜号和装箱单编号..."
     }
   ]
 }
@@ -635,7 +635,7 @@ curl -X POST http://localhost:8000/chat \
 ```json
 {
   "conv_id": "session_001",
-  "response": "请提供订单号，我可以帮您查询订单状态和物流进度。",
+  "response": "请提供订单号，我可以帮您查询订单的生产进度和送货安排。",
   "intent": "order_status",
   "intent_group": "query",
   "intent_strategy": "fast_path",
@@ -690,13 +690,13 @@ curl -X POST http://localhost:8000/chat \
 
 系统会从 Redis 读取当前会话最近消息，并从 Postgres(pgvector) 读取相关历史和用户画像，拼成上下文传给 Agent。
 
-### 6.3 技术问题示例
+### 6.3 产品与安装问题示例
 
 ```bash
 curl -X POST http://localhost:8000/chat \
   -H "Content-Type: application/json" \
   -d '{
-    "message": "应用登录一直报 401 错误",
+    "message": "柜门关不严，铰链怎么调？",
     "user_id": "user_tech",
     "conv_id": "tech_001"
   }'
@@ -704,13 +704,13 @@ curl -X POST http://localhost:8000/chat \
 
 预期会路由到 `technical` Agent。
 
-### 6.4 账单问题示例
+### 6.4 报价与账款问题示例
 
 ```bash
 curl -X POST http://localhost:8000/chat \
   -H "Content-Type: application/json" \
   -d '{
-    "message": "为什么这个月重复扣款了？我要退款",
+    "message": "定金付了怎么还显示未付？账单也对不上",
     "user_id": "user_bill",
     "conv_id": "bill_001"
   }'
@@ -724,13 +724,13 @@ curl -X POST http://localhost:8000/chat \
 curl -X POST http://localhost:8000/chat \
   -H "Content-Type: application/json" \
   -d '{
-    "message": "登录报错 401，而且这个月还重复扣款了",
+    "message": "门板有划痕，而且尾款还多收了",
     "user_id": "user_mix",
     "conv_id": "mix_001"
   }'
 ```
 
-这类问题会触发多 Agent 并行协作，由技术 Agent 和账单 Agent 分别处理后合并回复。
+这类问题会触发多 Agent 并行协作，由产品与安装 Agent 和报价与账款 Agent 分别处理后合并回复。
 
 ## 7. 知识库使用
 
@@ -740,7 +740,7 @@ ai-helpdesk 的知识库由 `mcp/knowledge_base.py` 管理，底层使用 Postgr
 knowledge_base
 ```
 
-首次启动时，如果知识库为空，会自动导入默认客服文档，包括退款政策、订单查询、账户安全、技术故障排查、会员积分、配送说明。
+首次启动时，如果知识库为空，会自动导入默认业务文档，包括定制流程与节点、交期说明、报价构成与变更加价、缺件漏发与补件流程、安装与常见现场问题、保修范围与除外情形。
 
 ### 7.1 查看知识库统计
 
@@ -764,12 +764,12 @@ curl -X POST http://localhost:8000/knowledge/add \
   -d '{
     "documents": [
       {
-        "title": "退换货政策",
-        "content": "用户在购买后 7 天内可以申请无理由退货，审核通过后 5-7 个工作日退款。"
+        "title": "改单规则",
+        "content": "未排产的变更只收材料差价；已开料的变更按材料损失加重新加工费计算。"
       },
       {
-        "title": "会员权益",
-        "content": "金卡会员享受 9 折优惠，生日当月可获得双倍积分。"
+        "title": "五金升级",
+        "content": "阻尼铰链和全展滑轨可选升级，具体加价以正式报价单为准。"
       }
     ]
   }'
@@ -809,17 +809,17 @@ JSON 格式必须是数组：
 ```bash
 curl -X POST http://localhost:8000/search \
   -H "Content-Type: application/json" \
-  -d '{"query": "退款需要多久到账", "top_k": 3}'
+  -d '{"query": "补件需要多久发出", "top_k": 3}'
 ```
 
 响应示例：
 
 ```json
 {
-  "query": "退款需要多久到账",
+  "query": "补件需要多久发出",
   "results": [
     {
-      "title": "退款政策",
+      "title": "补件流程",
       "content": "审核通过后，款项将在 5-7 个工作日内退回原支付账户。",
       "score": 0.82,
       "chunk": 0
@@ -973,7 +973,7 @@ client = postgres.HttpClient(host="postgres", port=8000)
 col = client.get_collection("knowledge_base")
 
 result = col.query(
-    query_texts=["退款多久到账"],
+    query_texts=["补件多久能到"],
     n_results=3,
     include=["documents", "metadatas", "distances"],
 )
@@ -997,7 +997,7 @@ PY
 ```bash
 curl -X POST http://localhost:8000/chat \
   -H "Content-Type: application/json" \
-  -d '{"message": "我经常咨询会员积分和退款问题，回答请简洁一点", "user_id": "profile_user", "conv_id": "profile_session"}'
+  -d '{"message": "我经常咨询交期和补件问题，回答请简洁一点", "user_id": "profile_user", "conv_id": "profile_session"}'
 ```
 
 等待几秒后查看：
@@ -1036,7 +1036,7 @@ PY
 for i in $(seq 1 16); do
   curl -s -X POST http://localhost:8000/chat \
     -H "Content-Type: application/json" \
-    -d "{\"message\": \"这是第 $i 条测试消息，我想咨询退款和订单问题\", \"user_id\": \"episodic_user\", \"conv_id\": \"episodic_session\"}" > /dev/null
+    -d "{\"message\": \"这是第 $i 条测试消息，我想咨询交期和补件问题\", \"user_id\": \"episodic_user\", \"conv_id\": \"episodic_session\"}" > /dev/null
 done
 ```
 
@@ -1564,7 +1564,7 @@ curl http://localhost:8000/health
 # 3. 主对话
 curl -X POST http://localhost:8000/chat \
   -H "Content-Type: application/json" \
-  -d '{"message": "你好，我想了解退款政策", "user_id": "demo_user", "conv_id": "demo_conv"}'
+  -d '{"message": "你好，我想了解保修范围", "user_id": "demo_user", "conv_id": "demo_conv"}'
 
 # 4. 知识库统计
 curl http://localhost:8000/knowledge/stats

@@ -42,7 +42,7 @@ def stub_intent_metrics(evaluator, accuracy: float):
     evaluator._intent_evaluator.evaluate = _evaluate
 
 
-CASES = [IntentTestCase("我要退款", "refund")]
+CASES = [IntentTestCase("补件什么时候到", "missing_part")]
 
 
 # ── 四个质量维度 ──────────────────────────────────────────────────────────────

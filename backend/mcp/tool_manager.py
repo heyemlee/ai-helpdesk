@@ -25,7 +25,11 @@ from typing import Any
 
 from anthropic import AsyncAnthropic
 
-from core.llm_utils import anthropic_client_kwargs, extract_text_content
+from core.llm_utils import (
+    STRUCTURED_MAX_TOKENS,
+    anthropic_client_kwargs,
+    extract_structured_text,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -324,8 +328,8 @@ class MCPToolManager:
         多角度子查询并行检索后合并，显著提升召回率。
 
         示例：
-          原始: "退款流程"
-          改写: ["如何申请退款", "退款需要多少天", "退款政策是什么"]
+          原始: "补件流程"
+          改写: ["缺件漏发怎么登记", "补件需要提供什么材料", "补件多久能到"]
         """
         prompt = f"""将以下用户查询改写为 {n} 个不同角度的搜索子查询，用于检索知识库。
 要求：每个子查询角度不同，覆盖原始问题的不同方面。
@@ -334,10 +338,10 @@ class MCPToolManager:
         prompt = self._clean_text(prompt)
         try:
             resp = await self._client.messages.create(
-                model=self._model, max_tokens=256, temperature=0.3,
+                model=self._model, max_tokens=STRUCTURED_MAX_TOKENS, temperature=0.3,
                 messages=[{"role": "user", "content": prompt}],
             )
-            raw = extract_text_content(resp.content)
+            raw = extract_structured_text(resp)
             s, e = raw.find("["), raw.rfind("]") + 1
             queries = json.loads(raw[s:e])
             # 原始查询也保留，去重
@@ -417,10 +421,10 @@ class MCPToolManager:
 
         try:
             resp = await self._client.messages.create(
-                model=self._model, max_tokens=256, temperature=0.0,
+                model=self._model, max_tokens=STRUCTURED_MAX_TOKENS, temperature=0.0,
                 messages=[{"role": "user", "content": prompt}],
             )
-            raw = extract_text_content(resp.content)
+            raw = extract_structured_text(resp)
             s, e = raw.find("["), raw.rfind("]") + 1
             order: list[int] = json.loads(raw[s:e])
             reordered = [items[i] for i in order if 0 <= i < len(items)]

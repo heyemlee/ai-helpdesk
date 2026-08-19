@@ -1,14 +1,14 @@
 # ai-helpdesk Skills 文档
 
-ai-helpdesk 启动时会从 `AI_HELPDESK_SKILLS_DIR` 读取 Skills，并在匹配用户请求时注入到对应 Agent 的 system prompt。Skills 适合维护业务处理规范、客服话术、技术排障 SOP、账单审核边界、升级规则和禁止事项。
+ai-helpdesk 启动时会从 `AI_HELPDESK_SKILLS_DIR` 读取 Skills，并在匹配用户请求时注入到对应 Agent 的 system prompt。Skills 适合维护业务处理规范、客服话术、安装排障 SOP、报价与账款边界、升级规则和禁止事项。
 
 当前内置四类 Skills，与三个专家 Agent + 一个兜底 Agent 一一对应：
 
 ```text
-skills/technical_support/SKILL.md         # 专家：故障排查、接口错误、部署配置和安全边界
-skills/billing_support/SKILL.md           # 专家：扣款、退款、发票、订阅和财务审核
-skills/order_logistics/SKILL.md           # 专家：订单状态、发货进度、物流轨迹和签收异常
-skills/general_customer_service/SKILL.md  # 兜底：接待、澄清、分流、投诉和转人工
+skills/technical_support/SKILL.md         # 专家：柜体台面规格、饰面色差、五金调整、安装偏差和破损判定
+skills/billing_support/SKILL.md           # 专家：报价构成、变更加价、定金尾款、账单核对和发票
+skills/order_logistics/SKILL.md           # 专家：订单与生产进度、交期、改单取消、缺件补件和送货排期
+skills/general_customer_service/SKILL.md  # 兜底：展厅接待、需求澄清、分流、投诉和转人工
 ```
 
 `agents:` 字段决定 Skill 注入给哪个 Agent。新增 Agent 类型时必须同步新增对应
@@ -26,9 +26,9 @@ skills/<skill_name>/SKILL.md
 
 ```markdown
 ---
-name: 技术支持处理规范
-description: 适用于 TechnicalAgent 的故障排查和升级处理规范
-keywords: 报错,错误,接口,API,部署,超时,500,401,日志
+name: 产品与安装处理规范
+description: 适用于 TechnicalAgent 的规格核对、安装调整和返工升级规范
+keywords: 门板,台面,饰面,色差,划痕,破损,铰链,滑轨,关不严,对不齐,返工
 agents: technical
 enabled: true
 ---

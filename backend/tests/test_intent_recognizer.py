@@ -3,7 +3,7 @@ import pytest
 from conftest import stub_intent
 
 from core.intent_recognizer import (
-    _ERROR_CODE_RE,
+    _ITEM_CODE_RE,
     FINE_GRAINED_INTENT_COUNT,
     FINE_GRAINED_INTENTS,
     IntentCategory,
@@ -30,10 +30,10 @@ def test_every_fine_grained_intent_has_templates():
 
 @pytest.mark.parametrize("message,expected", [
     ("转人工", IntentCategory.HUMAN_HANDOFF),
-    ("我要退款", IntentCategory.REFUND),
-    ("帮我开发票", IntentCategory.INVOICE),
-    ("这个月被重复扣款了", IntentCategory.PAYMENT_ISSUE),
-    ("无法登录，一直转圈", IntentCategory.TECHNICAL_LOGIN),
+    ("补件什么时候到", IntentCategory.MISSING_PART),
+    ("这套报价多少", IntentCategory.QUOTE_PRICING),
+    ("尾款被重复扣款了", IntentCategory.PAYMENT_ISSUE),
+    ("柜门关不严", IntentCategory.INSTALLATION),
 ])
 def test_fast_path_hits_high_precision_anchors(recognizer, message, expected):
     hit = recognizer._fast_path(message)
@@ -44,7 +44,7 @@ def test_fast_path_hits_high_precision_anchors(recognizer, message, expected):
 
 def test_fast_path_aborts_on_cross_intent_conflict(recognizer):
     """跨域复合问题必须交给三路融合判主意图，规则不能自作主张。"""
-    assert recognizer._fast_path("无法登录，而且这个月被重复扣款了") is None
+    assert recognizer._fast_path("柜门关不严，而且尾款还被重复扣款了") is None
 
 
 @pytest.mark.parametrize("message", ["你好", "", "在吗", "我想问一下你们家的服务怎么样啊"])
@@ -54,7 +54,7 @@ def test_fast_path_declines_ambiguous_messages(recognizer, message):
 
 def test_fast_path_declines_long_messages(recognizer):
     """超长消息通常含多个诉求，单个锚点不足以定性。"""
-    long_message = "我要退款" + "，另外还有很多别的问题要说明" * 12
+    long_message = "补件" + "，另外还有很多别的问题要说明" * 12
     assert len(long_message) > 120
     assert recognizer._fast_path(long_message) is None
 
@@ -80,7 +80,7 @@ async def test_fast_path_makes_zero_network_calls(recognizer):
 
 async def test_fast_path_can_be_disabled():
     recog = IntentRecognizer(api_key="k", enable_fast_path=False)
-    stub_intent(recog, IntentCategory.REFUND)
+    stub_intent(recog, IntentCategory.MISSING_PART)
 
     result = await recog.recognize("我要退款")
 
@@ -135,14 +135,14 @@ async def test_vote_survives_llm_failure(recognizer):
                 "reasoning": "LLM 失败", "failed": True}
 
     async def _emb(message):
-        return {"intent": IntentCategory.REFUND, "confidence": 0.7}
+        return {"intent": IntentCategory.MISSING_PART, "confidence": 0.7}
 
     recognizer._llm_recognize = _broken_llm
     recognizer._embedding_recognize = _emb
 
     result = await recognizer.recognize("这个订单能不能把钱退给我")
 
-    assert result.intent == IntentCategory.REFUND
+    assert result.intent == IntentCategory.MISSING_PART
 
 
 async def test_low_confidence_falls_back_to_other(recognizer):
@@ -174,21 +174,23 @@ async def test_result_is_cached(recognizer):
 @pytest.mark.parametrize("message,expected", [
     ("I NEED HELP", []),
     ("PLEASE FIX THIS NOW", []),
-    ("报500错误", ["500"]),
-    ("接口返回 403", ["403"]),
-    ("ERR_CONNECTION_RESET", ["ERR_CONNECTION_RESET"]),
+    ("W3012 这块门板裂了", ["W3012"]),
+    ("柜号 DB24-3 少发了", ["DB24-3"]),
+    ("PO-12345 这一单", ["PO-12345"]),
     ("充值500元", []),
     ("支付了 500 美元", []),
 ])
-def test_error_code_extraction_does_not_match_plain_uppercase_words(message, expected):
+def test_item_code_extraction_does_not_match_plain_uppercase_words(message, expected):
     """
-    早期正则 [A-Z][A-Z0-9_-]{2,16} 会把任意大写单词当错误码，
-    "I NEED HELP" 命中 NEED/HELP 后给技术域加分，导致误路由。
+    早期正则 [A-Z][A-Z0-9_-]{2,16} 会把任意大写单词当编号，
+    "I NEED HELP" 命中 NEED/HELP 后给产品域加分，导致误路由。
+    柜号必须字母加数字（W3012 / DB24-3），纯大写词和纯金额都不算。
     """
-    assert _ERROR_CODE_RE.findall(message) == expected
+    assert _ITEM_CODE_RE.findall(message) == expected
 
 
-def test_entity_extraction_pulls_order_and_amount(recognizer):
-    entities = recognizer._extract_entities("订单号 A1B2C3D4 被扣了 199 元")
+def test_entity_extraction_pulls_order_amount_and_item_code(recognizer):
+    entities = recognizer._extract_entities("订单号 A1B2C3D4 的 W3012 门板报价 199 元")
     assert entities["order_id"] == ["A1B2C3D4"]
     assert entities["amount"] == ["199 元"]
+    assert entities["item_code"] == ["W3012"]

@@ -1,18 +1,18 @@
 {
-  "timestamp": "2026-05-31T07:06:07.150090",
+  "timestamp": "2026-08-18T17:28:49.901590",
   "total": 8,
-  "passed": 8,
-  "pass_rate": 1.0,
+  "passed": 7,
+  "pass_rate": 0.875,
   "avg_scores": {
-    "relevance": 1.0,
-    "accuracy": 0.9786,
-    "completeness": 0.8,
-    "helpfulness": 0.8857,
+    "relevance": 0.9429,
+    "accuracy": 0.9357,
+    "completeness": 0.6214,
+    "helpfulness": 0.7857,
     "intent_accuracy": 1.0
   },
   "regressions": [],
   "recommendations": [
-    "所有指标均达标，继续保持"
+    "完整性偏低：Agent 可能过早结束回答，考虑在 prompt 中要求提供完整解决方案"
   ],
   "results": [
     {
@@ -24,132 +24,168 @@
       },
       "detail": "准确率 100.0%，Macro-F1 1.000",
       "metadata": {
-        "total": 8,
-        "correct": 8,
+        "total": 11,
+        "correct": 11,
         "cases": [
           {
-            "message": "我的订单什么时候到？",
-            "expected": "query",
-            "predicted": "query",
-            "confidence": 0.95,
-            "reasoning": "用户询问订单到达时间，属于查询类意图。"
+            "message": "这批柜子什么时候能做好？",
+            "expected": "order_status",
+            "predicted": "order_status",
+            "confidence": 0.8798171286860659,
+            "reasoning": "用户询问柜子生产完成时间，属于订单生产进度查询。"
           },
           {
-            "message": "帮我取消订单",
-            "expected": "request",
-            "predicted": "request",
-            "confidence": 1.0,
-            "reasoning": "用户明确要求执行取消订单的操作，属于请求类意图。"
+            "message": "帮我把这单取消掉",
+            "expected": "order_change",
+            "predicted": "order_change",
+            "confidence": 0.715,
+            "reasoning": "用户要求取消订单，属于订单变更类请求"
           },
           {
             "message": "你们服务太差了！",
             "expected": "complaint",
             "predicted": "complaint",
-            "confidence": 0.95,
-            "reasoning": "用户直接表达了对服务的不满，属于投诉类意图。"
+            "confidence": 0.8840308509457033,
+            "reasoning": "用户表达对服务质量的强烈不满"
           },
           {
-            "message": "应用一直报500错误",
-            "expected": "technical",
-            "predicted": "technical",
-            "confidence": 0.95,
-            "reasoning": "用户报告应用持续出现500错误，属于技术问题"
+            "message": "送来的门板有划痕",
+            "expected": "damage_defect",
+            "predicted": "damage_defect",
+            "confidence": 0.82,
+            "reasoning": "规则通道命中锚点短语: 有划痕"
           },
           {
-            "message": "为什么扣了两次款？",
-            "expected": "billing",
-            "predicted": "billing",
-            "confidence": 0.95,
-            "reasoning": "用户询问扣款问题，明确涉及账单费用，符合billing意图"
+            "message": "定金付了怎么还显示未付？",
+            "expected": "payment_issue",
+            "predicted": "payment_issue",
+            "confidence": 0.82,
+            "reasoning": "规则通道命中锚点短语: 定金"
           },
           {
             "message": "我要投诉，转人工！",
-            "expected": "escalation",
-            "predicted": "escalation",
-            "confidence": 0.95,
-            "reasoning": "用户明确要求投诉并转人工，符合升级处理意图"
+            "expected": "human_handoff",
+            "predicted": "human_handoff",
+            "confidence": 0.82,
+            "reasoning": "规则通道命中锚点短语: 转人工"
           },
           {
             "message": "你好",
             "expected": "greeting",
             "predicted": "greeting",
-            "confidence": 1.0,
-            "reasoning": "用户消息为'你好'，与示例中问候意图完全一致。"
+            "confidence": 0.9430000000000001,
+            "reasoning": "用户主动问好，属于问候语。"
           },
           {
-            "message": "修改我的邮箱地址",
-            "expected": "account",
-            "predicted": "account",
-            "confidence": 0.95,
-            "reasoning": "用户明确要求修改邮箱地址，属于账户信息变更操作。"
+            "message": "这套橱柜报价多少？",
+            "expected": "quote_pricing",
+            "predicted": "quote_pricing",
+            "confidence": 0.82,
+            "reasoning": "规则通道命中锚点短语: 报价多少"
+          },
+          {
+            "message": "少发了一块门板，补件怎么走？",
+            "expected": "missing_part",
+            "predicted": "missing_part",
+            "confidence": 0.87,
+            "reasoning": "规则通道命中锚点短语: 少发了, 补件"
+          },
+          {
+            "message": "柜门关不严，铰链怎么调？",
+            "expected": "installation",
+            "predicted": "installation",
+            "confidence": 0.87,
+            "reasoning": "规则通道命中锚点短语: 关不严, 铰链"
+          },
+          {
+            "message": "能不能改一下送货日期？",
+            "expected": "delivery",
+            "predicted": "delivery",
+            "confidence": 0.82,
+            "reasoning": "规则通道命中锚点短语: 送货日期"
           }
         ]
       }
     },
     {
       "test_id": "dialog_0",
-      "passed": true,
+      "passed": false,
       "scores": {
-        "relevance": 1.0,
-        "accuracy": 1.0,
-        "completeness": 0.6,
-        "helpfulness": 0.7,
-        "overall": 0.825
+        "relevance": 0.85,
+        "accuracy": 0.9,
+        "completeness": 0.3,
+        "helpfulness": 0.5,
+        "overall": 0.6375
       },
-      "detail": "Q: 我的订单 #12345 还没到，已经超时了... → 综合评分 0.825",
+      "detail": "Q: 我这单 #12345 说好上周做完，到现在还没消息... → 综合评分 0.637",
       "metadata": {
-        "question": "我的订单 #12345 还没到，已经超时了",
-        "response": "您好，非常抱歉给您带来不便。我查一下您的订单 #12345 的物流情况。请稍等。请问您方便提供一下联系方式或收货地址吗？这样我可以更高效地核实问题。",
-        "agent_type": "general",
-        "intent": "complaint",
+        "question": "我这单 #12345 说好上周做完，到现在还没消息",
+        "response": "我这边暂时没有查到订单 #12345 的实时生产进度记录，无法确认目前是否已完工或具体到了哪道工序。\n\n另外需要说明：交期是以工厂排产确认的实际进度为准，我这边不能凭空给出完工或到货日期。为了帮你进一步核实，你可以补充一下：\n\n- 柜号或具体产品/物料编码\n- 当初确认的图纸日期和定金到账时间\n- 是否有排产确认单或跟单人员给过预计完工时间\n\n有了这些信息，我可以帮你按流程反馈给工厂或跟单核实当前进度。",
+        "agent_type": "order",
+        "primary_agent": "order",
+        "supporting_agents": [],
+        "intent": "order_status",
         "turn": 0,
         "conv_id": "eval_0",
         "judge_failed": false,
-        "judge_error": null
+        "judge_error": null,
+        "handoff": false,
+        "answer_confidence": 0.644,
+        "policy_violations": []
       }
     },
     {
       "test_id": "dialog_1",
       "passed": true,
       "scores": {
-        "relevance": 1.0,
+        "relevance": 0.95,
         "accuracy": 1.0,
-        "completeness": 1.0,
-        "helpfulness": 1.0,
-        "overall": 1.0
+        "completeness": 0.7,
+        "helpfulness": 0.85,
+        "overall": 0.875
       },
-      "detail": "Q: 应用登录一直报错 401... → 综合评分 1.000",
+      "detail": "Q: W3012 这块门板送来就是裂的... → 综合评分 0.875",
       "metadata": {
-        "question": "应用登录一直报错 401",
-        "response": "收到您关于应用登录报错 401 的问题。401 状态码通常表示**身份验证失败**，即用户身份未被系统认可或凭证无效。\n\n为了帮助您快速排查，请按以下步骤操作：\n\n### 第一步：基础排查（前端/用户侧）\n\n1.  **检查账号密码是否正确**\n    -   确认是否输入了正确的用户名/邮箱和密码。\n    -   注意是否开启了**大小写锁定键（Caps Lock）** 或使用了全角字符（例如 “Ａ” 而非 “A”）。\n    -   尝试在浏览器无痕/隐私窗口登录，排除缓存干扰。\n2.  **清除浏览器缓存和 Cookie**\n    -   401 也可能由过期的 Token 或 Session 引起。清除后重新尝试登录。\n3.  **确认网络环境**\n    -   如果使用公司内网或 VPN，请确认网络连接正常，且没有触发防火墙或代理拦截。\n\n### 第二步：进阶排查（若第一步无效）\n\n如果基础操作后问题依旧，需进一步判断：\n\n1.  **检查请求的 API 地址**\n    -   确认前端请求的登录接口 URL 与后端配置的完全一致（包括协议、域名、端口）。\n2.  **查看请求头与 Token**\n    -   使用浏览器开发者工具（F12 > Network 标签），找到登录失败的请求。\n    -   查看 **Response Headers** 中的 `WWW-Authenticate` 字段，它会提示具体的认证方案（如 Bearer / Basic / Digest）。\n    -   查看是否携带了正确的 `Authorization` 头，或是否因 Token 过期/无效被后端拒绝。\n\n### 第三步：后台/服务器侧（需更高权限）\n\n> **说明**：以下操作需要**系统管理员或后台运维权限**，如果您是普通用户，请将以下信息反馈给技术负责人。\n\n1.  **检查后端服务状态**\n    -   登录服务器，查看应用服务（如 Nginx、Tomcat、Node.js 等）是否正常运行。\n    -   检查认证服务（如 OAuth、LDAP、JWT 签发服务）是否能正常响应。\n2.  **查看应用日志**\n    -   搜索关键词 `401` 或 `Unauthorized`，确认具体报错信息。\n    -   常见原因：\n        -   认证密钥（Secret Key）在环境变量或配置文件中错误。\n        -   用户数据库连接异常或用户记录被锁定/禁用。\n        -   Token 黑名单机制误判了正常请求。\n3.  **检查白名单/IP 限制**\n    -   确认服务器是否对特定 IP 段或地区做了访问限制。\n\n---\n\n### 当前最推荐您尝试的操作：\n\n1.  **立即重置密码**（如果是个人账号问题）。\n2.  **联系管理员确认账号状态**（未激活、被锁定、已过期）。\n3.  **提供以下信息给技术支持**，以便快速定位：\n    -   报错时间的完整截图（含浏览器控制台 Network 面板）。\n    -   完整错误日志或响应体内容（例如：`{\"error\":\"invalid_token\"}`）。\n\n若以上步骤仍无法解决，请提供**更详细的错误信息**（如其他用户是否正常、系统版本变动等），我会为您做更深层分析。",
+        "question": "W3012 这块门板送来就是裂的",
+        "response": "您反馈 **W3012 这块门板送到时就有开裂**，我这边先按“疑似运输损或出厂瑕疵”登记，但在工厂质检确认前，不能直接定性为哪一方责任。\n\n需要您补充以下信息，我才能准确提交：\n\n1. **订单号**；\n2. **发现时间**：是签收当场发现，还是在安装过程中才看到；\n3. **是否已经安装**：有没有上墙、装铰链或开孔改动过；\n4. **现场照片**：门板整体一张 + 开裂处特写一张，能看清裂纹走向和位置；\n5. **门板颜色/饰面编号**，方便核对补件信息。\n\n后续流程是：按破损补件登记 → 转工厂质检判定 → 属于运输损或出厂问题的，走补件/重做流程。**具体的补件时间要等工厂排产确认，我不能先给您一个日期。**\n\n另外先提醒：在质检结论出来前，**不要自行拆改或开孔**，否则会影响责任判定和保修。如果您已安装，请一并说明。",
         "agent_type": "technical",
-        "intent": "technical",
+        "primary_agent": "technical",
+        "supporting_agents": [],
+        "intent": "damage_defect",
         "turn": 0,
         "conv_id": "eval_1",
         "judge_failed": false,
-        "judge_error": null
+        "judge_error": null,
+        "handoff": false,
+        "answer_confidence": 0.686,
+        "policy_violations": []
       }
     },
     {
       "test_id": "dialog_2",
       "passed": true,
       "scores": {
-        "relevance": 1.0,
+        "relevance": 0.95,
         "accuracy": 0.95,
-        "completeness": 0.8,
+        "completeness": 0.7,
         "helpfulness": 0.9,
-        "overall": 0.9125
+        "overall": 0.875
       },
-      "detail": "Q: 为什么这个月多扣了 50 块钱？... → 综合评分 0.912",
+      "detail": "Q: 这套厨房加个岛台大概要加多少钱？... → 综合评分 0.875",
       "metadata": {
-        "question": "为什么这个月多扣了 50 块钱？",
-        "response": "您好，我理解您对账单金额变动的疑问。这50元可能来自以下原因：\n\n1. **订阅服务调整**：请检查是否有新增的会员服务（如云存储扩容、增值功能）或试用期结束转为付费。\n2. **基础费用变更**：部分套餐可能因促销到期或汇率波动产生临时调整。\n3. **一次性费用**：例如超量使用费、自动续费的代金券抵扣失效等。\n\n建议您提供以下信息以便进一步分析：\n- 账单上的具体项目名称\n- 扣款时间范围\n- 账户绑定的服务类型\n\n如果您需要正式核查或申请退款，需由人工客服调取后台记录。请点击“转人工”并提供账单截图，我会帮您转接处理。",
+        "question": "这套厨房加个岛台大概要加多少钱？",
+        "response": "加岛台我这边不能给你一个口头数字或大概区间，因为价格不是按“个”算的，会受这几项影响：岛台尺寸、柜体结构、门板饰面、台面材质与加工（比如是否要做水槽或插座开孔）、五金配置，以及是否涉及水电点位调整。\n\n正式报价单会按这些分项拆开列清楚，一般包含：柜体、门板饰面、台面、五金、送货费、安装费；不包含拆旧、水电改造、瓦工泥工和垃圾清运。如果岛台涉及水电，那部分也需要另外确认。\n\n下一步建议这样处理：我帮你转销售，按你这套厨房的实际尺寸和配置出一版正式报价单，把岛台相关项目单独列出来。你这边有订单号或之前的设计图纸吗？有的话我一起备注给销售，报价会更准。",
         "agent_type": "billing",
-        "intent": "billing",
+        "primary_agent": "billing",
+        "supporting_agents": [],
+        "intent": "quote_pricing",
         "turn": 0,
         "conv_id": "eval_2",
         "judge_failed": false,
-        "judge_error": null
+        "judge_error": null,
+        "handoff": false,
+        "answer_confidence": 0.82,
+        "policy_violations": []
       }
     },
     {
@@ -157,88 +193,112 @@
       "passed": true,
       "scores": {
         "relevance": 1.0,
-        "accuracy": 1.0,
-        "completeness": 1.0,
-        "helpfulness": 1.0,
-        "overall": 1.0
+        "accuracy": 0.95,
+        "completeness": 0.7,
+        "helpfulness": 0.85,
+        "overall": 0.875
       },
-      "detail": "Q: 帮我把收货地址改成北京市朝阳区... → 综合评分 1.000",
+      "detail": "Q: 帮我把送货地址改成圣何塞的工地... → 综合评分 0.875",
       "metadata": {
-        "question": "帮我把收货地址改成北京市朝阳区",
-        "response": "好的，已为您更新收货地址为：北京市朝阳区。如需进一步修改，请随时告知。",
-        "agent_type": "general",
-        "intent": "request",
+        "question": "帮我把送货地址改成圣何塞的工地",
+        "response": "我理解你想把送货地址改成圣何塞的工地。为了处理，我需要先确认是哪一单，请提供订单号。\n\n另外，改地址要看这单是否已经发货：如果还没发货，可以在物流排班前尝试调整；如果已经发货或在途，不一定能改，需要物流确认。请把新工地的详细地址、可接收时段、现场是否有卸货条件（电梯/楼层）一并告诉我，我登记后帮你转物流确认。",
+        "agent_type": "order",
+        "primary_agent": "order",
+        "supporting_agents": [],
+        "intent": "order_change",
         "turn": 0,
         "conv_id": "eval_3",
         "judge_failed": false,
-        "judge_error": null
+        "judge_error": null,
+        "handoff": false,
+        "answer_confidence": 0.665,
+        "policy_violations": []
       }
     },
     {
       "test_id": "dialog_4_turn_0",
       "passed": true,
       "scores": {
-        "relevance": 1.0,
-        "accuracy": 1.0,
-        "completeness": 0.6,
-        "helpfulness": 0.8,
-        "overall": 0.85
+        "relevance": 0.95,
+        "accuracy": 0.9,
+        "completeness": 0.7,
+        "helpfulness": 0.9,
+        "overall": 0.8625
       },
-      "detail": "Q: 你好，我想退款... → 综合评分 0.850",
+      "detail": "Q: 你好，我这单少了一块门板... → 综合评分 0.863",
       "metadata": {
-        "question": "你好，我想退款",
-        "response": "您好！请问您希望为哪一笔订单申请退款呢？我可以帮您查询和处理相关事宜。",
-        "agent_type": "general",
-        "intent": "request",
+        "question": "你好，我这单少了一块门板",
+        "response": "您好，缺件补件需要先查询您的订单信息。请提供**订单号**和**柜号**，以及缺失门板的**具体位置/名称**、**装箱单编号**和**现场清点照片**（如有）。\n\n收到后我会为您登记并查询补件流程。需要提前说明：门板属于定制件，若工厂库存无货，需要重新排产，具体到货日期以工厂排产确认为准，登记时无法承诺日期。",
+        "agent_type": "order",
+        "primary_agent": "order",
+        "supporting_agents": [],
+        "intent": "missing_part",
         "turn": 0,
         "conv_id": "eval_4",
         "judge_failed": false,
-        "judge_error": null
+        "judge_error": null,
+        "handoff": false,
+        "answer_confidence": 0.774,
+        "policy_violations": []
       }
     },
     {
       "test_id": "dialog_4_turn_1",
       "passed": true,
       "scores": {
-        "relevance": 1.0,
-        "accuracy": 1.0,
-        "completeness": 0.8,
-        "helpfulness": 0.9,
-        "overall": 0.925
+        "relevance": 0.95,
+        "accuracy": 0.95,
+        "completeness": 0.7,
+        "helpfulness": 0.85,
+        "overall": 0.8624999999999999
       },
-      "detail": "Q: 订单号是 #12345... → 综合评分 0.925",
+      "detail": "Q: 订单号是 #12345... → 综合评分 0.862",
       "metadata": {
         "question": "订单号是 #12345",
-        "response": "好的，我已找到订单 #12345。请问您希望申请退款的原因是什么呢？我可以先帮您确认退款政策。",
-        "agent_type": "general",
-        "intent": "request",
+        "response": "已收到订单号 **#12345**。\n\n为了帮您登记缺件补件，还需要补充以下信息：\n\n1. **柜号**：缺失门板对应的柜体编号（如 W3012、B24）。\n2. **缺失门板的具体位置/名称**：例如地柜门、吊柜门、抽屉面板，以及大概尺寸或位置描述。\n3. **装箱单编号**：如果手边有装箱单，请提供对应箱号。\n4. **现场清点照片**：缺失位置和现有门板的照片，方便核对。\n\n我需要先确认是“真的没发”还是“分批发货还没到齐”，再走补件流程。补件如果工厂没有库存，需要重新排产，具体到货日期以工厂排产确认为准，我不会给您一个不准的日期。您先提供以上信息，我这边帮您登记。",
+        "agent_type": "order",
+        "primary_agent": "order",
+        "supporting_agents": [],
+        "intent": "missing_part",
         "turn": 1,
         "conv_id": "eval_4",
         "judge_failed": false,
-        "judge_error": null
+        "judge_error": null,
+        "handoff": false,
+        "answer_confidence": 0.679,
+        "policy_violations": []
       }
     },
     {
       "test_id": "dialog_4_turn_2",
       "passed": true,
       "scores": {
-        "relevance": 1.0,
+        "relevance": 0.95,
         "accuracy": 0.9,
-        "completeness": 0.8,
-        "helpfulness": 0.9,
-        "overall": 0.9
+        "completeness": 0.55,
+        "helpfulness": 0.65,
+        "overall": 0.7625
       },
-      "detail": "Q: 退款多久能到账？... → 综合评分 0.900",
+      "detail": "Q: 补件大概多久能到？... → 综合评分 0.762",
       "metadata": {
-        "question": "退款多久能到账？",
-        "response": "通常退款会在您提交申请后的 **3-7个工作日** 内到账，具体时间取决于您的支付方式和银行处理速度。如果您有紧急情况，可以尝试联系支付平台加速处理。",
-        "agent_type": "general",
-        "intent": "query",
+        "question": "补件大概多久能到？",
+        "response": "理解您着急，但补件的具体到货日期我这边**无法给您一个确定时间**。门板属于定制件，如果工厂没有库存，需要重新排产，排产周期取决于工厂当前产能和排产计划，不是固定天数。\n\n要推进补件，还需要您补充之前提到的信息，否则我无法为您登记：\n\n- **柜号**\n- **缺失门板的具体位置/名称**（如地柜门、吊柜门、抽屉面板）\n- **装箱单编号**（如有）\n- **现场清点照片**（缺失位置和现有门板）\n\n登记后，我们会按流程先核实是分批发货未到、还是库存可调配；如果确实需要重新排产，具体到货日期会由人工在确认排产后专门回复您。我不会先给一个不准的时间，以免耽误您安排。",
+        "agent_type": "order",
+        "primary_agent": "order",
+        "supporting_agents": [],
+        "intent": "missing_part",
         "turn": 2,
         "conv_id": "eval_4",
         "judge_failed": false,
-        "judge_error": null
+        "judge_error": null,
+        "handoff": false,
+        "answer_confidence": 0.82,
+        "policy_violations": []
       }
     }
-  ]
+  ],
+  "release": "cabinet-domain",
+  "baseline_release": "",
+  "baseline_timestamp": "",
+  "promoted": true
 }

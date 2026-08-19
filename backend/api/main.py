@@ -296,6 +296,8 @@ async def lifespan(app: FastAPI):
         model=cfg["model"],
         baseline_path=os.getenv("EVAL_BASELINE_PATH", "/app/data/eval/baseline.json"),
         release=os.getenv("AI_HELPDESK_RELEASE", app.version),
+        # 评测走和 /chat 完全同一套检索，否则测出来的分数和线上不是一回事
+        grounding_provider=_eval_grounding,
     )
 
     if _API_KEY:
@@ -357,6 +359,7 @@ app.add_middleware(
 
 from core.metrics import RATE_LIMIT_HITS, observe_http  # noqa: E402
 from core.telemetry import setup_telemetry  # noqa: E402
+from mcp.knowledge_base import should_use_knowledge  # noqa: E402
 
 # OTel：配置 OTEL_EXPORTER_OTLP_ENDPOINT 后启用 FastAPI/httpx/redis/asyncpg
 # 自动埋点 + 业务 span；未配置时零开销。
@@ -769,6 +772,21 @@ def _sse(event: str, data: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
+async def _eval_grounding(message: str, intent_result) -> str:
+    """
+    评测用的出处提供者：复用 /chat 的检索链路，返回知识库上下文文本。
+
+    fast_path 的口径也保持一致——规则通道定性的高频问题走单次直检，
+    否则走查询改写 + 并行召回 + 重排。
+    """
+    text, _ = await _build_knowledge_context(
+        message,
+        intent=getattr(intent_result, "intent", None),
+        fast_path=getattr(intent_result, "fast_path", False),
+    )
+    return text
+
+
 async def _build_knowledge_context(
     message: str,
     intent=None,
@@ -784,7 +802,7 @@ async def _build_knowledge_context(
     """
     if _tool_manager is None:
         return "", False
-    if not _should_use_knowledge(message, intent=intent):
+    if not should_use_knowledge(message, intent=intent):
         return "", False
     try:
         if fast_path:
@@ -820,29 +838,6 @@ async def _build_knowledge_context(
         return "", False
 
 
-def _should_use_knowledge(message: str, intent=None) -> bool:
-    """跳过纯寒暄，业务类问题才检索知识库，避免无关 RAG 干扰回复。"""
-    msg = (message or "").strip().lower()
-    if not msg:
-        return False
-    intent_value = getattr(intent, "value", intent)
-    if intent_value in {"greeting", "feedback", "escalation", "human_handoff", "other"}:
-        return False
-    if intent_value in {
-        "query", "request", "technical", "billing", "account", "complaint",
-        "order_status", "logistics", "refund", "invoice", "payment_issue",
-        "account_security", "technical_login", "technical_crash",
-    }:
-        return True
-    greetings = {"你好", "您好", "嗨", "hi", "hello", "hey", "早上好", "晚上好"}
-    if msg in greetings:
-        return False
-    business_keywords = [
-        "退款", "订单", "物流", "配送", "发票", "扣款", "支付", "账单", "订阅",
-        "登录", "报错", "错误", "崩溃", "会员", "积分", "账户", "密码", "地址",
-        "refund", "order", "invoice", "payment", "error", "login",
-    ]
-    return len(msg) >= 4 or any(kw in msg for kw in business_keywords)
 
 
 @app.get("/monitor")

@@ -31,14 +31,14 @@ def test_handoff_is_not_a_pooled_agent(orchestrator):
 # ── 领域打分路由 ──────────────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("message,intent,expected", [
-    ("订单什么时候发货", IntentCategory.ORDER_STATUS, AgentType.ORDER),
-    ("物流一直不更新", IntentCategory.LOGISTICS, AgentType.ORDER),
-    ("这个月被重复扣款了", IntentCategory.PAYMENT_ISSUE, AgentType.BILLING),
-    ("帮我开发票", IntentCategory.INVOICE, AgentType.BILLING),
-    ("App 一直崩溃", IntentCategory.TECHNICAL_CRASH, AgentType.TECHNICAL),
-    ("无法登录，报401", IntentCategory.TECHNICAL_LOGIN, AgentType.TECHNICAL),
+    ("这批柜子什么时候做好", IntentCategory.ORDER_STATUS, AgentType.ORDER),
+    ("送货一直没安排", IntentCategory.DELIVERY, AgentType.ORDER),
+    ("尾款被重复扣款了", IntentCategory.PAYMENT_ISSUE, AgentType.BILLING),
+    ("这套报价多少", IntentCategory.QUOTE_PRICING, AgentType.BILLING),
+    ("门板送来就是裂的", IntentCategory.DAMAGE_DEFECT, AgentType.TECHNICAL),
+    ("柜门关不严，铰链松了", IntentCategory.INSTALLATION, AgentType.TECHNICAL),
     ("你好", IntentCategory.GREETING, AgentType.GENERAL),
-    ("想咨询一下会员权益", IntentCategory.QUERY, AgentType.GENERAL),
+    ("想问一下你们保修多久", IntentCategory.QUERY, AgentType.GENERAL),
 ])
 def test_domain_score_picks_primary_agent(orchestrator, message, intent, expected):
     decision = orchestrator._route_decision(make_request(message, intent))
@@ -48,14 +48,14 @@ def test_domain_score_picks_primary_agent(orchestrator, message, intent, expecte
 def test_domain_scores_are_bounded(orchestrator):
     """分数必须截断到 [0,1]，否则辅助 Agent 的相对门槛永远够不到。"""
     scores = orchestrator._domain_scores(
-        make_request("无法登录 报401 一直崩溃 闪退 接口报错", IntentCategory.TECHNICAL_LOGIN)
+        make_request("关不严 对不齐 有划痕 开裂 起泡 需要返工", IntentCategory.INSTALLATION)
     )
     assert all(0.0 <= v <= 1.0 for v in scores.values())
 
 
 def test_cross_domain_promotes_supporting_agent(orchestrator):
     decision = orchestrator._route_decision(
-        make_request("我登录不上，而且这个月被重复扣款了", IntentCategory.TECHNICAL_LOGIN)
+        make_request("门板有划痕，而且尾款还多收了", IntentCategory.DAMAGE_DEFECT)
     )
 
     assert decision.primary_agent == AgentType.TECHNICAL
@@ -65,31 +65,31 @@ def test_cross_domain_promotes_supporting_agent(orchestrator):
 
 def test_single_domain_has_no_supporting_agents(orchestrator):
     decision = orchestrator._route_decision(
-        make_request("帮我开发票", IntentCategory.INVOICE)
+        make_request("这套报价多少", IntentCategory.QUOTE_PRICING)
     )
     assert decision.supporting_agents == []
 
 
 def test_general_never_becomes_a_supporting_agent(orchestrator):
     decision = orchestrator._route_decision(
-        make_request("订单发货了吗，顺便问下会员权益", IntentCategory.ORDER_STATUS)
+        make_request("订单排产了吗，顺便问下保修范围", IntentCategory.ORDER_STATUS)
     )
     assert AgentType.GENERAL not in decision.supporting_agents
 
 
 def test_entities_contribute_to_domain_score(orchestrator):
     with_code = orchestrator._domain_scores(
-        make_request("这个接口挂了", IntentCategory.TECHNICAL, entities={"error_code": ["500"]})
+        make_request("这块板子对不上", IntentCategory.TECHNICAL, entities={"item_code": ["W3012"]})
     )
     without = orchestrator._domain_scores(
-        make_request("这个接口挂了", IntentCategory.TECHNICAL)
+        make_request("这块板子对不上", IntentCategory.TECHNICAL)
     )
     assert with_code[AgentType.TECHNICAL] > without[AgentType.TECHNICAL]
 
 
 def test_routing_reason_records_all_domain_scores(orchestrator):
     decision = orchestrator._route_decision(
-        make_request("帮我开发票", IntentCategory.INVOICE)
+        make_request("这套报价多少", IntentCategory.QUOTE_PRICING)
     )
     for agent_type in SPECIALIST_AGENTS:
         assert agent_type.value in decision.reason
@@ -99,7 +99,7 @@ def test_routing_reason_records_all_domain_scores(orchestrator):
 
 async def test_multi_agent_run_merges_primary_and_supporting(orchestrator):
     stub_agents(orchestrator)
-    req = make_request("我登录不上，而且这个月被重复扣款了", IntentCategory.TECHNICAL_LOGIN)
+    req = make_request("门板有划痕，而且尾款还多收了", IntentCategory.DAMAGE_DEFECT)
 
     result = await orchestrator.run(req)
 
@@ -119,12 +119,12 @@ async def test_low_confidence_other_intent_asks_for_clarification(orchestrator):
 
     assert result.needs_clarification is True
     assert result.handoff is False
-    assert "订单物流" in result.response
+    assert "订单交付" in result.response
 
 
 async def test_confident_intent_skips_clarification(orchestrator):
     stub_agents(orchestrator)
-    req = make_request("帮我开发票", IntentCategory.INVOICE, confidence=0.9)
+    req = make_request("这套报价多少", IntentCategory.QUOTE_PRICING, confidence=0.9)
 
     result = await orchestrator.run(req)
 
@@ -160,7 +160,7 @@ async def test_critical_urgency_goes_straight_to_human(orchestrator):
 async def test_low_intent_confidence_triggers_handoff(orchestrator):
     """意图置信度低于阈值时，即使 Agent 正常回复也要转人工，不硬答。"""
     stub_agents(orchestrator)
-    req = make_request("发票的事", IntentCategory.INVOICE, confidence=0.3)
+    req = make_request("报价的事", IntentCategory.QUOTE_PRICING, confidence=0.3)
 
     result = await orchestrator.run(req)
 
@@ -176,7 +176,7 @@ async def test_each_signal_is_compared_against_its_own_threshold(orchestrator):
     stub_agents(orchestrator)
     # 意图 0.5 高于意图阈值 0.45，虽然它是三者里最弱的一环，也不该转人工
     result = await orchestrator.run(
-        make_request("帮我开发票", IntentCategory.INVOICE, confidence=0.5)
+        make_request("这套报价多少", IntentCategory.QUOTE_PRICING, confidence=0.5)
     )
 
     assert result.handoff is False
@@ -185,7 +185,7 @@ async def test_each_signal_is_compared_against_its_own_threshold(orchestrator):
 
 async def test_answer_confidence_reports_the_weakest_signal(orchestrator):
     stub_agents(orchestrator)
-    req = make_request("帮我开发票", IntentCategory.INVOICE, confidence=0.62)
+    req = make_request("这套报价多少", IntentCategory.QUOTE_PRICING, confidence=0.62)
 
     result = await orchestrator.run(req)
 
@@ -194,7 +194,7 @@ async def test_answer_confidence_reports_the_weakest_signal(orchestrator):
 
 async def test_handoff_keeps_the_answer_already_produced(orchestrator):
     stub_agents(orchestrator, reply="这里是已经生成的回答")
-    req = make_request("发票的事", IntentCategory.INVOICE, confidence=0.3)
+    req = make_request("报价的事", IntentCategory.QUOTE_PRICING, confidence=0.3)
 
     result = await orchestrator.run(req)
 
@@ -206,7 +206,7 @@ async def test_handoff_keeps_the_answer_already_produced(orchestrator):
 
 async def test_specialist_failure_falls_back_to_general(orchestrator):
     stub_agents(orchestrator, fail_types=(AgentType.BILLING,))
-    req = make_request("帮我开发票", IntentCategory.INVOICE)
+    req = make_request("这套报价多少", IntentCategory.QUOTE_PRICING)
 
     result = await orchestrator.run(req)
 
@@ -217,7 +217,7 @@ async def test_specialist_failure_falls_back_to_general(orchestrator):
 
 async def test_total_failure_hands_off_to_human(orchestrator):
     stub_agents(orchestrator, fail_types=(AgentType.BILLING, AgentType.GENERAL))
-    req = make_request("帮我开发票", IntentCategory.INVOICE)
+    req = make_request("这套报价多少", IntentCategory.QUOTE_PRICING)
 
     result = await orchestrator.run(req)
 
@@ -228,33 +228,33 @@ async def test_total_failure_hands_off_to_human(orchestrator):
 # ── 答案策略接入 ──────────────────────────────────────────────────────────────
 
 async def test_policy_violation_is_blocked_and_surfaced(orchestrator):
-    stub_agents(orchestrator, reply="退款会在 3 个工作日内到账。")
-    req = make_request("退款多久到账", IntentCategory.REFUND)
+    stub_agents(orchestrator, reply="补件会在 3 个工作日内送到。")
+    req = make_request("补件多久能到", IntentCategory.MISSING_PART)
 
     result = await orchestrator.run(req)
 
     assert result.policy_violations
-    assert "3 个工作日内到账" not in result.response
+    assert "3 个工作日内送到" not in result.response
     assert orchestrator.policy.blocked_total == 1
 
 
 async def test_sourced_commitment_passes_through(orchestrator):
-    stub_agents(orchestrator, reply="退款审核通过后 7 个工作日内原路退回。")
+    stub_agents(orchestrator, reply="补件确认后 7 个工作日内从工厂发出。")
     req = make_request(
-        "退款多久到账",
-        IntentCategory.REFUND,
-        grounding_sources=["[知识库] 退款审核通过后 7 个工作日内原路退回。"],
+        "补件多久能到",
+        IntentCategory.MISSING_PART,
+        grounding_sources=["[知识库] 补件确认后 7 个工作日内从工厂发出。"],
     )
 
     result = await orchestrator.run(req)
 
     assert not result.policy_violations
-    assert "7 个工作日内原路退回" in result.response
+    assert "7 个工作日内从工厂发出" in result.response
 
 
 async def test_policy_violation_drags_confidence_toward_handoff(orchestrator):
-    stub_agents(orchestrator, reply="退款 3 个工作日到账，费用 50 元马上退给你。")
-    req = make_request("退款多久到账", IntentCategory.REFUND, confidence=0.8)
+    stub_agents(orchestrator, reply="补件 3 个工作日送到，运费 50 元马上退给你。")
+    req = make_request("补件多久能到", IntentCategory.MISSING_PART, confidence=0.8)
 
     result = await orchestrator.run(req)
 
@@ -285,9 +285,9 @@ async def test_repeated_policy_violations_force_handoff(orchestrator):
     """一处无依据承诺先拦下改写；连着两处说明这轮回答整体不可信，直接转人工。"""
     stub_agents(
         orchestrator,
-        reply="退款 3 个工作日到账。手续费一共 50 元，马上退给你。",
+        reply="补件 3 个工作日送到。运费一共 50 元，马上退给你。",
     )
-    req = make_request("退款多久到账", IntentCategory.REFUND, confidence=0.9)
+    req = make_request("补件多久能到", IntentCategory.MISSING_PART, confidence=0.9)
 
     result = await orchestrator.run(req)
 

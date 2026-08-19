@@ -4,9 +4,9 @@
 核心问题：多 Agent 情况下如何做 Routing？
 
 三个专家 Agent + 一个兜底 Agent：
-  - TechnicalAgent —— 故障排查、错误码、登录异常、部署配置
-  - BillingAgent   —— 扣款、退款、发票、订阅
-  - OrderAgent     —— 订单状态、物流配送、地址与签收
+  - TechnicalAgent —— 柜体台面规格、饰面色差、五金调整、安装偏差与破损判定
+  - BillingAgent   —— 报价构成、变更加价、定金尾款、账单核对与发票
+  - OrderAgent     —— 订单与生产进度、交期、改单取消、缺件补件、送货排期
   - GeneralAgent   —— 不属于任何专家域，或专家执行失败时的兜底
 
 路由策略：
@@ -37,7 +37,11 @@ from anthropic import AsyncAnthropic
 
 from core.answer_policy import AnswerPolicy, PolicyStreamGuard, PolicyViolation
 from core.intent_recognizer import IntentCategory, IntentRecognizer, UrgencyLevel
-from core.llm_utils import anthropic_client_kwargs, extract_text_content
+from core.llm_utils import (
+    ANSWER_MAX_TOKENS,
+    anthropic_client_kwargs,
+    extract_structured_text,
+)
 from core.metrics import record_llm_tokens
 from core.telemetry import span
 
@@ -48,9 +52,9 @@ logger = logging.getLogger(__name__)
 
 class AgentType(Enum):
     GENERAL   = "general"    # 通用客服（兜底）
-    TECHNICAL = "technical"  # 专家：技术支持
-    BILLING   = "billing"    # 专家：账单/退款
-    ORDER     = "order"      # 专家：订单/物流
+    TECHNICAL = "technical"  # 专家：产品规格与现场安装
+    BILLING   = "billing"    # 专家：报价与账款
+    ORDER     = "order"      # 专家：订单、改单、补件与交付
     HANDOFF   = "handoff"    # 转人工（不是 LLM Agent，由编排器直接产出）
 
 
@@ -60,9 +64,9 @@ SPECIALIST_AGENTS = (AgentType.TECHNICAL, AgentType.BILLING, AgentType.ORDER)
 # 对外展示的角色名。内部类名按技术职责命名，对外按业务职责命名，
 # 这样产品文档和 UI 里出现的是"收入与合规 Agent"而不是 BillingAgent。
 AGENT_DISPLAY_NAMES: dict[AgentType, str] = {
-    AgentType.GENERAL:   "运营协调 Agent",
-    AgentType.TECHNICAL: "技术可靠性 Agent",
-    AgentType.BILLING:   "收入与合规 Agent",
+    AgentType.GENERAL:   "展厅接待 Agent",
+    AgentType.TECHNICAL: "产品与安装 Agent",
+    AgentType.BILLING:   "报价与账款 Agent",
     AgentType.ORDER:     "订单履约 Agent",
     AgentType.HANDOFF:   "运营升级通道",
 }
@@ -316,7 +320,7 @@ class BaseAgent:
         """调用 LLM 的流式接口，逐段产出文本增量。"""
         async with self._client.messages.stream(
             model=self._model,
-            max_tokens=1024,
+            max_tokens=ANSWER_MAX_TOKENS,
             system=self._build_system_prompt(skill_prompt),
             messages=self._build_messages(req),
         ) as stream:
@@ -339,7 +343,7 @@ class BaseAgent:
         with span("agent.llm_call", agent=self.agent_type.value, model=self._model):
             resp = await self._client.messages.create(
                 model=self._model,
-                max_tokens=1024,
+                max_tokens=ANSWER_MAX_TOKENS,
                 system=self._build_system_prompt(skill_prompt),
                 messages=self._build_messages(req),
             )
@@ -350,7 +354,7 @@ class BaseAgent:
                 getattr(usage, "input_tokens", 0) or 0,
                 getattr(usage, "output_tokens", 0) or 0,
             )
-        return extract_text_content(resp.content)
+        return extract_structured_text(resp, budget_env="AI_HELPDESK_ANSWER_MAX_TOKENS")
 
     @staticmethod
     def _build_messages(req: Request) -> list[dict[str, str]]:
@@ -404,33 +408,35 @@ class BaseAgent:
 class GeneralAgent(BaseAgent):
     agent_type    = AgentType.GENERAL
     system_prompt = (
-        "你是 ai-helpdesk 智能客服。友好、简洁地回答用户问题。"
-        "如果问题超出你的能力范围，明确说明并建议转接专业客服。"
+        "你是橱柜厂销售展厅的接待客服。友好、简洁地回答客户和经销商的问题。"
+        "如果问题超出你的能力范围，明确说明并建议转接对应的专业客服。"
     )
 
 
 class TechnicalAgent(BaseAgent):
     agent_type    = AgentType.TECHNICAL
     system_prompt = (
-        "你是技术支持专家。专注于：故障排查、错误诊断、系统配置。"
-        "提供清晰的步骤化解决方案。遇到需要后台操作的问题，说明需要升级处理。"
+        "你是橱柜产品与现场安装专家。专注于：柜体和台面的规格、门板饰面与色差、"
+        "五金件（铰链、滑轨）调整、现场安装对不齐/关不严、破损瑕疵的判定与返工路径。"
+        "提供清晰的步骤化解决方案。需要排返工或到场服务的，说明需要升级处理。"
     )
 
 
 class BillingAgent(BaseAgent):
     agent_type    = AgentType.BILLING
     system_prompt = (
-        "你是账单服务专家。专注于：账单查询、退款申请、发票问题、订阅管理。"
-        "对财务问题保持准确和专业。涉及实际退款操作时，说明需要人工审核。"
+        "你是报价与账款专家。专注于：橱柜报价构成、变更加价、定金与尾款、账单核对、发票。"
+        "对财务问题保持准确和专业。没有拿到正式报价单或系统账目时，不要自己算价、"
+        "也不要给出任何具体金额，说明需要销售出具报价单。涉及实际退补款时，说明需要人工审核。"
     )
 
 
 class OrderAgent(BaseAgent):
     agent_type    = AgentType.ORDER
     system_prompt = (
-        "你是订单与物流专家。专注于：订单状态、发货进度、物流轨迹、配送时效、"
-        "收货地址修改、签收异常。没有查到系统记录时，先说明需要订单号或运单号，"
-        "不要凭空描述订单状态。配送时效以承运商实际情况为准，不要给出确定的到达时间。"
+        "你是订单与交付专家。专注于：订单和生产进度、交期、改单（改尺寸/配置/饰面/取消）、"
+        "缺件漏发的补件流程、送货与到场排期。没有查到系统记录时，先说明需要订单号或柜号，"
+        "不要凭空描述订单状态。交期以工厂排产实际情况为准，不要给出确定的完工或到货日期。"
     )
 
 
@@ -448,50 +454,53 @@ class AgentOrchestrator:
     # 意图 → 领域的映射。领域打分以此为基础，再叠加关键词和实体信号。
     _INTENT_DOMAIN: dict[IntentCategory, AgentType] = {
         IntentCategory.TECHNICAL:        AgentType.TECHNICAL,
-        IntentCategory.TECHNICAL_LOGIN:  AgentType.TECHNICAL,
-        IntentCategory.TECHNICAL_CRASH:  AgentType.TECHNICAL,
-        IntentCategory.ACCOUNT_SECURITY: AgentType.TECHNICAL,
+        IntentCategory.INSTALLATION:     AgentType.TECHNICAL,
+        IntentCategory.DAMAGE_DEFECT:    AgentType.TECHNICAL,
         IntentCategory.BILLING:          AgentType.BILLING,
-        IntentCategory.REFUND:           AgentType.BILLING,
-        IntentCategory.INVOICE:          AgentType.BILLING,
+        IntentCategory.QUOTE_PRICING:    AgentType.BILLING,
         IntentCategory.PAYMENT_ISSUE:    AgentType.BILLING,
+        IntentCategory.ORDER:            AgentType.ORDER,
         IntentCategory.ORDER_STATUS:     AgentType.ORDER,
-        IntentCategory.LOGISTICS:        AgentType.ORDER,
+        IntentCategory.DELIVERY:         AgentType.ORDER,
+        IntentCategory.ORDER_CHANGE:     AgentType.ORDER,
+        IntentCategory.MISSING_PART:     AgentType.ORDER,
         IntentCategory.ESCALATION:       AgentType.HANDOFF,
         IntentCategory.HUMAN_HANDOFF:    AgentType.HANDOFF,
         # 其余意图（QUERY / REQUEST / COMPLAINT / GREETING / FEEDBACK /
-        # ACCOUNT / OTHER）没有专家域，落到 GENERAL。
+        # OTHER）没有专家域，落到 GENERAL。
     }
 
     # 领域锚点：单独出现就足以说明"这句话里有这个域的诉求"。
-    # 跨域工单（"登录不上而且被重复扣款"）靠它把第二个域顶到辅助 Agent 门槛之上。
+    # 跨域工单（"门板有划痕，而且还少发了一块"）靠它把第二个域顶到辅助 Agent
+    # 门槛之上——划痕是产品域，少发是订单域，两个域都要出人。
     _DOMAIN_ANCHORS: dict[AgentType, list[str]] = {
         AgentType.TECHNICAL: [
-            "无法登录", "登录失败", "登录不上", "登不上", "一直崩溃", "闪退", "白屏",
-            "报401", "报403", "报500", "接口报错", "验证码收不到", "系统崩溃",
+            "关不严", "对不齐", "铰链松", "装不上", "有划痕", "开裂", "起泡",
+            "色差", "台面裂", "门板变形", "五金坏了", "需要返工",
         ],
         AgentType.BILLING: [
-            "重复扣款", "多扣", "扣了两次", "申请退款", "我要退款", "退款进度",
-            "开发票", "发票抬头", "支付失败", "自动续费", "取消订阅",
+            "报价单", "报个价", "多少钱", "要加多少钱", "定金", "尾款",
+            "多收了", "重复扣款", "付款失败", "开发票", "账单对不上",
         ],
         AgentType.ORDER: [
-            "订单状态", "发货了吗", "有没有发货", "物流", "快递", "运单",
-            "配送", "签收", "收货地址", "订单进度",
+            "订单状态", "生产进度", "排产了吗", "什么时候送货", "少发了", "漏发",
+            "缺件", "补件", "改尺寸", "取消订单", "订单进度",
         ],
     }
 
     # 领域弱关键词：单独出现证据不足，用来在锚点之上做微调。
     _DOMAIN_KEYWORDS: dict[AgentType, list[str]] = {
         AgentType.TECHNICAL: [
-            "崩溃", "报错", "error", "crash", "登录", "401", "403", "500",
-            "验证码", "接口", "api", "超时",
+            "门板", "台面", "柜门", "铰链", "滑轨", "五金", "饰面", "安装",
+            "划痕", "工艺", "变形", "install",
         ],
         AgentType.BILLING: [
-            "退款", "退货", "扣款", "发票", "账单", "支付", "订阅", "续费",
-            "优惠券", "refund", "invoice", "payment", "billing",
+            "报价", "价格", "费用", "账单", "发票", "定金", "尾款", "付款",
+            "收费", "quote", "invoice", "payment",
         ],
         AgentType.ORDER: [
-            "订单", "发货", "地址", "order", "shipping", "delivery", "tracking",
+            "订单", "这单", "工单", "送货", "补件", "改单", "order",
+            "delivery", "shipping",
         ],
     }
 
@@ -814,8 +823,8 @@ class AgentOrchestrator:
         return OrchestratorResult(
             request_id=req.request_id,
             response=(
-                "我还不能确定您要处理的是哪类问题。请补充一下是订单物流、退款账单、"
-                "账户资料，还是技术故障？"
+                "我还不能确定您要处理的是哪类问题。请补充一下是订单交付、报价账款，"
+                "还是产品安装方面的问题？"
             ),
             agent_type=AgentType.GENERAL,
             intent=req.intent,
@@ -997,7 +1006,7 @@ class AgentOrchestrator:
         if domain in SPECIALIST_AGENTS:
             scores[domain] += 0.75
         elif req.intent is not None:
-            # 没有专家域的意图（咨询、投诉、问候、账户资料等）抬高兜底分
+            # 没有专家域的意图（泛咨询、投诉、问候、正面反馈等）抬高兜底分
             scores[AgentType.GENERAL] += 0.55
 
         # 信号 2：领域锚点（强证据）+ 弱关键词（微调）
@@ -1013,7 +1022,9 @@ class AgentOrchestrator:
 
         # 信号 3：结构化实体
         entities = req.entities or {}
-        if entities.get("error_code"):
+        if entities.get("item_code"):
+            # 报得出具体柜号/型号（W3012、DB24-3）说明问的是某个柜子本身，
+            # 不是泛泛咨询——这是产品与安装域的强信号。
             scores[AgentType.TECHNICAL] += 0.2
         if entities.get("amount"):
             scores[AgentType.BILLING] += 0.15
