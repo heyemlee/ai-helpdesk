@@ -36,12 +36,15 @@ deploy/nginx/ssl/
 # 相对"上一个被认可的版本"退化了多少。SQLite 库文件和日志是本地状态。
 # retrieval_cases.json 是 scripts/eval_retrieval.py 的用例，和它对应的语料
 # （demo_docs/sample_ca_factory_knowledge.json）要一起改、一起进版本库。
+# trajectory_cases.json 是 scripts/run_trajectory_eval.py 的用例；跑出来的报告写在
+# data/runtime/trajectory/ 下面，不进版本库。
 backend/data/*
 !backend/data/demo_docs/
 !backend/data/eval/
 backend/data/eval/*
 !backend/data/eval/baseline.json
 !backend/data/eval/retrieval_cases.json
+!backend/data/eval/trajectory_cases.json
 backend/logs/
 *.db
 *.db-journal

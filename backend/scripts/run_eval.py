@@ -60,8 +60,9 @@ from app.evaluation.evaluator import (  # noqa: E402
     EndToEndEvaluator,
 )
 from app.storage.vector_store import LocalStore  # noqa: E402
-from app.tools.knowledge_base import KnowledgeBase, should_use_knowledge  # noqa: E402
+from app.tools.knowledge_base import KnowledgeBase  # noqa: E402
 from app.tools.tool_manager import Tool, ToolManager  # noqa: E402
+from app.tools.turn_tools import Prefetch  # noqa: E402
 
 BASELINE = _ROOT / "data" / "eval" / "baseline.json"
 
@@ -131,30 +132,17 @@ async def main(promote: bool, force: bool, concurrency: int | None = None) -> No
         supports_rerank=True,
     ))
 
+    # 出处和 /chat 用同一份知识预取（tools/turn_tools.Prefetch）：同样的门控、同样的格式。
+    # 以前这里手抄了一份，已经和线上漂开（结尾少一句指令、没有向量分时写"相关度: None"）。
+    prefetch = Prefetch(tool_manager=tools)
+
     async def grounding(message: str, intent_result) -> str:
-        """复刻 /chat 的出处构建：按意图门控，命中规则通道时走单次直检。"""
-        if not should_use_knowledge(message, intent=getattr(intent_result, "intent", None)):
-            return ""
-        try:
-            if getattr(intent_result, "fast_path", False):
-                result = await tools.call("knowledge_search", {"query": message, "top_k": 3})
-            else:
-                result = await tools.search_with_rewrite("knowledge_search", message, top_k=3)
-        except Exception as ex:                      # noqa: BLE001
-            print(f"  [warn] 检索失败，本轮无出处: {ex}")
-            return ""
-        if not result.success or not isinstance(result.data, list) or not result.data:
-            return ""
-        parts = ["[知识库检索结果]"]
-        for i, item in enumerate(result.data[:3], start=1):
-            if not isinstance(item, dict) or not str(item.get("content", "")).strip():
-                continue
-            parts.append(
-                f"{i}. 标题: {item.get('title', '未命名文档')}\n"
-                f"   相关度: {item.get('score', '')}\n"
-                f"   内容: {str(item['content'])[:600]}"
-            )
-        return "\n".join(parts) if len(parts) > 1 else ""
+        text, _ = await prefetch.knowledge_context(
+            message,
+            intent=getattr(intent_result, "intent", None),
+            fast_path=getattr(intent_result, "fast_path", False),
+        )
+        return text
 
     evaluator = EndToEndEvaluator(
         orchestrator=orchestrator, recognizer=recognizer,
