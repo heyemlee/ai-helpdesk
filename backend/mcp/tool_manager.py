@@ -6,17 +6,27 @@
 本模块的答案：
   1. 查询改写（Query Rewriting）—— 用 LLM 把用户原始问题扩写成多个角度的子查询，
      再合并去重，解决"召回不全"问题。
-  2. 结果重排（Reranking）—— 对召回结果用 LLM 打分，按相关性重新排序，
-     解决"召回不好/排序差"问题。
-  3. 熔断器（Circuit Breaker）—— 连续失败超阈值时自动断开，防止雪崩。
-  4. 结果缓存（TTL Cache）—— 相同参数直接返回缓存，减少重复调用。
-  5. 降级策略（Fallback）—— 工具不可用时返回有意义的降级结果。
+  2. 结果重排（Reranking）—— 对召回结果按相关性重新排序，解决"召回不好/排序差"
+     问题。优先走 cross-encoder（判别式模型，几十毫秒），未配置时回落 LLM listwise。
+  3. 检索自纠错（Self-Correction）—— 重排完不是直接交付，先判定证据是否足以
+     回答问题；不足则围绕缺口补检一轮。**硬性上限一轮**，见 search_with_rewrite。
+  4. 熔断器（Circuit Breaker）—— 连续失败超阈值时自动断开，防止雪崩。
+  5. 结果缓存（TTL Cache）—— 相同参数直接返回缓存，减少重复调用。
+  6. 降级策略（Fallback）—— 工具不可用时返回有意义的降级结果。
+
+关于第 3 点的成本：朴素做法是重排之后再调一次 LLM 问"证据够不够"，
+那是**每次检索多一次往返**。这里不这么做——LLM 重排本来就要把 query 和
+全部候选读一遍，判定证据充分性所需的信息一字不差就是这一份，所以充分性
+判定被合并进重排的同一次调用、同一份 JSON 里返回，额外往返数为零。
+只有在改用 cross-encoder 重排（没有可搭车的生成调用）时才退回分数阈值
+判定——同样零往返，只是判据从"模型说够不够"变成"最高相似度够不够"。
 """
 import asyncio
 import hashlib
 import inspect
 import json
 import logging
+import os
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -32,6 +42,11 @@ from core.llm_utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+# 没有 LLM 判定可用时（cross-encoder 重排路径），认为"证据充分"的最低相似度。
+# 低于它才触发补检索。定成 0.5 是因为余弦相似度在 0.5 以下时，检索命中的
+# 通常只是同领域的泛泛内容而不是能回答该问题的具体条款。
+EVIDENCE_MIN_SCORE = float(os.getenv("RAG_EVIDENCE_MIN_SCORE", "0.5"))
 
 
 # ── 数据结构 ──────────────────────────────────────────────────────────────────
@@ -51,6 +66,23 @@ class ToolResult:
     cached:         bool = False
     latency_ms:     float = 0.0
     reranked:       bool = False   # 是否经过重排
+    corrected:      bool = False   # 是否触发过检索自纠错（补检一轮）
+    evidence_ok:    bool | None = None  # 证据充分性判定；None = 未判定
+
+
+@dataclass
+class RerankOutcome:
+    """
+    重排结果 + 顺带得到的证据充分性判定。
+
+    sufficient 为 None 表示这次重排无法判定（cross-encoder 路径，或候选数
+    太少压根没调用模型）——调用方据此回落到分数阈值判定，而不是把 None
+    当成 False 白白触发一轮补检索。
+    """
+    items:      list[Any]
+    reranked:   bool
+    sufficient: bool | None = None
+    missing:    str = ""           # 模型指出的证据缺口，用于定向补检索
 
 
 @dataclass
@@ -136,7 +168,8 @@ class MCPToolManager:
     MCP 工具调用框架。
 
     核心优化链路（针对检索类工具）：
-      用户查询 → 查询改写（多角度子查询）→ 并行召回 → 结果重排 → 返回 Top-K
+      用户查询 → 查询改写（多角度子查询）→ 并行召回 → 结果重排
+              → 证据充分性判定 →（不足则补检一轮）→ 返回 Top-K
     """
 
     def __init__(
@@ -145,12 +178,16 @@ class MCPToolManager:
         base_url: str | None = None,
         model: str = "claude-3-5-sonnet-20241022",
         shared_state=None,
+        reranker=None,
     ):
         kwargs = anthropic_client_kwargs(api_key, base_url)
         self._client = AsyncAnthropic(**kwargs)
         self._model  = model
         self._tools: dict[str, Tool] = {}
         self._cache: dict[str, tuple] = {}   # key → (result, expire_at, reranked)
+        # 可选的 cross-encoder 重排器（core/reranker.py）。为 None 或未配置远端时
+        # 全部走 LLM listwise 重排，行为与加它之前完全一致。
+        self._reranker = reranker
         # 多实例部署时传入 SharedState，熔断状态经 Redis 共享：实例 A 熔断后
         # 实例 B 对同一工具的调用同样被拒绝。未传入时用进程内熔断器（单实例语义）。
         self._shared_state = shared_state
@@ -251,8 +288,8 @@ class MCPToolManager:
             # 重排（针对返回列表的检索工具）
             reranked = False
             if rerank_top_k > 0 and tool.supports_rerank and isinstance(data, list):
-                query = params.get("query", "")
-                data, reranked = await self._rerank(query, data, rerank_top_k)
+                outcome = await self._rerank(params.get("query", ""), data, rerank_top_k)
+                data, reranked = outcome.items, outcome.reranked
 
             # 写缓存：缓存最终返回结果，避免下次命中未重排的原始结果。
             if tool.cache_ttl > 0:
@@ -320,7 +357,7 @@ class MCPToolManager:
 
     # ── 查询改写（解决召回不全）────────────────────────────────────────────────
 
-    async def rewrite_query(self, query: str, n: int = 3) -> list[str]:
+    async def rewrite_query(self, query: str, n: int = 3, hint: str = "") -> list[str]:
         """
         用 LLM 将原始查询改写为 n 个不同角度的子查询。
 
@@ -330,10 +367,15 @@ class MCPToolManager:
         示例：
           原始: "补件流程"
           改写: ["缺件漏发怎么登记", "补件需要提供什么材料", "补件多久能到"]
+
+        hint 是自纠错回合传进来的证据缺口描述。带 hint 的改写必须**换角度**
+        而不是把上一轮的子查询换个说法——上一轮已经把那些角度检索过了，
+        重复的子查询会命中缓存、返回同一批候选，补检索这一轮就白花了。
         """
+        gap = f"\n上一轮检索到的内容不足以回答问题，缺少：{hint}\n请围绕这个缺口改写，不要重复上一轮的角度。" if hint else ""
         prompt = f"""将以下用户查询改写为 {n} 个不同角度的搜索子查询，用于检索知识库。
 要求：每个子查询角度不同，覆盖原始问题的不同方面。
-原始查询: "{query}"
+原始查询: "{query}"{gap}
 返回 JSON 数组，例如: ["子查询1", "子查询2", "子查询3"]"""
         prompt = self._clean_text(prompt)
         try:
@@ -344,8 +386,10 @@ class MCPToolManager:
             raw = extract_structured_text(resp)
             s, e = raw.find("["), raw.rfind("]") + 1
             queries = json.loads(raw[s:e])
-            # 原始查询也保留，去重
-            return list(dict.fromkeys([query] + queries))
+            # 原始查询也保留，去重。补检索回合不再重复原始查询——它的结果
+            # 已经在上一轮的候选池里了。
+            base = [] if hint else [query]
+            return list(dict.fromkeys(base + queries))
         except Exception as ex:
             logger.warning(f"查询改写失败，使用原始查询: {ex}")
             return [query]
@@ -356,67 +400,169 @@ class MCPToolManager:
         query: str,
         top_k: int = 5,
         context: dict[str, Any] | None = None,
+        *,
+        self_correct: bool = True,
     ) -> ToolResult:
         """
-        完整的检索优化链路：查询改写 → 并行召回 → 去重 → 重排 → Top-K
+        完整的检索优化链路：
+          查询改写 → 并行召回 → 去重 → 重排 + 证据判定 →（不足则补检一轮）→ Top-K
 
-        这是解决"检索不全、召回不好"的完整方案。
+        这是解决"检索不全、召回不好"的完整方案。self_correct 打开时链路从
+        单向管道变成有反馈的回路：模型看过候选后如果认为证据不足以回答问题，
+        围绕缺口再检索一轮。
+
+        **为什么补检索硬性只有一轮**：多轮回路的收益递减极快而代价是线性的
+        （每轮一次改写 + N 次召回 + 一次重排）。真正答不上来的问题，第二轮
+        也答不上来——那属于知识库缺内容，正确的出口是转人工建工单（第 ⑧ 步
+        的置信度闸门），而不是让检索在这里空转。回路的作用是捞回"检索角度
+        没选对"的那一类，不是无限逼近。
         """
-        # 1. 查询改写：生成多角度子查询
-        sub_queries = await self.rewrite_query(query, n=3)
-        logger.info(f"查询改写: {query!r} → {sub_queries}")
-
-        # 2. 并行召回：所有子查询同时检索
-        recall_k = max(top_k, 5)
-        tasks = [
-            self.call(tool_name, {"query": q, "top_k": recall_k}, context, use_cache=True)
-            for q in sub_queries
-        ]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        # 3. 合并去重（按内容哈希去重）
-        seen, merged = set(), []
-        for r in results:
-            if isinstance(r, ToolResult) and r.success and isinstance(r.data, list):
-                for item in r.data:
-                    key = hashlib.md5(str(item).encode()).hexdigest()
-                    if key not in seen:
-                        seen.add(key)
-                        merged.append(item)
-
-        if not merged:
+        candidates = await self._recall(tool_name, await self._rewritten(query), top_k, context)
+        if not candidates:
             return ToolResult(success=False, data=[], tool_name=tool_name, error="所有子查询均无结果")
 
-        # 4. 重排：用 LLM 对合并结果按相关性打分，取 Top-K
-        items, reranked = await self._rerank(query, merged, top_k)
-        return ToolResult(success=True, data=items, tool_name=tool_name, reranked=reranked)
+        outcome = await self._rerank(query, candidates, top_k)
+        evidence_ok = self._evidence_ok(outcome)
+        if not self_correct or evidence_ok:
+            return ToolResult(success=True, data=outcome.items, tool_name=tool_name,
+                              reranked=outcome.reranked, evidence_ok=evidence_ok)
+
+        # 自纠错：围绕缺口补检一轮，与第一轮的候选合并后重排。
+        # 合并而不是替换——第一轮的结果未必没用，只是不够。
+        logger.info(f"检索自纠错触发: {query!r}（缺口: {outcome.missing or '相关度不足'}）")
+        extra = await self._recall(
+            tool_name, await self._rewritten(query, hint=outcome.missing), top_k, context
+        )
+        merged = self._merge_unique(candidates + extra)
+        retry = await self._rerank(query, merged, top_k)
+        return ToolResult(
+            success=True,
+            data=retry.items,
+            tool_name=tool_name,
+            reranked=retry.reranked,
+            corrected=True,
+            evidence_ok=self._evidence_ok(retry),
+        )
+
+    async def _rewritten(self, query: str, hint: str = "") -> list[str]:
+        queries = await self.rewrite_query(query, n=3, hint=hint)
+        logger.info(f"查询改写{'（补检索）' if hint else ''}: {query!r} → {queries}")
+        return queries
+
+    async def _recall(
+        self,
+        tool_name: str,
+        queries: list[str],
+        top_k: int,
+        context: dict[str, Any] | None,
+    ) -> list[Any]:
+        """并行召回所有子查询并合并去重。走缓存：补检索回合里重复的子查询不重复打库。"""
+        recall_k = max(top_k, 5)
+        results = await asyncio.gather(*[
+            self.call(tool_name, {"query": q, "top_k": recall_k}, context, use_cache=True)
+            for q in queries
+        ], return_exceptions=True)
+
+        rows: list[Any] = []
+        for r in results:
+            if isinstance(r, ToolResult) and r.success and isinstance(r.data, list):
+                rows.extend(r.data)
+        return self._merge_unique(rows)
+
+    @staticmethod
+    def _merge_unique(items: list[Any]) -> list[Any]:
+        """按内容哈希去重，保序。"""
+        seen, merged = set(), []
+        for item in items:
+            key = hashlib.md5(str(item).encode()).hexdigest()
+            if key not in seen:
+                seen.add(key)
+                merged.append(item)
+        return merged
+
+    # ── 证据充分性判定（自纠错的触发条件）────────────────────────────────────
+
+    @staticmethod
+    def _evidence_ok(outcome: RerankOutcome) -> bool:
+        """
+        判定这批证据够不够回答问题。
+
+        优先用重排调用顺带返回的模型判定（零额外往返）；模型没给判定时
+        （cross-encoder 重排、或候选太少没调模型）退回分数阈值。
+        候选完全带不出分数的工具，判为充分——宁可不纠错，也不能凭一个
+        取不到的信号去多打一整轮检索。
+        """
+        if not outcome.items:
+            return False
+        if outcome.sufficient is not None:
+            return outcome.sufficient
+        scores = [
+            float(item["score"]) for item in outcome.items
+            if isinstance(item, dict) and isinstance(item.get("score"), (int, float))
+        ]
+        return max(scores) >= EVIDENCE_MIN_SCORE if scores else True
 
     # ── 结果重排（解决召回不好）──────────────────────────────────────────────
 
-    async def _rerank(self, query: str, items: list[Any], top_k: int) -> tuple[list[Any], bool]:
+    async def _rerank(self, query: str, items: list[Any], top_k: int) -> RerankOutcome:
         """
-        用 LLM 对召回结果重新打分排序。
+        对召回结果重新排序，优先 cross-encoder，回落 LLM listwise。
 
-        解决问题：向量检索的相似度分数不等于"对用户有用"，
-        LLM 能理解语义相关性，重排后 Top-K 质量显著提升。
+        解决问题：向量检索的相似度分数不等于"对用户有用"。cross-encoder 把
+        query 和候选拼在一起过一遍前向，能建模两者的交互；LLM listwise 更慢
+        更贵，但能一次看到全部候选、给出全局排序，并且顺带判定证据充分性。
 
-        返回 (结果, 是否真的重排过)。候选数不超过 top_k 时没有可排的东西，
-        直接原样返回并把标志置为 False——否则调用方会看到 reranked=True
-        但结果其实没经过任何重排。
+        候选数不超过 top_k 时没有可排的东西，直接原样返回且 reranked=False——
+        否则调用方会看到 reranked=True 但结果其实没经过任何重排。
         """
         if len(items) <= top_k:
-            return items, False
+            return RerankOutcome(items=items, reranked=False)
 
-        # 将结果序列化为文本供 LLM 评分
+        ranked = await self._cross_encoder_rerank(query, items, top_k)
+        if ranked is not None:
+            return RerankOutcome(items=ranked, reranked=True)
+        return await self._llm_rerank(query, items, top_k)
+
+    async def _cross_encoder_rerank(
+        self, query: str, items: list[Any], top_k: int
+    ) -> list[Any] | None:
+        """走远端 cross-encoder；未配置或失败返回 None，由调用方回落。"""
+        if self._reranker is None or not getattr(self._reranker, "enabled", False):
+            return None
+        docs = [self._as_document(item) for item in items]
+        ranked = await self._reranker.rerank(query, docs, top_k)
+        if not ranked:
+            return None
+        return [items[idx] for idx, _ in ranked]
+
+    @staticmethod
+    def _as_document(item: Any) -> str:
+        """把候选压成 cross-encoder 的输入文本。dict 优先取标题+正文，其余原样序列化。"""
+        if isinstance(item, dict):
+            title = str(item.get("title", "")).strip()
+            content = str(item.get("content", "")).strip()
+            if title or content:
+                return f"{title}\n{content}"[:2000]
+        return json.dumps(item, ensure_ascii=False)[:2000]
+
+    async def _llm_rerank(self, query: str, items: list[Any], top_k: int) -> RerankOutcome:
+        """
+        LLM listwise 重排，**同一次调用顺带返回证据充分性判定**。
+
+        合并进同一个 JSON 而不是单开一次调用：判定所需的信息（查询 + 全部
+        候选正文）和重排完全相同，模型已经读过一遍了，再问一次纯属重复付费。
+        """
         items_text = "\n".join(f"{i}. {json.dumps(item, ensure_ascii=False)[:200]}"
                                for i, item in enumerate(items))
-        prompt = f"""根据用户查询，对以下检索结果按相关性打分（0-10），返回 JSON 数组。
+        prompt = f"""根据用户查询对以下检索结果按相关性排序，并判断这些内容是否足以回答该问题。
 用户查询: "{query}"
 检索结果:
 {items_text}
 
-返回格式（按相关性降序排列的索引列表）: [最相关的索引, ..., 最不相关的索引]
-只返回 JSON 数组，不要其他文字。"""
+只返回 JSON 对象，不要其他文字：
+{{"order": [按相关性降序的索引], "sufficient": true 或 false, "missing": "证据不足时，一句话说明缺什么信息"}}
+sufficient 判断标准：排在最前的内容能否直接支撑一个具体、有依据的回答；
+只是话题相关但答不到点上，算 false。"""
         prompt = self._clean_text(prompt)
 
         try:
@@ -425,15 +571,35 @@ class MCPToolManager:
                 messages=[{"role": "user", "content": prompt}],
             )
             raw = extract_structured_text(resp)
-            s, e = raw.find("["), raw.rfind("]") + 1
-            order: list[int] = json.loads(raw[s:e])
+            order, sufficient, missing = self._parse_rerank_payload(raw)
             reordered = [items[i] for i in order if 0 <= i < len(items)]
             if not reordered:
-                return items[:top_k], False
-            return reordered[:top_k], True
+                return RerankOutcome(items=items[:top_k], reranked=False,
+                                     sufficient=sufficient, missing=missing)
+            return RerankOutcome(items=reordered[:top_k], reranked=True,
+                                 sufficient=sufficient, missing=missing)
         except Exception as ex:
             logger.warning(f"重排失败，返回原始顺序: {ex}")
-            return items[:top_k], False
+            return RerankOutcome(items=items[:top_k], reranked=False)
+
+    @staticmethod
+    def _parse_rerank_payload(raw: str) -> tuple[list[int], bool | None, str]:
+        """
+        解析重排响应，兼容模型只返回裸数组的情况。
+
+        裸数组时 sufficient 取 None（未判定）而不是 True/False：不能把
+        "模型没按格式回答"曲解成一个证据判定，那会让自纠错要么永不触发、
+        要么每次都触发，两种都不是判定该有的样子。
+        """
+        s, e = raw.find("{"), raw.rfind("}") + 1
+        if s >= 0 and e > s:
+            payload = json.loads(raw[s:e])
+            order = [int(i) for i in payload.get("order", []) if isinstance(i, (int, str)) and str(i).lstrip("-").isdigit()]
+            sufficient = payload.get("sufficient")
+            return order, sufficient if isinstance(sufficient, bool) else None, str(payload.get("missing", ""))[:200]
+
+        s, e = raw.find("["), raw.rfind("]") + 1
+        return json.loads(raw[s:e]), None, ""
 
     # ── 缓存 ──────────────────────────────────────────────────────────────────
 

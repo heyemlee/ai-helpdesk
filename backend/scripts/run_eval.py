@@ -49,6 +49,7 @@ from agents.agent_orchestrator import AgentOrchestrator  # noqa: E402
 from core.answer_policy import AnswerPolicy  # noqa: E402
 from core.embedder import Embedder  # noqa: E402
 from core.intent_recognizer import IntentRecognizer  # noqa: E402
+from core.reranker import Reranker  # noqa: E402
 from core.skill_loader import SkillManager  # noqa: E402
 from evaluation.evaluator import (  # noqa: E402
     DEFAULT_DIALOG_CASES,
@@ -107,15 +108,17 @@ async def main(promote: bool, force: bool) -> None:
     store = LocalStore(db_path=str(_ROOT / "data" / "vector_store.db"))
     kb = KnowledgeBase(store=store, embedder=embedder)
     await kb.ensure_seeded()
+    await kb.backfill_lexical()   # 与线上一致：老片段补关键词索引后再评测
     print(f"知识库: {await kb.doc_count_async()} 个片段（后端 {kb.backend}，向量 {embedder.backend} {embedder.dim} 维）")
 
     tools = MCPToolManager(
         api_key=cfg["api_key"], base_url=cfg.get("base_url"), model=cfg["model"],
         shared_state=None,   # 熔断器退化为进程内，评测不需要跨实例共享
+        reranker=Reranker.from_env(),
     )
     tools.register(Tool(
         name="knowledge_search",
-        description="搜索知识库（向量检索）",
+        description="搜索知识库（稠密向量 + 关键词双路混合检索，RRF 融合）",
         handler=kb.search_handler,
         schema={
             "type": "object",

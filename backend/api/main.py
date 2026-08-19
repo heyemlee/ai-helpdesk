@@ -69,6 +69,7 @@ _shared_state = None
 _infra_redis  = None
 _conv_log     = None
 _pg_database  = None
+_reranker     = None
 
 # 后台任务引用集合。asyncio 只持有 Task 的弱引用，不留强引用的话
 # 任务可能在完成前被 GC 掉，用户画像会静默不更新。
@@ -124,6 +125,7 @@ async def lifespan(app: FastAPI):
     from core.auth import RateLimiter, UserTokenAuth
     from core.embedder import Embedder
     from core.intent_recognizer import IntentRecognizer
+    from core.reranker import Reranker
     from core.shared_state import SharedState
     from core.skill_loader import SkillManager
     from evaluation.evaluator import EndToEndEvaluator
@@ -137,7 +139,7 @@ async def lifespan(app: FastAPI):
     from tickets.ticket_store import PgTicketStore, TicketStore
 
     global _user_auth, _rate_limiter, _ticket_store, _shared_state, _infra_redis
-    global _conv_log, _pg_database
+    global _conv_log, _pg_database, _reranker
 
     cfg = _anthropic_cfg()
     logger.info(f"模型: {cfg['model']}  base_url: {cfg.get('base_url', '(官方)')}")
@@ -236,17 +238,24 @@ async def lifespan(app: FastAPI):
         model=cfg["model"],
     )
 
-    # MCP 工具管理器 + RAG 知识库（pgvector / SQLite 双后端的真实向量检索）
+    # MCP 工具管理器 + RAG 知识库（pgvector / SQLite 双后端的混合检索）
+    _reranker = Reranker.from_env()
     _tool_manager = MCPToolManager(
         api_key=cfg["api_key"],
         base_url=cfg.get("base_url"),
         model=cfg["model"],
         shared_state=_shared_state,
+        reranker=_reranker,
     )
     _knowledge_base = KnowledgeBase(store=vector_store, embedder=embedder)
     kb = _knowledge_base
     await kb.ensure_seeded()
-    logger.info(f"知识库已加载: {await kb.doc_count_async()} 个文档片段（后端 {kb.backend}）")
+    # 升级到混合检索前写入的片段没有关键词索引，启动时补一次（幂等，通常是空操作）
+    await kb.backfill_lexical()
+    logger.info(
+        f"知识库已加载: {await kb.doc_count_async()} 个文档片段"
+        f"（后端 {kb.backend}，混合检索 dense+lexical，重排 {_reranker.backend}）"
+    )
 
     def knowledge_fallback(params: dict[str, Any], context: dict[str, Any] | None, error: str):
         query = params.get("query", "")
@@ -260,7 +269,7 @@ async def lifespan(app: FastAPI):
 
     _tool_manager.register(Tool(
         name="knowledge_search",
-        description="搜索知识库（pgvector 余弦向量检索）",
+        description="搜索知识库（稠密向量 + 关键词双路混合检索，RRF 融合）",
         handler=kb.search_handler,
         schema={
             "type": "object",
@@ -536,6 +545,10 @@ async def health():
         "tickets": tickets,
         "conversations": conversations,
         "storage_backend": _knowledge_base.backend if _knowledge_base else "unknown",
+        "retrieval": {
+            "mode": "hybrid_dense_lexical_rrf",
+            "rerank": _reranker.backend if _reranker else "llm_listwise",
+        },
         "auth": {
             "user_token": _user_auth.enabled if _user_auth else False,
             "rate_limit_per_minute": _rate_limiter.limit if _rate_limiter else 0,
@@ -777,7 +790,7 @@ async def _eval_grounding(message: str, intent_result) -> str:
     评测用的出处提供者：复用 /chat 的检索链路，返回知识库上下文文本。
 
     fast_path 的口径也保持一致——规则通道定性的高频问题走单次直检，
-    否则走查询改写 + 并行召回 + 重排。
+    否则走查询改写 + 并行召回 + 重排 + 自纠错。
     """
     text, _ = await _build_knowledge_context(
         message,
@@ -796,9 +809,13 @@ async def _build_knowledge_context(
     """
     为 /chat 主链路构建 RAG 知识上下文。
 
-    完整链路会复用 MCPToolManager 的查询改写、并行召回、重排、fallback；
-    fast_path=True 时走单次直检，用两次 LLM 往返换检索广度——意图已经由
-    规则通道确定的高频问题不需要多角度改写。
+    完整链路会复用 MCPToolManager 的查询改写、并行召回、重排 + 证据判定、
+    自纠错、fallback；fast_path=True 时走单次直检，用两次 LLM 往返换检索
+    广度——意图已经由规则通道确定的高频问题不需要多角度改写。
+
+    注意这里少掉的只是**改写和重排**这两次 LLM 往返。混合检索（稠密向量 +
+    关键词双路 RRF 融合）发生在存储层，不花任何 LLM 调用，所以快通道同样
+    享受到它带来的召回提升，零网络往返的承诺不受影响。
     """
     if _tool_manager is None:
         return "", False
@@ -923,15 +940,25 @@ class SearchRequest(BaseModel):
 @app.post("/search")
 async def search(body: SearchRequest):
     """
-    演示检索优化链路：查询改写 → 并行召回 → 重排 → Top-K。
-    展示 MCP 工具调用的核心亮点。
+    演示检索优化链路：
+      查询改写 → 并行召回（每路内部是 dense+lexical 混合）→ 去重
+      → 重排 + 证据判定 →（不足则补检一轮）→ Top-K
+
+    响应里的 corrected 表示是否触发过自纠错，evidence_ok 是最终的证据充分性
+    判定——这两个信号是排"为什么这个问题答得不好"时最先要看的东西。
     """
     if _tool_manager is None:
         raise HTTPException(503, "服务未就绪")
     result = await _tool_manager.search_with_rewrite(
         "knowledge_search", body.query, top_k=body.top_k
     )
-    return {"query": body.query, "results": result.data, "reranked": result.reranked}
+    return {
+        "query": body.query,
+        "results": result.data,
+        "reranked": result.reranked,
+        "corrected": result.corrected,
+        "evidence_ok": result.evidence_ok,
+    }
 
 
 def _require_knowledge_base():

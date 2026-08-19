@@ -10,6 +10,7 @@ import uuid
 import pytest
 
 from core.embedder import Embedder, cosine
+from core.lexical import index_text, query_tokens
 from mcp.knowledge_base import KnowledgeBase
 from storage.vector_store import LocalStore
 
@@ -52,19 +53,49 @@ async def _store_contract(store, embedder):
     chunks = [
         {"id": f"a-{uuid.uuid4().hex[:8]}", "title": "补件", "content": "补件政策说明",
          "chunk_index": 0, "total_chunks": 1, "ingested_at": 1.0,
-         "embedding": await embedder.embed("补件政策说明")},
+         "embedding": await embedder.embed("补件政策说明"),
+         "tokens": index_text("补件", "补件政策说明")},
         {"id": f"b-{uuid.uuid4().hex[:8]}", "title": "送货", "content": "送货排期说明",
          "chunk_index": 0, "total_chunks": 1, "ingested_at": 1.0,
-         "embedding": await embedder.embed("送货排期说明")},
+         "embedding": await embedder.embed("送货排期说明"),
+         "tokens": index_text("送货", "送货排期说明")},
     ]
     await store.kb_add(chunks)
     existing = await store.kb_existing_ids([chunks[0]["id"], "missing-id"])
     assert chunks[0]["id"] in existing
     assert "missing-id" not in existing
 
-    hits = await store.kb_search(await embedder.embed("怎么申请补件"), top_k=2)
-    assert hits[0]["title"] == "补件"  # 语义最近的排第一
-    assert hits[0]["score"] >= hits[1]["score"]
+    # 断言只针对本次插入的两个片段：PgStore 可能指向已有知识库的开发库，
+    # "全局第一"这种断言会在那里假失败，排查半天最后发现是库里本来就有数据。
+    part_id, delivery_id = chunks[0]["id"], chunks[1]["id"]
+    hits = await store.kb_search(await embedder.embed("怎么申请补件"), top_k=50)
+    ranks = {h["id"]: i for i, h in enumerate(hits)}
+    assert part_id in ranks
+    assert ranks[part_id] < ranks.get(delivery_id, len(hits))   # 语义更近的排在前面
+
+    # 稀疏检索：PG 走 tsvector + ts_rank_cd，SQLite 走纯 Python BM25。
+    # 两条实现路径完全不同，跑同一组断言才能保证混合检索在两个后端上
+    # 是同一个行为——中文分词尤其容易只在其中一侧成立。
+    embedding = await embedder.embed("补件")
+    lexical = await store.kb_search_lexical(query_tokens("补件政策"), embedding, top_k=50)
+    lexical_ids = {h["id"] for h in lexical}
+    assert part_id in lexical_ids            # 字面命中的召回
+    assert delivery_id not in lexical_ids    # 没有字面命中的不召回
+    hit = next(h for h in lexical if h["id"] == part_id)
+    assert hit["lex_score"] > 0
+    assert -1 <= hit["score"] <= 1           # 稀疏路也带余弦分，口径与稠密路一致
+    assert await store.kb_search_lexical([], embedding, top_k=5) == []
+
+    # 关键词索引回填：把 tokens 清空模拟升级前的存量片段，回填后可被稀疏路召回
+    await store.kb_set_tokens([(part_id, "")])
+    assert part_id not in {
+        h["id"] for h in await store.kb_search_lexical(query_tokens("补件政策"), embedding, 50)
+    }
+    assert part_id in {r["id"] for r in await store.kb_rows_missing_tokens(100)}
+    await store.kb_set_tokens([(part_id, index_text("补件", "补件政策说明"))])
+    assert part_id in {
+        h["id"] for h in await store.kb_search_lexical(query_tokens("补件政策"), embedding, 50)
+    }
 
     # 情景记忆：按用户隔离
     user_a = f"alice-{uuid.uuid4().hex[:6]}"
