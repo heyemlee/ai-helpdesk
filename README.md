@@ -92,8 +92,8 @@ CI 分 3 阶段，其中一阶段带 pgvector service container，跑真实 Post
 
 ## 性能
 
-压测脚本 `backend/scripts/load_test.py`，实测数据与企业落地线对照见
-`backend/wiki/企业落地与产品定位.md` 的「量化指标 vs 企业落地线」一节。
+压测脚本 `backend/scripts/load_test.py`，运行后输出含 p50 / p95 / RPS 的 JSON 报告。
+数字均为单实例冷路径实测，未做容量规划，也没有真实线上流量验证。
 
 ```bash
 cd backend && ./.venv/bin/python scripts/load_test.py --unique-messages --requests 100 --concurrency 10
