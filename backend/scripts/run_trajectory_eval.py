@@ -47,7 +47,7 @@ except ImportError:
     pass
 
 from app.agents.agent_orchestrator import AgentOrchestrator  # noqa: E402
-from app.agents.tool_loop import LoopConfig  # noqa: E402
+from app.agents.tool_loop import LoopConfig, deadline_for, deadline_warnings  # noqa: E402
 from app.core.answer_policy import AnswerPolicy  # noqa: E402
 from app.core.embedder import Embedder  # noqa: E402
 from app.core.intent_recognizer import IntentRecognizer  # noqa: E402
@@ -61,6 +61,7 @@ from app.evaluation.trajectory import (  # noqa: E402
     DEFAULT_CASES,
     UNAVAILABLE,
     ContractFixtures,
+    StubSqlAgent,
     TrajectoryHarness,
     contract_dir,
     load_cases,
@@ -70,6 +71,7 @@ from app.evaluation.trajectory import (  # noqa: E402
 from app.storage.vector_store import LocalStore  # noqa: E402
 from app.tools.knowledge_base import KnowledgeBase  # noqa: E402
 from app.tools.tool_manager import Tool, ToolManager  # noqa: E402
+from app.tools.turn_tools import Prefetch, loop_tools  # noqa: E402
 
 JUDGED = ("A", "B", "C")
 
@@ -203,6 +205,15 @@ async def main(args) -> int:
           f"本次计划 {len(plan)} 组成对样本，组别 {arms}，意图来自 {args.intent}")
     print(f"契约夹具：{root or '没找到'}" + (f"，缺 {len(missing)} 个：{missing}" if missing else ""))
     print(f"真实模型调用估算：{low}–{high} 次，全部串行")
+    # 循环组的墙钟上限按能查库的专家算：查库工具的超时来自 SQL_AGENT_TIMEOUT_S（.env）。
+    # 配得太小时模型发起的查库会被一律拒绝，B 类就测不出东西，所以跑之前先说出来。
+    config = LoopConfig.from_env({**os.environ, "AI_HELPDESK_TOOL_LOOP": "on"})
+    loop_tool_set = list(loop_tools(Prefetch(tool_manager=object(), sql_agent=StubSqlAgent())).values())
+    deadline = (f"{deadline_for(config.budget, loop_tool_set):g} 秒（"
+                f"{'显式配置' if config.budget.deadline_s is not None else '按慢工具的超时推算'}）")
+    print(f"工具循环墙钟上限：{deadline}")
+    for warning in deadline_warnings(config, loop_tool_set):
+        print(f"提醒：{warning}")
     if args.dry_run:
         return 1 if missing or root is None else 0
     if missing or root is None:
@@ -216,7 +227,6 @@ async def main(args) -> int:
     out = pathlib.Path(args.out) if args.out else (
         _ROOT / "data" / "runtime" / "trajectory" / datetime.now().strftime("%Y%m%d-%H%M%S"))
     out.mkdir(parents=True, exist_ok=True)
-    config = LoopConfig.from_env({**os.environ, "AI_HELPDESK_TOOL_LOOP": "on"})
 
     with tempfile.TemporaryDirectory() as workdir:
         recognizer, orchestrator, tools = await _build(cfg, documents, pathlib.Path(workdir), args.intent)
@@ -255,6 +265,7 @@ async def main(args) -> int:
         "组别": ", ".join(arms),
         "计划 / 完成的成对样本": f"{len(plan)} / {len({(r.case_id, r.repeat) for r in results})}",
         "中途停下的原因": stopped or "无",
+        "工具循环墙钟上限": deadline,
         "契约夹具": str(root),
         "评审": "开" if args.judge else "关",
     }

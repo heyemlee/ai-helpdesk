@@ -10,7 +10,8 @@ BaseAgent 和编排器里照旧做。具体是哪些工具、怎么查、算不�
 
   - 每轮最多 `max_model_calls` 次模型调用，最后一次传 `tool_choice=none`，强制作答；
   - 工具调用总数、慢工具（委派查库）的次数、墙钟时间各有上限，超了就拒绝这次调用，
-    把原因作为结果告诉模型，而不是悄悄不执行；
+    把原因作为结果告诉模型，而不是悄悄不执行；墙钟上限没配时按能用的慢工具推算
+    （deadline_for），保证查库在这套超时下调得动；
   - 工具的任何失败都变成一条 is_error 的结果交还模型，不往上抛；
   - 同一轮里参数相同的调用只执行一次（并行的两个专家也共用），规则预取过的那次也算。
 
@@ -23,7 +24,7 @@ import asyncio
 import logging
 import os
 import time
-from collections.abc import AsyncIterator, Callable, Mapping
+from collections.abc import AsyncIterator, Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -47,6 +48,13 @@ DEFAULT_ALLOW: dict[str, tuple[str, ...]] = {
 # 慢工具开跑前，剩余时间除了它自己的超时还得留出这么多给最后一步作答。
 ANSWER_RESERVE_S = 15.0
 
+# 墙钟上限没有显式配置时，按最慢的慢工具推算：它的超时 + 作答预留 + 这么多。这一段留给
+# 调它之前的模型调用和快工具——通常是一两步，每步几秒。
+LEAD_IN_S = 20.0
+
+# 没有慢工具时的墙钟上限，也是推算值的下限。
+DEFAULT_DEADLINE_S = 75.0
+
 
 @dataclass(frozen=True)
 class LoopBudget:
@@ -54,7 +62,8 @@ class LoopBudget:
     max_tool_calls: int = 4      # 整轮；去重命中的不算
     max_parallel: int = 2        # 同一步里并发执行的工具数
     max_delegations: int = 1     # 慢工具（委派查库）整轮最多几次
-    deadline_s: float = 75.0     # 循环部分的墙钟上限，不含准备阶段
+    # 循环部分的墙钟上限，不含准备阶段。None = 按这个专家能用的慢工具推算（deadline_for）
+    deadline_s: float | None = None
 
 
 def _parse_allow(raw: str) -> dict[str, tuple[str, ...]]:
@@ -81,11 +90,12 @@ class LoopConfig:
         env = os.environ if env is None else env
         if env.get("AI_HELPDESK_TOOL_LOOP", "").strip().lower() not in _ON:
             return None
+        deadline = env.get("AI_HELPDESK_TOOL_LOOP_DEADLINE_S", "").strip()
         budget = LoopBudget(
             max_model_calls=max(1, int(env.get("AI_HELPDESK_TOOL_LOOP_MAX_CALLS", "3"))),
             max_tool_calls=max(0, int(env.get("AI_HELPDESK_TOOL_LOOP_MAX_TOOL_CALLS", "4"))),
             max_delegations=max(0, int(env.get("AI_HELPDESK_TOOL_LOOP_MAX_DELEGATIONS", "1"))),
-            deadline_s=float(env.get("AI_HELPDESK_TOOL_LOOP_DEADLINE_S", "75")),
+            deadline_s=float(deadline) if deadline else None,
         )
         return cls(budget=budget, allow=_parse_allow(env.get("AI_HELPDESK_TOOL_LOOP_TOOLS", "")))
 
@@ -138,6 +148,59 @@ class LoopTool:
 
     async def run(self, args: BaseModel, turn: TurnContext) -> ToolOutcome:
         raise NotImplementedError
+
+
+# ── 墙钟上限 ──────────────────────────────────────────────────────────────────
+
+def slow_tool_deadline_s(tools: Iterable[LoopTool]) -> float:
+    """最慢的慢工具在前面留出 LEAD_IN_S 之后还调得动所需的墙钟上限；没有慢工具时为 0。"""
+    timeouts = [t.timeout_s for t in tools if t.slow]
+    return max(timeouts) + ANSWER_RESERVE_S + LEAD_IN_S if timeouts else 0.0
+
+
+def deadline_for(budget: LoopBudget, tools: Iterable[LoopTool]) -> float:
+    """
+    一轮循环的墙钟上限：显式配了就用配的，没配就按这个专家能用的慢工具推算。
+
+    慢工具的准入条件是剩余时间 ≥ 它的超时 + ANSWER_RESERVE_S（见 _plan_call）。原来固定
+    75 秒，在 SQL_AGENT_TIMEOUT_S=90（工具超时 92 秒）时这个条件永远满足不了，模型发起的
+    查库一次也跑不成——轨迹试跑就是这样。只能查知识库的专家没有慢工具，
+    仍是 75 秒。
+    """
+    if budget.deadline_s is not None:
+        return budget.deadline_s
+    return max(DEFAULT_DEADLINE_S, slow_tool_deadline_s(tools))
+
+
+def deadline_warnings(config: LoopConfig, tools: Iterable[LoopTool]) -> list[str]:
+    """
+    显式配的墙钟上限让慢工具调不动、或者只在前面几步很快时才调得动，启动时的提醒。
+
+    不拦启动：循环照样能用，只是模型发起的那类查询会被拒。没配上限时按工具推算，
+    没有这个问题。
+    """
+    deadline = config.budget.deadline_s
+    if deadline is None:
+        return []
+    warnings: list[str] = []
+    for tool in tools:
+        if not tool.slow:
+            continue
+        need = tool.timeout_s + ANSWER_RESERVE_S
+        derived = max(DEFAULT_DEADLINE_S, need + LEAD_IN_S)
+        if deadline < need:
+            warnings.append(
+                f"AI_HELPDESK_TOOL_LOOP_DEADLINE_S={deadline:g} 小于 {tool.name} 的超时 {tool.timeout_s:g} 秒"
+                f"加作答预留 {ANSWER_RESERVE_S:g} 秒：模型发起的 {tool.name} 每次都会被拒。"
+                f"去掉这个变量就按工具超时推算（{derived:g} 秒）。"
+            )
+        elif deadline < need + LEAD_IN_S:
+            warnings.append(
+                f"AI_HELPDESK_TOOL_LOOP_DEADLINE_S={deadline:g} 只给调 {tool.name} 之前的步骤留了 "
+                f"{deadline - need:g} 秒（推算值留 {LEAD_IN_S:g} 秒）：前面的模型调用慢一点，"
+                f"这次查询就会被拒。去掉这个变量就按工具超时推算（{derived:g} 秒）。"
+            )
+    return warnings
 
 
 @dataclass(frozen=True)
@@ -385,7 +448,7 @@ async def run_tool_loop(
     by_name = {t.name: t for t in tools}
     specs = [t.spec() for t in tools]
     messages = list(messages)
-    deadline = clock() + budget.deadline_s
+    deadline = clock() + deadline_for(budget, tools)
     usage = _Usage()
     limit = asyncio.Semaphore(max(1, budget.max_parallel))
     model_calls = 0

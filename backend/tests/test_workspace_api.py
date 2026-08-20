@@ -6,6 +6,7 @@
 import importlib
 import io
 import json
+import logging
 import sys
 import time
 
@@ -540,6 +541,58 @@ async def test_the_tool_loop_is_wired_only_when_switched_on(monkeypatch, switch,
         assert sorted(orch_req.turn.tools) == tools
         assert (orch_req.turn.user_id, orch_req.turn.conv_id) == ("u1", "conv-1")
         assert [r["tool"] for r in orch_req.turn.trajectory] == ["knowledge_search", "order_data_query"]
+
+
+class _Log:
+    """记下 logger 收到的话。导入 api.main 会重设根 logger 的 handler，caplog 在这里接不到。"""
+
+    def __init__(self):
+        self.lines: list[tuple[int, str]] = []
+
+    def info(self, msg, *args):
+        self.lines.append((logging.INFO, msg % args))
+
+    def warning(self, msg, *args):
+        self.lines.append((logging.WARNING, msg % args))
+
+
+@pytest.mark.parametrize("deadline, logged, warned", [
+    (None, "墙钟上限 127 秒（按慢工具的超时推算；只能查知识库的专家是 75 秒）", ""),
+    ("75", "墙钟上限 75 秒（显式配置；只能查知识库的专家是 75 秒）", "每次都会被拒"),
+    ("120", "墙钟上限 120 秒（显式配置", "只给调 order_data_query 之前的步骤留了 13 秒"),
+])
+def test_startup_states_the_loop_deadline_and_warns_when_queries_cannot_fit(monkeypatch, deadline, logged, warned):
+    """轨迹试跑：SQL_AGENT_TIMEOUT_S=90 配上固定的 75 秒，模型发起的查库一次也跑不成，而且没人知道。"""
+    from app.tools.sql_agent_client import SQLAgentClient
+
+    monkeypatch.setenv("AI_HELPDESK_TOOL_LOOP", "on")
+    monkeypatch.setenv("SQL_AGENT_TIMEOUT_S", "90")
+    if deadline is None:
+        monkeypatch.delenv("AI_HELPDESK_TOOL_LOOP_DEADLINE_S", raising=False)
+    else:
+        monkeypatch.setenv("AI_HELPDESK_TOOL_LOOP_DEADLINE_S", deadline)
+    main = _load_main(monkeypatch)
+    monkeypatch.setattr(main, "_tool_manager", _DataTools(dict(OK_DATA)))
+    monkeypatch.setattr(main, "_sql_agent", SQLAgentClient(base_url="http://x:8000"))
+    log = _Log()
+    monkeypatch.setattr(main, "logger", log)
+
+    main._log_loop_config()
+    assert any(logged in line for level, line in log.lines if level == logging.INFO)
+    warnings = [line for level, line in log.lines if level == logging.WARNING]
+    if warned:
+        assert len(warnings) == 1 and warned in warnings[0]
+    else:
+        assert warnings == []
+
+
+def test_startup_says_nothing_about_the_loop_when_it_is_off(monkeypatch):
+    monkeypatch.delenv("AI_HELPDESK_TOOL_LOOP", raising=False)
+    main = _load_main(monkeypatch)
+    log = _Log()
+    monkeypatch.setattr(main, "logger", log)
+    main._log_loop_config()
+    assert log.lines == []
 
 
 async def test_progress_is_optional_and_never_breaks_the_turn(main, monkeypatch):

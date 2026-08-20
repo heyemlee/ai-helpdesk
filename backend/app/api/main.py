@@ -414,6 +414,7 @@ async def lifespan(app: FastAPI):
         logger.info(f"业务数据委派已启用: {_sql_agent.endpoint}")
     else:
         logger.info("业务数据委派未配置（SQL_AGENT_URL 为空），订单类问题只走知识库")
+    _log_loop_config()
 
     # 性能监控（可选启动 Prometheus）
     prom_port = int(os.getenv("PROMETHEUS_PORT", "0")) or None
@@ -525,7 +526,7 @@ app.add_middleware(
 )
 
 
-from app.agents.tool_loop import LoopConfig, LoopSetup  # noqa: E402
+from app.agents.tool_loop import LoopConfig, LoopSetup, deadline_for, deadline_warnings  # noqa: E402
 from app.agents.turn_prep import TurnDeps, prepare_turn  # noqa: E402
 from app.core.metrics import (  # noqa: E402
     RATE_LIMIT_HITS,
@@ -989,6 +990,24 @@ def _loop_setup(prefetch: Prefetch) -> LoopSetup | None:
     if _LOOP_CONFIG is None:
         return None
     return LoopSetup(tools=loop_tools(prefetch), config=_LOOP_CONFIG)
+
+
+def _log_loop_config() -> None:
+    """
+    启动时说一声工具循环用的是哪些工具、墙钟上限多少；显式配的上限让查库调不动时告警。
+
+    要在工具都注册完之后调：查库工具在不在、超时多少，要看这个进程有没有接 SQL Agent。
+    """
+    if _LOOP_CONFIG is None:
+        return
+    tools = list(loop_tools(_prefetch()).values())
+    for warning in deadline_warnings(_LOOP_CONFIG, tools):
+        logger.warning("启动检查: 工具循环 %s", warning)
+    source = "显式配置" if _LOOP_CONFIG.budget.deadline_s is not None else "按慢工具的超时推算"
+    logger.info("工具循环已打开：工具 %s，墙钟上限 %g 秒（%s；只能查知识库的专家是 %g 秒）",
+                ", ".join(t.name for t in tools) or "无",
+                deadline_for(_LOOP_CONFIG.budget, tools), source,
+                deadline_for(_LOOP_CONFIG.budget, [t for t in tools if not t.slow]))
 
 
 async def _prepare_request(req: "ChatRequest", conv_id: str, user_id: str, progress_cb=None):

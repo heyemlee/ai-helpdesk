@@ -6,6 +6,7 @@
 """
 import asyncio
 
+import pytest
 from conftest import Block, ScriptedModel, text_step, tool_step
 from pydantic import BaseModel, Field
 
@@ -18,6 +19,8 @@ from app.agents.tool_loop import (
     ToolEnd,
     ToolOutcome,
     TurnContext,
+    deadline_for,
+    deadline_warnings,
     run_tool_loop,
 )
 
@@ -244,6 +247,60 @@ async def test_slow_tools_are_limited_by_count_and_by_time():
     model = ScriptedModel(tool_step(("c1", "lookup", {"query": "a"})), text_step("好的。"))
     await _run(model, turn)
     assert slow.calls == []
+
+
+def test_the_deadline_is_derived_from_the_slowest_tool_unless_set():
+    fast, slow = Lookup("knowledge_search"), Lookup("order_data_query", slow=True, timeout_s=92)
+    assert deadline_for(LoopBudget(), [fast]) == 75                 # 只查知识库的专家
+    assert deadline_for(LoopBudget(), [fast, slow]) == 92 + 15 + 20  # SQL_AGENT_TIMEOUT_S=90
+    assert deadline_for(LoopBudget(), [Lookup(slow=True, timeout_s=47)]) == 82   # 默认的 45
+    assert deadline_for(LoopBudget(), [Lookup(slow=True, timeout_s=30)]) == 75   # 不低于 75
+    assert deadline_for(LoopBudget(deadline_s=50), [slow]) == 50     # 显式配置照用
+
+
+@pytest.mark.parametrize("elapsed, admitted", [(19.0, True), (21.0, False)])
+async def test_a_derived_deadline_lets_the_slow_tool_run_after_a_normal_first_step(elapsed, admitted):
+    """
+    轨迹试跑：工具超时 92 秒配上固定的 75 秒上限，模型发起的查库每次都被拒。
+    推算的上限给调它之前的步骤留 20 秒：第一步花 19 秒还调得动，花 21 秒就不让调了。
+    """
+    slow = Lookup("order_data_query", slow=True, timeout_s=92)
+    turn = _turn(slow)
+    model = ScriptedModel(tool_step(("c1", "order_data_query", {"query": "J25-00003 补件"})), text_step("好的。"))
+    ticks = iter([0.0])                       # 算上限时是 0，之后都已经过了 elapsed 秒
+    await _run(model, turn, clock=lambda: next(ticks, elapsed))
+
+    assert slow.calls == (["J25-00003 补件"] if admitted else [])
+    assert ("不能再查业务系统" in _results(model, 1)[0]["content"]) is not admitted
+
+
+async def test_a_fixed_75_second_deadline_never_lets_a_92_second_tool_run():
+    slow = Lookup("order_data_query", slow=True, timeout_s=92)
+    turn = _turn(slow, deadline_s=75)
+    model = ScriptedModel(tool_step(("c1", "order_data_query", {"query": "J25-00003 补件"})), text_step("好的。"))
+    await _run(model, turn, clock=lambda: 0.0)
+    assert slow.calls == []
+    assert turn.trajectory[-1]["outcome"] == "budget"
+
+
+def test_a_deadline_set_too_small_for_the_slow_tool_is_reported():
+    slow = Lookup("order_data_query", slow=True, timeout_s=92)
+    fast = Lookup("knowledge_search")
+    assert deadline_warnings(LoopConfig(), [slow]) == []                       # 没配：按工具推算
+    assert deadline_warnings(LoopConfig(budget=LoopBudget(deadline_s=130)), [slow]) == []
+    assert deadline_warnings(LoopConfig(budget=LoopBudget(deadline_s=50)), [fast]) == []   # 没有慢工具
+
+    never = deadline_warnings(LoopConfig(budget=LoopBudget(deadline_s=75)), [fast, slow])
+    assert len(never) == 1 and "每次都会被拒" in never[0] and "127 秒" in never[0]
+    tight = deadline_warnings(LoopConfig(budget=LoopBudget(deadline_s=120)), [slow])
+    assert len(tight) == 1 and "留了 13 秒" in tight[0]
+
+
+def test_the_deadline_comes_from_the_environment_only_when_set():
+    on = {"AI_HELPDESK_TOOL_LOOP": "on"}
+    assert LoopConfig.from_env(on).budget.deadline_s is None
+    assert LoopConfig.from_env({**on, "AI_HELPDESK_TOOL_LOOP_DEADLINE_S": " "}).budget.deadline_s is None
+    assert LoopConfig.from_env({**on, "AI_HELPDESK_TOOL_LOOP_DEADLINE_S": "90"}).budget.deadline_s == 90.0
 
 
 async def test_running_out_of_time_forces_an_answer():
