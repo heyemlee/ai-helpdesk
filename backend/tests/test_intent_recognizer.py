@@ -105,10 +105,10 @@ def test_vote_weights_sum_to_one(recognizer):
 
 def test_embedding_signal_stays_enabled_with_third_party_base_url():
     """
-    换成 Anthropic 兼容的第三方网关（如 DeepSeek）时，Embedding 这一路
-    不能被静默关掉——否则"三路融合"实际只剩两路。
+    换成第三方网关时，Embedding 这一路不能被静默关掉——
+    否则"三路融合"实际只剩两路。
     """
-    recog = IntentRecognizer(api_key="k", base_url="https://api.deepseek.com/anthropic")
+    recog = IntentRecognizer(api_key="k", base_url="https://api.kabi.pro")
     assert recog._embedding_enabled is True
     assert recog.embedding_backend == "local_ngram"
 

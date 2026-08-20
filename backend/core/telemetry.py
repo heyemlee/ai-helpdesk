@@ -4,7 +4,7 @@ OpenTelemetry 分布式追踪。
 目标：看清一次 /chat 的完整耗时分布——意图识别、RAG 检索、Agent LLM 调用、
 记忆读写各占多少。三层埋点：
 
-  1. 自动埋点：FastAPI（HTTP span）、httpx（Anthropic SDK 的底层 LLM 请求）、
+  1. 自动埋点：FastAPI（HTTP span）、httpx（两个 LLM SDK 的底层请求）、
      redis（工作记忆/限流）、asyncpg（Postgres 存储）——四个库一行 instrument；
   2. 手动 span：intent.recognize / rag.retrieve / agent.handle / memory.get_context
      这类**逻辑阶段**，自动埋点看不出来的业务语义在这里；

@@ -32,6 +32,7 @@ from pydantic import BaseModel, Field
 
 load_dotenv()
 
+from core.llm_utils import resolve_llm_config  # noqa: E402
 from core.request_context import (  # noqa: E402
     current_request_id,
     new_request_id,
@@ -83,20 +84,6 @@ def _spawn_background(coro) -> None:
     task.add_done_callback(_background_tasks.discard)
 
 
-def _anthropic_cfg() -> dict[str, Any]:
-    key = os.getenv("ANTHROPIC_API_KEY", "")
-    if not key:
-        raise RuntimeError("未设置 ANTHROPIC_API_KEY")
-    cfg: dict[str, Any] = {
-        "api_key":  key,
-        "model":    os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022").strip(),
-    }
-    base_url = os.getenv("ANTHROPIC_BASE_URL", "").strip()
-    if base_url:
-        cfg["base_url"] = base_url
-    return cfg
-
-
 def _embedding_cfg() -> dict[str, Any]:
     """
     意图识别 Embedding 这一路的配置。
@@ -141,8 +128,11 @@ async def lifespan(app: FastAPI):
     global _user_auth, _rate_limiter, _ticket_store, _shared_state, _infra_redis
     global _conv_log, _pg_database, _reranker
 
-    cfg = _anthropic_cfg()
-    logger.info(f"模型: {cfg['model']}  base_url: {cfg.get('base_url', '(官方)')}")
+    cfg = resolve_llm_config()
+    logger.info(
+        f"LLM 供应商: {cfg['provider']}  模型: {cfg['model']}  "
+        f"base_url: {cfg.get('base_url', '(官方)')}"
+    )
 
     # 基础设施 Redis 连接：限流计数、熔断状态、路由惩罚共享。
     # 与 MemoryManager 的连接分开建，记忆和基础设施状态互不干扰。
@@ -1197,7 +1187,7 @@ async def _cli():
     from core.skill_loader import SkillManager
     from memory.conversation_memory import MemoryManager, MsgRole
 
-    cfg = _anthropic_cfg()
+    cfg = resolve_llm_config()
     skill_manager = SkillManager(
         root_dir=os.getenv("AI_HELPDESK_SKILLS_DIR", str(pathlib.Path(_ROOT) / "skills")),
         max_prompt_chars=int(os.getenv("AI_HELPDESK_SKILLS_MAX_PROMPT_CHARS", "5000")),

@@ -26,14 +26,16 @@ sys.path.insert(0, str(_ROOT))
 #
 # 为什么不能简单地 load_dotenv(override=False)：Claude Code / 部分 shell 会预置
 # ANTHROPIC_BASE_URL=https://api.anthropic.com，不覆盖的话请求会打到官方端点而不是
-# .env 里配的 DeepSeek 网关。
+# .env 里配的第三方网关。
 # 为什么也不能简单地 override=True：那样会把命令行前置的 key 用 .env 里的占位符盖回去。
 # 所以先记下命令行显式传进来的值，override 之后再把它们放回去。
 try:
     from dotenv import load_dotenv
 
     _EXPLICIT = {
-        k: v for k in ("ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL", "ANTHROPIC_MODEL",
+        k: v for k in ("LLM_PROVIDER",
+                       "ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL", "ANTHROPIC_MODEL",
+                       "OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_MODEL",
                        "EMBEDDING_API_KEY", "EMBEDDING_BASE_URL", "EMBEDDING_MODEL")
         if (v := os.environ.get(k, "").strip())
     }
@@ -49,6 +51,7 @@ from agents.agent_orchestrator import AgentOrchestrator  # noqa: E402
 from core.answer_policy import AnswerPolicy  # noqa: E402
 from core.embedder import Embedder  # noqa: E402
 from core.intent_recognizer import IntentRecognizer  # noqa: E402
+from core.llm_utils import resolve_llm_config  # noqa: E402
 from core.reranker import Reranker  # noqa: E402
 from core.skill_loader import SkillManager  # noqa: E402
 from evaluation.evaluator import (  # noqa: E402
@@ -64,25 +67,24 @@ BASELINE = _ROOT / "data" / "eval" / "baseline.json"
 
 
 def _config() -> dict:
-    key = os.getenv("ANTHROPIC_API_KEY", "").strip()
-    if not key:
-        sys.exit("未设置 ANTHROPIC_API_KEY。")
-    if len(key) < 20:
+    try:
+        cfg = resolve_llm_config()
+    except RuntimeError as ex:
+        sys.exit(str(ex))
+    key_var = "OPENAI_API_KEY" if cfg["provider"] == "openai" else "ANTHROPIC_API_KEY"
+    if len(cfg["api_key"]) < 20:
         sys.exit(
-            f"ANTHROPIC_API_KEY 看起来是占位符（长度 {len(key)}）。\n"
+            f"{key_var} 看起来是占位符（长度 {len(cfg['api_key'])}）。\n"
             f"请在 {_ROOT / '.env'} 里填真实 key，或在命令行前置：\n"
-            f"    ANTHROPIC_API_KEY=<真实 key> {sys.executable} {__file__}"
+            f"    {key_var}=<真实 key> {sys.executable} {__file__}"
         )
-    cfg = {"api_key": key, "model": os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022").strip()}
-    base_url = os.getenv("ANTHROPIC_BASE_URL", "").strip()
-    if base_url:
-        cfg["base_url"] = base_url
     return cfg
 
 
 async def main(promote: bool, force: bool) -> None:
     cfg = _config()
-    print(f"模型: {cfg['model']}  base_url: {cfg.get('base_url', '(官方)')}")
+    print(f"供应商: {cfg['provider']}  模型: {cfg['model']}  "
+          f"base_url: {cfg.get('base_url', '(官方)')}")
 
     recognizer = IntentRecognizer(
         api_key=cfg["api_key"], base_url=cfg.get("base_url"), model=cfg["model"],
