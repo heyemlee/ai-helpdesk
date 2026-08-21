@@ -545,6 +545,19 @@ class OrderDataQueryTool(LoopTool):
                     "不要给出任何具体金额。")
         return ""
 
+    def skip(self, turn: TurnContext) -> str:
+        # 规则预取这一轮刚委派过，下游超时、熔断或出错（outcome=unavailable）：再委派多半
+        # 还要等满一次超时（SQL_AGENT_TIMEOUT_S=90 时是 92 秒），一轮会拖到三分多钟，结果
+        # 还是查不到。failed 不算：那是下游答了、只是没查成，换个查询词可能就对了。
+        prior = next((e for e in turn.trajectory if e.get("actor") == "rule" and e.get("tool") == self.name
+                      and e.get("outcome") == "unavailable"), None)
+        if prior is None:
+            return ""
+        reason = str((prior.get("trace") or {}).get("reason") or "没有响应")
+        return (f"业务系统这一轮已经没有响应（{reason}），这次不再查询。根据已有资料作答："
+                "不要给出任何具体的订单状态、日期、金额、库存数字，告诉客户这次没能查到系统记录，"
+                "建议由人工跟进核实。")
+
     async def run(self, args: OrderDataQueryArgs, turn: TurnContext) -> ToolOutcome:
         trace: dict[str, Any] = {"enabled": True}
         text, is_evidence = await delegate_order_query(

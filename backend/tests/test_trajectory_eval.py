@@ -166,6 +166,9 @@ def test_grading_the_things_that_must_not_happen():
                            must_not_call=["order_data_query"])
     g = _arm(quote, [_entry("model", "order_data_query", "refused")]).grade
     assert (g["prohibited_attempts"], g["prohibited_executed"]) == (1, 0)
+    # 下游这一轮已经不通、被跳过的那次也没有执行
+    g = _arm(quote, [_entry("model", "order_data_query", "skipped")]).grade
+    assert g["prohibited_executed"] == 0
 
     failure = TrajectoryCase(id="E", category="E", message="m", intent_label="order_status",
                              answer_must_not=[r"\d{4}-\d{1,2}-\d{1,2}"])

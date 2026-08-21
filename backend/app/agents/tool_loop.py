@@ -12,6 +12,7 @@ BaseAgent 和编排器里照旧做。具体是哪些工具、怎么查、算不�
   - 工具调用总数、慢工具（委派查库）的次数、墙钟时间各有上限，超了就拒绝这次调用，
     把原因作为结果告诉模型，而不是悄悄不执行；墙钟上限没配时按能用的慢工具推算
     （deadline_for），保证查库在这套超时下调得动；
+  - 这一轮已经知道查不成的工具（比如规则预取刚委派过、下游超时）不再调，原因同样交还模型；
   - 工具的任何失败都变成一条 is_error 的结果交还模型，不往上抛；
   - 同一轮里参数相同的调用只执行一次（并行的两个专家也共用），规则预取过的那次也算。
 
@@ -144,6 +145,15 @@ class LoopTool:
 
     def refuse(self, turn: TurnContext) -> str:
         """策略门：这一轮不许调时返回交给模型的原因；可以调就返回空串。"""
+        return ""
+
+    def skip(self, turn: TurnContext) -> str:
+        """
+        这一轮已经知道查不成时（比如下游刚超时）返回交给模型的原因；照常调就返回空串。
+
+        和 refuse 分开：refuse 是"不许查"，这里是"查了也没用"，轨迹里记 skipped，
+        评测和工作台不会把它当成越权。
+        """
         return ""
 
     async def run(self, args: BaseModel, turn: TurnContext) -> ToolOutcome:
@@ -349,8 +359,10 @@ def _plan_call(
     """
     按模型发出的顺序逐个决定每次调用的去向，预算因此记得确定。
 
-    顺序：工具在不在 → 参数解析和校验 → 策略门 → 去重（复用不花预算）→ 次数和时间预算。
-    策略门排在去重前面：不许查的东西，即使本轮别处查过，也不交给这个专家。
+    顺序：工具在不在 → 参数解析和校验 → 策略门 → 去重（复用不花预算）→ 这一轮已知查不成
+    → 次数和时间预算。策略门排在去重前面：不许查的东西，即使本轮别处查过，也不交给这个专家。
+    "已知查不成"排在去重后面：和先前那次一模一样的查询照样复用那次的结果（它本身就说明了
+    没查成），换了说法的才在这里拦下；拦下的不占预算。
     """
     raw_input = _get(block, "input")
     call = _Call(
@@ -381,6 +393,10 @@ def _plan_call(
     key = tool.memo_key(call.parsed)
     if key in turn.memo:
         call.future, call.dedup = turn.memo[key], True
+        return call
+    reason = tool.skip(turn)
+    if reason:
+        call.refusal = _error(reason, "skipped")
         return call
     if usage.tool_calls >= budget.max_tool_calls:
         call.refusal = _error("本轮的查询次数已经用完，请根据已有的资料作答。", "budget")

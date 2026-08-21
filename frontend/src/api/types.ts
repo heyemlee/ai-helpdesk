@@ -129,7 +129,7 @@ export interface TrajectoryEntry {
   agent: string | null
   tool: string
   args: Record<string, unknown>
-  /** found / empty / evidence / unverified / failed / ... ；被拦下的是 refused / budget / invalid_args / unavailable_tool */
+  /** found / empty / evidence / unverified / failed / ... ；没有执行的是 refused / skipped / budget / invalid_args / unavailable_tool */
   outcome: string
   is_error: boolean
   /** 查回来的内容能不能当出处 */

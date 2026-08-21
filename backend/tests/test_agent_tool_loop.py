@@ -236,6 +236,58 @@ async def test_the_trajectory_starts_with_what_the_rules_fetched():
     assert result.answer_usage == {"model_calls": 2, "input_tokens": 50, "output_tokens": 20}
 
 
+async def _prepared(tools, message="SO-1 补件到哪了"):
+    """走真的准备阶段：规则预取的两路结果记进这一轮的轨迹和去重表。"""
+    prefetch = Prefetch(tool_manager=tools, sql_agent=SQLAgentClient(base_url="http://x:8000"))
+
+    async def load_memory(user_id, conv_id, query=""):
+        return MemoryContext(recent_messages=[], relevant_history=[], user_profile={}, summary="")
+
+    async def recognize(message, history=None):
+        return _Intent()
+
+    deps = TurnDeps(load_memory=load_memory, recognize_intent=recognize, outage_reason=lambda: "",
+                    prefetch=prefetch, loop=LoopSetup(tools=loop_tools(prefetch), config=LoopConfig()))
+    return await prepare_turn(message, user_id="u1", conv_id="c1", request_id="r", deps=deps)
+
+
+async def test_after_the_rules_delegation_timed_out_the_model_does_not_delegate_again():
+    """
+    规则预取这一轮刚委派过、下游超时：模型换个说法再委派，多半还要等满一次超时（92 秒），
+    一轮拖到三分多钟还是查不到。直接跳过，原因交还模型。
+    """
+    tools = _Tools(order_data=UNAVAILABLE, order_success=False)
+    prepared = await _prepared(tools)
+    model = ScriptedModel(
+        tool_step(("call_1", "order_data_query", {"query": "SO-1 的补件进度和送货日期"})),
+        text_step("这次没能查到系统记录，建议人工跟进核实。"),
+    )
+    result = await _orchestrator((AgentType.ORDER, model)).run(prepared.request)
+
+    assert len(tools.delegations()) == 1                      # 只有规则预取那一次
+    [skipped] = model.requests[1]["messages"][-1]["content"]
+    assert skipped["is_error"] is True and "没有响应（ReadTimeout）" in skipped["content"]
+    assert [(r["actor"], r["tool"], r["outcome"]) for r in result.trajectory] == [
+        ("rule", "knowledge_search", "found"),
+        ("rule", "order_data_query", "unavailable"),
+        ("model", "order_data_query", "skipped"),
+    ]
+
+
+async def test_a_rules_delegation_that_answered_without_data_does_not_block_a_better_query():
+    """下游答了、只是没查到（或没查成）：模型带上单号再查一次是这个循环存在的意义，不跳过。"""
+    tools = _Tools(order_data={**ORDER_DATA, "answer": ""})
+    prepared = await _prepared(tools, message="那补的门板现在到哪了")
+    model = ScriptedModel(
+        tool_step(("call_1", "order_data_query", {"query": "SO-1 补件进度"})),
+        text_step("SO-1 的补件已安排。"),
+    )
+    result = await _orchestrator((AgentType.ORDER, model)).run(prepared.request)
+
+    assert len(tools.delegations()) == 2
+    assert [r["outcome"] for r in result.trajectory if r["actor"] == "model"] == ["empty"]
+
+
 async def test_a_model_outage_mid_loop_is_not_a_handoff():
     model = ScriptedModel(
         tool_step(("call_1", "knowledge_search", {"query": "补件流程"})),

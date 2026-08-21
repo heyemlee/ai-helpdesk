@@ -53,7 +53,7 @@ ARMS = ("rules", "loop")
 KNOWN_TOOLS = frozenset({"knowledge_search", "order_data_query"})
 
 # 被拦下、没有真的执行的结局（见 agents/tool_loop._plan_call）
-STOPPED = frozenset({"refused", "budget", "invalid_args", "unavailable_tool"})
+STOPPED = frozenset({"refused", "skipped", "budget", "invalid_args", "unavailable_tool"})
 
 # 桩规则的特殊值：委派本身没成（超时、熔断），形状和 SQL 客户端的降级结果一样
 UNAVAILABLE = "unavailable"

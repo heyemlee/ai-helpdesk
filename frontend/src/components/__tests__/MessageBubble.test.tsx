@@ -142,6 +142,19 @@ describe('工具循环', () => {
     expect(row).not.toHaveTextContent('SO-1 补件到哪了')
   })
 
+  it('规则预取已经查不通时，专家再查业务系统被跳过，照实说', () => {
+    render(<MessageBubble explain message={answered({
+      answer_usage: { model_calls: 2 },
+      trajectory: [
+        { ...trajectory[0], outcome: 'unavailable', is_error: true, evidence: false },
+        { ...trajectory[1], args: { query: 'SO-1 补件和送货日期' }, outcome: 'skipped', is_error: true,
+          evidence: false, latency_ms: 0.2 },
+      ],
+    })} />)
+    expect(screen.getByText('作答时查询').closest('li'))
+      .toHaveTextContent('业务系统 “SO-1 补件和送货日期” → 这一轮业务系统已经没响应，没有再查')
+  })
+
   it('循环开着但没有再调工具，照实说', () => {
     render(<MessageBubble explain message={answered({
       answer_usage: { model_calls: 1, input_tokens: 20, output_tokens: 8 }, trajectory: trajectory.slice(0, 1),

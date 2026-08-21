@@ -36,17 +36,20 @@ class Lookup(LoopTool):
     description = "查资料"
     params = LookupArgs
 
-    def __init__(self, name="", *, evidence=True, fail=False, refusal="", slow=False, timeout_s=0.0,
+    def __init__(self, name="", *, evidence=True, fail=False, refusal="", skipping="", slow=False, timeout_s=0.0,
                  gate=None, started=None, on_run=None):
         if name:
             self.name = name
         self.calls: list[str] = []
-        self.evidence, self.fail, self.refusal = evidence, fail, refusal
+        self.evidence, self.fail, self.refusal, self.skipping = evidence, fail, refusal, skipping
         self.slow, self.timeout_s = slow, timeout_s
         self.gate, self.started, self.on_run = gate, started, on_run
 
     def refuse(self, turn):
         return self.refusal
+
+    def skip(self, turn):
+        return self.skipping
 
     async def run(self, args, turn):
         self.calls.append(args.query)
@@ -180,6 +183,36 @@ async def test_the_policy_gate_stops_a_call_before_it_runs():
     assert tool.calls == []
     assert _results(model, 1) == [{"type": "tool_result", "tool_use_id": "call_1",
                                    "content": "报价不通过系统查询。", "is_error": True}]
+
+
+async def test_a_tool_known_to_be_down_this_turn_is_skipped_without_using_the_budget():
+    down = Lookup("order_data_query", slow=True, timeout_s=40, skipping="业务系统这一轮已经没有响应（ReadTimeout）")
+    knowledge = Lookup("knowledge_search")
+    turn = _turn(down, knowledge, max_tool_calls=1)
+    model = ScriptedModel(
+        tool_step(("c1", "order_data_query", {"query": "SO-1 补件和送货日期"})),
+        tool_step(("c2", "knowledge_search", {"query": "补件流程"})),
+        text_step("好的。"),
+    )
+    await _run(model, turn)
+
+    assert down.calls == [] and knowledge.calls == ["补件流程"]     # 跳过的那次不占预算
+    [skipped] = _results(model, 1)
+    assert skipped["is_error"] is True and "没有响应（ReadTimeout）" in skipped["content"]
+    assert [r["outcome"] for r in turn.trajectory] == ["skipped", "found"]
+
+
+async def test_a_repeat_of_an_earlier_lookup_is_reused_rather_than_skipped():
+    down = Lookup("order_data_query", skipping="业务系统这一轮已经没有响应")
+    turn = _turn(down)
+    turn.remember(down.memo_key(LookupArgs(query="SO-1 补件到哪了")),
+                  ToolOutcome(content="[业务系统查询未完成] 没有拿到结果", is_error=True, outcome="unavailable"))
+    model = ScriptedModel(tool_step(("c1", "order_data_query", {"query": "SO-1 补件到哪了"})), text_step("好的。"))
+    await _run(model, turn)
+
+    [reused] = _results(model, 1)
+    assert "结果复用" in reused["content"] and "查询未完成" in reused["content"]
+    assert (turn.trajectory[0]["outcome"], turn.trajectory[0]["dedup"]) == ("unavailable", True)
 
 
 async def test_the_same_query_runs_once_including_what_the_rules_fetched():

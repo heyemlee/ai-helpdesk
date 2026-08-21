@@ -15,7 +15,8 @@ const TOOL_NAMES: Record<string, Key> = {
 const TOOL_OUTCOMES: Record<string, Key> = {
   empty: 'lm.tools.empty', evidence: 'lm.tools.evidence', unverified: 'lm.tools.unverified',
   failed: 'lm.tools.failed', unavailable: 'lm.tools.failed', error: 'lm.tools.failed',
-  not_applicable: 'lm.tools.not_applicable', refused: 'lm.tools.refused', budget: 'lm.tools.budget',
+  not_applicable: 'lm.tools.not_applicable', refused: 'lm.tools.refused', skipped: 'lm.tools.skipped',
+  budget: 'lm.tools.budget',
   invalid_args: 'lm.tools.invalid', unavailable_tool: 'lm.tools.unknown_tool',
 }
 
