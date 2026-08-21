@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
-  <title id="title">AI Helpdesk 技术架构</title>
-  <desc id="desc">展示前端、入口层、FastAPI 核心服务、模型服务、数据层、可观测性和工程交付技术栈。</desc>
+  <title id="title">AI Helpdesk technical architecture</title>
+  <desc id="desc">Web console, edge layer, FastAPI core service, model services, data layer, observability and engineering delivery.</desc>
   <defs>
     <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
       <path d="M 0 0 L 12 6 L 0 12 z" fill="#475569"/>
@@ -9,12 +9,12 @@
       <feDropShadow dx="0" dy="5" stdDeviation="8" flood-color="#0f172a" flood-opacity="0.08"/>
     </filter>
     <style>
-      .title { font: 700 46px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif; fill: #0f172a; }
-      .subtitle { font: 400 22px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif; fill: #64748b; }
-      .section { font: 700 26px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif; fill: #0f172a; }
-      .label { font: 650 21px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif; fill: #1e293b; }
-      .body { font: 500 19px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif; fill: #475569; }
-      .tiny { font: 500 17px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif; fill: #475569; }
+      .title { font: 700 46px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #0f172a; }
+      .subtitle { font: 400 22px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #64748b; }
+      .section { font: 700 26px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #0f172a; }
+      .label { font: 650 20px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #1e293b; }
+      .body { font: 500 18px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #475569; }
+      .tiny { font: 500 16px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #475569; }
       .flow { fill: none; stroke: #475569; stroke-width: 4; marker-end: url(#arrow); }
       .dash { fill: none; stroke: #64748b; stroke-width: 3; stroke-dasharray: 8 8; marker-end: url(#arrow); }
       .card { stroke-width: 2.5; filter: url(#shadow); }
@@ -22,8 +22,8 @@
   </defs>
 
   <rect width="1600" height="900" rx="28" fill="#f8fafc"/>
-  <text x="60" y="68" class="title">AI Helpdesk 技术架构</text>
-  <text x="60" y="105" class="subtitle">应用层、智能编排、模型、数据与可观测性通过 Docker Compose 统一交付</text>
+  <text x="60" y="68" class="title">AI Helpdesk — technical architecture</text>
+  <text x="60" y="105" class="subtitle">App layer, orchestration, models, data and observability shipped together through one Docker Compose stack</text>
 
   <!-- main arrows -->
   <line x1="350" y1="275" x2="385" y2="275" class="flow"/>
@@ -34,81 +34,81 @@
 
   <!-- frontend -->
   <rect x="60" y="145" width="290" height="260" rx="24" fill="#eff6ff" stroke="#60a5fa" class="card"/>
-  <text x="90" y="190" class="section">Web Console</text>
+  <text x="90" y="190" class="section">Web console</text>
   <line x1="90" y1="207" x2="320" y2="207" stroke="#bfdbfe" stroke-width="2"/>
   <text x="90" y="244" class="label">React 18 · TypeScript 5</text>
   <text x="90" y="280" class="body">Vite 6 · Tailwind v4</text>
   <text x="90" y="316" class="body">TanStack Query 5</text>
-  <text x="90" y="352" class="body">SSE 句级流式对话</text>
+  <text x="90" y="352" class="body">Sentence-level SSE stream</text>
   <text x="90" y="384" class="tiny">Chat · Routing · KB · Monitor · Eval</text>
 
   <!-- edge -->
   <rect x="390" y="145" width="220" height="260" rx="24" fill="#f5f3ff" stroke="#a78bfa" class="card"/>
-  <text x="420" y="190" class="section">入口层</text>
+  <text x="420" y="190" class="section">Edge</text>
   <line x1="420" y1="207" x2="580" y2="207" stroke="#ddd6fe" stroke-width="2"/>
   <text x="420" y="246" class="label">Nginx</text>
-  <text x="420" y="282" class="body">反向代理</text>
-  <text x="420" y="318" class="body">HMAC 用户令牌</text>
-  <text x="420" y="354" class="body">CORS / API Key</text>
-  <text x="420" y="386" class="tiny">Request ID · Rate Limit</text>
+  <text x="420" y="282" class="body">Reverse proxy</text>
+  <text x="420" y="318" class="body">HMAC user token</text>
+  <text x="420" y="354" class="body">CORS / API key</text>
+  <text x="420" y="386" class="tiny">Request ID · rate limit</text>
 
   <!-- backend core -->
   <rect x="650" y="120" width="505" height="530" rx="26" fill="#ffffff" stroke="#38bdf8" class="card"/>
-  <text x="685" y="166" class="section">FastAPI 智能客服核心</text>
+  <text x="685" y="166" class="section">FastAPI helpdesk core</text>
   <text x="1115" y="166" text-anchor="end" class="tiny">Python · async</text>
 
   <rect x="685" y="195" width="435" height="58" rx="14" fill="#eff6ff"/>
-  <text x="707" y="231" class="label">API：Chat / Stream / Knowledge / Tickets</text>
+  <text x="707" y="231" class="label">API: chat / stream / knowledge / tickets</text>
 
   <rect x="685" y="268" width="435" height="58" rx="14" fill="#f5f3ff"/>
-  <text x="707" y="304" class="label">IntentRecognizer：Rules + Embedding + LLM</text>
+  <text x="707" y="304" class="label">IntentRecognizer: rules + embedding + LLM</text>
 
   <rect x="685" y="341" width="435" height="58" rx="14" fill="#ecfeff"/>
-  <text x="707" y="377" class="label">MemoryManager + RAG / MCP Tool Framework</text>
+  <text x="707" y="377" class="label">MemoryManager + RAG / MCP tools</text>
 
   <rect x="685" y="414" width="435" height="58" rx="14" fill="#ecfdf5"/>
-  <text x="707" y="450" class="label">AgentOrchestrator + Hot-reload Skills</text>
+  <text x="707" y="450" class="label">AgentOrchestrator + hot-reload skills</text>
 
   <rect x="685" y="487" width="435" height="58" rx="14" fill="#fffbeb"/>
-  <text x="707" y="523" class="label">AnswerPolicy + Confidence Handoff</text>
+  <text x="707" y="523" class="label">AnswerPolicy + confidence handoff</text>
 
   <rect x="685" y="560" width="435" height="58" rx="14" fill="#fff1f2"/>
-  <text x="707" y="596" class="label">Tickets · Audit · Monitor · Evaluator</text>
+  <text x="707" y="596" class="label">Tickets · audit · monitor · evaluator</text>
 
   <!-- model services -->
   <rect x="1190" y="120" width="350" height="235" rx="24" fill="#fdf4ff" stroke="#e879f9" class="card"/>
-  <text x="1220" y="166" class="section">模型服务</text>
+  <text x="1220" y="166" class="section">Model services</text>
   <line x1="1220" y1="183" x2="1510" y2="183" stroke="#f5d0fe" stroke-width="2"/>
-  <text x="1220" y="222" class="label">Anthropic 兼容 LLM</text>
-  <text x="1220" y="258" class="body">Claude / DeepSeek 等网关</text>
+  <text x="1220" y="222" class="label">Anthropic-compatible LLM</text>
+  <text x="1220" y="258" class="body">Claude, or an OpenAI-style gateway</text>
   <text x="1220" y="298" class="label">Embedding</text>
-  <text x="1220" y="332" class="body">远端 API / 本地 n-gram 兜底</text>
+  <text x="1220" y="332" class="body">Remote API, local n-gram fallback</text>
 
   <!-- data -->
   <rect x="1190" y="390" width="350" height="260" rx="24" fill="#f0fdfa" stroke="#2dd4bf" class="card"/>
-  <text x="1220" y="436" class="section">数据与共享状态</text>
+  <text x="1220" y="436" class="section">Data and shared state</text>
   <line x1="1220" y1="453" x2="1510" y2="453" stroke="#99f6e4" stroke-width="2"/>
   <text x="1220" y="493" class="label">Redis 7</text>
-  <text x="1220" y="525" class="tiny">工作记忆 · 限流 · 熔断 · 路由惩罚</text>
+  <text x="1220" y="525" class="tiny">Working memory · limits · breaker</text>
   <text x="1220" y="566" class="label">PostgreSQL 16 + pgvector</text>
-  <text x="1220" y="598" class="tiny">知识库 · 情景记忆 · 画像 · 工单 · 审计</text>
-  <text x="1220" y="632" class="body">SQLite：零依赖本地开发兜底</text>
+  <text x="1220" y="598" class="tiny">KB · memory · profiles · tickets · audit</text>
+  <text x="1220" y="632" class="body">SQLite: zero-dependency local dev</text>
 
   <!-- delivery -->
   <rect x="60" y="460" width="550" height="190" rx="24" fill="#fff7ed" stroke="#fb923c" class="card"/>
-  <text x="90" y="505" class="section">工程交付</text>
+  <text x="90" y="505" class="section">Engineering delivery</text>
   <line x1="90" y1="522" x2="580" y2="522" stroke="#fed7aa" stroke-width="2"/>
-  <text x="90" y="560" class="label">Docker Compose：11 服务一键启动</text>
-  <text x="90" y="596" class="body">GitHub Actions：pytest · ruff · Vitest · tsc</text>
-  <text x="90" y="632" class="body">179 后端测试 + 13 前端测试 + pgvector 合同测试</text>
+  <text x="90" y="560" class="label">Docker Compose: 11 services, one command</text>
+  <text x="90" y="596" class="body">GitHub Actions: pytest · ruff · Vitest · tsc</text>
+  <text x="90" y="632" class="body">216 backend + 13 frontend + pgvector contract tests</text>
 
   <!-- observability footer -->
   <rect x="60" y="700" width="1480" height="145" rx="24" fill="#f1f5f9" stroke="#94a3b8" stroke-width="2.5"/>
-  <text x="90" y="742" class="section">可观测性</text>
+  <text x="90" y="742" class="section">Observability</text>
   <line x1="90" y1="758" x2="1510" y2="758" stroke="#cbd5e1" stroke-width="2"/>
 
   <text x="105" y="800" class="label">Metrics</text>
-  <text x="105" y="829" class="tiny">Prometheus · 4 条告警</text>
+  <text x="105" y="829" class="tiny">Prometheus · 4 alert rules</text>
 
   <text x="445" y="800" class="label">Traces</text>
   <text x="445" y="829" class="tiny">OpenTelemetry → Collector → Tempo</text>
@@ -117,5 +117,5 @@
   <text x="850" y="829" class="tiny">JSON + trace_id → Promtail → Loki</text>
 
   <text x="1245" y="800" class="label">Dashboard</text>
-  <text x="1245" y="829" class="tiny">Grafana：指标 · 日志 · Trace 跳转</text>
+  <text x="1245" y="829" class="tiny">Grafana: metrics, logs, log-to-trace</text>
 </svg>
