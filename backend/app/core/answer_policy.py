@@ -20,7 +20,7 @@
 """
 import logging
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -37,7 +37,12 @@ _PRICE_RE = re.compile(
 
 # 时效表述：带时间单位的数字区间，或"马上/立刻"这类绝对时效词
 _LEAD_TIME_RE = re.compile(
-    r"(?:\d+|[一二两三四五六七八九十几])\s*(?:[-~至到]\s*\d+\s*)?(?:个)?"
+    # 中文具体日期必须排第一个：「10 月 28 日」开头的「10 月」也符合紧接着的
+    # 「数字 + 月」那一支（时长），分支按顺序试，排在后面就只截到「10 月」。
+    # 拿半个日期去出处里找，出处写的是 2026-10-28，有出处的出厂日期就被当成
+    # 无依据承诺换掉了。年份一并匹配进来，_is_grounded 要拿它和出处的年份比。
+    r"(?:\d{4}\s*年\s*)?\d{1,2}\s*月\s*\d{1,2}\s*[号日]"
+    r"|(?:\d+|[一二两三四五六七八九十几])\s*(?:[-~至到]\s*\d+\s*)?(?:个)?"
     r"\s*(?:工作日|自然日|天|小时|分钟|周|个月|月)"
     # 数字也可能是拼出来的："in two weeks" / "两周内"——只认 \d+ 会整条漏掉
     r"|(?:\d+|a\s+(?:few|couple\s+of)|one|two|three|four|five|six|seven|eight|nine|ten)"
@@ -51,7 +56,6 @@ _LEAD_TIME_RE = re.compile(
     r"|(?:下|本|这)?(?:周|星期|礼拜)[一二三四五六日天]"
     r"|(?:下|本|这|下个)(?:周|星期|礼拜|月)"
     r"|(?:这|下|上)?(?:周末|月底|月初|年底)"
-    r"|\d{1,2}\s*月\s*\d{1,2}\s*[号日]"
     r"|immediately|right\s+away|same\s+day|next\s+day|by\s+(?:today|tomorrow)"
     # 具名日期也是绝对时效：中文的 当天/次日 对应英文的 next Tuesday / by Friday /
     # end of the week。这些不带数字，_is_grounded 因此恒判无出处——和中文侧
@@ -61,9 +65,88 @@ _LEAD_TIME_RE = re.compile(
     r"|(?:by|before)\s+(?:the\s+)?end\s+of\s+(?:the\s+)?(?:day|week|month)"
     r"|(?:next|this)\s+(?:week|month|quarter)"
     r"|\b(?:today|tonight|tomorrow)\b"
-    r"|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2}\b",
+    # 带上可选的年份（October 28, 2026），和中文那一支同理
+    r"|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2}\b"
+    r"(?:,?\s*\d{4}\b)?",
     re.I,
 )
+
+# 数字区间后面跟着这些字时，是时长、数量或尺寸，不是日期（见 _DATE_FORMS 里的 10-28）
+_RANGE_UNIT_CHARS = (
+    "个天日号周月年时小分秒工自星礼晚次件套张块片扇条根台组项步层级位人份箱包只把"
+    "米厘毫寸尺英公斤磅克千吨度升元角美万百倍折成岁期"
+)
+
+# 日期的写法。_is_grounded 判具体日期有没有出处时按「哪一天」比，不按字面比：
+# 业务系统查回来写 2026-10-28，模型转述成「2026 年 10 月 28 日」「10 月 28 号」
+# 「October 28」，是同一天换了写法，不是编造。回答和出处用同一份清单解析，
+# 两边认的写法因此一样。跑在 _normalize 之后的文本上（小写，去掉空白和逗号）。
+_DATE_FORMS = (
+    # 2026-10-28 / 2026/10/28 / 2026.10.28。去掉空白后，后面跟着的时间会直接
+    # 粘上来（2026-10-28 14:00 → 2026-10-2814:00），所以「日」后面紧跟
+    # 「两位小时:」也算日期结束。
+    re.compile(
+        r"(?<![\d.])(?P<y>\d{4})(?P<sep>[-/.])(?P<m>\d{1,2})(?P=sep)(?P<d>\d{1,2})"
+        r"(?:(?!\d)|(?=(?:[01]\d|2[0-3]):))"
+    ),
+    # 2026年10月28日 / 10月28号
+    re.compile(r"(?:(?<!\d)(?P<y>\d{4})年)?(?<!\d)(?P<m>\d{1,2})月(?P<d>\d{1,2})[日号]"),
+    # 10-28（不带年份）。区间长得和它一样——「10-28 天」「3-5 个工作日」「4-6 周」，
+    # 后面跟单位的不算；前后粘着字母、数字或连接符的是编号（SO-2410-0815、A10-28）。
+    # 不认 10/28：这个业务里 3/4、1/2 是英寸分数。
+    re.compile(
+        r"(?<![\da-z.:/\-第])(?P<m>\d{1,2})-(?P<d>\d{1,2})"
+        rf"(?![\da-z%.:/\-~{_RANGE_UNIT_CHARS}])"
+    ),
+    # oct28 / october282026（原文 Oct 28 / October 28, 2026）。去空白后单词都粘在
+    # 一起，没法要求月份前面是词边界，所以只认完整的月份名和标准缩写。
+    re.compile(
+        r"(?P<mon>jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?"
+        r"|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)"
+        r"\.?(?P<d>\d{1,2})(?P<y>\d{4})?(?!\d)"
+    ),
+)
+_MONTHS = {
+    name: i for i, name in enumerate(
+        ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"),
+        start=1,
+    )
+}
+
+_Ymd = tuple[int | None, int, int]   # (年，没写就是 None；月；日)
+
+
+def _as_date(m: re.Match[str]) -> _Ymd | None:
+    """把 _DATE_FORMS 的一次匹配换成 (年, 月, 日)；不像日期的丢掉。"""
+    g = m.groupdict()
+    month = _MONTHS[g["mon"][:3]] if g.get("mon") else int(g["m"])
+    day = int(g["d"])
+    year = int(g["y"]) if g.get("y") else None
+    if not (1 <= month <= 12 and 1 <= day <= 31):
+        return None
+    # 年份只认 2000–2099：9999-12-31 这类「永不过期」的占位值不是日期
+    if year is not None and not 2000 <= year < 2100:
+        return None
+    return year, month, day
+
+
+def _date_of(norm: str) -> _Ymd | None:
+    """norm（已 _normalize）整段就是一个日期时返回它，否则 None。"""
+    for form in _DATE_FORMS:
+        m = form.fullmatch(norm)
+        if m:
+            return _as_date(m)
+    return None
+
+
+def _dates_in(norm: str) -> Iterator[_Ymd]:
+    """norm（已 _normalize）里认得出的所有日期。"""
+    for form in _DATE_FORMS:
+        for m in form.finditer(norm):
+            date = _as_date(m)
+            if date is not None:
+                yield date
+
 
 # 承诺动词：出现金额/时效还不够，必须落在"会发生什么"的语境里才算承诺
 #
@@ -367,8 +450,8 @@ class AnswerPolicy:
     ) -> PolicyViolation | None:
         """判断单句是否构成"无依据承诺"。四条同时成立才拦截。"""
         price = _PRICE_RE.search(sentence)
-        lead_time = _LEAD_TIME_RE.search(sentence)
-        if not price and not lead_time:
+        lead_times = list(_LEAD_TIME_RE.finditer(sentence))
+        if not price and not lead_times:
             return None
 
         # 2. 必须落在承诺语境里
@@ -379,8 +462,17 @@ class AnswerPolicy:
         if _HEDGE_RE.search(sentence) and not _ABSOLUTE_RE.search(sentence):
             return None
 
-        # 4. 数字必须能在 grounding sources 中找到出处
-        for rule, match in (("price_commitment", price), ("lead_time_commitment", lead_time)):
+        # 4. 数字必须能在 grounding sources 中找到出处。
+        #    时效表述照旧只核句子里的第一处，但具体日期不占这个名额，有几个核几个。
+        #    日期对得上出处之后，要是还只核第一处，「10 月 28 日出厂，11 月 3 日送到」
+        #    「10 月 28 日出厂，3-5 个工作日送到」后半句编出来的送货时间，就跟着
+        #    有出处的出厂日期一起放行了。
+        dates = [m for m in lead_times if _date_of(self._normalize(m.group(0)))]
+        others = [m for m in lead_times if m not in dates]
+        checks = [("price_commitment", price)] + [
+            ("lead_time_commitment", m) for m in sorted(dates + others[:1], key=lambda m: m.start())
+        ]
+        for rule, match in checks:
             if match is None:
                 continue
             evidence = match.group(0).strip()
@@ -408,6 +500,11 @@ class AnswerPolicy:
         这里刻意不做"数字在出处里出现过就算有依据"的宽松匹配：知识库写
         "配送 3-5 个工作日"时，模型说"退款 3 个工作日到账"必须判为无依据——
         数字被跨条目张冠李戴，正是这类承诺出事的主要方式。
+
+        具体日期（10 月 28 日、Oct 28）例外，按「哪一天」比而不是按字面比：出处写
+        2026-10-28、回答写 2026 年 10 月 28 日，是同一天换了写法。口径并不放宽——
+        月和日必须出自出处里的同一个日期（「10 月份……28 号」拼不出 10 月 28 日，
+        「10-28 天」是区间不是日期），两边都写了年份时年份也要对上。
         """
         if not normalized_sources:
             return False
@@ -415,6 +512,15 @@ class AnswerPolicy:
         norm = self._normalize(evidence)
         if not re.search(r"\d", norm):
             return False  # 马上/立刻/immediately 这类绝对时效，无论如何都没有出处
+
+        date = _date_of(norm)
+        if date is not None:
+            year, month, day = date
+            return any(
+                (m, d) == (month, day) and (year is None or y is None or y == year)
+                for source in normalized_sources
+                for y, m, d in _dates_in(source)
+            )
 
         # 量词"个"可有可无，区间连接符（- ~ 至 到）任意写法都算同一处出处。
         # 这里必须一次性替换：逐个 replace 会把前一轮生成的字符类再改坏。

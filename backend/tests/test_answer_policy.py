@@ -355,3 +355,113 @@ def test_both_languages_are_covered_by_the_corpus():
         en = [s for s in corpus if not re.search(r"[一-鿿]", s)]
         assert len(zh) >= 3, f"{name}语料缺中文样本"
         assert len(en) >= 5, f"{name}语料缺英文样本"
+
+
+# ── 改了写法的日期 ────────────────────────────────────────────────────────────
+#
+# 用真实模型探测时发现：业务系统查回来写 2026-10-28，模型转述成
+# 「2026 年 10 月 28 日」，守卫却只截到「10 月」去出处里按字面找，有出处的出厂
+# 日期被整句换成兜底话术，客户看不到出厂日期。规则预取和工具循环两条路径都这样。
+
+ORDER_DATA = "SO-2410-0815 柜体已完成，目前在做门板喷涂；计划 2026-10-28 出厂，具体送货日期出厂后排车再确认。"
+REWRITTEN = "系统计划于 2026 年 10 月 28 日出厂；具体送货日期需出厂后安排车辆，再与您确认。"
+
+
+def test_rewritten_factory_date_is_grounded(policy):
+    result = policy.enforce(REWRITTEN, sources=[ORDER_DATA])
+
+    assert not result.blocked, result.violations
+    assert result.text == REWRITTEN
+
+
+def test_rewritten_factory_date_is_grounded_when_streamed():
+    from app.core.answer_policy import PolicyStreamGuard
+
+    guard = PolicyStreamGuard(AnswerPolicy(), sources=[ORDER_DATA])
+    chunks = [REWRITTEN[i:i + 4] for i in range(0, len(REWRITTEN), 4)]
+    streamed = "".join(guard.feed(c) for c in chunks) + guard.flush()
+
+    assert streamed == REWRITTEN
+    assert guard.violations == []
+
+
+@pytest.mark.parametrize("said", ["2026 年 10 月 28 日", "10 月 28 日", "10月28号"])
+@pytest.mark.parametrize("source", [
+    "计划 2026-10-28 发货",
+    "计划 2026/10/28 发货",
+    "计划 10-28 发货",
+    "ship_date: 2026-10-28 14:00:00",   # 去掉空白后时间直接粘在日期后面
+    "预计 2026 年 10 月 28 日发货",
+    "预计 10月28号 发货",
+])
+def test_same_day_in_another_spelling_is_grounded(policy, said, source):
+    answer = f"您的柜体 {said}发货。"
+
+    assert policy.enforce(answer, sources=[]).blocked, "没有出处时这句本来就该拦"
+    assert not policy.enforce(answer, sources=[source]).blocked
+
+
+def test_a_date_missing_from_the_sources_is_still_blocked(policy):
+    """证据要是整个日期，不能再截成「11 月」。"""
+    result = policy.enforce("您的柜体 11 月 3 日送到。", sources=[ORDER_DATA])
+
+    assert result.blocked
+    assert result.violations[0].evidence == "11 月 3 日"
+
+
+def test_every_date_in_a_sentence_is_checked(policy):
+    """有出处的出厂日期，不能替同一句里编出来的送货日期打掩护。"""
+    result = policy.enforce("计划 10 月 28 日出厂，11 月 3 日送到。", sources=[ORDER_DATA])
+
+    assert result.blocked
+    assert result.violations[0].evidence == "11 月 3 日"
+
+
+def test_a_grounded_date_does_not_shield_the_rest_of_the_sentence(policy):
+    """时效只核第一处，但日期不占这个名额：日期后面的送货时长照样要有出处。"""
+    result = policy.enforce("计划 10 月 28 日出厂，3-5 个工作日送到。", sources=[ORDER_DATA])
+
+    assert result.blocked
+    assert result.violations[0].evidence == "3-5 个工作日"
+
+
+def test_years_must_agree_when_both_sides_give_one(policy):
+    result = policy.enforce("2027 年 10 月 28 日发货。", sources=[ORDER_DATA])
+    assert result.blocked
+    assert result.violations[0].evidence == "2027 年 10 月 28 日"
+
+    # 只有一边写了年份时不比年份
+    assert not policy.enforce("2026 年 10 月 28 日发货。", sources=["计划 10-28 发货"]).blocked
+
+
+@pytest.mark.parametrize("answer,source", [
+    # 区间不是日期
+    ("10 月 28 日发货。", "交期 10-28 天"),
+    ("3 月 5 日送到。", "配送 3-5 个工作日"),
+    ("4 月 6 日发货。", "标准交期 4-6 周"),
+    # 英寸分数不是日期
+    ("3 月 4 日送到。", "门板厚 3/4 英寸"),
+    # 编号和占位值不是日期
+    ("10 月 28 日发货。", "柜号 A10-28 已排产"),
+    ("12 月 31 日发货。", "有效期至 9999-12-31"),
+    # 月和日出自出处里的不同地方，拼不出一个有出处的日期（张冠李戴）
+    ("10 月 28 日发货。", "10 月份开始排产，每月 28 号统一发货。"),
+    # 同月不同日。以前只截到「9 月」按字面比，出处里有「9 月」就放行了
+    ("9 月 20 日送到。", "订单 SO-2024-8891 已排产，预计 9 月 15 日出厂。"),
+])
+def test_things_that_only_look_like_the_date_do_not_ground_it(policy, answer, source):
+    assert policy.enforce(answer, sources=[source]).blocked
+
+
+@pytest.mark.parametrize("answer", ["10 个月内完成。", "3-5 个工作日送到。"])
+def test_a_date_in_the_sources_does_not_ground_a_duration(policy, answer):
+    """时长的判法不变：出处里的 2026-10-28 不能给「10 个月」「3-5 个工作日」当出处。"""
+    assert policy.enforce(answer, sources=[ORDER_DATA]).blocked
+
+
+def test_english_dates_follow_the_same_rule(policy):
+    """英文回复会把 2026-10-28 说成 October 28，是同一个毛病，按同一个口径判。"""
+    assert not policy.enforce("Your cabinets will ship on October 28.", sources=[ORDER_DATA]).blocked
+    assert not policy.enforce("Your cabinets will ship on Oct. 28, 2026.", sources=[ORDER_DATA]).blocked
+    assert policy.enforce("Your cabinets will ship on October 28, 2027.", sources=[ORDER_DATA]).blocked
+    assert policy.enforce("Your cabinets will ship on November 3.", sources=[ORDER_DATA]).blocked
