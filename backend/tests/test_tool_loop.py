@@ -353,10 +353,10 @@ def test_the_loop_is_off_unless_switched_on():
     config = LoopConfig.from_env({
         "AI_HELPDESK_TOOL_LOOP": "on",
         "AI_HELPDESK_TOOL_LOOP_MAX_CALLS": "0",
-        "AI_HELPDESK_TOOL_LOOP_TOOLS": "technical=knowledge_search,order_data_query;general=",
+        "AI_HELPDESK_TOOL_LOOP_TOOLS": "technical=knowledge_search;general=",
     })
     assert config.budget.max_model_calls == 1                       # 至少要能作答一次
-    assert config.allow["technical"] == ("knowledge_search", "order_data_query")
+    assert config.allow["technical"] == ("knowledge_search",)
     assert config.allow["general"] == ()
     assert config.allow["order"] == ("knowledge_search", "order_data_query")   # 没提到的专家用默认
 
@@ -367,5 +367,6 @@ def test_tools_for_intersects_the_allowlist_with_what_this_instance_has():
     assert turn.tools_for("order") == [knowledge]                    # 没接业务数据的实例
     turn.tools["order_data_query"] = data
     assert turn.tools_for("order") == [knowledge, data]
-    assert turn.tools_for("technical") == [knowledge]
+    assert turn.tools_for("technical") == [knowledge, data]      # 破损、缺件常带着柜号或单号
+    assert turn.tools_for("general") == [knowledge]
     assert turn.tools_for("unknown") == []

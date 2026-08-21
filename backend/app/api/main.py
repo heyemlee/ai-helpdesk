@@ -865,9 +865,10 @@ class ChatResponse(BaseModel):
     knowledge: dict[str, Any] = Field(default_factory=dict)
     business_data: dict[str, Any] = Field(default_factory=dict)
     # 工具循环打开时才有（见 agents/tool_loop.py）：这一轮的调用轨迹——规则预取的两条
-    # 在前、模型作答时自己发起的在后——和作答阶段的模型用量（调用次数、输入输出 token）
+    # 在前、模型作答时自己发起的在后——和作答阶段的模型用量（调用次数、输入输出 token；
+    # 被要求直接作答时带 forced，退回单次生成时带 fallback）
     trajectory: list[dict[str, Any]] = Field(default_factory=list)
-    answer_usage: dict[str, int] = Field(default_factory=dict)
+    answer_usage: dict[str, int | str] = Field(default_factory=dict)
 
 
 # ── 路由 ──────────────────────────────────────────────────────────────────────

@@ -154,7 +154,9 @@ async def test_stream_and_non_stream_give_the_same_answer():
 
 async def test_each_specialist_only_sees_its_own_tools():
     for agent_type, intent, message, data, expected in [
-        (AgentType.TECHNICAL, IntentCategory.INSTALLATION, "柜门关不严怎么办", True, ["knowledge_search"]),
+        (AgentType.TECHNICAL, IntentCategory.INSTALLATION, "柜门关不严怎么办", True,
+         ["knowledge_search", "order_data_query"]),
+        (AgentType.GENERAL, IntentCategory.OTHER, "你们几点下班", True, ["knowledge_search"]),
         (AgentType.ORDER, IntentCategory.MISSING_PART, "补件到哪了", True,
          ["knowledge_search", "order_data_query"]),
         # 没接业务数据的实例（客户实例）：订单专家也只有知识库
@@ -308,6 +310,22 @@ async def test_a_gateway_without_tool_support_falls_back_to_one_plain_call():
 
     assert result.response == "补件已登记。" and result.service_unavailable is False
     assert "tools" in model.requests[0] and "tools" not in model.requests[1]
+    # 学习模式据此说"模型连接不支持工具"，而不是"专家决定不查"
+    assert result.answer_usage["fallback"] == "tools_unsupported"
+
+
+async def test_a_specialist_told_to_answer_says_so_in_the_usage():
+    model = ScriptedModel(
+        tool_step(("call_1", "knowledge_search", {"query": "补件流程"})),
+        tool_step(("call_2", "knowledge_search", {"query": "补件多久能到"})),
+        text_step("补件会在核实后安排。"),
+    )
+    req = make_request("补件到哪了", IntentCategory.MISSING_PART, turn=_turn(_Tools()))
+    result = await _orchestrator((AgentType.ORDER, model)).run(req)
+
+    assert model.requests[2]["tool_choice"] == {"type": "none"}     # 第 3 次只能作答
+    assert result.answer_usage["forced"] == "model_calls"
+    assert "fallback" not in result.answer_usage
 
 
 def _sample(name, **labels):

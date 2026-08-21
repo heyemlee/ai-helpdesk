@@ -37,11 +37,12 @@ logger = logging.getLogger(__name__)
 
 _ON = {"1", "true", "yes", "on"}
 
-# 每类专家默认能用的工具。technical 和 general 只查知识库；能查业务数据的只有订单和
-# 账款两类专家，账款那边的报价意图另有策略门（见 turn_tools.OrderDataQueryTool）。
+# 每类专家默认能用的工具。general 只查知识库；technical 也能查业务数据——轨迹 A/B
+# 里，交给它的破损、缺件问题常带着柜号或订单号（"W3012 开裂了，这批哪天出厂的"），只查知识库
+# 就只能让客户等人工。账款那边的报价意图另有策略门（见 turn_tools.OrderDataQueryTool）。
 DEFAULT_ALLOW: dict[str, tuple[str, ...]] = {
     "general": ("knowledge_search",),
-    "technical": ("knowledge_search",),
+    "technical": ("knowledge_search", "order_data_query"),
     "billing": ("knowledge_search", "order_data_query"),
     "order": ("knowledge_search", "order_data_query"),
 }
@@ -241,6 +242,10 @@ class TurnContext:
     model_calls: int = 0
     input_tokens: int = 0
     output_tokens: int = 0
+    # 学习模式要说清楚的两件事：有专家被要求直接作答（第一次的原因：model_calls / tool_calls /
+    # deadline），或者模型连接不支持工具、这一轮退回了单次生成（tools_unsupported）
+    forced: str = ""
+    fallback: str = ""
 
     def tools_for(self, agent: str) -> list[LoopTool]:
         """这个专家这一轮能用的工具：白名单和这个实例有的工具取交集，按名字排序。"""
@@ -259,9 +264,14 @@ class TurnContext:
         self.input_tokens += input_tokens or 0
         self.output_tokens += output_tokens or 0
 
-    def usage(self) -> dict[str, int]:
-        return {"model_calls": self.model_calls, "input_tokens": self.input_tokens,
-                "output_tokens": self.output_tokens}
+    def usage(self) -> dict[str, int | str]:
+        usage: dict[str, int | str] = {"model_calls": self.model_calls, "input_tokens": self.input_tokens,
+                                       "output_tokens": self.output_tokens}
+        if self.forced:
+            usage["forced"] = self.forced
+        if self.fallback:
+            usage["fallback"] = self.fallback
+        return usage
 
 
 # ── 循环产出的事件 ────────────────────────────────────────────────────────────
