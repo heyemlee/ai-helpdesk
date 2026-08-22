@@ -144,6 +144,10 @@ export interface AnswerUsage {
   model_calls: number
   input_tokens: number
   output_tokens: number
+  /** 被要求直接作答的原因：模型调用次数、查询次数或时间用完了；循环自己停下时没有 */
+  forced?: 'model_calls' | 'tool_calls' | 'deadline'
+  /** 模型连接不支持工具调用，这一轮退回了单次生成 */
+  fallback?: 'tools_unsupported'
 }
 
 /**

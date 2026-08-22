@@ -200,7 +200,7 @@ describe('学习模式', () => {
 
   it.each([
     [{ enabled: false, attempted: false, outcome: 'not_configured' }, /Not connected.*nothing was queried/],
-    [{ enabled: true, attempted: false, outcome: 'skipped' }, /Not queried\. The question does not ask about a specific order/],
+    [{ enabled: true, attempted: false, outcome: 'skipped' }, /Not queried before answering: by the rules, the question does not ask about a specific order/],
     [{ enabled: true, attempted: true, outcome: 'unavailable', reason: 'ReadTimeout' }, /did not return a result \(ReadTimeout\)/],
     [{ enabled: true, attempted: true, outcome: 'unverified', databases: ['erp_db'] }, /did not pass verification.*not to present it as confirmed/],
   ])('订单数据 %o 的讲法', (business_data, expected) => {
@@ -220,7 +220,7 @@ describe('学习模式', () => {
     })} />, { lang: 'en' })
     const row = (label: string) => screen.getByText(label, { selector: '.explain-row > b' }).closest('li')!
     expect(row('Intent')).toHaveTextContent(/keyword rule recognised this as human_handoff.*no model call/)
-    expect(row('Knowledge')).toHaveTextContent('Not searched.')
+    expect(row('Knowledge')).toHaveTextContent('Not searched before answering')
     expect(row('Specialist')).toHaveTextContent('Sent straight to human handoff')
     expect(row('Answer check')).toHaveTextContent('Removed 1 sentence: Unsupported lead-time commitment.')
     expect(row('Handoff')).toHaveTextContent(/A handoff was decided.*用户明确要求人工.*Ticket created: tk_7/)

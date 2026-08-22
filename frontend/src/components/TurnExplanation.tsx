@@ -20,6 +20,11 @@ const TOOL_OUTCOMES: Record<string, Key> = {
   invalid_args: 'lm.tools.invalid', unavailable_tool: 'lm.tools.unknown_tool',
 }
 
+const FORCED: Record<string, Key> = {
+  model_calls: 'lm.tools.forced.model_calls', tool_calls: 'lm.tools.forced.tool_calls',
+  deadline: 'lm.tools.forced.deadline',
+}
+
 /** 一次工具调用的结局。知识库查到了就说几段；认不出的结局照原样写出来，不吞掉。 */
 function toolOutcome(call: TrajectoryEntry, t: ReturnType<typeof useT>['t']): string {
   if (call.outcome === 'found') {
@@ -160,12 +165,16 @@ export function TurnExplanation({ message, routingConfig, onInspect }: {
       </>
     : t('lm.data.unknown')])
 
-  // 4½. 工具循环：专家作答时自己又查了什么。只在循环打开的轮次有（后端才会报 answer_usage）
+  // 4½. 工具循环：专家作答时自己又查了什么。只在循环打开的轮次有（后端才会报 answer_usage）。
+  // 网关不支持工具时这一轮退回了单次生成，不能说成"专家决定不查"；被要求直接作答的也照实说，
+  // 一次委派要十几秒，耗时到秒的写出来，这一轮为什么慢一眼能看到。
   const usage = result.answer_usage
   if (usage?.model_calls !== undefined) {
     const calls = (result.trajectory ?? []).filter((c) => c.actor === 'model')
+    const forced = usage.forced ? FORCED[usage.forced] : undefined
     rows.push(['lm.tools', <>
-      {calls.length === 0 ? t('lm.tools.none') : <>
+      {usage.fallback === 'tools_unsupported' ? t('lm.tools.fallback')
+        : calls.length === 0 ? t('lm.tools.none') : <>
         {t('lm.tools.calls', { n: calls.length })}{' '}
         {calls.map((c, i) => {
           const name = TOOL_NAMES[c.tool]
@@ -176,10 +185,12 @@ export function TurnExplanation({ message, routingConfig, onInspect }: {
               {typeof c.args?.query === 'string' && <> <span className="lm-quote">“{c.args.query}”</span></>}
               {' → '}{toolOutcome(c, t)}
               {c.dedup && <> {t('lm.tools.dedup')}</>}
+              {(c.latency_ms ?? 0) >= 1000 && <> {t('lm.tools.took', { t: ms(c.latency_ms ?? 0) })}</>}
             </span>
           )
         })}
       </>}
+      {forced && <> {t(forced)}</>}
       {' '}{t('lm.tools.usage', { n: usage.model_calls })}
     </>])
   }

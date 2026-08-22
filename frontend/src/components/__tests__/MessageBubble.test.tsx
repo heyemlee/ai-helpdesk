@@ -135,8 +135,9 @@ describe('工具循环', () => {
     })} />)
     const row = screen.getByText('作答时查询').closest('li')!
     expect(row).toHaveTextContent('专家作答时自己查了 2 次')
-    expect(row).toHaveTextContent('业务系统 “SO-1 补件进度” → 查到可作依据的数据')
+    expect(row).toHaveTextContent('业务系统 “SO-1 补件进度” → 查到可作依据的数据 （18.00s）')
     expect(row).toHaveTextContent('知识库 “补件流程” → 找到 2 段 （复用了本轮之前的结果）')
+    expect(row).not.toHaveTextContent('（4ms）')                 // 不到一秒的不写
     expect(row).toHaveTextContent('作答阶段调用模型 2 次')
     // 规则预取那一条不算"专家自己查的"
     expect(row).not.toHaveTextContent('SO-1 补件到哪了')
@@ -153,6 +154,23 @@ describe('工具循环', () => {
     })} />)
     expect(screen.getByText('作答时查询').closest('li'))
       .toHaveTextContent('业务系统 “SO-1 补件和送货日期” → 这一轮业务系统已经没响应，没有再查')
+  })
+
+  it('被要求直接作答、退回单次生成，都照实说', () => {
+    render(<MessageBubble explain message={answered({
+      answer_usage: { model_calls: 3, forced: 'model_calls' }, trajectory,
+    })} />)
+    expect(screen.getByText('作答时查询').closest('li'))
+      .toHaveTextContent('最后一次调用被要求直接作答：本轮的模型调用次数用完了。 作答阶段调用模型 3 次。')
+  })
+
+  it('模型连接不支持工具时，不说成专家决定不查', () => {
+    render(<MessageBubble explain message={answered({
+      answer_usage: { model_calls: 1, fallback: 'tools_unsupported' }, trajectory: trajectory.slice(0, 1),
+    })} />)
+    const row = screen.getByText('作答时查询').closest('li')!
+    expect(row).toHaveTextContent('这个模型连接不支持工具调用，专家退回了单次生成')
+    expect(row).not.toHaveTextContent('没有再调工具')
   })
 
   it('循环开着但没有再调工具，照实说', () => {
@@ -174,7 +192,7 @@ describe('工具循环', () => {
     })} />, { lang: 'en' })
     const row = screen.getByText('Lookups while answering').closest('li')!
     expect(row).toHaveTextContent('The specialist looked things up itself 2 times:')
-    expect(row).toHaveTextContent('Business systems “SO-1 补件进度” → returned data that can back the answer')
+    expect(row).toHaveTextContent('Business systems “SO-1 补件进度” → returned data that can back the answer (18.00s)')
     expect(row).toHaveTextContent('Knowledge base “补件流程” → found 2 passages (reused an earlier result)')
     expect(row).toHaveTextContent('2 model calls while answering.')
   })
