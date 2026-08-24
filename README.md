@@ -4,7 +4,7 @@
 
 **Multi-agent customer support: routed specialist agents, delegation to a peer SQL agent over A2A, a guard on every sentence, and a person when confidence runs out.**
 
-A FastAPI agent service: a router votes on each question's intent, tools run concurrently, specialist agents answer (in parallel when a question spans domains), and every sentence is checked before it is sent. A React console shows each agent decision as it happens.
+A FastAPI agent service: a router votes on each question's intent, tools run concurrently, specialist agents answer (in parallel when a question spans domains) and look up what is still missing in a bounded tool loop, and every sentence is checked before it is sent. A React console shows each agent decision as it happens.
 
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)](backend/Dockerfile)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.119-009688?style=flat-square&logo=fastapi&logoColor=white)](backend/requirements.txt)
@@ -27,6 +27,7 @@ A FastAPI agent service: a router votes on each question's intent, tools run con
 ## Highlights
 
 - **A router and specialist agents.** An LLM, embeddings and rules vote (0.7 / 0.2 / 0.1) on 19 intents, 77 of 90 labelled messages right with gpt-6-luna. Domain scores pick one of three specialists, run as replicas a monitor re-weights; a second joins in parallel when it clears 0.45 and 55% of the first.
+- **A bounded tool loop, switched on by an A/B.** When the prefetched material falls short, a specialist calls the same search and data lookup itself through function calling, at most three model calls and one delegation a turn. In 72 paired runs, questions whose data the rules miss got it in 26 of 30 runs instead of none, with no forbidden calls or invented figures, so the staff instance runs it.
 - **Agent-to-agent delegation.** Data questions go to a separate SQL agent that plans, writes, runs and repairs its own queries. Over A2A it streams each stage back, with Agent Card discovery, fallbacks, timeouts and contract tests pinned at `v1.12`.
 - **Trust between agents fails closed.** A delegated result is evidence only with a success or partial-success status and no risk or degraded flag; a missing field counts against it. Only evidence, retrieved passages and SOPs can ground a price or a date.
 - **Retrieval with a corrective loop.** Three sub-queries over pgvector and a keyword index, a cross-encoder or LLM rerank with a check on whether the evidence is enough, and one more round for what is missing. The fused search alone finds the right document in the top three for 101 of 108 test questions.
@@ -35,28 +36,28 @@ A FastAPI agent service: a router votes on each question's intent, tools run con
 ## Architecture
 
 <p align="center">
-  <img src="docs/architecture.svg" width="960" alt="Agent architecture: one question runs through five stages in the agent runtime, posted by the React 18 console with the answer streamed back over SSE. 1 Understand: an intent vote typed with Pydantic 2, with working memory in Redis 7. 2 Gather: tools picked by rules and run together with asyncio.gather, a search in PostgreSQL 16 with pgvector and tsvector and a delegation over A2A to the peer agent ai-sql-agent, which runs its own loop; thin evidence loops back for one corrective round. 3 Route: domain scores pick the specialists, and a monitor re-weights their replicas every 10 seconds. 4 Answer: three specialists on the Anthropic or OpenAI chat models, falling back to a generalist. 5 Check: a guard and three confidence gates; a failed gate hands off to a person with a ticket. Vectors and reranking come from an embedding API, and the platform is FastAPI, Python 3.12, httpx, Docker Compose, Nginx, OpenTelemetry and Grafana; pulses travel each connection in that order" />
+  <img src="docs/architecture.svg" width="960" alt="Agent architecture: one question runs through five stages in the agent runtime, posted by the React 18 console with the answer streamed back over SSE. 1 Understand: an intent vote typed with Pydantic 2, with working memory in Redis 7. 2 Gather: tools picked by rules and run together with asyncio.gather, a search in PostgreSQL 16 with pgvector and tsvector and a delegation over A2A to the peer agent ai-sql-agent, which runs its own loop; thin evidence loops back for one corrective round. 3 Route: domain scores pick the specialists, and a monitor re-weights their replicas every 10 seconds. 4 Answer: three specialists on the Anthropic or OpenAI chat models, falling back to a generalist; in a bounded tool loop a specialist can search or query again through function calling. 5 Check: a guard and three confidence gates; a failed gate hands off to a person with a ticket. Vectors and reranking come from an embedding API, and the platform is FastAPI, Python 3.12, httpx, Docker Compose, Nginx, OpenTelemetry and Grafana; pulses travel each connection in that order" />
 </p>
 
-A question reaches the staff instance from the console, or the customer instance through Nginx on port 80, and runs through five stages. **Understand** loads memory and votes on the intent. **Gather** runs the tools the rules pick for it, at the same time: a hybrid search in PostgreSQL and, on the staff instance, a lookup delegated to [ai-sql-agent](https://github.com/heyemlee/ai-sql-agent) over A2A or its HTTP `/query`. **Route** scores the specialists and picks a replica, **Answer** runs them with their own SOPs, and **Check** tests each sentence on the way out, or opens a ticket and queues its webhook in an outbox.
+A question reaches the staff instance from the console, or the customer instance through Nginx on port 80, and runs through five stages. **Understand** loads memory and votes on the intent. **Gather** runs the tools the rules pick for it, at the same time: a hybrid search in PostgreSQL and, on the staff instance, a lookup delegated to [ai-sql-agent](https://github.com/heyemlee/ai-sql-agent) over A2A or its HTTP `/query`. **Route** scores the specialists and picks a replica, **Answer** runs them with their own SOPs and, on the staff instance, lets them look up what is still missing, and **Check** tests each sentence on the way out, or opens a ticket and queues its webhook in an outbox.
 
-- **Rules pick the tools; models write the answers.** Search and data lookups are chosen from the voted intent and its entities before any agent runs, so a turn costs a predictable number of model calls and both lookups run at once. The open-ended loop, planning and repairing SQL, lives in the SQL agent behind a pinned contract.
-- **Two entrances, one image.** The customer instance never delegates and keeps no cross-session memory, since its user IDs come from the request body; only Nginx on port 80 accepts outside connections.
+- **Rules fetch first; specialists fill the gaps.** Search and data lookups are chosen from the voted intent and its entities before any agent runs, and both run at once. With the tool loop switched on, a specialist that finds the material lacking calls the same tools itself, within a budget; with it off, a turn costs a predictable number of model calls. The open-ended loop, planning and repairing SQL, lives in the SQL agent behind a pinned contract.
+- **Two entrances, one image.** The customer instance never delegates, never runs the tool loop and keeps no cross-session memory, since its user IDs come from the request body; only Nginx on port 80 accepts outside connections.
 
 ## Tech stack
 
-| Layer                | Technology                                                                       | Role                                                                                                                                                                                               |
-| -------------------- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Agent runtime        | Python 3.12 · FastAPI · asyncio                                                  | FastAPI serves chat over SSE; asyncio runs the tools and parallel specialists with `gather`, keeps blocking store calls off the event loop, and pumps progress into the stream                     |
-| Model calls          | Anthropic SDK · OpenAI SDK · Pydantic 2                                          | One interface over both providers, switchable at runtime; every model decision (intent vote, query rewrite, rerank verdict, user profile, judge scores) is a Pydantic schema, validated before use |
-| Agent protocol       | A2A JSON-RPC (`message/stream`, `message/send`) · Agent Card · httpx             | Delegation to the SQL agent with streamed stages, fallbacks and timeouts; plain HTTP `/query` as the default transport                                                                             |
-| Embeddings, rerank   | OpenAI-compatible `/embeddings` · local n-gram vectors · cross-encoder `/rerank` | One embedder for knowledge, episodic memory and the intent vote, with local vectors when no API is set; a cross-encoder rerank with the LLM as fallback                                            |
-| Retrieval store      | PostgreSQL 16 · pgvector · `tsvector` · asyncpg · SQLite                         | Dense and lexical legs fused by rank; SQLite with BM25 as a local fallback                                                                                                                         |
-| Memory, shared state | Redis 7                                                                          | 24-hour working memory and its summarisation lock, per-user rate limits, and circuit breakers and routing penalties shared across instances                                                        |
-| Guardrails, identity | Rule-based answer policy · confidence gates · HMAC user tokens                   | Sentence-level checks, handoff decisions and signed user identities                                                                                                                                |
-| Console              | React 18 · TypeScript · Vite 6 · TanStack Query 5 · Tailwind CSS 4               | SSE read from a `fetch` stream (EventSource can't POST), streamed Markdown and Learning mode, in English and Chinese                                                                               |
-| Observability        | OpenTelemetry · Prometheus · Grafana · Tempo · Loki                              | Traces per request, metrics, logs and alert rules, next to the monitor's Z-score anomaly checks                                                                                                    |
-| Delivery, quality    | Docker Compose · Nginx · GitHub Actions · pytest · Ruff · Vitest                 | 12 services in one deploy; CI runs the tests against pgvector, the A2A contract fixtures and both image builds                                                                                     |
+| Layer                | Technology                                                                       | Role                                                                                                                                                                                                                                           |
+| -------------------- | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Agent runtime        | Python 3.12 · FastAPI · asyncio                                                  | FastAPI serves chat over SSE; asyncio runs the prefetch, parallel specialists and each tool-loop step's calls with `gather`, keeps blocking store calls off the event loop, and pumps progress into the stream                                 |
+| Model calls          | Anthropic SDK · OpenAI SDK · Pydantic 2                                          | One interface over both providers, switchable at runtime, with function calling translated both ways; every model decision (intent vote, query rewrite, rerank verdict, user profile, judge scores) is a Pydantic schema, validated before use |
+| Agent protocol       | A2A JSON-RPC (`message/stream`, `message/send`) · Agent Card · httpx             | Delegation to the SQL agent with streamed stages, fallbacks and timeouts; plain HTTP `/query` as the default transport                                                                                                                         |
+| Embeddings, rerank   | OpenAI-compatible `/embeddings` · local n-gram vectors · cross-encoder `/rerank` | One embedder for knowledge, episodic memory and the intent vote, with local vectors when no API is set; a cross-encoder rerank with the LLM as fallback                                                                                        |
+| Retrieval store      | PostgreSQL 16 · pgvector · `tsvector` · asyncpg · SQLite                         | Dense and lexical legs fused by rank; SQLite with BM25 as a local fallback                                                                                                                                                                     |
+| Memory, shared state | Redis 7                                                                          | 24-hour working memory and its summarisation lock, per-user rate limits, and circuit breakers and routing penalties shared across instances                                                                                                    |
+| Guardrails, identity | Rule-based answer policy · confidence gates · HMAC user tokens                   | Sentence-level checks, handoff decisions and signed user identities                                                                                                                                                                            |
+| Console              | React 18 · TypeScript · Vite 6 · TanStack Query 5 · Tailwind CSS 4               | SSE read from a `fetch` stream (EventSource can't POST), streamed Markdown and Learning mode, in English and Chinese                                                                                                                           |
+| Observability        | OpenTelemetry · Prometheus · Grafana · Tempo · Loki                              | Traces per request, metrics, logs and alert rules, next to the monitor's Z-score anomaly checks                                                                                                                                                |
+| Delivery, quality    | Docker Compose · Nginx · GitHub Actions · pytest · Ruff · Vitest                 | 12 services in one deploy; CI runs the tests against pgvector, the A2A contract fixtures and both image builds                                                                                                                                 |
 
 ## Features
 
@@ -67,6 +68,7 @@ A streamed turn arrives as `progress → meta → routing → delta → result`;
 - **Routing.** A rule anchor fixes the intent without a model call and skips rewriting and reranking; conflicting anchors fall back to the full vote, and unclear questions get a clarifying reply.
 - **Replicas and feedback.** Each specialist type runs two replicas. A monitor tracks success rate and latency, flags Z-score anomalies, and penalises a replica by up to 0.9 when success drops below 90% or it slows, steering traffic to the healthier one.
 - **Collaboration and fallback.** One specialist's answer streams sentence by sentence; parallel answers are merged, each marked with its role. A failing specialist is replaced by the generalist, except mid-stream, where the turn is reported as not answered.
+- **Tool loop.** With `AI_HELPDESK_TOOL_LOOP=on`, as on the staff instance here, a specialist calls `knowledge_search` and `order_data_query` through function calling: at most three model calls and one delegation per specialist and turn, identity injected by the server, no data lookups for quotes, repeats of the prefetch served from the turn's cache, a wall clock sized to the slowest tool, and no second delegation once one has timed out. Failures go back to the model as tool results; calls stream as progress, and Learning mode lists each one with its outcome and time.
 - **Self-declared handoff.** Each specialist ends with a marker saying whether a person is needed, stripped from the stream; declaring one drops its confidence below the 0.70 gate.
 - **Memory and skills.** Working memory lives in Redis for 24 hours and is summarised at 15 messages; past sessions and a user profile return to the context. Each specialist loads its own SOPs from reloadable `SKILL.md` files.
 
@@ -76,6 +78,17 @@ A streamed turn arrives as `progress → meta → routing → delta → result`;
 | LLM-judged dialog turns             | 14 of the 15 that completed pass; 1 of 16 was cut by an upstream connection error |
 
 The judge is the model under test and the cases are in Chinese ([evaluation record](docs/evaluation/end-to-end.md)). The bundled intents, specialists, SOPs and knowledge describe a manufacturer's support desk; another domain needs its own intents and specialists in code.
+
+| Tool-loop A/B with gpt-6-luna, 72 paired runs              | Rules |  Loop |
+| ---------------------------------------------------------- | ----: | ----: |
+| Data the rules miss reached the specialist (B, 30 runs)    |     0 |    26 |
+| Unneeded calls where the rules sufficed (A and D, 18 runs) |     — |     1 |
+| Invented figures or followed injections (E and F)          |     0 |     0 |
+| Handoffs (72 turns)                                        |    46 |    39 |
+| Mean input tokens per turn                                 | 2,692 | 4,915 |
+| LLM-judge score (A to C)                                   | 0.899 | 0.896 |
+
+The second of two runs: the first missed two of the ten conditions for switching it on, and what changed in between is in the [evaluation record](docs/evaluation/tool-loop-ab.md). Order data came from contract fixtures, so the latency leaves out a live delegation's 17–40 s.
 
 ### Agent-to-agent delegation
 
@@ -107,7 +120,7 @@ The 52 documents and 122 questions (14 with no answer) are simulated test data, 
 
 ### Guardrails and handoff
 
-- **Answer guard.** A sentence with an amount or a time, a commitment verb, no hedge and no source is replaced with one deferring to the quote or schedule; staff see the original and the rule.
+- **Answer guard.** A sentence with an amount or a time, a commitment verb, no hedge and no source is replaced with one deferring to the quote or schedule; a date counts as sourced when a source has the same calendar day in any format. Staff see the original and the rule.
 - **Gates and tickets.** Intent < 0.45, routing < 0.35 or agent < 0.70 hands off; these are heuristic signals, not calibrated probabilities. Tickets have four states, and notifications go through an outbox with retries.
 - **Failing closed.** A rejected key stops calls for that configuration until reset; a 429 backs off 5–60 s and an unexplained 403 30–600 s, honouring `retry-after` up to 900 s.
 
@@ -156,10 +169,11 @@ scripts/ci-local.sh                         # the CI checks; --with-images adds 
 cd backend && .venv/bin/python -m pytest    # backend tests; TEST_POSTGRES_DSN adds the pgvector ones
 .venv/bin/python scripts/eval_retrieval.py  # retrieval hit@3 and MRR, no model calls
 .venv/bin/python scripts/run_eval.py        # end-to-end evaluation; calls the model
+.venv/bin/python scripts/run_trajectory_eval.py  # tool loop vs rules on 40 trajectory cases; calls the model with --yes
 cd ../frontend && npm test                  # console tests
 ```
 
-CI runs Ruff, 953 backend tests against pgvector, 218 console tests, the production build, the A2A contract fixtures and both Docker images. The end-to-end evaluation spends model calls, so it runs only on request.
+CI runs Ruff, 1,074 backend tests against pgvector, 227 console tests, the production build, the A2A contract fixtures and both Docker images. The end-to-end and trajectory evaluations spend model calls, so they run only on request.
 
 ## Deploy
 

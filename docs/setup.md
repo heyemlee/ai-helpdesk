@@ -63,6 +63,22 @@ Both connections can also be changed from the console without a restart, under *
 - Keys are write-only. The page shows whether one is set and its last four characters, and a key is only sent to the host it was entered for.
 - Editing works only from a console opened on the same machine, and needs `AI_HELPDESK_MODEL_SETTINGS_PATH`. Compose sets it, and the customer instance follows what the staff console saves.
 
+## Let specialists call tools
+
+By default the rules decide what to search and whether to delegate, before any specialist runs. `AI_HELPDESK_TOOL_LOOP=on` in `backend/.env` adds a bounded tool loop to the Answer stage: a specialist that finds the prefetched material lacking can call `knowledge_search` itself, through the chat model's function calling, and on an instance with business data every specialist but the generalist can also call `order_data_query`. The model fills in only the query; identity comes from the server.
+
+| Variable                                | Default  | Meaning                                                                                                                                       |
+| --------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AI_HELPDESK_TOOL_LOOP_MAX_CALLS`       | 3        | Model calls per specialist and turn; the last one must answer                                                                                 |
+| `AI_HELPDESK_TOOL_LOOP_MAX_TOOL_CALLS`  | 4        | Tool calls per turn; a repeat of a lookup already made this turn is free                                                                      |
+| `AI_HELPDESK_TOOL_LOOP_MAX_DELEGATIONS` | 1        | `order_data_query` calls the model may start                                                                                                  |
+| `AI_HELPDESK_TOOL_LOOP_DEADLINE_S`      | derived  | Wall clock for the loop: the slowest tool's timeout + 15 s for the answer + 20 s lead-in, at least 75 s (127 s with `SQL_AGENT_TIMEOUT_S=90`) |
+| `AI_HELPDESK_TOOL_LOOP_TOOLS`           | built in | Per-specialist allowlist override, e.g. `technical=knowledge_search` to keep a specialist off the business systems                            |
+
+The startup log states the deadline in use and warns when an explicit one leaves no room for `order_data_query`. A delegation that already timed out during the rule prefetch is not retried by the model in the same turn. If the endpoint rejects tool calls, the turn falls back to a single answer and `GET /health` reports `tool_loop.tools_rejected`.
+
+[run_trajectory_eval.py](../backend/scripts/run_trajectory_eval.py) compares the loop with the rule-only path on 40 trajectory cases. It calls the model only with `--yes`, prints its call estimate first, and replays order data from the [a2a-contract](https://github.com/heyemlee/a2a-contract) fixtures.
+
 ## Add your business knowledge
 
 Upload `.txt`, `.md` or JSON document lists in the knowledge page, or use the API:
@@ -113,20 +129,20 @@ The system is single-tenant. Signed identities isolate each user's memory, but o
 
 ## API
 
-| Endpoint                                                                         | Purpose                                                                                                |
-| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `POST /chat` · `POST /chat/stream`                                               | A reply with routing metadata, policy findings and handoff state; the stream adds preparation progress |
-| `GET /tickets` · `GET /tickets/{ticket_id}` · `POST /tickets/{ticket_id}/status` | List, read and move tickets; each reports its allowed transitions and notification record              |
-| `GET /conversations/{conv_id}`                                                   | The transcript behind a ticket                                                                         |
-| `GET /knowledge/documents` · `GET /knowledge/documents/{doc_id}`                 | Browse documents (optional `category`; `q` filters title and text) and read one with its passages      |
-| `GET /knowledge/categories` · `PATCH /knowledge/documents/{doc_id}`              | Category counts; move a document to another category (retrieval is unaffected)                         |
-| `POST /knowledge/add` · `POST /knowledge/upload`                                 | Import documents, optionally into a category; re-importing identical text is a no-op                   |
-| `POST /search`                                                                   | The chat path's retrieval (rewrite, hybrid recall, rerank); hits name their source document            |
-| `GET /skills` · `GET /sops` · `POST /skills/reload`                              | SOP metadata and text; reload from disk                                                                |
-| `POST /eval/run` · `POST /eval/promote`                                          | Run the LLM-as-judge evaluation; promote its result to the baseline                                    |
-| `GET /admin/model` and `/admin/model/*`                                          | Model connections: status, model lists, test, save, restore                                            |
-| `GET /health` · `GET /monitor` · `GET /metrics`                                  | Health, agent and tool monitoring, Prometheus metrics                                                  |
-| `POST /auth/token`                                                               | Issue a signed user identity to a trusted integration                                                  |
+| Endpoint                                                                         | Purpose                                                                                                                                                 |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /chat` · `POST /chat/stream`                                               | A reply with routing metadata, policy findings, handoff state and, with the tool loop on, its trajectory; the stream adds preparation and tool progress |
+| `GET /tickets` · `GET /tickets/{ticket_id}` · `POST /tickets/{ticket_id}/status` | List, read and move tickets; each reports its allowed transitions and notification record                                                               |
+| `GET /conversations/{conv_id}`                                                   | The transcript behind a ticket                                                                                                                          |
+| `GET /knowledge/documents` · `GET /knowledge/documents/{doc_id}`                 | Browse documents (optional `category`; `q` filters title and text) and read one with its passages                                                       |
+| `GET /knowledge/categories` · `PATCH /knowledge/documents/{doc_id}`              | Category counts; move a document to another category (retrieval is unaffected)                                                                          |
+| `POST /knowledge/add` · `POST /knowledge/upload`                                 | Import documents, optionally into a category; re-importing identical text is a no-op                                                                    |
+| `POST /search`                                                                   | The chat path's retrieval (rewrite, hybrid recall, rerank); hits name their source document                                                             |
+| `GET /skills` · `GET /sops` · `POST /skills/reload`                              | SOP metadata and text; reload from disk                                                                                                                 |
+| `POST /eval/run` · `POST /eval/promote`                                          | Run the LLM-as-judge evaluation; promote its result to the baseline                                                                                     |
+| `GET /admin/model` and `/admin/model/*`                                          | Model connections: status, model lists, test, save, restore                                                                                             |
+| `GET /health` · `GET /monitor` · `GET /metrics`                                  | Health (including whether the tool loop is on), agent and tool monitoring, Prometheus metrics                                                           |
+| `POST /auth/token`                                                               | Issue a signed user identity to a trusted integration                                                                                                   |
 
 ## Repository map
 

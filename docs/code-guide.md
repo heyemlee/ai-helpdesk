@@ -34,7 +34,8 @@ Anthropic 协议网关就等于永久关掉 Embedding，"三路融合"实际只�
 |---|---|
 | 四条判定 | `AnswerPolicy._check_sentence` |
 | 出处比对 | `AnswerPolicy._is_grounded` |
-| 流式版本 | `PolicyStreamGuard` |
+| 日期按同一天比对 | `_DATE_FORMS`、`_dates_in`（`_is_grounded` 里先比日期） |
+| 流式版本 | `PolicyStreamGuard`；工具循环里查回的出处当场加进去（`add_sources`） |
 
 **为什么要四条同时成立**（金额或时效 + 承诺动词 + 无对冲词 + 无出处）：
 少任何一条都会误伤。只看"有数字"会把"订单号 12345"当承诺；不看对冲词会把
@@ -43,6 +44,10 @@ SOP 要求的"通常一周左右，以工厂排产为准"也拦下来。
 **为什么出处比对不做宽松匹配**：`_is_grounded` 要求数字和单位在出处里**连在一起**
 出现。知识库写"补件 7 个工作日发出"时，模型说"4 个工作日就能送到"必须判为
 无依据——数字跨条目张冠李戴，正是这类承诺出事的主要方式。
+
+**为什么日期按同一天比**：业务系统给的是 2026-10-28，模型常写成"10 月 28 日"。按字面比，
+有出处的日期会被当成无依据，整句换成"不能承诺具体日期"，客户反而看不到系统里的日期。
+两边都写了年份时年份也要一致，月和日必须来自出处里的同一个日期。
 
 **为什么是纯规则**：守卫在每次回复后同步执行。用 LLM 判断会让每次回复多一次
 往返，把流式的首字延迟也拖垮。
@@ -57,6 +62,10 @@ SOP 要求的"通常一周左右，以工厂排产为准"也拦下来。
 | 兜底降级 | `_execute` |
 | 性能路由 | `_best_agent` |
 | 流式 | `run_stream`、`BaseAgent.stream` |
+| 工具循环（可选） | `BaseAgent._stream_with_tools`（非流式的 `_handle_with_tools` 也走它）、`app/agents/tool_loop.py::run_tool_loop` |
+| 一次工具调用的去向 | `tool_loop._plan_call`：工具在不在 → 参数校验 → 策略门 `refuse` → 去重 → 已知查不成 `skip` → 预算 |
+| 墙钟上限 | `tool_loop.deadline_for`、`deadline_warnings` |
+| 两个工具和规则预取 | `app/tools/turn_tools.py`：`KnowledgeSearchTool`、`OrderDataQueryTool`、`seed_from_prefetch` |
 
 **为什么领域分要截断到 [0,1]**：辅助 Agent 的门槛之一是"达到主 Agent 分数的
 一定比例"。不截断的话主 Agent 分数可以无限累加，跨域工单里的第二个域永远够不到
@@ -73,6 +82,15 @@ GENERAL，响应里 `agent_type` 和 `primary_agent` 自相矛盾。
 **为什么同分要轮询**：`_best_agent` 在分数打平时轮询而不是固定取第一个。冷启动
 阶段所有实例分数都是 1.0，固定取第一个会让流量永远压在 0 号实例，其他实例的
 统计永远是空的，Monitor 的反馈也就永远不产生任何路由差异。
+
+**为什么非流式也走流式那条路**：带工具时中途会冒出新的出处、还要作废调工具前没写完的半句。
+两条路径共用一份处理，"流式和非流式给出不同回答"在结构上就不可能。
+
+**为什么墙钟上限按最慢工具的超时推算**：慢工具开跑前要剩下"它的超时 + 15 秒作答"。原来固定 75 秒，
+`SQL_AGENT_TIMEOUT_S=90` 时这个条件永远满足不了：试跑里模型写对了查询词，每次都被预算拒绝。
+
+**为什么规则预取的委派超时之后模型不再委派**：同一轮里再委派多半还要等满一次超时，一轮拖到三分多钟
+还是查不到。只看 unavailable：failed、empty 是下游答了，换个查询词可能就对了。
 
 **为什么流式失败不重跑**：`run_stream` 里 Agent 流式失败后不像非流式那样降级到
 General 重试——已经吐出去的半截回答收不回来，重跑会让用户看到两段互相矛盾的内容。
@@ -120,6 +138,11 @@ General 重试——已经吐出去的半截回答收不回来，重跑会让用
 | 意图指标 | `IntentEvaluator.evaluate` |
 | 回归检测 | `EndToEndEvaluator._detect_regressions` |
 | 基线管理 | `_load_baseline`、`promote_baseline` |
+| 工具循环的轨迹评测 | `app/evaluation/trajectory.py`：`TrajectoryHarness`、`grade`、`summarize`；脚本 `scripts/run_trajectory_eval.py` |
+
+**为什么轨迹评测成对跑**：每条用例只做一次准备阶段，规则组和循环组从同一个请求作答，差异只来自循环，
+意图投票这一步的随机性不会混进对比。打分是确定性规则（资料到没到手、该调的调了没有、多余调用、
+编造），看轨迹就能判；LLM 评审只管回答质量那一道门槛。
 
 **为什么基线不能自动更新**：早期版本每跑完一次就把报告写回基线文件，且优先和
 本进程上一次运行比较。结果是"相比基线退化"永远为空——你每次都在和刚刚的自己比。
@@ -239,6 +262,8 @@ Redis 抖动导致整个服务不可用。
 | effort 统一下发 | `_with_effort`、`STRUCTURED_EFFORT` |
 | 各处的返回形状 | `LLMIntentPayload`、`UserProfilePayload`、`QueryRewritePayload`、`RerankPayload`、`JudgePayload` |
 | OpenAI 侧等价实现 | `openai_compat._Messages.parse` |
+| 工具调用的互译 | `_openai_tool`、`_tool_messages`、`_MessageStream._collect_tool_calls` |
+| 网关不支持工具 | `ToolsUnsupportedError`、`tools_rejected` |
 | 缓存前缀边界 | `BaseAgent._system_blocks` |
 
 **为什么不再手工从正文里抠 JSON**：原来五处都是
@@ -261,6 +286,11 @@ JSON 被 markdown 围栏包住、字段名或类型漂了——而三种的表�
 在这里就是每次都不同的 messages 尾部——那样等于每次写一份再也命中不了的新缓存，
 还要按 1.25 倍写入价付钱。标在 system 上，边界正好落在"每次相同"与"每次不同"的交界。
 
+**为什么流式的工具调用按 index → id → 上一个来拼**：OpenAI 的分片只有第一片带 id 和函数名，
+后面的只带 arguments 的一截；有的网关不给 index。调用方和 Anthropic 一样只从
+`get_final_message()` 取 `tool_use` 块，不用分供应商。网关明确拒绝 tools（400 里同时点名工具参数
+和"不支持"）之后记住这份（地址, 模型），不再出网，这一轮退回单次生成。
+
 **为什么 Anthropic 独有的旋钮在兼容层被丢掉而不是硬映射**：
 `output_config`（effort）/ `cache_control` 在 OpenAI 侧要么没有对应物、要么只有
 推理模型才认（`reasoning_effort` 传给非推理模型直接 400）。硬映射会把"省点钱"
@@ -268,7 +298,7 @@ JSON 被 markdown 围栏包住、字段名或类型漂了——而三种的表�
 
 ## 测试在哪
 
-`backend/tests/` 下 461 个测试，全部不发真实网络请求（PG 合同测试在 CI 的 pgvector
+`backend/tests/` 下 1074 个测试（设了 `A2A_CONTRACT_DIR` 时契约夹具还会再展开一批），全部不发真实网络请求（PG 合同测试在 CI 的 pgvector
 service container 上执行，本地无 `TEST_POSTGRES_DSN` 时跳过）。重点覆盖那些"看起来在工作
 但实际没有"的路径：多实例轮询与 Monitor 惩罚是否真的改变路由选择、跨域工单能否
 提名辅助 Agent、流式下策略守卫是否漏拦、回归检测是否真的在对比基线、

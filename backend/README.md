@@ -137,7 +137,10 @@ pip install -r requirements.txt && pytest
 | 专家失败降级到通用 Agent | `AgentOrchestrator._execute` | `test_specialist_failure_falls_back_to_general` |
 | 模型凭证不可用保护：被拒之后同一份配置不再出网；没答上来不算转人工 | `app/core/llm_guard.py`（套在 `create_llm_client` 上）；`AgentOrchestrator._unavailable_result` | `tests/test_llm_guard.py`、`tests/test_model_outage.py`（全部离线） |
 | 按 Agent 类型注入的热加载 SOP | `app/core/skill_loader.py` + `skills/*/SKILL.md` | `POST /skills/reload` 后 `GET /skills` |
-| 拦截无依据的价格/时效承诺 | `app/core/answer_policy.py` | `tests/test_answer_policy.py`；响应里的 `policy_violations` |
+| 拦截无依据的价格/时效承诺（日期换了写法也按同一天认出处） | `app/core/answer_policy.py` | `tests/test_answer_policy.py`；响应里的 `policy_violations` |
+| 作答阶段的有边界工具循环（可选，默认关） | `app/agents/tool_loop.py`（预算、去重、准入、墙钟上限）、`app/tools/turn_tools.py`（两个工具、报价策略门、预取委派超时后不再委派） | `tests/test_tool_loop.py`、`tests/test_agent_tool_loop.py`；响应里的 `trajectory` |
+| OpenAI 兼容端点的工具调用 | `app/core/openai_compat.py`：`tools` / `tool_choice`、`tool_use` / `tool_result` 和 `tool_calls` 互译，流式分片按 index 拼 | `tests/test_openai_compat.py` |
+| 轨迹评测：规则组对循环组 | `app/evaluation/trajectory.py`、`scripts/run_trajectory_eval.py`（订单数据读 a2a-contract 夹具） | `tests/test_trajectory_eval.py`；记录见 `docs/evaluation/tool-loop-ab.md` |
 | 四维 LLM-as-Judge | `app/evaluation/evaluator.py::LLMJudge` | `test_judge_prompt_names_all_four_dimensions` |
 | 相对存档基线的回归检测 | `EndToEndEvaluator._detect_regressions`，基线需显式提升 | `test_baseline_is_not_overwritten_on_every_run` |
 
@@ -199,9 +202,29 @@ OPENAI_MODEL=gpt-5.6-luna
 
 业务代码只写了一套 Anthropic 形状的调用（`client.messages.create/stream`），
 OpenAI 那条路由 `app/core/openai_compat.py` 翻译成 `/chat/completions`，system 位置、
-`max_tokens`、`stop_reason`、`usage` 计量和流式增量逐项对齐。所以换供应商是改
+`max_tokens`、`stop_reason`、`usage` 计量、流式增量和工具调用逐项对齐。所以换供应商是改
 一行环境变量的事，五处调用点（编排器 / 意图识别 / 工具管理 / 记忆 / 评测）
 一行都不用动，两条链路也不会因为改一处漏一处而产生行为差异。
+
+#### 让专家自己调工具（可选，默认关）
+
+默认由规则在专家运行之前决定查不查知识库、查不查业务数据。打开工具循环后，专家读完这些资料还缺东西时，
+可以通过模型的 function calling 自己再调 `knowledge_search`；接了业务数据的实例上，除通用 Agent 外还能调 `order_data_query`。
+模型能填的只有查询词，身份由服务端注入；报价意图不许查库；和预取相同的查询直接复用；规则预取那次委派已经
+超时或不可用时，模型不会再委派。
+
+```env
+AI_HELPDESK_TOOL_LOOP=on
+# AI_HELPDESK_TOOL_LOOP_MAX_CALLS=3          # 每个专家每轮的模型调用次数，最后一次必须作答
+# AI_HELPDESK_TOOL_LOOP_MAX_TOOL_CALLS=4     # 每轮的工具调用次数，复用本轮已有的查询不算
+# AI_HELPDESK_TOOL_LOOP_MAX_DELEGATIONS=1    # 模型发起的 order_data_query 次数
+# AI_HELPDESK_TOOL_LOOP_DEADLINE_S=          # 不设时按最慢工具推算：超时 + 15 秒作答 + 20 秒前导，至少 75 秒
+# AI_HELPDESK_TOOL_LOOP_TOOLS=               # 按专家覆盖白名单，如 technical=knowledge_search（不让它查业务数据）
+```
+
+启动日志会写出实际用的墙钟上限；显式配得太小、查库塞不进去时会告警。模型网关不支持工具调用时，这一轮退回
+单次生成，`/health` 的 `tool_loop.tools_rejected` 变成 `true`。打开之前可以先用
+`scripts/run_trajectory_eval.py` 在 40 条轨迹用例上比较规则组和循环组（加 `--yes` 才调模型，先打印调用量估算）。
 
 Docker Compose 场景下，Redis 和 Postgres(pgvector) 的连接由 `docker-compose.yml` 覆盖为容器内地址。通常不需要手动改：
 
@@ -603,6 +626,9 @@ curl http://localhost:8080/health
 客户明确要求人工（"转人工" / "talk to a person"）走规则通道，这时仍然照常转人工并建单。
 "不建工单"只限模型或基础设施故障；置信度阈值、策略拦截这些原有的升级条件没有变。
 
+响应里的 `tool_loop` 一项：`enabled` 是工具循环开没开（`AI_HELPDESK_TOOL_LOOP`）；`tools_rejected` 为 `true`
+说明模型网关明确拒绝过工具调用，专家因此退回了单次生成，开关开着、实际没在用。
+
 已知限制和尚未完成的验证（真实中继下的表现、两项目联调等）记在
 [docs/ops/model-outage-handling.md](../docs/ops/model-outage-handling.md)。
 
@@ -651,6 +677,8 @@ curl http://localhost:8080/health
 | `agent_type` | 实际产出文本的 Agent |
 | `escalated` | 是否触发升级 |
 | `knowledge_used` | 本轮是否引用了知识库检索结果 |
+| `trajectory` | 工具循环打开时才有：这一轮的工具调用，从规则预取的两条开始，每条有查询词、结局、是否复用和耗时 |
+| `answer_usage` | 工具循环打开时才有：作答阶段的模型调用次数和 token；被要求直接作答时带 `forced`，退回单次生成时带 `fallback` |
 | `latency_ms` | 端到端耗时 |
 
 ### 5.5 `/search`
