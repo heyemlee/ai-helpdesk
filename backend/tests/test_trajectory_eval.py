@@ -246,6 +246,9 @@ async def test_both_arms_answer_from_one_preparation():
     assert (rules.delegations, loop.delegations) == ([], ["J25-00003 补件进度"])
     assert (rules.usage["model_calls"], loop.usage["model_calls"]) == (1, 2)
     assert "2026-09-15" in loop.answer
+    # 评审对着各组自己拿到的资料判：循环组查回来的数据在它的资料里，规则组的没有
+    assert "没有查到匹配的记录" in rules.material and "2026-09-15" not in rules.material
+    assert "2026-09-15" in loop.material and loop.material.startswith(rules.material)
 
 
 async def test_each_category_gets_the_prefetch_it_was_written_for():

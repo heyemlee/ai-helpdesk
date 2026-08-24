@@ -131,6 +131,21 @@ def _judge_gate(summary: dict, results, arms) -> None:
                             "value": {"bc": bc, "overall": overall}, "threshold": "见名称", "passed": passed}
 
 
+def _judge_context(history: str, run) -> str | None:
+    """
+    评审看到的背景：前几轮对话，加上这一组专家作答时拿到的资料。
+
+    评审的提示词按「编造日期、金额、订单状态给 0 分」打分。只给它看对话的话，
+    专家从系统查回来、如实转述的数据和编出来的一样可疑——第一轮 A/B 里循环组查到了
+    数据反而被扣分，就是这个原因。两组都按同一个口径给。
+    """
+    parts = [f"前几轮对话：\n{history}"] if history else []
+    if run.material:
+        parts.append("专家作答时拿到的资料（系统查询结果、知识库片段）。回答里的日期、金额、订单状态"
+                     "出自这些资料的不算编造，资料里没有的才算：\n" + run.material)
+    return "\n\n".join(parts) or None
+
+
 def _config() -> dict:
     try:
         cfg = resolve_llm_config()
@@ -246,9 +261,9 @@ async def main(args) -> int:
                 print(f"[{i}/{len(plan)}] {case.id}#{repeat} 出错，跳过：{type(ex).__name__}: {ex}")
                 continue
             if judge and case.category in JUDGED:
-                context = "\n".join(f"{t['role']}: {t['content']}" for t in case.history) or None
+                history = "\n".join(f"{t['role']}: {t['content']}" for t in case.history)
                 for run in runs:
-                    scores = await judge.judge(case.message, run.answer, context=context)
+                    scores = await judge.judge(case.message, run.answer, context=_judge_context(history, run))
                     run.grade["judge"] = None if scores.judge_failed else scores.overall
             results.extend(runs)
             line = "  ".join(f"{r.arm}: 到手 {r.grade['met']}/{r.grade['needs']} 调用 {r.grade['model_tool_calls']} "

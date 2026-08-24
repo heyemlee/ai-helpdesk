@@ -33,7 +33,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from app.agents.tool_loop import LoopConfig, LoopSetup, TurnContext
+from app.agents.tool_loop import LoopConfig, LoopSetup, LoopTool, ToolOutcome, TurnContext
 from app.agents.turn_prep import PreparedTurn, TurnDeps, prepare_turn
 from app.core.evidence import normalize_delegation_result
 from app.core.intent_recognizer import IntentCategory, IntentRecognizer, IntentResult, UrgencyLevel
@@ -239,6 +239,32 @@ class ArmResult:
     unavailable: bool
     delegations: list[str]        # 作答阶段委派收到的查询词（不含规则预取那一次）
     grade: dict[str, Any] = field(default_factory=dict)
+    # 专家作答时拿到的资料：预取进上下文的那些，加上循环里工具交回的内容。评审要对着它判
+    # 日期、金额、订单状态是不是编的——只给评审看对话的话，查回来的真实数据和编造的一样可疑
+    material: str = ""
+
+
+class _Recorded(LoopTool):
+    """原样转给真的工具，只把交给模型的内容记下来（给评审看）。去重和预算看到的还是同一个工具。"""
+
+    def __init__(self, inner: LoopTool, sink: list[str]):
+        self.inner, self.sink = inner, sink
+        self.name, self.description, self.params = inner.name, inner.description, inner.params
+        self.slow, self.timeout_s = inner.slow, inner.timeout_s
+
+    def memo_key(self, args: Any) -> tuple:
+        return self.inner.memo_key(args)
+
+    def refuse(self, turn: TurnContext) -> str:
+        return self.inner.refuse(turn)
+
+    def skip(self, turn: TurnContext) -> str:
+        return self.inner.skip(turn)
+
+    async def run(self, args: Any, turn: TurnContext) -> ToolOutcome:
+        outcome = await self.inner.run(args, turn)
+        self.sink.append(outcome.content)
+        return outcome
 
 
 def _memory_loader(history: list[dict[str, str]]) -> Callable[..., Any]:
@@ -316,9 +342,10 @@ class TrajectoryHarness:
                       arm: str, repeat: int = 0) -> ArmResult:
         """从准备好的请求复制一份，换上这一组的 TurnContext（去重表和轨迹各自一份）再作答。"""
         base = prepared.request.turn
+        fetched: list[str] = []
         turn = TurnContext(
             user_id=base.user_id, conv_id=base.conv_id,
-            tools=dict(base.tools) if arm == "loop" else {},
+            tools={name: _Recorded(tool, fetched) for name, tool in base.tools.items()} if arm == "loop" else {},
             config=base.config, intent=base.intent, progress_cb=None,
             memo=dict(base.memo), trajectory=list(base.trajectory),
         )
@@ -334,6 +361,7 @@ class TrajectoryHarness:
             latency_ms=round(latency_ms, 1), handoff=bool(result.handoff),
             violations=len(result.policy_violations), unavailable=bool(result.service_unavailable),
             delegations=stub.queries[before:],
+            material="\n\n".join(part for part in [request.context, *fetched] if part),
         )
         arm_result.grade = grade(case, arm_result, self.config)
         return arm_result
