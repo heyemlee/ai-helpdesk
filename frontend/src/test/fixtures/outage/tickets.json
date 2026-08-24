@@ -13,6 +13,7 @@
       "status": "open",
       "created_at": 1759636800.0,
       "updated_at": 1759636800.0,
+      "turn_id": "00000000000000000000000003",
       "allowed_transitions": [
         "assigned",
         "resolved",

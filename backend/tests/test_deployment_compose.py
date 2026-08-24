@@ -66,3 +66,44 @@ class TestCustomerInstanceIsCutOffFromStaffData:
 
     def test_it_keeps_no_cross_session_memory(self, env):
         assert env["ENABLE_CROSS_SESSION_MEMORY"] == "false"
+
+
+class TestEventLogIsSplitByInstance:
+    """
+    事件日志两个实例共用一张表，按 AI_HELPDESK_INSTANCE 分开。没设实例时日志不开——宁可
+    不记，也不能标错：标错了，员工那边就看得到客户的轮次。客户实例的读接口要关，原文也留得短。
+    开关本身不在 compose 里：写在这里会压过 backend/.env，就只能改 compose 才关得掉。
+    """
+
+    @pytest.fixture
+    def envs(self) -> dict[str, dict[str, str]]:
+        entries = _list_entries("environment")
+        return {
+            service: dict(e.split("=", 1) for e in entries[service])
+            for service in ("ai-helpdesk", "ai-helpdesk-customer")
+        }
+
+    def test_each_backend_says_which_instance_it_is(self, envs):
+        assert envs["ai-helpdesk"]["AI_HELPDESK_INSTANCE"] == "staff"
+        assert envs["ai-helpdesk-customer"]["AI_HELPDESK_INSTANCE"] == "customer"
+
+    def test_the_switch_is_left_to_the_env_files(self, envs):
+        for service in envs.values():
+            assert "AI_HELPDESK_EVENT_LOG" not in service
+
+    def test_the_customer_log_cannot_be_read_back_and_keeps_text_for_two_weeks(self, envs):
+        customer = envs["ai-helpdesk-customer"]
+        assert customer["AI_HELPDESK_EVENT_LOG_READ"] == "off"
+        assert customer["AI_HELPDESK_EVENT_LOG_BODY_DAYS"] == "14"
+
+    def test_the_services_read_the_settings_the_way_they_were_meant(self, envs):
+        """backend/.env 打开日志之后，按服务真正读配置的那段代码解析一遍：写错一个取值，日志会悄悄不开。"""
+        from app.events import EventLogConfig
+
+        staff = EventLogConfig.from_env({**envs["ai-helpdesk"], "AI_HELPDESK_EVENT_LOG": "full"})
+        customer = EventLogConfig.from_env({**envs["ai-helpdesk-customer"], "AI_HELPDESK_EVENT_LOG": "full"})
+        assert (staff.mode, staff.instance, staff.read, staff.body_days, staff.row_days) == (
+            "full", "staff", True, 30, 180)
+        assert (customer.mode, customer.instance, customer.read, customer.body_days,
+                customer.row_days) == ("full", "customer", False, 14, 180)
+        assert staff.warnings == customer.warnings == ()

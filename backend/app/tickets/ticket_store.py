@@ -21,7 +21,7 @@ import sqlite3
 import threading
 import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any
 
@@ -56,7 +56,8 @@ CREATE TABLE IF NOT EXISTS tickets (
     last_message      TEXT NOT NULL DEFAULT '',
     status            TEXT NOT NULL DEFAULT 'open',
     created_at        REAL NOT NULL,
-    updated_at        REAL NOT NULL
+    updated_at        REAL NOT NULL,
+    turn_id           TEXT NOT NULL DEFAULT ''   -- 转人工的那一轮（app/events/）；老工单是空串
 );
 CREATE INDEX IF NOT EXISTS idx_tickets_status  ON tickets (status, created_at);
 CREATE INDEX IF NOT EXISTS idx_tickets_conv    ON tickets (conv_id);
@@ -82,6 +83,9 @@ CREATE TABLE IF NOT EXISTS ticket_notifications (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_notif_ticket ON ticket_notifications (ticket_id);
 CREATE INDEX IF NOT EXISTS idx_notif_due ON ticket_notifications (status, next_attempt_at);
 """
+
+# 加列之前建的库要补的列。SQLite 的 ADD COLUMN 没有 IF NOT EXISTS，先看有没有再加
+_ADDED_COLUMNS = {"turn_id": "TEXT NOT NULL DEFAULT ''"}
 
 NOTIFY_STATUSES = ("pending", "delivered", "failed")
 
@@ -116,6 +120,8 @@ class Ticket:
     status:            str = "open"
     created_at:        float = field(default_factory=time.time)
     updated_at:        float = field(default_factory=time.time)
+    # 转人工的那一轮。工单详情据此打开"这一轮的经过"；request_id 可能由客户端决定，对不上
+    turn_id:           str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -131,7 +137,16 @@ class Ticket:
             "status": self.status,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
+            "turn_id": self.turn_id,
         }
+
+
+_TICKET_FIELDS = tuple(f.name for f in fields(Ticket))
+
+
+def _ticket(row: Any) -> Ticket:
+    """读出来的列只取 Ticket 有的：表上以后再加列，按 `**行` 构造对象的旧代码会报错，这里不重演。"""
+    return Ticket(**{k: row[k] for k in _TICKET_FIELDS if k in row.keys()})
 
 
 class TicketStore:
@@ -149,6 +164,10 @@ class TicketStore:
         self._lock = threading.Lock()
         with self._lock:
             self._db.executescript(_SCHEMA)
+            existing = {row["name"] for row in self._db.execute("PRAGMA table_info(tickets)")}
+            for column, ddl in _ADDED_COLUMNS.items():
+                if column not in existing:
+                    self._db.execute(f"ALTER TABLE tickets ADD COLUMN {column} {ddl}")
             self._db.commit()
 
     def _conn(self) -> sqlite3.Connection:
@@ -166,6 +185,7 @@ class TicketStore:
         urgency: str = "",
         answer_confidence: float = 0.0,
         last_message: str = "",
+        turn_id: str = "",
     ) -> Ticket:
         ticket = Ticket(
             id=f"tk_{uuid.uuid4().hex[:12]}",
@@ -177,6 +197,7 @@ class TicketStore:
             urgency=urgency,
             answer_confidence=answer_confidence,
             last_message=last_message[:500],
+            turn_id=turn_id,
         )
         await asyncio.to_thread(self._insert, ticket)
         logger.info(f"工单已创建: {ticket.id} conv={conv_id} reason={reason[:60]}")
@@ -190,11 +211,11 @@ class TicketStore:
         conn = self._conn()
         conn.execute(
             "INSERT INTO tickets (id, conv_id, user_id, request_id, reason, intent,"
-            " urgency, answer_confidence, last_message, status, created_at, updated_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " urgency, answer_confidence, last_message, status, created_at, updated_at, turn_id)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (t.id, t.conv_id, t.user_id, t.request_id, t.reason, t.intent,
              t.urgency, t.answer_confidence, t.last_message, t.status,
-             t.created_at, t.updated_at),
+             t.created_at, t.updated_at, t.turn_id),
         )
         conn.commit()
 
@@ -353,7 +374,7 @@ class TicketStore:
 
     @staticmethod
     def _row_to_ticket(row: sqlite3.Row) -> Ticket:
-        return Ticket(**{k: row[k] for k in row.keys()})
+        return _ticket(row)
 
     async def close(self) -> None:
         def _close() -> None:
@@ -362,8 +383,21 @@ class TicketStore:
         await asyncio.to_thread(_close)
 
 
+_PG_SELECT = (
+    "SELECT t.id, t.conv_id, t.user_id, t.request_id, t.reason, t.intent, t.urgency,"
+    " t.answer_confidence, t.last_message, t.status, t.created_at, t.updated_at,"
+    " COALESCE(k.turn_id, '') AS turn_id"
+    " FROM tickets t LEFT JOIN ticket_turns k ON k.ticket_id = t.id"
+)
+
+
 class PgTicketStore:
-    """Postgres 版工单存储，接口与 TicketStore 完全一致。建表由 storage/pg.py 完成。"""
+    """
+    Postgres 版工单存储，接口与 TicketStore 完全一致。建表由 storage/pg.py 完成。
+
+    turn_id 存在旁边的 ticket_turns 里，不在 tickets 上加列：两个实例共用这个库，
+    旧镜像按 `SELECT *` 读这张表（见 storage/pg.py）。
+    """
 
     def __init__(self, db):
         self._db = db
@@ -378,6 +412,7 @@ class PgTicketStore:
         urgency: str = "",
         answer_confidence: float = 0.0,
         last_message: str = "",
+        turn_id: str = "",
     ) -> Ticket:
         ticket = Ticket(
             id=f"tk_{uuid.uuid4().hex[:12]}",
@@ -389,15 +424,22 @@ class PgTicketStore:
             urgency=urgency,
             answer_confidence=answer_confidence,
             last_message=last_message[:500],
+            turn_id=turn_id,
         )
-        await self._db.execute(
-            "INSERT INTO tickets (id, conv_id, user_id, request_id, reason, intent,"
-            " urgency, answer_confidence, last_message, status, created_at, updated_at)"
-            " VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
-            ticket.id, ticket.conv_id, ticket.user_id, ticket.request_id,
-            ticket.reason, ticket.intent, ticket.urgency, ticket.answer_confidence,
-            ticket.last_message, ticket.status, ticket.created_at, ticket.updated_at,
-        )
+        async with self._db.transaction() as conn:
+            await conn.execute(
+                "INSERT INTO tickets (id, conv_id, user_id, request_id, reason, intent,"
+                " urgency, answer_confidence, last_message, status, created_at, updated_at)"
+                " VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
+                ticket.id, ticket.conv_id, ticket.user_id, ticket.request_id,
+                ticket.reason, ticket.intent, ticket.urgency, ticket.answer_confidence,
+                ticket.last_message, ticket.status, ticket.created_at, ticket.updated_at,
+            )
+            if ticket.turn_id:
+                await conn.execute(
+                    "INSERT INTO ticket_turns (ticket_id, turn_id) VALUES ($1, $2)",
+                    ticket.id, ticket.turn_id,
+                )
         logger.info(f"工单已创建: {ticket.id} conv={conv_id} reason={reason[:60]}")
         return ticket
 
@@ -410,27 +452,27 @@ class PgTicketStore:
         current = row["status"]
         if status != current and status not in _TRANSITIONS.get(current, set()):
             raise ValueError(f"工单 {ticket_id} 不允许从 {current} 流转到 {status}")
-        updated = await self._db.fetchrow(
-            "UPDATE tickets SET status = $1, updated_at = $2 WHERE id = $3 RETURNING *",
+        await self._db.execute(
+            "UPDATE tickets SET status = $1, updated_at = $2 WHERE id = $3",
             status, time.time(), ticket_id,
         )
-        return Ticket(**dict(updated))
+        return await self.get(ticket_id)
 
     async def get(self, ticket_id: str) -> Ticket | None:
-        row = await self._db.fetchrow("SELECT * FROM tickets WHERE id = $1", ticket_id)
-        return Ticket(**dict(row)) if row else None
+        row = await self._db.fetchrow(f"{_PG_SELECT} WHERE t.id = $1", ticket_id)
+        return _ticket(row) if row else None
 
     async def list(self, status: str | None = None, limit: int = 50) -> list[Ticket]:
         if status:
             rows = await self._db.fetch(
-                "SELECT * FROM tickets WHERE status = $1 ORDER BY created_at DESC LIMIT $2",
+                f"{_PG_SELECT} WHERE t.status = $1 ORDER BY t.created_at DESC LIMIT $2",
                 status, limit,
             )
         else:
             rows = await self._db.fetch(
-                "SELECT * FROM tickets ORDER BY created_at DESC LIMIT $1", limit
+                f"{_PG_SELECT} ORDER BY t.created_at DESC LIMIT $1", limit
             )
-        return [Ticket(**dict(r)) for r in rows]
+        return [_ticket(r) for r in rows]
 
     # ── 通知 outbox（与 SQLite 版同构，说明见那边）──────────────────────────
 

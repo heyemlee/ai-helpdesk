@@ -99,6 +99,13 @@ def span(name: str, **attributes: Any) -> Iterator[Any]:
         yield s
 
 
+def tag_current_span(key: str, value: Any) -> None:
+    """给当前活动的 span 加一个属性（比如根 span 上的 helpdesk.turn_id）。没启用 OTel 时什么都不做。"""
+    current = trace.get_current_span()
+    if current.is_recording():
+        current.set_attribute(key, value)
+
+
 def current_trace_id() -> str | None:
     """当前活动 span 的 trace_id（十六进制），供日志关联。无活动 span 时 None。"""
     ctx = trace.get_current_span().get_span_context()

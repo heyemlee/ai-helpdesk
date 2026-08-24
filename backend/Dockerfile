@@ -46,6 +46,12 @@ RUN mkdir -p /app/data /app/logs && \
     chown aihelpdesk:aihelpdesk /app/data /app/logs
 USER aihelpdesk
 
+# 这是哪一版：构建时由 docker-compose 传进来（scripts/docker-deploy.sh 取 git 短提交号）。
+# 事件日志的 turn_started、评测报告、OTel 的 service.version 都记它。放在最后，
+# 换提交号只让这一层失效，不影响前面的依赖层缓存
+ARG AI_HELPDESK_RELEASE=dev
+ENV AI_HELPDESK_RELEASE=${AI_HELPDESK_RELEASE}
+
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \

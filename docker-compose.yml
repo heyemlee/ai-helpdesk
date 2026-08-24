@@ -81,6 +81,10 @@ services:
       context: ./backend
       dockerfile: Dockerfile
       target: production
+      args:
+        # 镜像里记下这是哪一版：事件日志的 turn_started 和评测报告都记它。
+        # scripts/docker-deploy.sh 构建前设成 git 短提交号；手动 build 没设时是 dev
+        AI_HELPDESK_RELEASE: ${AI_HELPDESK_RELEASE:-dev}
     container_name: ai-helpdesk-app
     ports:
       # 宿主机 8080 → 容器 8000。容器内固定 8000（Dockerfile 的 CMD 写死），
@@ -108,6 +112,11 @@ services:
       # 控制台"管理与诊断 → 模型连接"保存的配置（backend/app/core/model_settings.py）。
       # 文件里有明文 Key，权限 0600；目录不进版本库（.gitignore 的 backend/data/*）。
       - AI_HELPDESK_MODEL_SETTINGS_PATH=/app/data/runtime/model_settings.json
+      # 事件日志（backend/app/events/）两个实例共用一张表，按这个实例名分开；没设实例名时日志
+      # 不开。开关本身（AI_HELPDESK_EVENT_LOG）不写在这里，和工具循环一样放在 backend/.env：
+      # 写在这里会压过 backend/.env，到时候就只能改 compose 才关得掉。原文 30 天、整行 180 天
+      # 用代码里的默认值
+      - AI_HELPDESK_INSTANCE=staff
     volumes:
       - ./backend/data/eval:/app/data/eval
       - ./backend/skills:/app/skills
@@ -153,6 +162,8 @@ services:
       context: ./backend
       dockerfile: Dockerfile
       target: production
+      args:
+        AI_HELPDESK_RELEASE: ${AI_HELPDESK_RELEASE:-dev}
     container_name: ai-helpdesk-customer
     ports:
       # 只绑本机：客户从 nginx 的 80 端口进来，不直连这个实例
@@ -180,6 +191,13 @@ services:
       # 模型连接跟员工实例在控制台保存的那份走，这个实例自己不能改
       - AI_HELPDESK_MODEL_SETTINGS_PATH=/app/data/runtime/model_settings.json
       - AI_HELPDESK_MODEL_SETTINGS_EDITABLE=false
+      # 事件日志：开关跟 backend/.env 走（要单独关，在 backend/.env.customer 里写
+      # AI_HELPDESK_EVENT_LOG=off）。下面三项在这个实例上必须是这样，所以写死：原文只留 14 天
+      # （流量来自外部、身份不可信，排查通常在几天之内）；读接口关掉——查这个实例的轮次用本机的
+      # scripts/turn_events.py，对外的 nginx 本来也只放行 /chat、/chat/stream、/health，这是第二层
+      - AI_HELPDESK_INSTANCE=customer
+      - AI_HELPDESK_EVENT_LOG_BODY_DAYS=14
+      - AI_HELPDESK_EVENT_LOG_READ=off
     volumes:
       - ./backend/data/eval:/app/data/eval
       - ./backend/skills:/app/skills

@@ -9,7 +9,9 @@
       "role": "user",
       "content": "柜门装上去之后总是自己弹开一条缝，调了好几次都不行",
       "agent_type": "",
-      "created_at": 1759636800.0
+      "created_at": 1759636800.0,
+      "turn_id": "00000000000000000000000001",
+      "instance": ""
     },
     {
       "seq": 2,
@@ -19,7 +21,9 @@
       "role": "assistant",
       "content": "抱歉，智能助手暂时无法回答，这个问题没有得到解答，系统也没有为它创建工单。请稍后再试；如果需要人工处理，请直接回复“转人工”。",
       "agent_type": "system",
-      "created_at": 1759636800.0
+      "created_at": 1759636800.0,
+      "turn_id": "00000000000000000000000001",
+      "instance": ""
     },
     {
       "seq": 3,
@@ -29,7 +33,9 @@
       "role": "user",
       "content": "The cabinet door keeps popping open a little after I close it",
       "agent_type": "",
-      "created_at": 1759636800.0
+      "created_at": 1759636800.0,
+      "turn_id": "00000000000000000000000002",
+      "instance": ""
     },
     {
       "seq": 4,
@@ -39,7 +45,9 @@
       "role": "assistant",
       "content": "Sorry, the assistant can't answer right now. This question was not answered and no ticket was created for it. Please try again later; if you need a person, reply \"talk to a person\".",
       "agent_type": "system",
-      "created_at": 1759636800.0
+      "created_at": 1759636800.0,
+      "turn_id": "00000000000000000000000002",
+      "instance": ""
     },
     {
       "seq": 5,
@@ -49,7 +57,9 @@
       "role": "user",
       "content": "转人工",
       "agent_type": "",
-      "created_at": 1759636800.0
+      "created_at": 1759636800.0,
+      "turn_id": "00000000000000000000000003",
+      "instance": ""
     },
     {
       "seq": 6,
@@ -59,7 +69,9 @@
       "role": "assistant",
       "content": "这个问题需要由人工客服来处理。为了加快处理，请准备好订单号或柜号、以及现场照片等相关资料。",
       "agent_type": "handoff",
-      "created_at": 1759636800.0
+      "created_at": 1759636800.0,
+      "turn_id": "00000000000000000000000003",
+      "instance": ""
     }
   ]
 }

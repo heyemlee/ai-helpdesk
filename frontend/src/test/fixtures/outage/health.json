@@ -141,5 +141,21 @@
   "tool_loop": {
     "enabled": false,
     "tools_rejected": false
+  },
+  "event_log": {
+    "mode": "off",
+    "instance": "",
+    "read": false,
+    "store": null,
+    "queue_depth": 0,
+    "written": 0,
+    "dropped": 0,
+    "dropped_by_reason": {},
+    "last_error": "",
+    "retention": {
+      "body_days": 30,
+      "row_days": 180,
+      "last_run": null
+    }
   }
 }

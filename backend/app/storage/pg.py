@@ -19,6 +19,8 @@ tsvector 用 'simple' 配置——中文分词由 core/lexical.py 在写入前�
 （scripts/reembed.py：原地重算两张表的向量，文档和记忆的内容不动）。
 维度相同、模型不同的情况这里看不出来，由 storage_meta 里记的向量来源把关，
 见 vector_store.check_embedding_signature。
+
+一轮对话的事件日志（turn_events）也在这里建表，读写和保留期见 app/events/。
 """
 from __future__ import annotations
 
@@ -51,6 +53,13 @@ CREATE TABLE IF NOT EXISTS tickets (
 );
 CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets (status, created_at);
 CREATE INDEX IF NOT EXISTS idx_tickets_conv   ON tickets (conv_id);
+-- 工单是转人工的哪一轮（turn_events）。**单独一张表，不在 tickets 上加列**：两个实例共用
+-- 这个库，旧镜像（还没升级的那个实例、回滚用的镜像）按 `SELECT *` 读 tickets 再按字段
+-- 名构造对象，表上多一列它就报错。老工单在这里没有行。
+CREATE TABLE IF NOT EXISTS ticket_turns (
+    ticket_id TEXT PRIMARY KEY,
+    turn_id   TEXT NOT NULL
+);
 
 -- 工单通知的待发送记录（outbox）。与 tickets/ticket_store.py 的 SQLite 版同构，
 -- 说明见那边。`ticket_id` 的唯一约束就是去重：同一个工单只入队一次，
@@ -81,6 +90,15 @@ CREATE TABLE IF NOT EXISTS conversation_log (
 );
 CREATE INDEX IF NOT EXISTS idx_convlog_conv ON conversation_log (conv_id, seq);
 CREATE INDEX IF NOT EXISTS idx_convlog_time ON conversation_log (created_at);
+-- 审计记录是哪一轮、哪个实例写的。turn_id 指回那一轮的事件；instance 分开两个实例的记录
+-- （两个实例共用这张表，客户自己挑的 conv_id 可能撞上员工的会话）。和 ticket_turns 一样
+-- 单独成表，不在 conversation_log 上加列，理由见上。没有行的记录（老记录、旧镜像写的）
+-- 读出来两项都是空串
+CREATE TABLE IF NOT EXISTS conversation_log_turns (
+    seq      BIGINT PRIMARY KEY,
+    turn_id  TEXT NOT NULL DEFAULT '',
+    instance TEXT NOT NULL DEFAULT ''
+);
 
 CREATE TABLE IF NOT EXISTS kb_chunks (
     id           TEXT PRIMARY KEY,
@@ -144,6 +162,31 @@ CREATE TABLE IF NOT EXISTS storage_meta (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+
+-- 一轮对话的事件日志（app/events/）。主键 (turn_id, seq)：seq 在进程里分配，写入重试时
+-- 同一条事件还是同一个主键，ON CONFLICT DO NOTHING 天然幂等。data 只放代码自己产生的
+-- 结构；body 是原文，到期清空成 NULL。两个实例共用这张表，按 instance 分开，每个查询都带它。
+CREATE TABLE IF NOT EXISTS turn_events (
+    turn_id     TEXT             NOT NULL,
+    seq         INTEGER          NOT NULL,
+    instance    TEXT             NOT NULL,
+    conv_id     TEXT             NOT NULL,
+    request_id  TEXT             NOT NULL DEFAULT '',
+    type        TEXT             NOT NULL,
+    agent       TEXT             NOT NULL DEFAULT '',
+    step        SMALLINT,
+    call_id     TEXT             NOT NULL DEFAULT '',
+    ts          DOUBLE PRECISION NOT NULL,
+    t_ms        DOUBLE PRECISION NOT NULL,
+    v           SMALLINT         NOT NULL DEFAULT 1,
+    data        JSONB            NOT NULL DEFAULT '{{}}'::jsonb,
+    body        JSONB,
+    PRIMARY KEY (turn_id, seq)
+);
+-- 列出一个会话的各轮；按时间清理和导出；客户拿着 X-Request-ID 报障时按它找那一轮
+CREATE INDEX IF NOT EXISTS idx_turn_events_conv ON turn_events (instance, conv_id, ts);
+CREATE INDEX IF NOT EXISTS idx_turn_events_ts   ON turn_events (instance, ts);
+CREATE INDEX IF NOT EXISTS idx_turn_events_req  ON turn_events (request_id) WHERE type = 'turn_started';
 """
 
 # 数据量到十万级后再建 ivfflat/hnsw 索引；demo 阶段顺序扫描反而更快，

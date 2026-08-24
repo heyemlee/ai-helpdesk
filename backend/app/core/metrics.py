@@ -162,3 +162,44 @@ def record_loop_discard(agent: str) -> None:
 
 def record_loop_fallback(reason: str) -> None:
     AGENT_LOOP_FALLBACK.labels(reason=reason).inc()
+
+
+# ── 事件日志（app/events/）──────────────────────────────────────────────────────
+#
+# 写不进去时回答不受影响，日志会缺：靠这几条和 /health 的 event_log 发现。dropped 不为零、
+# 队列深度持续不降，都说明库那边出了问题。reason 是固定集合：queue_full（队列满了）、
+# db_error（重试用尽）、too_large（data 超过上限）、serialize（序列化失败）、shutdown（停机时
+# 没写完）。
+TURN_EVENTS_WRITTEN = Counter(
+    "turn_events_written_total",
+    "写进事件日志的事件条数",
+)
+
+TURN_EVENTS_DROPPED = Counter(
+    "turn_events_dropped_total",
+    "没写进事件日志、丢掉的事件条数，按原因分",
+    ["reason"],
+)
+
+TURN_EVENTS_QUEUE_DEPTH = Gauge(
+    "turn_events_queue_depth",
+    "事件日志写入队列里还没写的条数",
+)
+
+TURN_EVENTS_WRITE_SECONDS = Histogram(
+    "turn_events_write_seconds",
+    "事件日志一批写入的耗时",
+    buckets=(0.002, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5),
+)
+
+TURN_PROJECTION_MISMATCH = Counter(
+    "turn_projection_mismatch_total",
+    "一轮结束时，从事件投影出来的结果和响应对不上的次数（影子校验）。不为零说明有人改了"
+    "响应字段或事件，忘了另一边",
+)
+
+TURNS_CONCURRENT = Counter(
+    "turns_concurrent_total",
+    "开始时同一会话里已经有另一轮在途的轮次数。后端没有串行化同一会话，"
+    "这个数决定要不要加会话锁",
+)

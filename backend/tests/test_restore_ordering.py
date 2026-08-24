@@ -245,6 +245,22 @@ class TestRedisIsBackedUpAsAWholeDirectory:
         script = SCRIPT.read_text(encoding="utf-8")
         assert "pg_dump --clean --if-exists" in script
 
+    def test_the_event_log_is_backed_up_without_its_rows(self, fake_repo):
+        """
+        事件日志（turn_events）带着客户原话的原文：保留任务清得到库里的，清不到备份里的。
+        所以 pg_dump 只备它的表结构——恢复后日志是空的，合规留档在 conversation_log 里照常备。
+        """
+        env = dict(os.environ)
+        env["PATH"] = f"{fake_repo['bin']}:{env['PATH']}"
+        env["CMDLOG"] = str(fake_repo["cmdlog"])
+        proc = subprocess.run(["bash", str(fake_repo["script"]), "backup"],
+                              capture_output=True, text=True, env=env, timeout=120)
+        assert proc.returncode == 0, f"备份脚本退出码 {proc.returncode}\n{proc.stdout}\n{proc.stderr}"
+        cmds = fake_repo["cmdlog"].read_text().splitlines()
+        dump = cmds[_index_of(cmds, "pg_dump")]
+        assert "--exclude-table-data=turn_events" in dump
+        assert "--clean --if-exists" in dump
+
     def test_backup_dir_collision_renames_instead_of_merging(self):
         """
         缺陷三：目录名只到秒。同秒两次备份不是"覆盖"，是 `docker cp` 把第二份

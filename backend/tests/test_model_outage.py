@@ -505,7 +505,9 @@ def _load_main(monkeypatch):
     monkeypatch.setenv("AI_HELPDESK_API_KEY", "")
     monkeypatch.setenv("AI_HELPDESK_PROTECT_CHAT", "false")
     monkeypatch.setenv("AI_HELPDESK_FRONTEND_DIST", "/nonexistent")
-    monkeypatch.delenv("APP_ENV", raising=False)
+    # 前端夹具由这里录：实例和事件日志的开关不能跟着跑测试的那台机器走
+    for name in ("APP_ENV", "AI_HELPDESK_INSTANCE", "AI_HELPDESK_EVENT_LOG"):
+        monkeypatch.delenv(name, raising=False)
     sys.modules.pop("app.api.main", None)
     return importlib.import_module("app.api.main")
 
@@ -828,14 +830,21 @@ FIXTURE_DIR = pathlib.Path(__file__).resolve().parents[2] / "frontend" / "src" /
 EN_QUESTION = "The cabinet door keeps popping open a little after I close it"
 
 
-def _stable(text: str) -> str:
-    """把每次运行都不一样的值换成固定的：耗时、随机的工单号、时间戳。别的原样不动。"""
+def _stable(text: str, turns: dict[str, str]) -> str:
+    """
+    把每次运行都不一样的值换成固定的：耗时、随机的工单号、时间戳、turn_id。别的原样不动。
+
+    turn_id（12 位毫秒时间戳加 14 位随机数）按出现的先后换成 0…01、0…02；`turns` 在几个
+    文件之间共用，同一轮在审计日志、工单和响应里换出来是同一个值——前端按它把工单对回那一轮。
+    """
     text = re.sub(r'("(?:intent_)?latency_ms": )[\d.]+', r"\g<1>0.0", text)
     text = re.sub(r'("(?:created_at|updated_at)": )[\d.]+', r"\g<1>1759636800.0", text)
     text = re.sub(r'("timestamp": ")[^"]+', r"\g<1>2026-10-04T21:00:00", text)
     seen: dict[str, str] = {}
-    return re.sub(r"tk_[0-9a-f]{12}",
+    text = re.sub(r"tk_[0-9a-f]{12}",
                   lambda m: seen.setdefault(m.group(), f"tk_{len(seen) + 1:012d}"), text)
+    return re.sub(r'(?<=")[0-9a-f]{26}(?=")',
+                  lambda m: turns.setdefault(m.group(), f"{len(turns) + 1:026x}"), text)
 
 
 async def _record_outage(desk, tmp_path) -> dict[str, str]:
@@ -884,7 +893,8 @@ async def _record_outage(desk, tmp_path) -> dict[str, str]:
     finally:
         await log.close()
     assert desk.relay.sent() == 1                                # 整段录制只出过一次网（假的）
-    return {name: _stable(text) for name, text in files.items()}
+    turns: dict[str, str] = {}
+    return {name: _stable(text, turns) for name, text in files.items()}
 
 
 async def test_frontend_outage_fixtures_are_what_the_backend_sends(desk, tmp_path):

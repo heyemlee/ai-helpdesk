@@ -174,6 +174,17 @@ check_env_file() {
 build_images() {
     print_info "构建 Docker 镜像..."
 
+    # 镜像里记下这是哪一版：事件日志的 turn_started 和评测报告都记它（docker-compose.yml
+    # 把它作为构建参数传进去）。外面设了就用设的；有没提交的改动时带 -dirty
+    if [ -z "${AI_HELPDESK_RELEASE:-}" ]; then
+        AI_HELPDESK_RELEASE="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo dev)"
+        if [ "$AI_HELPDESK_RELEASE" != dev ] && [ -n "$(git -C "$ROOT" status --porcelain 2>/dev/null)" ]; then
+            AI_HELPDESK_RELEASE="$AI_HELPDESK_RELEASE-dirty"
+        fi
+    fi
+    export AI_HELPDESK_RELEASE
+    print_info "镜像版本: $AI_HELPDESK_RELEASE"
+
     compose build --no-cache
 
     print_info "镜像构建完成"
@@ -353,7 +364,12 @@ backup_data() {
     # 会在第一张表就撞上 `relation "conversation_log" already exists`，
     # 配合 ON_ERROR_STOP=1 直接中止——恢复演练实测到这一条，
     # 也就是说这条恢复路径**只在空库上成立**，而真实恢复场景恰恰是库非空。
+    #
+    # 事件日志（turn_events）只备表结构、不备数据：它带着客户原话和回答的原文，保留任务
+    # 清得到库里的、清不到备份里的。恢复后日志是空的，丢的是工程数据，合规留档在
+    # conversation_log 里，照常备份。
     docker exec ai-helpdesk-postgres pg_dump --clean --if-exists \
+        --exclude-table-data=turn_events \
         -U "${POSTGRES_USER:-aihelpdesk}" "${POSTGRES_DB:-aihelpdesk}" \
         > "$backup_dir/postgres.sql"
 

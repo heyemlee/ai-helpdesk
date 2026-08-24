@@ -37,6 +37,7 @@
   "service_unavailable": true,
   "unavailable_reason": "credential_rejected",
   "request_id": "0a1b2c3d4e02",
+  "turn_id": "00000000000000000000000002",
   "ticket_id": null,
   "ticket_status": "",
   "ticket_notification": "",
