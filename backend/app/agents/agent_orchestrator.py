@@ -42,6 +42,7 @@ from app.agents.tool_loop import (
     ToolEnd,
     ToolStart,
     TurnContext,
+    deadline_for,
     run_tool_loop,
 )
 from app.core.answer_policy import AnswerPolicy, PolicyStreamGuard, PolicyViolation, split_sentences
@@ -66,6 +67,8 @@ from app.core.metrics import (
 from app.core.openai_compat import ToolsUnsupportedError
 from app.core.telemetry import span
 from app.core.text_lang import detect_language
+from app.events import events
+from app.events.shapes import sha256
 
 logger = logging.getLogger(__name__)
 
@@ -369,6 +372,7 @@ class BaseAgent:
         # Skill SOP 既要注入 prompt，也要作为 AnswerPolicy 判断"有无出处"的依据，
         # 所以这里取一次，两处复用。
         skill_prompt = self._skill_prompt(req)
+        self._record_started(req, skill_prompt, mode="single", stream=False)
         try:
             raw = await self._call_llm(req, skill_prompt)
             content, declared = self._split_handoff_trailer(raw)
@@ -388,12 +392,9 @@ class BaseAgent:
                     "; ".join(v.evidence for v in policy_result.violations),
                 )
 
-            escalate = self._decide_escalation(
-                policy_result.text,
-                declared,
-                grounded=bool(req.grounding_sources) and not policy_result.violations,
-            )
-            return AgentResponse(
+            grounded = bool(req.grounding_sources) and not policy_result.violations
+            escalate, inferred = self._escalation(policy_result.text, declared, grounded)
+            response = AgentResponse(
                 agent_type=self.agent_type,
                 content=policy_result.text,
                 success=True,
@@ -402,10 +403,12 @@ class BaseAgent:
                 escalate=escalate,
                 policy_violations=policy_result.violations,
             )
+            self._record_answered(response, declared=declared, inferred=inferred, grounded=grounded)
+            return response
         except Exception as ex:
             ms = (time.monotonic() - t0) * 1000
             reason = self._record_failure(ex, ms, "处理失败")
-            return AgentResponse(
+            response = AgentResponse(
                 agent_type=self.agent_type,
                 content=_customer_text(req, "agent_error"),
                 success=False,
@@ -413,6 +416,8 @@ class BaseAgent:
                 latency_ms=ms,
                 unavailable_reason=reason,
             )
+            self._record_answered(response)
+            return response
 
     async def stream(self, req: Request) -> AsyncIterator[dict[str, Any]]:
         """
@@ -430,10 +435,11 @@ class BaseAgent:
         async for event in stream:
             yield event
 
-    async def _stream_plain(self, req: Request) -> AsyncIterator[dict[str, Any]]:
-        """单次生成的流式版本（工具循环关着时的老路径）。"""
+    async def _stream_plain(self, req: Request, stream: bool = True) -> AsyncIterator[dict[str, Any]]:
+        """单次生成的流式版本（工具循环关着时的老路径）。stream 只进事件日志：增量发不发给客户。"""
         t0 = time.monotonic()
         skill_prompt = self._skill_prompt(req)
+        self._record_started(req, skill_prompt, mode="single", stream=stream)
 
         sources = list(req.grounding_sources)
         if skill_prompt:
@@ -468,43 +474,39 @@ class BaseAgent:
             self._record(ok=True, ms=ms)
 
             content = "".join(full)
-            escalate = self._decide_escalation(
-                content,
-                declared,
-                grounded=bool(req.grounding_sources) and not guard.violations,
-            )
+            grounded = bool(req.grounding_sources) and not guard.violations
+            escalate, inferred = self._escalation(content, declared, grounded)
             if guard.violations:
                 logger.warning(
                     "%s 流式回复触发答案策略拦截 %d 处: %s",
                     self.agent_type.value, len(guard.violations),
                     "; ".join(v.evidence for v in guard.violations),
                 )
-            yield {
-                "type": "end",
-                "response": AgentResponse(
-                    agent_type=self.agent_type,
-                    content=content,
-                    success=True,
-                    confidence=self._self_confidence(guard.violations, escalate),
-                    latency_ms=ms,
-                    escalate=escalate,
-                    policy_violations=guard.violations,
-                ),
-            }
+            response = AgentResponse(
+                agent_type=self.agent_type,
+                content=content,
+                success=True,
+                confidence=self._self_confidence(guard.violations, escalate),
+                latency_ms=ms,
+                escalate=escalate,
+                policy_violations=guard.violations,
+            )
+            self._record_answered(response, declared=declared, inferred=inferred, grounded=grounded,
+                                  sent_chars=len(content) if stream else 0)
+            yield {"type": "end", "response": response}
         except Exception as ex:
             ms = (time.monotonic() - t0) * 1000
             reason = self._record_failure(ex, ms, "流式处理失败")
-            yield {
-                "type": "end",
-                "response": AgentResponse(
-                    agent_type=self.agent_type,
-                    content=_customer_text(req, "agent_error"),
-                    success=False,
-                    confidence=0.0,
-                    latency_ms=ms,
-                    unavailable_reason=reason,
-                ),
-            }
+            response = AgentResponse(
+                agent_type=self.agent_type,
+                content=_customer_text(req, "agent_error"),
+                success=False,
+                confidence=0.0,
+                latency_ms=ms,
+                unavailable_reason=reason,
+            )
+            self._record_answered(response, sent_chars=sum(map(len, full)) if stream else 0)
+            yield {"type": "end", "response": response}
 
     async def _stream_llm(self, req: Request, skill_prompt: str = "") -> AsyncIterator[str]:
         """调用 LLM 的流式接口，逐段产出文本增量。"""
@@ -636,13 +638,15 @@ class BaseAgent:
         "流式和非流式给出不同回答"才在结构上不可能。
         """
         response: AgentResponse | None = None
-        async for event in self._stream_with_tools(req, tools):
+        async for event in self._stream_with_tools(req, tools, stream=False):
             if event["type"] == "end":
                 response = event["response"]
         assert response is not None   # _stream_with_tools 无论成败最后都产出一个 end
         return response
 
-    async def _stream_with_tools(self, req: Request, tools: list[LoopTool]) -> AsyncIterator[dict[str, Any]]:
+    async def _stream_with_tools(
+        self, req: Request, tools: list[LoopTool], stream: bool = True,
+    ) -> AsyncIterator[dict[str, Any]]:
         """
         带工具循环的流式生成。产出 delta / tool / end 三种事件，delta 和 end 的口径同 stream()。
         tool 事件每次工具调用两条：`phase=start`（要查什么）和 `phase=end`（轨迹里的那一条）。
@@ -660,6 +664,7 @@ class BaseAgent:
         """
         t0 = time.monotonic()
         skill_prompt = self._skill_prompt(req)
+        self._record_started(req, skill_prompt, mode="loop", stream=stream, tools=tools)
         sources = list(req.grounding_sources)
         if skill_prompt:
             sources.append(skill_prompt)
@@ -732,29 +737,26 @@ class BaseAgent:
 
             ms = (time.monotonic() - t0) * 1000
             self._record(ok=True, ms=ms)
-            escalate = self._decide_escalation(
-                content,
-                declared,
-                grounded=bool(req.grounding_sources or found_evidence) and not guard.violations,
-            )
+            grounded = bool(req.grounding_sources or found_evidence) and not guard.violations
+            escalate, inferred = self._escalation(content, declared, grounded)
             if guard.violations:
                 logger.warning(
                     "%s 回复触发答案策略拦截 %d 处: %s",
                     self.agent_type.value, len(guard.violations),
                     "; ".join(v.evidence for v in guard.violations),
                 )
-            yield {
-                "type": "end",
-                "response": AgentResponse(
-                    agent_type=self.agent_type,
-                    content=content,
-                    success=True,
-                    confidence=self._self_confidence(guard.violations, escalate),
-                    latency_ms=ms,
-                    escalate=escalate,
-                    policy_violations=guard.violations,
-                ),
-            }
+            response = AgentResponse(
+                agent_type=self.agent_type,
+                content=content,
+                success=True,
+                confidence=self._self_confidence(guard.violations, escalate),
+                latency_ms=ms,
+                escalate=escalate,
+                policy_violations=guard.violations,
+            )
+            self._record_answered(response, declared=declared, inferred=inferred, grounded=grounded,
+                                  sent_chars=len(content) if stream else 0)
+            yield {"type": "end", "response": response}
         except Exception as ex:
             if isinstance(ex, ToolsUnsupportedError) and not full:
                 logger.warning("%s 的模型连接不支持工具调用，这一轮退回单次生成: %s", agent, ex)
@@ -764,19 +766,18 @@ class BaseAgent:
             else:
                 ms = (time.monotonic() - t0) * 1000
                 reason = self._record_failure(ex, ms, "工具循环处理失败")
-                yield {
-                    "type": "end",
-                    "response": AgentResponse(
-                        agent_type=self.agent_type,
-                        content=_customer_text(req, "agent_error"),
-                        success=False,
-                        confidence=0.0,
-                        latency_ms=ms,
-                        unavailable_reason=reason,
-                    ),
-                }
+                response = AgentResponse(
+                    agent_type=self.agent_type,
+                    content=_customer_text(req, "agent_error"),
+                    success=False,
+                    confidence=0.0,
+                    latency_ms=ms,
+                    unavailable_reason=reason,
+                )
+                self._record_answered(response, sent_chars=sum(map(len, full)) if stream else 0)
+                yield {"type": "end", "response": response}
         if fallback:
-            async for event in self._stream_plain(req):
+            async for event in self._stream_plain(req, stream=stream):
                 yield event
 
     @staticmethod
@@ -863,16 +864,84 @@ class BaseAgent:
         两者不一致时记一条 warning——那正是关键词分档分错的样本，攒起来能看出
         还有哪类措辞在骗过关键词；也可能反过来是模型声明错了，同样值得看。
         """
+        return self._escalation(content, declared, grounded)[0]
+
+    def _escalation(self, content: str, declared: bool | None, grounded: bool) -> tuple[bool, bool]:
+        """`_decide_escalation` 的结论，加上关键词那一路的判断：事件日志两个都记。"""
         inferred = self._needs_escalation(content, grounded=grounded)
         if declared is None:
             logger.info("%s 未声明转人工标记，退回关键词判断: %s", self.agent_type.value, inferred)
-            return inferred
+            return inferred, inferred
         if declared != inferred:
             logger.warning(
                 "%s 转人工声明(%s)与关键词判断(%s)不一致，以声明为准",
                 self.agent_type.value, declared, inferred,
             )
-        return declared
+        return declared, inferred
+
+    # ── 事件日志（app/events/）──────────────────────────────────────────────────
+
+    def _record_started(
+        self, req: Request, skill_prompt: str, *, mode: str, stream: bool, tools: list[LoopTool] = (),
+    ) -> None:
+        """
+        agent_started：哪个实例、什么模型、单次还是循环、能用哪些工具、命中了哪些 SOP。
+
+        system 全文放 body；system、工具定义和初始 messages 各记一个哈希——重放时拿它判断
+        重建出来的输入和当时的是不是同一份。日志关着时不算这些。
+        """
+        recorder = events()
+        if not recorder.recording:
+            return
+        try:
+            system = self._build_system_prompt(skill_prompt, tools=bool(tools))
+            specs = [tool.spec() for tool in tools]
+            names = getattr(self._skill_manager, "names_for", None)
+            recorder.emit("agent_started", {
+                "agent_type": self.agent_type.value, "replica": self.replica, "model": self._model,
+                "mode": mode, "stream": stream, "tools": [tool.name for tool in tools],
+                "skills": list(names(req.message, self.agent_type.value)) if callable(names) else [],
+                "deadline_s": (deadline_for(req.turn.config.budget, tools)
+                               if tools and req.turn is not None else None),
+                "system_sha256": sha256(system),
+                "tools_sha256": sha256(specs) if specs else None,
+                "messages_sha256": sha256(self._build_messages(req)),
+            }, {"system": system}, agent=self.key)
+        except Exception:
+            logger.debug("agent_started 没记下来", exc_info=True)
+
+    def _record_answered(
+        self,
+        response: AgentResponse,
+        *,
+        declared: bool | None = None,
+        inferred: bool | None = None,
+        grounded: bool | None = None,
+        sent_chars: int = 0,
+    ) -> None:
+        """
+        专家作答结束：守卫换过句子先发 guard_replaced，再发 agent_answered（成功失败都发）。
+
+        sent_chars 是已经发给客户的字数：流式答到一半失败时它大于 0，那一半收不回来。
+        """
+        recorder = events()
+        if not recorder.recording:
+            return
+        try:
+            violations = response.policy_violations if response.success else []
+            if violations:
+                recorder.emit("guard_replaced", {
+                    "count": len(violations), "rules": [v.rule for v in violations],
+                }, {"violations": [v.to_dict() for v in violations]}, agent=self.key)
+            recorder.emit("agent_answered", {
+                "success": response.success, "latency_ms": round(response.latency_ms, 1),
+                "confidence": response.confidence, "escalate": response.escalate,
+                "declared": None if declared is None else ("yes" if declared else "no"),
+                "inferred": inferred, "grounded": grounded, "chars": len(response.content),
+                "sent_chars": sent_chars, "unavailable_reason": response.unavailable_reason,
+            }, {"text": response.content}, agent=self.key)
+        except Exception:
+            logger.debug("agent_answered 没记下来", exc_info=True)
 
     def _needs_escalation(self, content: str, grounded: bool = False) -> bool:
         """
@@ -1361,24 +1430,33 @@ class AgentOrchestrator:
         if unavailable:
             decision = self._route_decision(req)
             if decision.primary_agent == AgentType.HANDOFF:
+                self._record_routed("handoff", decision)
                 return self._handoff_result(req, decision, decision.reason, t0)
-            return self._unavailable_result(req, None, unavailable, t0)
+            # 上面那次路由算了没用：按降级意图算出来的主专家不当成路由结论记
+            result = self._unavailable_result(req, None, unavailable, t0)
+            self._record_routed("unavailable", result=result)
+            return result
 
         # 3. 低置信度澄清：意图没定性时先追问，不猜着路由
         if self._needs_clarification(req):
-            return self._clarification_result(req, t0)
+            result = self._clarification_result(req, t0)
+            self._record_routed("clarify", result=result)
+            return result
 
         decision = self._route_decision(req)
 
         # 4. 明确要求转人工 / CRITICAL 紧急度：直接产出转人工结果，不走 LLM
         if decision.primary_agent == AgentType.HANDOFF:
+            self._record_routed("handoff", decision)
             return self._handoff_result(req, decision, decision.reason, t0)
 
         # 5. 跨域问题并行协作，例如同一句同时涉及登录故障和重复扣款
         if decision.multi_agent:
+            self._record_routed("parallel", decision)
             return await self.run_parallel(req, decision)
 
         # 6. 执行主 Agent（失败时降级到 GeneralAgent）
+        self._record_routed("single", decision)
         response = await self._execute(req, decision.primary_agent)
 
         # 没有任何 Agent 答上来：这是模型故障，不是这件事需要人来处理。
@@ -1502,12 +1580,14 @@ class AgentOrchestrator:
         if unavailable:
             decision = self._route_decision(req)
             if decision.primary_agent == AgentType.HANDOFF:
+                self._record_routed("handoff", decision)
                 result = self._handoff_result(req, decision, decision.reason, t0)
                 yield {"type": "routing", "primary_agent": decision.primary_agent.value,
                        "supporting_agents": [], "reason": decision.reason,
                        "confidence": decision.confidence}
             else:
                 result = self._unavailable_result(req, None, unavailable, t0)
+                self._record_routed("unavailable", result=result)
                 yield {"type": "routing", "primary_agent": result.primary_agent.value,
                        "supporting_agents": [], "reason": result.routing_reason,
                        "confidence": result.routing_confidence}
@@ -1517,6 +1597,7 @@ class AgentOrchestrator:
 
         if self._needs_clarification(req):
             result = self._clarification_result(req, t0)
+            self._record_routed("clarify", result=result)
             yield {"type": "routing", "primary_agent": AgentType.GENERAL.value,
                    "supporting_agents": [], "reason": result.routing_reason,
                    "confidence": result.routing_confidence}
@@ -1536,19 +1617,27 @@ class AgentOrchestrator:
 
         # 非逐字流式的三条路径
         if decision.primary_agent == AgentType.HANDOFF:
+            self._record_routed("handoff", decision)
             result = self._handoff_result(req, decision, decision.reason, t0)
             yield {"type": "delta", "text": result.response}
             yield {"type": "result", "result": result}
             return
 
         if decision.multi_agent:
+            self._record_routed("parallel", decision)
             result = await self.run_parallel(req, decision)
             yield {"type": "delta", "text": result.response}
             yield {"type": "result", "result": result}
             return
 
         # 单 Agent：逐句流式
-        agent = self._best_agent(decision.primary_agent) or self._best_agent(AgentType.GENERAL)
+        self._record_routed("single", decision)
+        agent = self._best_agent(decision.primary_agent)
+        if agent is None:
+            agent = self._best_agent(AgentType.GENERAL)
+            if agent is not None:
+                events().emit("agent_fallback", {"from": decision.primary_agent.value, "to": agent.key,
+                                                  "reason": "no_instance"}, agent=agent.key)
         if agent is None:
             # 池里一个实例都没有是装配问题，同样不是"这件事需要人工"
             result = self._unavailable_result(req, decision, REASON_MODEL_ERROR, t0)
@@ -1634,6 +1723,29 @@ class AgentOrchestrator:
         if guard is None:
             return {"available": True, "unavailable_reason": "", "retry_after_s": None}
         return guard.status()
+
+    @staticmethod
+    def _record_routed(
+        path: str,
+        decision: RoutingDecision | None = None,
+        result: OrchestratorResult | None = None,
+    ) -> None:
+        """
+        routed：路由定下来了。path 是 single / parallel / handoff / clarify / unavailable。
+
+        给了 decision 就照它记；澄清和"作答之前就知道答不了"这两条没有真正的路由决定，
+        照结果上报给客户的那几个字段记，投影出来和响应一致。
+        """
+        if decision is not None:
+            primary, supporting = decision.primary_agent.value, [a.value for a in decision.supporting_agents]
+            reason, confidence = decision.reason, decision.confidence
+            scores = {a.value: v for a, v in decision.domain_scores.items()}
+        else:
+            primary = (result.primary_agent or result.agent_type).value
+            supporting = [a.value for a in result.supporting_agents]
+            reason, confidence, scores = result.routing_reason, result.routing_confidence, {}
+        events().emit("routed", {"path": path, "primary": primary, "supporting": supporting,
+                                 "confidence": confidence, "domain_scores": scores, "reason": reason})
 
     def _unavailable_before_answer(self, req: Request) -> str:
         """
@@ -1739,6 +1851,15 @@ class AgentOrchestrator:
         if asks and answer_already_sent:
             notice = _customer_text(req, "handoff_after_ask") + notice
         content = f"{body}\n\n{notice}" if body.strip() else notice
+
+        # 原因是代码按阈值和分数拼出来的诊断串，不含外来文字，放结构；摘掉的追问是原文
+        events().emit("handoff", {
+            "path": "signals" if (answer or executed_agent) else "direct",
+            "reasons": reason.split("；") if reason else [],
+            "answer_confidence": answer_confidence,
+            "executed_agent": executed_agent.value if executed_agent else None,
+            "asks_removed": len(asks),
+        }, {"asks": list(asks)})
 
         logger.warning("请求 %s 转人工: %s", req.request_id, reason)
         if asks:
@@ -1982,6 +2103,9 @@ class AgentOrchestrator:
         agent = self._best_agent(agent_type)
         if agent is None:
             agent = self._best_agent(AgentType.GENERAL)
+            if agent is not None and agent_type != AgentType.GENERAL:
+                events().emit("agent_fallback", {"from": agent_type.value, "to": agent.key,
+                                                  "reason": "no_instance"}, agent=agent.key)
         if agent is None:
             return AgentResponse(
                 agent_type=AgentType.GENERAL,
@@ -2005,6 +2129,8 @@ class AgentOrchestrator:
             logger.warning(f"{agent_type.value} 失败，降级到 GeneralAgent")
             fallback = self._best_agent(AgentType.GENERAL)
             if fallback:
+                events().emit("agent_fallback", {"from": agent.key, "to": fallback.key, "reason": "failed"},
+                              agent=agent.key)
                 response = await fallback.handle(req)
 
         return response

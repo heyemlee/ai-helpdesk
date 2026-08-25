@@ -88,7 +88,8 @@ from app.core.request_context import (  # noqa: E402
     request_id_var,
     setup_logging,
 )
-from app.events import EventLog, EventLogConfig, TurnRecorder, bind, instance_from_env  # noqa: E402
+from app.events import EventLog, EventLogConfig, TurnRecorder, bind, events, instance_from_env  # noqa: E402
+from app.events.projection import mismatches, project_turn  # noqa: E402
 
 # LOG_FORMAT=json 输出单行 JSON（采集到 ELK/Datadog）；默认文本便于本地阅读。
 # 两种格式都带 request_id，一条日志能定位到一次请求。
@@ -547,6 +548,7 @@ from app.core.metrics import (  # noqa: E402
     RATE_LIMIT_HITS,
     TICKET_NOTIFY_FAILURES,
     TICKET_NOTIFY_PENDING,
+    TURN_PROJECTION_MISMATCH,
     UNMATCHED_PATH,
     observe_http,
 )
@@ -781,29 +783,39 @@ async def resolve_user_id(req: "ChatRequest", user_token: str | None) -> str:
 async def _create_handoff_ticket(
     result, user_id: str, conv_id: str, message: str, turn_id: str = "",
 ) -> str | None:
-    """转人工时落工单。工单创建失败不能影响用户拿到回复，只记录错误。"""
-    if _ticket_store is None or not result.handoff:
+    """
+    转人工时落工单。工单创建失败不能影响用户拿到回复，只记录错误。
+
+    判了转人工就发一条 ticket_created，没建成也发（status=not_created）：和响应里报给
+    工作台的那三个字段同一份（_ticket_fields）。
+    """
+    if not result.handoff:
         return None
-    try:
-        ticket = await _ticket_store.create(
-            conv_id=conv_id,
-            user_id=user_id,
-            reason=result.handoff_reason,
-            request_id=current_request_id(),
-            intent=result.intent.value if result.intent else "",
-            answer_confidence=result.answer_confidence,
-            last_message=message,
-            turn_id=turn_id,
-        )
-    except Exception:
-        logger.exception("转人工工单创建失败")
-        return None
-    if _ticket_notifier is not None and _ticket_notifier.enabled:
+    ticket = None
+    if _ticket_store is not None:
+        try:
+            ticket = await _ticket_store.create(
+                conv_id=conv_id,
+                user_id=user_id,
+                reason=result.handoff_reason,
+                request_id=current_request_id(),
+                intent=result.intent.value if result.intent else "",
+                answer_confidence=result.answer_confidence,
+                last_message=message,
+                turn_id=turn_id,
+            )
+        except Exception:
+            logger.exception("转人工工单创建失败")
+    if ticket is not None and _ticket_notifier is not None and _ticket_notifier.enabled:
         # **先落待发送记录再发**（TicketNotifier.enqueue 内部做的第一件事）。
         # 反过来的话，发送与落记录之间进程挂掉，这次通知就没有任何痕迹——
         # 那正是原来的形态：一个 fire-and-forget task，连 HTTP 状态都不看。
         _spawn_background(_ticket_notifier.enqueue(ticket))
-    return ticket.id
+    ticket_id = ticket.id if ticket is not None else None
+    fields = _ticket_fields(result, ticket_id)
+    events().emit("ticket_created", {"ticket_id": fields["ticket_id"], "status": fields["ticket_status"],
+                                     "notification": fields["ticket_notification"]})
+    return ticket_id
 
 
 def _notifications_enabled() -> bool:
@@ -1153,6 +1165,28 @@ def _complete_turn(turn: TurnRecorder, result, ticket_id: str | None, shown: str
     }, body)
 
 
+def _shadow_check(turn: TurnRecorder, **sent: dict[str, Any]) -> None:
+    """
+    影子校验：拿这一轮内存里的事件做一次投影，和真正发出去的比（不读库，开销可以忽略）。
+
+    事件从十几个节点发出，迟早有人改了响应、忘了事件。对不上只记日志和指标
+    （turn_projection_mismatch_total），不影响这一轮。日志里只报字段名，不报值。
+    只在记原文时比：只记结构时，投影里本来就没有原文。
+    """
+    if turn.mode != "full":
+        return
+    try:
+        projected = project_turn(turn.events)
+        wrong = [f"{part}.{key}" for part, payload in sent.items()
+                 for key in mismatches(projected[part], payload)]
+    except Exception:
+        logger.warning("影子校验没跑成（turn %s）", turn.turn_id, exc_info=True)
+        return
+    if wrong:
+        TURN_PROJECTION_MISMATCH.inc()
+        logger.warning("事件投影和响应对不上（turn %s）: %s", turn.turn_id, ", ".join(wrong))
+
+
 def _fail_turn(turn: TurnRecorder, ex: BaseException, stage: str) -> None:
     """未捕获的异常：发 turn_failed。异常信息可能回显输入，放 body。"""
     turn.emit("turn_failed", {"error_type": type(ex).__name__, "stage": stage},
@@ -1244,6 +1278,8 @@ async def chat(req: ChatRequest, x_user_token: str | None = Header(None, alias="
         trajectory=result.trajectory,
         answer_usage=result.answer_usage,
     )
+    payload = response.model_dump()
+    _shadow_check(turn, meta=payload, result=payload)
     return response
 
 
@@ -1366,6 +1402,7 @@ async def chat_stream(req: ChatRequest, x_user_token: str | None = Header(None, 
                     "trajectory": final.trajectory,
                     "answer_usage": final.answer_usage,
                 }
+                _shadow_check(turn, meta=meta, routing=routing, result=result)
                 yield _sse("result", result)
             except Exception as ex:
                 logger.exception("流式对话失败")

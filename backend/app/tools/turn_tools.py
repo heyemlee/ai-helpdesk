@@ -66,6 +66,12 @@ class Prefetch:
         """这一轮会不会检索知识库。和 `knowledge_context` 开头的两道门是同一套判断。"""
         return self.tool_manager is not None and should_use_knowledge(message, intent=intent)
 
+    def not_queried(self) -> dict[str, Any]:
+        """这一轮不委派时，响应里的 business_data 报什么：实例没接业务数据，或者这个问题不需要查。"""
+        if self.tool_manager is None or not self.data_enabled:
+            return {"enabled": False, "attempted": False, "outcome": "not_configured"}
+        return {"enabled": True, "attempted": False, "outcome": "skipped"}
+
     def will_query(self, message: str, intent=None, entities=None) -> bool:
         """这一轮会不会去委派查业务数据。和 `order_data_context` 开头的三道门是同一套判断。"""
         from app.tools.sql_agent_client import should_query_business_data
@@ -120,6 +126,7 @@ class Prefetch:
         conv_id: str = "",
         progress_cb=None,
         trace: dict[str, Any] | None = None,
+        raw: dict[str, Any] | None = None,
     ) -> tuple[str, bool]:
         """
         为 /chat 主链路构建业务数据上下文：把问题委派给 ai-sql-agent 查真实数据。
@@ -139,15 +146,14 @@ class Prefetch:
         from app.tools.sql_agent_client import should_query_business_data
 
         info = trace if trace is not None else {}
-        info.update(enabled=False, attempted=False, outcome="not_configured")
+        info.update(self.not_queried())
         if self.tool_manager is None or not self.data_enabled:
             return "", False
-        info.update(enabled=True, outcome="skipped")
         if not should_query_business_data(message, intent=intent, entities=entities):
             return "", False
         return await delegate_order_query(
             self.tool_manager, message, user_id=user_id, conv_id=conv_id,
-            progress_cb=progress_cb, trace=info, currency=self.sql_agent.currency,
+            progress_cb=progress_cb, trace=info, currency=self.sql_agent.currency, raw=raw,
         )
 
 
@@ -276,6 +282,7 @@ async def delegate_order_query(
     progress_cb=None,
     trace: dict[str, Any],
     currency: str = "",
+    raw: dict[str, Any] | None = None,
 ) -> tuple[str, bool]:
     """
     把问题委派给 ai-sql-agent，判定结果能不能当出处，写成给 Agent 读的上下文。不做门控。
@@ -319,7 +326,8 @@ async def delegate_order_query(
     反过来，上面第 2 条那种"不是数据的文本"绝不能进。
 
     `trace` 的 `outcome` 见 `Prefetch.order_data_context`；`currency` 是委派客户端上
-    配置的币种，见 `currency_note`。
+    配置的币种，见 `currency_note`。`raw` 传进来的话，会填上下游返回的归一化结果
+    （answer 按同一个上限截断）：事件日志记它，重放和导出用例时当桩。
     """
     info = trace
     info.update(attempted=True, outcome="error")
@@ -332,6 +340,9 @@ async def delegate_order_query(
             context={"progress_cb": progress_cb} if progress_cb else None,
         )
         data = result.data if isinstance(result.data, dict) else {}
+        if raw is not None:
+            limit = int(os.getenv("SQL_AGENT_MAX_CONTEXT_CHARS", "2000"))
+            raw.update(data, answer=str(data.get("answer", "") or "")[:limit])
 
         # 委派失败（超时、熔断、下游异常）。**不静默**——实测里最危险的一种
         # 形态就是这个：下游其实查完了（HTTP 200），只是调用方先放弃，客户
@@ -579,11 +590,22 @@ def loop_tools(prefetch: Prefetch) -> dict[str, LoopTool]:
     return tools
 
 
-def _rule_record(tool: str, message: str, outcome: ToolOutcome) -> dict[str, Any]:
+def rule_outcome(tool: str, text: str, flag: bool, trace: dict[str, Any]) -> ToolOutcome:
+    """规则预取的一路查完 → 交给模型的结果（和模型自己调同一个工具时一样）。"""
+    if tool == "knowledge_search":
+        return knowledge_outcome(text, flag, trace)
+    return order_outcome(text, flag, trace)
+
+
+def rule_record(tool: str, message: str, outcome: ToolOutcome, latency_ms: float | None = None) -> dict[str, Any]:
+    """
+    规则预取的一路在轨迹里的那一条。事件日志的 tool_call 也由它生成（agents/turn_prep），
+    两边一个字段不差。
+    """
     return {
         "step": 0, "call_id": "", "actor": "rule", "agent": None, "tool": tool,
         "args": {"query": message}, "outcome": outcome.outcome, "is_error": outcome.is_error,
-        "evidence": bool(outcome.evidence), "dedup": False, "latency_ms": None, "trace": outcome.trace,
+        "evidence": bool(outcome.evidence), "dedup": False, "latency_ms": latency_ms, "trace": outcome.trace,
     }
 
 
@@ -593,17 +615,21 @@ def seed_from_prefetch(
     *,
     knowledge: tuple[str, bool, dict[str, Any]],
     order: tuple[str, bool, dict[str, Any]],
+    latency_ms: dict[str, float] | None = None,
 ) -> None:
     """
     把规则预取记进这一轮的轨迹和去重表。
 
     轨迹因此从"规则查了什么"开始；模型再拿客户这句原话查同一样东西时直接复用，
-    不再花一次——委派一次要十几秒。只记真的查了的那一路。
+    不再花一次——委派一次要十几秒。只记真的查了的那一路。`latency_ms` 是每一路实际
+    花的时间（准备阶段量的），没量的记 None。
     """
+    latency_ms = latency_ms or {}
     text, used, trace = knowledge
     if trace.get("attempted"):
         outcome = knowledge_outcome(text, used, trace)
-        turn.trajectory.append(_rule_record("knowledge_search", message, outcome))
+        turn.trajectory.append(rule_record("knowledge_search", message, outcome,
+                                           latency_ms.get("knowledge_search")))
         if "knowledge_search" in turn.tools:
             args = KnowledgeSearchArgs.model_construct(query=message, top_k=3)
             turn.remember(turn.tools["knowledge_search"].memo_key(args), outcome)
@@ -611,7 +637,8 @@ def seed_from_prefetch(
     text, is_evidence, trace = order
     if trace.get("attempted"):
         outcome = order_outcome(text, is_evidence, trace)
-        turn.trajectory.append(_rule_record("order_data_query", message, outcome))
+        turn.trajectory.append(rule_record("order_data_query", message, outcome,
+                                           latency_ms.get("order_data_query")))
         if "order_data_query" in turn.tools:
             args = OrderDataQueryArgs.model_construct(query=message)
             turn.remember(turn.tools["order_data_query"].memo_key(args), outcome)

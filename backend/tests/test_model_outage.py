@@ -10,6 +10,7 @@
 发出去了的请求，所以"不再出网"是数出来的，不是推断出来的。
 """
 import asyncio
+import dataclasses
 import importlib
 import json
 import logging
@@ -448,7 +449,9 @@ async def test_a_degraded_intent_is_not_cached_and_recovers_with_the_model(stack
     assert relay.sent() == 2
 
     cached = await recognizer.recognize(QUESTION)           # 正常结果照常缓存
-    assert cached is recovered and recognizer.cache_hits == 1 and relay.sent() == 2
+    assert recognizer.cache_hits == 1 and relay.sent() == 2
+    # 命中缓存时拿到的是标了 cached 的副本（事件日志据此知道这一次没有模型调用），内容不变
+    assert cached.cached and not recovered.cached and dataclasses.replace(cached, cached=False) == recovered
 
 
 async def test_any_infrastructure_failure_keeps_the_result_out_of_the_cache(recognizer):

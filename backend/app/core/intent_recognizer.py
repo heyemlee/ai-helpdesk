@@ -18,6 +18,7 @@ Embedding 和 LLM 并行调用，不串行等待；三路结果加权投票合�
   同时让上层可以跳过查询改写和结果重排（见 api/main.py 的 RAG 分支）。
 """
 import asyncio
+import dataclasses
 import hashlib
 import json
 import logging
@@ -125,6 +126,9 @@ class IntentResult:
     llm_failed: bool = False
     # 没答上来的原因若是"模型服务不可用"（core/llm_guard），这里是原因，否则空串
     llm_unavailable: str = ""
+    # 这次是从进程内缓存里取的：没有发起任何模型调用（事件日志据此不把"缺一次意图的
+    # 模型调用"当成漏记）。缓存里存的那一份永远是 False，命中时返回的是一份副本
+    cached: bool = False
 
     @property
     def fast_path(self) -> bool:
@@ -397,7 +401,7 @@ class IntentRecognizer:
         key = self._cache_key(message, history)
         if key in self._cache:
             self.cache_hits += 1
-            return self._cache[key]
+            return dataclasses.replace(self._cache[key], cached=True)
         self.cache_misses += 1
 
         t0 = time.monotonic()

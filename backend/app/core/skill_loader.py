@@ -133,6 +133,10 @@ class SkillManager:
         """运行时热加载入口，供 API 调用。"""
         return self.load()
 
+    def names_for(self, message: str, agent_type: str | None = None) -> list[str]:
+        """这句话对这个 Agent 命中了哪些 Skill（名字）。事件日志的 agent_started 记它，不管预算截断。"""
+        return [skill.name for skill in self._skills if skill.matches(message, agent_type)]
+
     def prompt_for(self, message: str, agent_type: str | None = None) -> str:
         """
         为当前用户请求构建 Skill prompt。
