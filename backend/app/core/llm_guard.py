@@ -34,6 +34,8 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlsplit
 
+from app.events.model_calls import ModelCall, RecordedStream
+
 logger = logging.getLogger(__name__)
 
 REASON_CREDENTIAL = "credential_rejected"   # 401：Key 无效、停用、被吊销
@@ -195,8 +197,10 @@ def classify(ex: BaseException) -> Verdict | None:
 class LLMGuard:
     """一份配置（供应商 + 地址 + 凭证）的可用状态。进程内共享，不跨进程。"""
 
-    def __init__(self, label: str, clock: Callable[[], float] = time.monotonic):
+    def __init__(self, label: str, clock: Callable[[], float] = time.monotonic, provider: str = ""):
         self.label = label            # 供应商 @ 主机名，只给日志看
+        # 事件日志的 model_call 记它（只有供应商名，不带地址）
+        self.provider = provider or label.split(" @ ", 1)[0]
         self._clock = clock
         self._reason = ""
         self._status: int | None = None
@@ -311,7 +315,7 @@ def guard_for(provider: str, base_url: str | None, api_key: str) -> LLMGuard:
     guard = _GUARDS.get(key)
     if guard is None:
         host = urlsplit(_address(base_url)).hostname or "官方地址"
-        guard = _GUARDS[key] = LLMGuard(f"{provider} @ {host}")
+        guard = _GUARDS[key] = LLMGuard(f"{provider} @ {host}", provider=provider)
     return guard
 
 
@@ -329,25 +333,37 @@ def forget_all() -> None:
 
 
 # ── 套在客户端上 ──────────────────────────────────────────────────────────────
+#
+# 每次请求结束顺手发一条 model_call 事件（app/events/model_calls.py）：所有对话模型请求都
+# 经过这一层，包括被保护挡下、根本没出网的。日志关着时那一步什么都不做。
 
 class _GuardedStream:
     """`async with client.messages.stream(...)` 的那一层。请求是在进入时才发的。"""
 
-    def __init__(self, factory: Callable[[], Any], guard: LLMGuard):
+    def __init__(self, factory: Callable[[], Any], guard: LLMGuard, kwargs: dict[str, Any]):
         self._factory = factory
         self._guard = guard
         self._manager: Any = None
+        self._call = ModelCall(guard.provider, kwargs, stream=True)
+        self._stream: RecordedStream | None = None
 
     async def __aenter__(self) -> Any:
-        self._guard.check()
+        try:
+            self._guard.check()
+        except LLMUnavailableError as ex:
+            self._call.finish(status="blocked", sent=False, error=ex, reason=ex.reason)
+            raise
         self._manager = self._factory()
         try:
-            return await self._manager.__aenter__()
+            inner = await self._manager.__aenter__()
         except Exception as ex:
             blocked = self._guard.record_failure(ex)
+            self._call.finish(status="error", sent=True, error=ex, reason=blocked.reason if blocked else "")
             if blocked is not None:
                 raise blocked from ex
             raise
+        self._stream = RecordedStream(inner, self._call)
+        return self._stream
 
     async def __aexit__(self, exc_type, exc, tb) -> Any:
         blocked = None
@@ -355,7 +371,16 @@ class _GuardedStream:
             self._guard.record_success()
         elif isinstance(exc, Exception):
             blocked = self._guard.record_failure(exc)
-        suppressed = await self._manager.__aexit__(exc_type, exc, tb)
+        try:
+            suppressed = await self._manager.__aexit__(exc_type, exc, tb)
+        finally:
+            # 调用方没取最终消息（中途出错）时没有用量，照实记 null
+            final = self._stream.final if self._stream is not None else None
+            if exc is None:
+                self._call.finish(status="ok", sent=True, message=final)
+            else:
+                self._call.finish(status="error", sent=True, message=final, error=exc,
+                                  reason=blocked.reason if blocked else "")
         if blocked is not None:
             raise blocked from exc
         return suppressed
@@ -370,15 +395,25 @@ class _GuardedMessages:
         return getattr(self._inner, name)
 
     async def _call(self, method: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
-        self._guard.check()
+        call = ModelCall(self._guard.provider, kwargs, stream=False)
+        try:
+            self._guard.check()
+        except LLMUnavailableError as ex:
+            call.finish(status="blocked", sent=False, error=ex, reason=ex.reason)
+            raise
         try:
             result = await method(*args, **kwargs)
         except Exception as ex:
             blocked = self._guard.record_failure(ex)
+            call.finish(status="error", sent=True, error=ex, reason=blocked.reason if blocked else "")
             if blocked is not None:
                 raise blocked from ex
             raise
+        except BaseException as ex:       # 被取消：照实记一条出错，不算凭证的事
+            call.finish(status="error", sent=True, error=ex)
+            raise
         self._guard.record_success()
+        call.finish(status="ok", sent=True, message=result)
         return result
 
     async def create(self, *args: Any, **kwargs: Any) -> Any:
@@ -388,7 +423,7 @@ class _GuardedMessages:
         return await self._call(self._inner.parse, *args, **kwargs)
 
     def stream(self, *args: Any, **kwargs: Any) -> _GuardedStream:
-        return _GuardedStream(lambda: self._inner.stream(*args, **kwargs), self._guard)
+        return _GuardedStream(lambda: self._inner.stream(*args, **kwargs), self._guard, kwargs)
 
 
 class GuardedLLMClient:

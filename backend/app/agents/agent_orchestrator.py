@@ -68,7 +68,8 @@ from app.core.openai_compat import ToolsUnsupportedError
 from app.core.telemetry import span
 from app.core.text_lang import detect_language
 from app.events import events
-from app.events.shapes import sha256
+from app.events.recorder import model_call_tag
+from app.events.shapes import sha256, tool_call_parts
 
 logger = logging.getLogger(__name__)
 
@@ -510,13 +511,16 @@ class BaseAgent:
 
     async def _stream_llm(self, req: Request, skill_prompt: str = "") -> AsyncIterator[str]:
         """调用 LLM 的流式接口，逐段产出文本增量。"""
-        async with self._client.messages.stream(
-            model=self._model,
-            max_tokens=ANSWER_MAX_TOKENS,
-            system=self._system_blocks(skill_prompt),
-            messages=self._build_messages(req),
-            **answer_options(),
-        ) as stream:
+        # 标签只在发起请求的那一刻要（GuardedLLMClient 在那时取），不跨 yield 挂着
+        with model_call_tag(purpose="answer", agent=self.key, step=1):
+            request = self._client.messages.stream(
+                model=self._model,
+                max_tokens=ANSWER_MAX_TOKENS,
+                system=self._system_blocks(skill_prompt),
+                messages=self._build_messages(req),
+                **answer_options(),
+            )
+        async with request as stream:
             async for text in stream.text_stream:
                 yield text
             # 流结束后取最终消息的 usage 计量 token；失败不影响回复
@@ -533,7 +537,8 @@ class BaseAgent:
                 pass
 
     async def _call_llm(self, req: Request, skill_prompt: str = "") -> str:
-        with span("agent.llm_call", agent=self.agent_type.value, model=self._model):
+        with (span("agent.llm_call", agent=self.agent_type.value, model=self._model),
+              model_call_tag(purpose="answer", agent=self.key, step=1)):
             resp = await self._client.messages.create(
                 model=self._model,
                 max_tokens=ANSWER_MAX_TOKENS,
@@ -671,6 +676,7 @@ class BaseAgent:
         guard = PolicyStreamGuard(self._policy, sources)
 
         agent = self.agent_type.value
+        recorder = events()
         full: list[str] = []
         declared: bool | None = None
         found_evidence = False
@@ -687,6 +693,7 @@ class BaseAgent:
                 agent=self.agent_type.value,
                 max_tokens=ANSWER_MAX_TOKENS,
                 options=answer_options(),
+                call_tag={"purpose": "answer", "agent": self.key},
             ):
                 if isinstance(event, TextDelta):
                     safe = guard.feed(event.text)
@@ -698,6 +705,10 @@ class BaseAgent:
                         full.append(safe)
                         yield {"type": "delta", "text": safe}
                 elif isinstance(event, ToolStart):
+                    recorder.emit("tool_started", {
+                        "actor": "model", "tool": event.name, "decision": event.decision,
+                        "idem_key": f"{recorder.turn_id}:{event.call_id}",
+                    }, {"args": event.args}, agent=self.key, step=event.step, call_id=event.call_id)
                     yield {"type": "tool", "phase": "start", "step": event.step, "call_id": event.call_id,
                            "tool": event.name, "args": event.args, "agent": agent}
                 elif isinstance(event, ToolEnd):
@@ -705,6 +716,11 @@ class BaseAgent:
                         guard.add_sources([event.outcome.evidence])
                         found_evidence = True
                     record_loop_tool(event.name, event.outcome.outcome, dedup=event.record["dedup"])
+                    # 轨迹里的那一条和事件由同一个 dict 生成（events/shapes.tool_call_parts）
+                    data, body = tool_call_parts(event.record, idem_key=f"{recorder.turn_id}:{event.call_id}",
+                                                 content=event.outcome.content, raw=event.outcome.raw,
+                                                 evidence=event.outcome.evidence)
+                    recorder.emit("tool_call", data, body, agent=self.key, step=event.step, call_id=event.call_id)
                     yield {"type": "tool", "phase": "end", **event.record}
                 elif isinstance(event, StepEnd):
                     record_llm_tokens(agent, event.input_tokens, event.output_tokens)
@@ -713,9 +729,15 @@ class BaseAgent:
                         if dropped.strip():
                             record_loop_discard(agent)
                             logger.info("%s 调工具前写了半句，作废: %s", agent, dropped.strip()[:80])
+                            recorder.emit("preamble_discarded", {"chars": len(dropped)}, {"text": dropped},
+                                          agent=self.key, step=event.step)
                 elif isinstance(event, LoopEnd):
                     last_stop = event.stop_reason
                     record_loop_end(agent, event.model_calls, event.forced)
+                    recorder.emit("loop_ended", {
+                        "model_calls": event.model_calls, "tool_calls": event.tool_calls,
+                        "stop_reason": event.stop_reason, "forced": event.forced,
+                    }, agent=self.key)
                     if event.forced and not req.turn.forced:
                         req.turn.forced = event.forced
 
@@ -761,6 +783,7 @@ class BaseAgent:
             if isinstance(ex, ToolsUnsupportedError) and not full:
                 logger.warning("%s 的模型连接不支持工具调用，这一轮退回单次生成: %s", agent, ex)
                 record_loop_fallback("tools_unsupported")
+                recorder.emit("loop_fallback", {"reason": "tools_unsupported"}, agent=self.key)
                 req.turn.fallback = "tools_unsupported"
                 fallback = True
             else:

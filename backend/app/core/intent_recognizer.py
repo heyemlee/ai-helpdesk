@@ -40,6 +40,7 @@ from app.core.llm_utils import (
     structured_parse,
 )
 from app.core.telemetry import span
+from app.events.recorder import model_call_tag
 
 logger = logging.getLogger(__name__)
 
@@ -563,13 +564,14 @@ confidence 表示你对该判断的把握，0 到 1 之间。
         prompt = self._clean_text(prompt)
 
         try:
-            payload = await structured_parse(
-                self.client,
-                output_format=LLMIntentPayload,
-                model=self.model,
-                max_tokens=STRUCTURED_MAX_TOKENS,
-                messages=[{"role": "user", "content": prompt}],
-            )
+            with model_call_tag(purpose="intent"):
+                payload = await structured_parse(
+                    self.client,
+                    output_format=LLMIntentPayload,
+                    model=self.model,
+                    max_tokens=STRUCTURED_MAX_TOKENS,
+                    messages=[{"role": "user", "content": prompt}],
+                )
             return {
                 # schema 已经把取值限死在意图表里，这里的转换不会再抛。
                 "intent": IntentCategory(payload.intent),

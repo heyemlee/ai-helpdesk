@@ -571,11 +571,14 @@ class OrderDataQueryTool(LoopTool):
 
     async def run(self, args: OrderDataQueryArgs, turn: TurnContext) -> ToolOutcome:
         trace: dict[str, Any] = {"enabled": True}
+        raw: dict[str, Any] = {}
         text, is_evidence = await delegate_order_query(
             self.tool_manager, args.query, user_id=turn.user_id, conv_id=turn.conv_id,
-            progress_cb=turn.progress_cb, trace=trace, currency=self.sql_agent.currency,
+            progress_cb=turn.progress_cb, trace=trace, currency=self.sql_agent.currency, raw=raw,
         )
-        return order_outcome(text, is_evidence, trace)
+        outcome = order_outcome(text, is_evidence, trace)
+        outcome.raw = raw or None
+        return outcome
 
 
 def loop_tools(prefetch: Prefetch) -> dict[str, LoopTool]:

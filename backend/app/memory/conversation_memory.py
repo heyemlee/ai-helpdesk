@@ -38,6 +38,7 @@ from app.core.llm_utils import (
     structured_parse,
 )
 from app.core.telemetry import span
+from app.events.recorder import model_call_tag
 
 logger = logging.getLogger(__name__)
 
@@ -258,15 +259,17 @@ class MemoryManager:
         )
 
         try:
-            payload = await structured_parse(
-                self._client,
-                output_format=UserProfilePayload,
-                # 不用 512：推理模型的 max_tokens 把思考也算在内，预算太紧时正文
-                # 还没开始就用完了，画像这一轮就静默地没写进去。按实际生成量计费，
-                # 给宽一点不多花钱。
-                model=self._model, max_tokens=STRUCTURED_MAX_TOKENS,
-                messages=[{"role": "user", "content": prompt}],
-            )
+            # 轮次之后的后台任务：这次调用也记在那一轮里，排在 turn_completed 后面
+            with model_call_tag(purpose="profile"):
+                payload = await structured_parse(
+                    self._client,
+                    output_format=UserProfilePayload,
+                    # 不用 512：推理模型的 max_tokens 把思考也算在内，预算太紧时正文
+                    # 还没开始就用完了，画像这一轮就静默地没写进去。按实际生成量计费，
+                    # 给宽一点不多花钱。
+                    model=self._model, max_tokens=STRUCTURED_MAX_TOKENS,
+                    messages=[{"role": "user", "content": prompt}],
+                )
 
             # 每个用户只保留一条画像，整条覆盖（存储层 ON CONFLICT/REPLACE 保证）。
             doc_text = self._safe_text(json.dumps(payload.model_dump(), ensure_ascii=False))
@@ -360,12 +363,14 @@ class MemoryManager:
         text = self._safe_text("\n".join(f"{m.role.value}: {m.content}" for m in to_compress))
         prompt = self._safe_text(f"用 2-3 句话总结以下对话的关键信息：\n{text}")
         try:
-            resp = await structured_create(
-                self._client,
-                # 同上：256 留给推理模型的话，摘要常常一个字都出不来
-                model=self._model, max_tokens=STRUCTURED_MAX_TOKENS,
-                messages=[{"role": "user", "content": prompt}],
-            )
+            # 在 add_message 里同步跑：排在 turn_completed 之前，算进这一轮的耗时
+            with model_call_tag(purpose="summary"):
+                resp = await structured_create(
+                    self._client,
+                    # 同上：256 留给推理模型的话，摘要常常一个字都出不来
+                    model=self._model, max_tokens=STRUCTURED_MAX_TOKENS,
+                    messages=[{"role": "user", "content": prompt}],
+                )
             summary = self._safe_text(extract_text_content(resp.content)).strip()
         except Exception as ex:
             summary = ""

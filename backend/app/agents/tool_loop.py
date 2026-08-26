@@ -32,6 +32,7 @@ from typing import Any
 from pydantic import BaseModel, ValidationError
 
 from app.core.telemetry import span
+from app.events.recorder import model_call_tag
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +112,8 @@ class ToolOutcome:
     evidence: str = ""           # 能当出处的文本：非空才进答案守卫的 sources
     trace: dict[str, Any] = field(default_factory=dict)   # 给工作台和评测看的经过
     outcome: str = ""            # 一个词的结局，进轨迹：found / empty / evidence / failed ...
+    # 业务数据的归一化结果：只进事件日志（重放和导出用例时当桩），不进轨迹、不交给模型
+    raw: dict[str, Any] | None = None
 
 
 def _normalize(value: Any) -> Any:
@@ -288,6 +291,9 @@ class ToolStart:
     call_id: str
     name: str
     args: dict[str, Any]
+    # 这次调用的去向（_plan_call 定的）：execute / dedup，或者没执行的原因 refused / skipped /
+    # budget / invalid_args / unavailable_tool。事件日志据此分清"执行了"和"被预算拒了"
+    decision: str = "execute"
 
 
 @dataclass
@@ -346,6 +352,12 @@ class _Call:
 
 def _error(content: str, outcome: str) -> ToolOutcome:
     return ToolOutcome(content=content, is_error=True, outcome=outcome)
+
+
+def _decision(call: _Call) -> str:
+    if call.refusal is not None:
+        return call.refusal.outcome
+    return "dedup" if call.dedup else "execute"
 
 
 def _forced_reason(step: int, budget: LoopBudget, usage: _Usage, deadline: float, now: float) -> str:
@@ -462,6 +474,7 @@ async def run_tool_loop(
     max_tokens: int,
     options: dict[str, Any] | None = None,
     clock: Callable[[], float] = time.monotonic,
+    call_tag: dict[str, Any] | None = None,
 ) -> AsyncIterator[TextDelta | ToolStart | ToolEnd | StepEnd | LoopEnd]:
     """
     跑一次有边界的工具循环，边跑边产出事件。
@@ -469,6 +482,9 @@ async def run_tool_loop(
     文字增量原样往外交（TextDelta），守卫、转人工标记由调用方处理。调用方传进来的
     `messages` 不会被改动。模型服务不可用之类的模型调用异常照常往上抛，由调用方按
     现在的"没答完"处理；工具的异常不会抛出来。
+
+    循环自己不发事件日志：调用方把这些产出转成日志事件。`call_tag` 是事件日志给这些
+    模型调用打的标签（用途、专家实例），每一步再加上 step。
     """
     budget = turn.config.budget
     by_name = {t.name: t for t in tools}
@@ -481,15 +497,17 @@ async def run_tool_loop(
 
     for step in range(1, budget.max_model_calls + 1):
         forced = _forced_reason(step, budget, usage, deadline, clock())
-        async with client.messages.stream(
-            model=model,
-            max_tokens=max_tokens,
-            system=system,
-            messages=messages,
-            tools=specs,
-            tool_choice={"type": "none"} if forced else {"type": "auto"},
-            **(options or {}),
-        ) as stream:
+        with model_call_tag(**(call_tag or {}), step=step):
+            request = client.messages.stream(
+                model=model,
+                max_tokens=max_tokens,
+                system=system,
+                messages=messages,
+                tools=specs,
+                tool_choice={"type": "none"} if forced else {"type": "auto"},
+                **(options or {}),
+            )
+        async with request as stream:
             async for text in stream.text_stream:
                 yield TextDelta(step, text)
             final = await stream.get_final_message()
@@ -515,7 +533,7 @@ async def run_tool_loop(
         remaining = deadline - clock()
         planned = [_plan_call(b, by_name, turn, usage, budget, remaining) for b in calls]
         for call in planned:
-            yield ToolStart(step, call.call_id, call.name, call.args)
+            yield ToolStart(step, call.call_id, call.name, call.args, decision=_decision(call))
 
         started = clock()
 

@@ -372,6 +372,34 @@ def bind(recorder: TurnRecorder) -> Iterator[TurnRecorder]:
             pass
 
 
+# ── 模型调用的用途 ────────────────────────────────────────────────────────────
+#
+# 模型调用在 GuardedLLMClient 那一层记（所有对话模型请求都经过它，包括被保护挡下、根本没
+# 出网的），但那一层是共享的客户端单例，不知道这次是意图、改写还是作答。调用点用第二个
+# contextvar 标：`with model_call_tag(purpose="rewrite"):`。嵌套时合并，里层覆盖外层：专家
+# 外面标 purpose 和 agent，循环每一步再标 step；补检那一轮在外面标 round=2。
+# 没标的记 purpose=unknown，有一条测试保证一轮 /chat 里没有 unknown。
+
+_call_tag: ContextVar[dict[str, Any] | None] = ContextVar("model_call_tag", default=None)
+
+
+@contextmanager
+def model_call_tag(**fields: Any) -> Iterator[None]:
+    """这个 with 里发出的模型请求记成什么：purpose、round、agent（实例键）、step。"""
+    token = _call_tag.set({**(_call_tag.get() or {}), **fields})
+    try:
+        yield
+    finally:
+        try:
+            _call_tag.reset(token)
+        except ValueError:
+            pass
+
+
+def current_call_tag() -> dict[str, Any]:
+    return dict(_call_tag.get() or {})
+
+
 # ── 同一会话在途的轮次 ────────────────────────────────────────────────────────
 #
 # v1 只检测、只记录，不拦（第 7 节）。进程内的表只在单进程时准：两个实例现在都是单进程，

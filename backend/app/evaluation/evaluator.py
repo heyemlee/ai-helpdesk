@@ -35,6 +35,7 @@ from app.core.llm_utils import (
     create_llm_client,
     structured_parse,
 )
+from app.events.recorder import model_call_tag
 
 logger = logging.getLogger(__name__)
 
@@ -194,12 +195,13 @@ completeness 和 helpfulness 都应给高分——不要因为"没有直接给�
         )
         prompt = self._clean_text(prompt)
         try:
-            payload = await structured_parse(
-                self._client,
-                output_format=JudgePayload,
-                model=self._model, max_tokens=STRUCTURED_MAX_TOKENS,
-                messages=[{"role": "user", "content": prompt}],
-            )
+            with model_call_tag(purpose="judge"):
+                payload = await structured_parse(
+                    self._client,
+                    output_format=JudgePayload,
+                    model=self._model, max_tokens=STRUCTURED_MAX_TOKENS,
+                    messages=[{"role": "user", "content": prompt}],
+                )
             # 四个维度现在都是必填字段，不再有 `data.get(..., 0.5)` 那种
             # "字段缺失就按 0.5 记"——那个默认值会把一次解析失败伪装成一个
             # 中等分数，混进平均分和基线里，回归检测再也看不出来。

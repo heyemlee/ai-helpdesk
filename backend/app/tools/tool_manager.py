@@ -49,6 +49,7 @@ from app.core.llm_utils import (
     create_llm_client,
     structured_parse,
 )
+from app.events.recorder import model_call_tag
 
 logger = logging.getLogger(__name__)
 
@@ -453,12 +454,13 @@ class ToolManager:
 原始查询: "{query}"{gap}"""
         prompt = self._clean_text(prompt)
         try:
-            payload = await structured_parse(
-                self._client,
-                output_format=QueryRewritePayload,
-                model=self._model, max_tokens=STRUCTURED_MAX_TOKENS,
-                messages=[{"role": "user", "content": prompt}],
-            )
+            with model_call_tag(purpose="rewrite"):
+                payload = await structured_parse(
+                    self._client,
+                    output_format=QueryRewritePayload,
+                    model=self._model, max_tokens=STRUCTURED_MAX_TOKENS,
+                    messages=[{"role": "user", "content": prompt}],
+                )
             queries = [q for q in (s.strip() for s in payload.queries) if q]
             # 原始查询也保留，去重。补检索回合不再重复原始查询——它的结果
             # 已经在上一轮的候选池里了。
@@ -513,7 +515,9 @@ class ToolManager:
         # 自纠错：围绕缺口补检一轮，与第一轮的候选合并后重排。
         # 合并而不是替换——第一轮的结果未必没用，只是不够。
         logger.info(f"检索自纠错触发: {query!r}（缺口: {outcome.missing or '相关度不足'}）")
-        more, rewrite_failed = await self._rewritten(query, hint=outcome.missing)
+        # 补检这一轮的改写和重排在事件日志里标 round=2
+        with model_call_tag(round=2):
+            more, rewrite_failed = await self._rewritten(query, hint=outcome.missing)
         if rewrite_failed:
             # 补检这一轮的改写没调成：手里只有原始查询，再检一遍拿回来的还是第一轮
             # 那批候选。第一轮的结论照旧算数，不为了一次失败的调用再重排一遍。
@@ -521,7 +525,8 @@ class ToolManager:
                               reranked=outcome.reranked, evidence_ok=evidence_ok)
         extra = await self._recall(tool_name, more, top_k, context)
         merged = self._merge_unique(candidates + extra)
-        retry = await self._rerank(query, merged, top_k)
+        with model_call_tag(round=2):
+            retry = await self._rerank(query, merged, top_k)
         return ToolResult(
             success=True,
             data=retry.items,
@@ -703,12 +708,14 @@ missing 在 sufficient 为 false 时用一句话说明缺什么信息，充分�
         prompt = self._clean_text(prompt)
 
         try:
-            payload = await structured_parse(
-                self._client,
-                output_format=RerankPayload,
-                model=self._model, max_tokens=STRUCTURED_MAX_TOKENS,
-                messages=[{"role": "user", "content": prompt}],
-            )
+            # 证据够不够在这同一次调用里判
+            with model_call_tag(purpose="rerank"):
+                payload = await structured_parse(
+                    self._client,
+                    output_format=RerankPayload,
+                    model=self._model, max_tokens=STRUCTURED_MAX_TOKENS,
+                    messages=[{"role": "user", "content": prompt}],
+                )
             sufficient, missing = payload.sufficient, payload.missing[:200]
             # 索引仍然要过滤：schema 保证得了"是一个整数数组"，保证不了每个整数都
             # 落在候选范围内。越界索引会 IndexError 掉进下面的 except，把一次本可

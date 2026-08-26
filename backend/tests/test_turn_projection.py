@@ -22,6 +22,7 @@ from prometheus_client import REGISTRY
 
 from app.agents.agent_orchestrator import AgentOrchestrator, AgentType
 from app.core.intent_recognizer import IntentCategory, UrgencyLevel
+from app.core.llm_guard import GuardedLLMClient, LLMGuard
 from app.events import EventLog, EventLogConfig
 from app.events.projection import KNOWLEDGE_NOT_SEARCHED, mismatches, project_turn
 from app.memory.conversation_memory import MemoryContext
@@ -128,8 +129,10 @@ async def _desk(monkeypatch, intent: _Intent, *, models: dict[AgentType, Any] | 
 
     orch = AgentOrchestrator(api_key="test-key")
     models = models or {}
+    guard = LLMGuard("anthropic @ test")
     for agent_type, agents in orch._pool.items():
-        client = models.get(agent_type) or _answer()
+        # 和线上一样套一层 GuardedLLMClient：每次作答都有一条 model_call
+        client = GuardedLLMClient(models.get(agent_type) or _answer(), guard)
         for agent in agents:
             agent._client = client
 
@@ -225,8 +228,8 @@ async def test_a_single_specialist_answer(monkeypatch):
     main, log = await _desk(monkeypatch, _Intent(IntentCategory.MISSING_PART))
 
     answer, recorded = await _chat(main, log)
-    assert _kinds(recorded) == [*PREP, *RULES, "routed", "agent_started:order", "agent_answered:order",
-                                "turn_completed"]
+    assert _kinds(recorded) == [*PREP, *RULES, "routed", "agent_started:order", "model_call:order",
+                                "agent_answered:order", "turn_completed"]
     _assert_projects_to(recorded, meta=answer, result=answer)
     _assert_no_canary_in_structure(recorded)
 
@@ -306,7 +309,7 @@ async def test_a_handoff_because_a_signal_fell_short(monkeypatch):
 
     answer, recorded = await _chat(main, log)
     assert answer["handoff"] and answer["ticket_status"] == "not_created"
-    assert _kinds(recorded)[-6:] == ["routed", "agent_started:order", "agent_answered:order",
+    assert _kinds(recorded)[-7:] == ["routed", "agent_started:order", "model_call:order", "agent_answered:order",
                                      "handoff", "ticket_created", "turn_completed"]
     handoff = next(e for e in recorded if e["type"] == "handoff")["data"]
     assert handoff["path"] == "signals" and handoff["executed_agent"] == "order"
@@ -341,7 +344,10 @@ async def test_the_stream_breaks_half_way_through(monkeypatch):
     frames, recorded = await _stream(main, log)
     assert frames["result"]["service_unavailable"]
     assert frames["shown"].startswith("第一句已经发出去了。")
-    assert _kinds(recorded)[-4:] == ["routed", "agent_started:order", "agent_answered:order", "turn_completed"]
+    assert _kinds(recorded)[-5:] == ["routed", "agent_started:order", "model_call:order", "agent_answered:order",
+                                     "turn_completed"]
+    failed_call = next(e for e in recorded if e["type"] == "model_call")["data"]
+    assert (failed_call["status"], failed_call["error_type"], failed_call["usage"]) == ("error", "RuntimeError", None)
     answered = next(e for e in recorded if e["type"] == "agent_answered")["data"]
     assert not answered["success"] and answered["sent_chars"] == len("第一句已经发出去了。")
     completed = recorded[-1]
@@ -357,9 +363,9 @@ async def test_a_failing_specialist_falls_back_to_general(monkeypatch):
 
     answer, recorded = await _chat(main, log)
     assert answer["agent_type"] == "general" and not answer["service_unavailable"]
-    assert _kinds(recorded)[-7:] == [
-        "routed", "agent_started:order", "agent_answered:order", "agent_fallback:order",
-        "agent_started:general", "agent_answered:general", "turn_completed"]
+    assert _kinds(recorded)[-9:] == [
+        "routed", "agent_started:order", "model_call:order", "agent_answered:order", "agent_fallback:order",
+        "agent_started:general", "model_call:general", "agent_answered:general", "turn_completed"]
     fallback = next(e for e in recorded if e["type"] == "agent_fallback")["data"]
     assert fallback["reason"] == "failed" and fallback["to"].startswith("general_")
     _assert_projects_to(recorded, meta=answer, result=answer)
