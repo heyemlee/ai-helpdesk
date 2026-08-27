@@ -212,6 +212,20 @@ export function useSetTicketStatus(base: string) {
   })
 }
 
+/**
+ * 刷新前某一轮的经过（事件日志）。打开检查器、学习模式或工单详情时才取，取过的不再取：
+ * 一轮结束之后它不会再变（轮次之后的画像调用不影响投影）。
+ */
+export function useTurn(base: string, turnId: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: ['turn', base, turnId],
+    queryFn: () => api.turn(base, turnId!),
+    enabled: enabled && !!turnId,
+    staleTime: Infinity,
+    retry: false,
+  })
+}
+
 export function useConversation(base: string, convId: string | undefined) {
   return useQuery({
     queryKey: ['conversation', base, convId],

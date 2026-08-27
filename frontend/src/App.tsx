@@ -151,7 +151,7 @@ export default function App() {
   const inspector = (
     <>
       {inspectedIsStale && <p className="note caution" style={{ marginBottom: 12 }}>{t('in.stale')}</p>}
-      <RoutingInspector message={inspected} thresholds={thresholds} />
+      <RoutingInspector message={inspected} thresholds={thresholds} base={settings.apiBaseUrl} />
     </>
   )
 

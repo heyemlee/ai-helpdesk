@@ -95,6 +95,8 @@ export interface ChatResponse {
   policy_violations: PolicyViolation[]
   /** 请求追踪 id，与响应头 X-Request-ID 一致，报障时携带 */
   request_id?: string
+  /** 这一轮的 id，服务端生成。刷新之后按它取回这一轮的经过（GET /turns/{turn_id}）。老后端没有 */
+  turn_id?: string
   /** 转人工时创建的工单 id；未转人工为 null */
   ticket_id?: string | null
   /** open = 工单已落库；not_created = 判了转人工但工单没建成；未转人工为空串 */
@@ -160,7 +162,8 @@ export type LlmUnavailableReason =
   | 'rate_limited' | 'forbidden' | 'model_error'
 
 // ── 对话审计日志（GET /conversations/{conv_id}）────────────────────────────
-// 服务端只留原文和作答 Agent；路由决策、置信度这些只存在于当轮的响应里。
+// 审计日志只留原文和作答 Agent。路由决策、置信度这些在事件日志里，按 turn_id 取
+// （GET /turns/{turn_id}）；超出保留期或当时日志没开就取不到。
 
 export interface ConversationEntry {
   seq: number
@@ -171,6 +174,24 @@ export interface ConversationEntry {
   content: string
   agent_type: string
   created_at: number
+  /** 指回那一轮的事件。加列之前的老记录、老后端为空 */
+  turn_id?: string
+  /** staff / customer；加列之前的老记录为空串 */
+  instance?: string
+}
+
+// ── 一轮的经过（GET /turns/{turn_id}）──────────────────────────────────────
+// 后端从事件投影出来的三个对象，和当轮 /chat/stream 的 meta、routing、result 同一个形状。
+
+export interface TurnProjection {
+  turn_id: string
+  /** 为假：中间丢过事件，或者这一轮没写完 */
+  complete: boolean
+  /** 原文已按保留期清空（或当时只记结构）：要原文的字段是空的 */
+  redacted: boolean
+  meta: Partial<StreamMetaEvent>
+  routing: Partial<StreamRoutingEvent>
+  result: Partial<ChatResponse>
 }
 
 export interface ConversationResponse {
@@ -212,6 +233,8 @@ export interface StreamProgressEvent {
 
 export interface StreamMetaEvent {
   conv_id: string
+  /** 老后端没有 */
+  turn_id?: string
   intent: string
   intent_group: string
   intent_confidence: number
@@ -553,6 +576,8 @@ export interface Ticket {
   allowed_transitions?: string[]
   /** null = 没有通知记录（没配，或没入队）；undefined = 老后端不报 */
   notification?: TicketNotification | null
+  /** 转人工的那一轮；老工单、老后端为空 */
+  turn_id?: string
 }
 
 export interface TicketList {

@@ -4,6 +4,7 @@ import { agentLabel, confidenceTone, ms, num } from '@/lib/format'
 import { llmReasonKey } from '@/lib/llm'
 import { useT } from '@/i18n'
 import type { ChatMessage } from '@/hooks/useChatStream'
+import { useRestoredTurn, type RestoredTurn } from '@/hooks/useRestoredTurn'
 
 /**
  * 路由检查器：把最近一轮的编排决策完整摊开。
@@ -13,14 +14,20 @@ import type { ChatMessage } from '@/hooks/useChatStream'
  *
  * 与对话流的分工：正文里的拦截区块说"切掉了哪句话"，这里说"依据什么规则、为什么"。
  */
-export function RoutingInspector({ message, thresholds }: {
+export function RoutingInspector({ message, thresholds, base }: {
   message?: ChatMessage
   /** 协作门槛的两个后端常量，来自 /monitor 快照。拿不到就不画门槛线——
    *  前端不写死后端常量，宁可少画一条线也不要一个会悄悄漂移的数字。 */
   thresholds?: { minScore: number; minRatio: number }
+  /** 后端地址：刷新前的历史消息要按 turn_id 去取那一轮的经过 */
+  base?: string
 }) {
   const { t } = useT()
   if (message?.restored) {
+    // 有 turn_id 才去事件日志里取：没有的（早于事件日志、或当时没开）照旧说没有
+    if (message.turnId && base) {
+      return <RestoredInspector message={message} base={base} thresholds={thresholds} />
+    }
     return <Empty>{t('in.restored')}</Empty>
   }
   if (!message || (!message.routing && !message.result)) {
@@ -172,6 +179,49 @@ export function RoutingInspector({ message, thresholds }: {
           <pre>{routing.reason}</pre>
         </details>
       )}
+    </>
+  )
+}
+
+/** 刷新前那一轮：取回之后原样交给上面那个检查器，取不到时说清楚为什么。 */
+function RestoredInspector({ message, base, thresholds }: {
+  message: ChatMessage
+  base: string
+  thresholds?: { minScore: number; minRatio: number }
+}) {
+  const turn = useRestoredTurn(base, message)
+  if (turn.state !== 'ready') return <TurnPending turn={turn} />
+  return (
+    <>
+      <TurnNotes redacted={turn.redacted} complete={turn.complete} />
+      <RoutingInspector message={turn.message} thresholds={thresholds} />
+    </>
+  )
+}
+
+/** 取回一轮的经过时，还没拿到（或拿不到）的那几种情况。 */
+export function TurnPending({ turn }: { turn: RestoredTurn }) {
+  const { t } = useT()
+  if (turn.state === 'expired') return <Empty>{t('in.turn.expired')}</Empty>
+  if (turn.state === 'error') {
+    return (
+      <p className="note danger" role="alert">
+        {t('in.turn.error')}
+        {turn.error instanceof Error && <span className="mono state-detail"> {turn.error.message}</span>}
+      </p>
+    )
+  }
+  if (turn.state === 'none') return <Empty>{t('in.restored')}</Empty>
+  return <div className="thinking"><span className="pulse" />{t('in.turn.loading')}</div>
+}
+
+/** 取回来的这一轮，原文删了、或者记录不全时先说一句：下面空着的地方不是"什么都没有"。 */
+export function TurnNotes({ redacted, complete }: { redacted: boolean; complete: boolean }) {
+  const { t } = useT()
+  return (
+    <>
+      {redacted && <p className="note neutral" style={{ marginBottom: 12 }}>{t('in.turn.redacted')}</p>}
+      {!complete && <p className="note caution" style={{ marginBottom: 12 }}>{t('in.turn.incomplete')}</p>}
     </>
   )
 }

@@ -11,9 +11,13 @@
 
 全部离线：模型是 conftest 的脚本化假模型，工具是记账的假 ToolManager。
 """
+import asyncio
 import importlib
 import json
+import os
+import re
 import sys
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -467,3 +471,177 @@ async def test_the_shadow_check_notices_when_the_response_and_the_events_drift(m
     assert answer.agent_type == "order"
     assert _sample("turn_projection_mismatch_total") == before + 1
     assert any("result.agent_type" in w and CANARY["answer"] not in w for w in warned)
+
+
+# ── 读接口 ────────────────────────────────────────────────────────────────────
+
+async def test_the_read_endpoints_return_the_projection_the_summary_and_the_raw_events(monkeypatch):
+    main, log = await _desk(monkeypatch, _Intent(IntentCategory.MISSING_PART))
+    answer, recorded = await _chat(main, log)
+
+    turn = await main.get_turn(answer["turn_id"])
+    assert turn == project_turn(recorded) and turn["complete"]
+    assert turn["result"]["response"] == answer["response"]
+
+    raw = await main.get_turn_events(answer["turn_id"])
+    assert [e["seq"] for e in raw["events"]] == list(range(len(recorded)))
+
+    listing = await main.list_conversation_turns("c1")
+    [summary] = listing["turns"]
+    assert {k: summary[k] for k in ("turn_id", "outcome", "agent_type", "intent", "handoff", "ticket_id",
+                                    "complete", "redacted")} == {
+        "turn_id": answer["turn_id"], "outcome": "answered", "agent_type": "order", "intent": "missing_part",
+        "handoff": False, "ticket_id": None, "complete": True, "redacted": False}
+    assert summary["latency_ms"] == answer["latency_ms"] and summary["ended_at"] >= summary["started_at"]
+
+
+async def test_the_read_endpoints_never_show_the_other_instance(monkeypatch):
+    """同一个 conv_id 下有一轮客户实例的：员工这边三个读接口都看不到它。"""
+    from fastapi import HTTPException
+
+    from app.events.types import Event
+
+    main, log = await _desk(monkeypatch, _Intent(IntentCategory.MISSING_PART))
+    answer, _ = await _chat(main, log)
+    theirs = Event(turn_id="0" * 26, seq=0, instance="customer", conv_id="c1", request_id="r", type="turn_started",
+                   agent="", step=None, call_id="", ts=0.0, t_ms=0.0, v=1, data="{}", body='{"message": "客户的"}')
+    log.store._turns[theirs.turn_id] = [theirs]
+
+    assert [t["turn_id"] for t in (await main.list_conversation_turns("c1"))["turns"]] == [answer["turn_id"]]
+    for read in (main.get_turn, main.get_turn_events):
+        with pytest.raises(HTTPException) as caught:
+            await read(theirs.turn_id)
+        assert caught.value.status_code == 404
+
+
+async def test_purged_text_reads_back_as_structure_only(monkeypatch):
+    main, log = await _desk(monkeypatch, _Intent(IntentCategory.MISSING_PART))
+    answer, _ = await _chat(main, log)
+    await log.store.purge_bodies(before_ts=float("inf"))
+
+    turn = await main.get_turn(answer["turn_id"])
+    assert turn["redacted"] and turn["result"]["response"] == "" and turn["meta"]["entities"] == {}
+    assert turn["result"]["agent_type"] == "order" and turn["meta"]["knowledge_used"] is True
+    assert (await main.list_conversation_turns("c1"))["turns"][0]["redacted"] is True
+
+
+async def test_with_reads_off_the_endpoints_do_not_exist(monkeypatch):
+    """客户实例配 AI_HELPDESK_EVENT_LOG_READ=off：日志照记，读接口一律 404。"""
+    from fastapi import HTTPException
+
+    monkeypatch.setenv("AI_HELPDESK_EVENT_LOG_READ", "off")
+    main, log = await _desk(monkeypatch, _Intent(IntentCategory.MISSING_PART))
+    answer, recorded = await _chat(main, log)
+    assert recorded                                            # 记照样记
+
+    for call in (main.get_turn(answer["turn_id"]), main.get_turn_events(answer["turn_id"]),
+                 main.list_conversation_turns("c1")):
+        with pytest.raises(HTTPException) as caught:
+            await call
+        assert caught.value.status_code == 404
+
+
+def test_the_read_endpoints_need_the_staff_key(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    for name, value in {"ANTHROPIC_API_KEY": "test-key", "AI_HELPDESK_API_KEY": "staff-key",
+                        "AI_HELPDESK_FRONTEND_DIST": "/nonexistent"}.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.delenv("APP_ENV", raising=False)
+    sys.modules.pop("app.api.main", None)
+    main = importlib.import_module("app.api.main")
+    client = TestClient(main.app)
+    for path in ("/turns/abc", "/turns/abc/events", "/conversations/c1/turns"):
+        assert client.get(path).status_code == 401
+        assert client.get(path, headers={"X-API-Key": "staff-key"}).status_code == 404   # 日志没开：没有可读的
+
+
+# ── 前端夹具：刷新之后的历史、取回的那一轮、工单 ──────────────────────────────
+#
+# 工作台按 turn_id 取回一轮的经过，再交给原来的检查器和学习模式渲染。前端测试用的就是
+# 这里录下来的东西（frontend/src/test/fixtures/turns/），不是手写的形状。平时这条用例核对
+# 夹具和后端现在的输出一致；后端改了投影而夹具没跟上，这里会红。
+#
+# 重新生成：
+#   AI_HELPDESK_RECORD_FIXTURES=<仓库>/frontend/src/test/fixtures/turns pytest tests/test_turn_projection.py -k fixtures
+
+TURN_FIXTURES = Path(__file__).resolve().parents[2] / "frontend" / "src" / "test" / "fixtures" / "turns"
+
+
+def _stable_turns(files: dict[str, str]) -> dict[str, str]:
+    """每次运行都不一样的值换成固定的：耗时、时间戳、工单号、turn_id。turn_id 在几个文件里对得上。"""
+    turns: dict[str, str] = {}
+    tickets: dict[str, str] = {}
+    out = {}
+    for name, text in files.items():
+        text = re.sub(r'("(?:intent_)?latency_ms": )[\d.]+', r"\g<1>0.0", text)
+        text = re.sub(r'("(?:created_at|updated_at)": )[\d.]+', r"\g<1>1760600000.0", text)
+        text = re.sub(r"tk_[0-9a-f]{12}", lambda m: tickets.setdefault(m.group(), f"tk_{len(tickets) + 1:012d}"), text)
+        out[name] = re.sub(r'(?<=")[0-9a-f]{26}(?=")',
+                           lambda m: turns.setdefault(m.group(), f"{len(turns) + 1:026x}"), text)
+    return out
+
+
+async def test_frontend_turn_fixtures_are_what_the_backend_sends(monkeypatch, tmp_path):
+    from app.core.request_context import request_id_var
+    from app.storage.conversation_log import ConversationLog
+
+    class _CleanTools:
+        """和上面的 _Tools 一样，只是不带金丝雀：夹具是给人看的。"""
+
+        async def call(self, name, params, context=None, **_):
+            if name == "knowledge_search":
+                return ToolResult(success=True, tool_name=name, data=[
+                    {"title": "补件流程", "content": "缺件补发在核实后安排。", "score": 0.6,
+                     "doc_id": "doc_1", "chunk_id": "c1", "chunk": 0, "retrieval": "hybrid"}])
+            return ToolResult(success=True, tool_name=name, data={**ORDER_DATA, "answer": "SO-1 的补件已排产。"})
+
+    tickets = TicketStore(db_path=str(tmp_path / "tickets.db"))
+    conv_log = ConversationLog(db_path=str(tmp_path / "conversations.db"))
+    main, log = await _desk(monkeypatch, _Intent(IntentCategory.MISSING_PART), tickets=tickets,
+                            models={t: _answer("补件已经登记，核实后安排发出。") for t in AgentType})
+    monkeypatch.setattr(main, "_conv_log", conv_log)
+    monkeypatch.setattr(main, "_tool_manager", _CleanTools())
+
+    async def recognize(message, history=None):
+        intent = IntentCategory.HUMAN_HANDOFF if "人工" in message else IntentCategory.MISSING_PART
+        return _Intent(intent, entities={"order_id": ["SO-1"]})
+
+    main._orchestrator.recognize_intent = recognize
+
+    async def turn(request_id: str, message: str):
+        request_id_var.set(request_id)
+        answer = await main.chat(main.ChatRequest(message=message, user_id="u1001", conv_id="conv-turns"), None)
+        await asyncio.gather(*list(main._background_tasks))      # 审计日志是后台写的
+        return answer
+
+    try:
+        answered = await turn("0a1b2c3d4e11", "SO-1 的补件到哪了")
+        handoff = await turn("0a1b2c3d4e12", "我要找人工")
+        request_id_var.set("-")
+        files = {
+            "conversation.json": await main.get_conversation("conv-turns"),
+            "turn-answered.json": await main.get_turn(answered.turn_id),
+            "turn-handoff.json": await main.get_turn(handoff.turn_id),
+            "ticket.json": await main.get_ticket(handoff.ticket_id),
+        }
+        await log.store.purge_bodies(before_ts=float("inf"))
+        files["turn-redacted.json"] = await main.get_turn(answered.turn_id)
+    finally:
+        await tickets.close()
+        await conv_log.close()
+    files = _stable_turns({name: json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+                           for name, payload in files.items()})
+
+    target = os.getenv("AI_HELPDESK_RECORD_FIXTURES", "").strip()
+    if target:
+        out = Path(target)
+        out.mkdir(parents=True, exist_ok=True)
+        for name, text in files.items():
+            (out / name).write_text(text, encoding="utf-8")
+        return
+    if not TURN_FIXTURES.is_dir():
+        pytest.skip("这份检出里没有前端夹具目录")
+    for name, text in files.items():
+        assert (TURN_FIXTURES / name).read_text(encoding="utf-8") == text, (
+            f"{name} 和后端现在的输出不一致：投影或读接口改了。确认是有意的之后重新生成夹具（见本节开头）。")

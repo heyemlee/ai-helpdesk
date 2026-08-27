@@ -1,0 +1,90 @@
+{
+  "turn_id": "00000000000000000000000001",
+  "complete": true,
+  "redacted": true,
+  "meta": {
+    "conv_id": "conv-turns",
+    "turn_id": "00000000000000000000000001",
+    "intent": "missing_part",
+    "intent_group": "missing_part",
+    "intent_confidence": 0.9,
+    "intent_strategy": "fast_path",
+    "intent_latency_ms": 0.0,
+    "intent_source_scores": {
+      "rules": 0.9,
+      "embedding": 0.0,
+      "llm": 0.0
+    },
+    "entities": {},
+    "knowledge_used": true,
+    "knowledge_sources": [
+      {
+        "doc_id": "doc_1",
+        "chunk_id": "c1",
+        "passage": 0,
+        "score": 0.6,
+        "retrieval": "hybrid"
+      }
+    ],
+    "knowledge": {
+      "attempted": true,
+      "mode": "direct",
+      "reranked": false,
+      "corrected": false,
+      "evidence_ok": null,
+      "degraded": false
+    },
+    "business_data": {
+      "enabled": true,
+      "attempted": true,
+      "outcome": "evidence",
+      "trace_id": "t-1",
+      "databases": [
+        "wms_db"
+      ],
+      "execution_status": "success",
+      "has_risk": false,
+      "degraded": false
+    }
+  },
+  "routing": {
+    "primary_agent": "order",
+    "supporting_agents": [],
+    "reason": "intent=missing_part, group=missing_part, primary=order, supporting=none, scores=[order=1.00, general=0.10, technical=0.00, billing=0.00]",
+    "confidence": 1.0,
+    "domain_scores": {
+      "general": 0.1,
+      "technical": 0.0,
+      "billing": 0.0,
+      "order": 1.0
+    }
+  },
+  "result": {
+    "conv_id": "conv-turns",
+    "request_id": "0a1b2c3d4e11",
+    "turn_id": "00000000000000000000000001",
+    "response": "",
+    "agent_type": "order",
+    "agent_types": [
+      "order"
+    ],
+    "primary_agent": "order",
+    "supporting_agents": [],
+    "routing_reason": "intent=missing_part, group=missing_part, primary=order, supporting=none, scores=[order=1.00, general=0.10, technical=0.00, billing=0.00]",
+    "routing_confidence": 1.0,
+    "escalated": false,
+    "handoff": false,
+    "handoff_reason": "",
+    "needs_clarification": false,
+    "answer_confidence": 0.9,
+    "policy_violations": [],
+    "service_unavailable": false,
+    "unavailable_reason": "",
+    "latency_ms": 0.0,
+    "ticket_id": null,
+    "ticket_status": "",
+    "ticket_notification": "",
+    "trajectory": [],
+    "answer_usage": {}
+  }
+}

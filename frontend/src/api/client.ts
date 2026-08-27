@@ -3,7 +3,7 @@ import type {
   EmbeddingConnectionBody, EmbeddingModelBody, EvalReport, HealthResponse, ImportResult,
   KnowledgeCategoryOverview, KnowledgeDocument, KnowledgeDocumentDetail, KnowledgeDocumentList,
   ModelListResult, ModelStatus, ModelTestResult, MonitorSummary, SearchResponse, SopList, StreamEvent,
-  TicketDetail, TicketList,
+  TicketDetail, TicketList, TurnProjection,
 } from './types'
 
 const DEFAULT_API_BASE = import.meta.env.VITE_API_BASE_URL || '/api'
@@ -123,6 +123,9 @@ export const api = {
 
   conversation: (base: string, convId: string) =>
     request<ConversationResponse>(base, `/conversations/${encodeURIComponent(convId)}`),
+  /** 一轮的经过。404：超出保留期，或者当时事件日志没开 */
+  turn: (base: string, turnId: string) =>
+    request<TurnProjection>(base, `/turns/${encodeURIComponent(turnId)}`),
 
   runEval: (base: string) => request<EvalReport>(base, '/eval/run', json({})),
 

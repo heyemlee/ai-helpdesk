@@ -228,6 +228,37 @@ def _result(evs, turn_id, conv_id, routing, started) -> dict[str, Any]:
     return result
 
 
+def summarize_turn(events) -> dict[str, Any]:
+    """
+    一轮的摘要：列一个会话的各轮用（GET /conversations/{conv_id}/turns）。
+
+    outcome 取终结事件：turn_completed 里记的结局（answered / handoff / clarification /
+    unavailable），turn_failed 记 failed，turn_aborted 记 aborted，没有终结事件记 incomplete。
+    """
+    evs = _decoded(events)
+    projected = project_turn(evs)
+    started = _first(evs, "turn_started")
+    terminal = next((e for e in evs if e["type"] in TERMINAL_TYPES), None)
+    completed = (terminal or {}).get("data", {}) if (terminal or {}).get("type") == "turn_completed" else {}
+    outcome = (completed.get("outcome") if completed
+               else {"turn_failed": "failed", "turn_aborted": "aborted"}.get((terminal or {}).get("type"), "incomplete"))
+    return {
+        "turn_id": projected["turn_id"],
+        "request_id": evs[0]["request_id"] if evs else "",
+        "started_at": (started or (evs[0] if evs else {})).get("ts"),
+        "ended_at": terminal["ts"] if terminal else None,
+        "outcome": outcome,
+        "agent_type": completed.get("agent_type", ""),
+        "intent": projected["meta"].get("intent", ""),
+        "handoff": bool(completed.get("handoff")),
+        "ticket_id": projected["result"].get("ticket_id"),
+        "latency_ms": completed.get("latency_ms"),
+        "model_calls": sum(1 for e in evs if e["type"] == "model_call"),
+        "complete": projected["complete"],
+        "redacted": projected["redacted"],
+    }
+
+
 def mismatches(projected: dict[str, Any], actual: dict[str, Any]) -> list[str]:
     """影子校验：投影里有、响应里也有、两边不一样的字段名。只报名字，不报值（值里有原文）。"""
     return sorted(k for k, v in projected.items() if k in actual and actual[k] != v)

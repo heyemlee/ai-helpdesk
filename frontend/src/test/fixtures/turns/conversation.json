@@ -1,0 +1,53 @@
+{
+  "conv_id": "conv-turns",
+  "messages": [
+    {
+      "seq": 1,
+      "conv_id": "conv-turns",
+      "user_id": "u1001",
+      "request_id": "0a1b2c3d4e11",
+      "role": "user",
+      "content": "SO-1 的补件到哪了",
+      "agent_type": "",
+      "created_at": 1760600000.0,
+      "turn_id": "00000000000000000000000001",
+      "instance": "staff"
+    },
+    {
+      "seq": 2,
+      "conv_id": "conv-turns",
+      "user_id": "u1001",
+      "request_id": "0a1b2c3d4e11",
+      "role": "assistant",
+      "content": "补件已经登记，核实后安排发出。",
+      "agent_type": "order",
+      "created_at": 1760600000.0,
+      "turn_id": "00000000000000000000000001",
+      "instance": "staff"
+    },
+    {
+      "seq": 3,
+      "conv_id": "conv-turns",
+      "user_id": "u1001",
+      "request_id": "0a1b2c3d4e12",
+      "role": "user",
+      "content": "我要找人工",
+      "agent_type": "",
+      "created_at": 1760600000.0,
+      "turn_id": "00000000000000000000000002",
+      "instance": "staff"
+    },
+    {
+      "seq": 4,
+      "conv_id": "conv-turns",
+      "user_id": "u1001",
+      "request_id": "0a1b2c3d4e12",
+      "role": "assistant",
+      "content": "这个问题需要由人工客服来处理。为了加快处理，请准备好订单号或柜号、以及现场照片等相关资料。",
+      "agent_type": "handoff",
+      "created_at": 1760600000.0,
+      "turn_id": "00000000000000000000000002",
+      "instance": "staff"
+    }
+  ]
+}

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, ApiError, streamChat, type Settings } from '@/api/client'
 import type {
   ChatResponse, ConversationEntry, RoutingConfig, StreamEvent, StreamMetaEvent, StreamProgressEvent,
-  StreamRoutingEvent, Ticket,
+  StreamRoutingEvent, Ticket, TurnProjection,
 } from '@/api/types'
 
 export interface ChatMessage {
@@ -20,12 +20,17 @@ export interface ChatMessage {
   meta?: Partial<StreamMetaEvent>
   routing?: StreamRoutingEvent
   result?: Partial<ChatResponse>
-  /** 刷新后从服务端审计日志恢复的历史消息：只有原文和作答 Agent，没有当轮的路由决策 */
+  /**
+   * 刷新后从服务端审计日志恢复的历史消息：只有原文和作答 Agent。当轮的路由决策要按
+   * turnId 从事件日志取回（检查器、学习模式打开时才取），见 withTurn
+   */
   restored?: boolean
   /** 恢复的助手消息实际作答的 Agent（后端 agent_type 字段） */
   agentType?: string
-  /** 恢复的助手消息那一轮建出的工单（按 request_id 从工单列表对上的） */
+  /** 恢复的助手消息那一轮建出的工单（按 turn_id，老记录按 request_id 从工单列表对上的） */
   ticketId?: string
+  /** 恢复的助手消息是哪一轮：按它取回这一轮的经过。老记录、老后端没有 */
+  turnId?: string
 }
 
 const newId = () =>
@@ -70,6 +75,25 @@ export function applyChatResponse(m: ChatMessage, res: ChatResponse): ChatMessag
 }
 
 /**
+ * 刷新前那一轮：把后端从事件投影出来的 meta / routing / result 拼回消息上，检查器和
+ * 学习模式照当轮的样子渲染，不写第二套显示逻辑。
+ *
+ * 正文优先用投影里的（和当轮发出去的一致）；原文已按保留期清空时它是空的，留着审计
+ * 日志里的那份——审计日志是合规留档，保留期比事件日志长。
+ */
+export function withTurn(m: ChatMessage, turn: TurnProjection): ChatMessage {
+  const routing = turn.routing?.primary_agent ? (turn.routing as StreamRoutingEvent) : undefined
+  return {
+    ...m,
+    restored: false,
+    content: turn.result?.response || m.content,
+    meta: turn.meta,
+    routing,
+    result: turn.result,
+  }
+}
+
+/**
  * 这一轮是不是兜底 Agent 替专家答的。是的话返回实际作答的 Agent，否则 undefined。
  *
  * 只认后端明说的那一种：路由选了某个专家，响应里的 agent_type 却是兜底 Agent，
@@ -90,19 +114,22 @@ export function fallbackAgent(
  * 把 /conversations/{conv_id} 的审计日志变成对话流里的消息。
  * 按 seq 排序而不是信任返回顺序；只认 user/assistant 两种角色。
  *
- * 审计日志不记工单号。传了工单列表的话，按 request_id 把那一轮建出的工单对回去——
- * 刷新之后，转人工的那条回复下面还能看到工单并点过去。对不上就不显示，不猜。
+ * 审计日志不记工单号。传了工单列表的话，把那一轮建出的工单对回去——刷新之后，转人工
+ * 的那条回复下面还能看到工单并点过去。先按 turn_id 对（服务端生成，可靠）；老记录没有
+ * turn_id，退回按 request_id 对（它可能由客户端决定）。对不上就不显示，不猜。
  */
 export function restoreMessages(entries: ConversationEntry[], tickets: Ticket[] = []): ChatMessage[] {
-  const ticketOf = new Map(tickets.filter((t) => t.request_id).map((t) => [t.request_id, t.id]))
+  const byTurn = new Map(tickets.filter((t) => t.turn_id).map((t) => [t.turn_id!, t.id]))
+  const byRequest = new Map(tickets.filter((t) => t.request_id).map((t) => [t.request_id, t.id]))
   return [...entries]
     .sort((a, b) => a.seq - b.seq)
     .filter((e) => e.role === 'user' || e.role === 'assistant')
     .map((e) => e.role === 'user'
       ? { id: `restored-${e.seq}`, role: 'user' as const, content: e.content, restored: true }
       : { id: `restored-${e.seq}`, role: 'assistant' as const, content: e.content,
-          restored: true, agentType: e.agent_type || undefined,
-          ticketId: (e.request_id && ticketOf.get(e.request_id)) || undefined })
+          restored: true, agentType: e.agent_type || undefined, turnId: e.turn_id || undefined,
+          ticketId: (e.turn_id && byTurn.get(e.turn_id))
+            || (e.request_id && byRequest.get(e.request_id)) || undefined })
 }
 
 /**

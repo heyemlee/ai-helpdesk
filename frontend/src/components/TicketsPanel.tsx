@@ -5,6 +5,9 @@ import { useConversation, useSetTicketStatus, useTicket, useTickets } from '@/ap
 import { ApiError } from '@/api/client'
 import { Chip, StateBlock, type Tone } from './ui'
 import { Icon } from './Icon'
+import { RoutingInspector, TurnNotes, TurnPending } from './RoutingInspector'
+import { useRestoredTurn } from '@/hooks/useRestoredTurn'
+import type { ChatMessage } from '@/hooks/useChatStream'
 import { agentIdentity, dateTime, num } from '@/lib/format'
 import { explainError } from '@/lib/errors'
 import { handoffReason } from '@/lib/handoff'
@@ -155,6 +158,31 @@ function notificationText(
   return t('tk.notify.pending', { n: n.attempts })
 }
 
+/**
+ * 转人工那一轮的经过：用工单上的 turn_id 从事件日志取回，原样交给编排检查器。
+ * 点了才取；超出保留期、或者当时日志没开，照实说。老工单没有 turn_id，这一节不出现。
+ */
+function TicketTurn({ base, turnId }: { base: string; turnId: string }) {
+  const { t } = useT()
+  const [open, setOpen] = useState(false)
+  const message: ChatMessage = { id: turnId, role: 'assistant', content: '', restored: true, turnId }
+  const turn = useRestoredTurn(base, message, open)
+  return (
+    <section className="ticket-section" aria-labelledby="tk-turn">
+      <h3 id="tk-turn">{t('tk.turn')}</h3>
+      <p className="field-hint">{t('tk.turn.note')}</p>
+      {!open ? (
+        <button className="btn btn-secondary" onClick={() => setOpen(true)}>{t('tk.turn.show')}</button>
+      ) : turn.state === 'ready' ? (
+        <div className="ticket-turn">
+          <TurnNotes redacted={turn.redacted} complete={turn.complete} />
+          <RoutingInspector message={turn.message} />
+        </div>
+      ) : <TurnPending turn={turn} />}
+    </section>
+  )
+}
+
 function TicketDetailView({ base, ticketId }: { base: string; ticketId: string }) {
   const { t, lang } = useT()
   const { data: ticket, error, isError, refetch } = useTicket(base, ticketId)
@@ -237,6 +265,8 @@ function TicketDetailView({ base, ticketId }: { base: string; ticketId: string }
           <p className="ticket-quote">{reason}</p>
           <p className="field-hint">{t('tk.reason.note')}</p>
         </section>
+
+        {ticket.turn_id && <TicketTurn base={base} turnId={ticket.turn_id} />}
 
         <section className="ticket-section" aria-labelledby="tk-status">
           <h3 id="tk-status" ref={statusHeading} tabIndex={-1}>{t('tk.status.title')}</h3>

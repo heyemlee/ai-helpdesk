@@ -1,0 +1,20 @@
+{
+  "what": "刷新之后工作台按 turn_id 取回一轮的经过：同一个会话里的两轮（专家作答、明确要求人工），审计日志、两轮的投影、原文按保留期清空之后的投影，以及转人工建出的那张工单。",
+  "generated_by": "backend/tests/test_turn_projection.py::test_frontend_turn_fixtures_are_what_the_backend_sends",
+  "regenerate": "AI_HELPDESK_RECORD_FIXTURES=<repo>/frontend/src/test/fixtures/turns pytest tests/test_turn_projection.py -k fixtures",
+  "offline": true,
+  "model": "没有模型参与：专家接的是脚本化的假模型，工具是假的 ToolManager，事件日志存在进程内的环形缓冲里。",
+  "normalised": [
+    "latency_ms / intent_latency_ms 归零",
+    "created_at / updated_at 换成固定时间戳",
+    "工单号换成固定值",
+    "turn_id 按出现先后换成 0…01、0…02，几个文件里对得上"
+  ],
+  "files": {
+    "conversation.json": "GET /conversations/conv-turns：每条带 turn_id 和 instance",
+    "turn-answered.json": "GET /turns/0…01：订单专家作答",
+    "turn-handoff.json": "GET /turns/0…02：明确要求人工，建了工单",
+    "turn-redacted.json": "GET /turns/0…01，原文按保留期清空之后：结构还在，原话、摘录和回答没了",
+    "ticket.json": "GET /tickets/tk_…01：带 turn_id，工单详情据此打开那一轮"
+  }
+}

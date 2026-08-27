@@ -89,7 +89,7 @@ from app.core.request_context import (  # noqa: E402
     setup_logging,
 )
 from app.events import EventLog, EventLogConfig, TurnRecorder, bind, events, instance_from_env  # noqa: E402
-from app.events.projection import mismatches, project_turn  # noqa: E402
+from app.events.projection import mismatches, project_turn, summarize_turn  # noqa: E402
 
 # LOG_FORMAT=json 输出单行 JSON（采集到 ELK/Datadog）；默认文本便于本地阅读。
 # 两种格式都带 request_id，一条日志能定位到一次请求。
@@ -1708,6 +1708,50 @@ async def get_conversation(conv_id: str, limit: int = 500):
     if not entries:
         raise HTTPException(404, f"对话不存在或已超出留存期: {conv_id}")
     return {"conv_id": conv_id, "messages": [e.to_dict() for e in entries]}
+
+
+# ── 一轮的经过（事件日志的读接口）──────────────────────────────────────────────
+#
+# 全部要员工钥匙，只读本实例的行（存储按实例隔离）。AI_HELPDESK_EVENT_LOG_READ=off 时返回
+# 404，和接口不存在一样——客户实例这样配；对外的 nginx 本来也只放行 /chat、/chat/stream、
+# /health，这是第二层。
+
+def _turn_reads():
+    if not _event_log.readable:
+        raise HTTPException(404, "Not Found")
+    return _event_log.store
+
+
+@app.get("/conversations/{conv_id}/turns", tags=["Tickets"], dependencies=[Depends(require_api_key)])
+async def list_conversation_turns(conv_id: str, limit: int = 50):
+    """这个会话的各轮，新的在前：结局、作答 Agent、意图、转人工、工单、耗时、完整不完整。"""
+    store = _turn_reads()
+    turn_ids = await store.turn_ids_of(conv_id, limit=max(1, min(limit, 200)))
+    by_turn = await store.events_of_turns(turn_ids)
+    return {"conv_id": conv_id,
+            "turns": [summarize_turn(by_turn[t]) for t in turn_ids if t in by_turn]}
+
+
+@app.get("/turns/{turn_id}", tags=["Tickets"], dependencies=[Depends(require_api_key)])
+async def get_turn(turn_id: str):
+    """
+    一轮的经过：{turn_id, complete, redacted, meta, routing, result}，三个对象和当轮响应
+    （/chat/stream 的 meta、routing、result）同一个形状。工作台刷新之后靠它恢复检查器和
+    学习模式；超出保留期、或者当时日志没开，返回 404。
+    """
+    events = await _turn_reads().events_of(turn_id)
+    if not events:
+        raise HTTPException(404, f"这一轮的经过不存在或已超出保留期: {turn_id}")
+    return project_turn(events)
+
+
+@app.get("/turns/{turn_id}/events", tags=["Tickets"], dependencies=[Depends(require_api_key)])
+async def get_turn_events(turn_id: str):
+    """一轮的原始事件，按 seq 排好。"""
+    events = await _turn_reads().events_of(turn_id)
+    if not events:
+        raise HTTPException(404, f"这一轮的经过不存在或已超出保留期: {turn_id}")
+    return {"turn_id": turn_id, "events": [e.to_dict() for e in events]}
 
 
 @app.post("/tickets/{ticket_id}/status", tags=["Tickets"], dependencies=[Depends(require_api_key)])

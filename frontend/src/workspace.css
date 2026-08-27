@@ -440,6 +440,8 @@ section > .state-block { margin-top: 14px; }
 .explain-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; font-size: 11px; color: var(--color-text-tertiary); }
 .explain-foot .redaction-why { margin: 0 0 0 auto; }
 .lm-quote { color: var(--color-text-secondary); }
+/* 学习模式里刷新前的那一轮：点"这一轮的经过"才去事件日志取。.turn 是 grid，按钮别撑满一行 */
+.restored-turn { justify-self: start; }
 
 /* Tickets */
 table.data.ticket-table { font-size: 13px; }
@@ -454,6 +456,9 @@ table.data.ticket-table { font-size: 13px; }
 .ticket-quote { font-size: 15px; line-height: 1.7; color: var(--color-text); white-space: pre-wrap; overflow-wrap: anywhere; }
 .ticket-actions, .ticket-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .ticket-confirm p { flex-basis: 100%; font-size: 13px; color: var(--color-text); }
+/* 工单详情里"转人工那一轮的经过"：编排检查器原样放进来 */
+.ticket-section > .btn { justify-self: start; }
+.ticket-turn { display: grid; gap: 12px; padding: 14px 16px; border-radius: 12px; background: var(--color-surface-secondary); }
 .transcript { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
 .transcript li { padding: 12px 14px; border-radius: 12px; background: var(--color-surface-secondary); }
 .transcript li.from-user { background: var(--accent-soft); }

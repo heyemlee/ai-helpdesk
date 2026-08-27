@@ -1,8 +1,11 @@
+import { useState } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Chip } from './ui'
 import { Icon } from './Icon'
 import { TurnExplanation } from './TurnExplanation'
+import { TurnNotes, TurnPending } from './RoutingInspector'
+import { useRestoredTurn } from '@/hooks/useRestoredTurn'
 import { agentIdentity, agentLabel } from '@/lib/format'
 import { href } from '@/lib/route'
 import { unauthorizedKey } from '@/lib/errors'
@@ -257,6 +260,35 @@ function LiveTicketNote({ base, ticketId, initialStatus, initialNotification }: 
   return <TicketNote ticketId={ticketId} status={status} notification={notification} />
 }
 
+/**
+ * 学习模式里刷新前的那一轮：点一下才去事件日志取（历史有几十条时，不为每一条都发请求），
+ * 取回来照当轮的样子讲。取不到时说清楚为什么。
+ */
+function RestoredExplanation({ message, base, routingConfig, onInspect }: {
+  message: ChatMessage
+  base: string
+  routingConfig?: RoutingConfig
+  onInspect?: () => void
+}) {
+  const { t } = useT()
+  const [open, setOpen] = useState(false)
+  const turn = useRestoredTurn(base, message, open)
+  if (!open) {
+    return (
+      <button type="button" className="btn btn-secondary restored-turn" onClick={() => setOpen(true)}>
+        <Icon name="panel" size={14} />{t('cw.turn.show')}
+      </button>
+    )
+  }
+  if (turn.state !== 'ready') return <TurnPending turn={turn} />
+  return (
+    <>
+      <TurnNotes redacted={turn.redacted} complete={turn.complete} />
+      <TurnExplanation message={turn.message} routingConfig={routingConfig} onInspect={onInspect} />
+    </>
+  )
+}
+
 export function MessageBubble({ message, onInspect, explain, routingConfig, base }: {
   message: ChatMessage
   onInspect?: () => void
@@ -317,6 +349,9 @@ export function MessageBubble({ message, onInspect, explain, routingConfig, base
         {message.ticketId && (base
           ? <LiveTicketNote base={base} ticketId={message.ticketId} />
           : <TicketNote ticketId={message.ticketId} />)}
+        {explain && message.turnId && base && (
+          <RestoredExplanation message={message} base={base} routingConfig={routingConfig} onInspect={onInspect} />
+        )}
       </article>
     )
   }
