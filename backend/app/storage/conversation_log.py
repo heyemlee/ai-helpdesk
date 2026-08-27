@@ -166,6 +166,22 @@ class ConversationLog:
                 ).fetchall()
         return [_entry(r) for r in rows]
 
+    async def conv_ids_of_user(self, user_id: str, instance: str) -> list[str]:
+        """
+        这个用户在本实例的会话，按第一次出现的先后（删除请求按用户找会话用，见 events/ops.forget）。
+        和 get_conversation 一个口径：本实例写的，加上分不出实例的老记录。
+        """
+        return await asyncio.to_thread(self._conv_ids_of_user, user_id, instance)
+
+    def _conv_ids_of_user(self, user_id: str, instance: str) -> list[str]:
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT conv_id FROM conversation_log WHERE user_id = ? AND instance IN (?, '')"
+                " GROUP BY conv_id ORDER BY MIN(seq)",
+                (user_id, instance),
+            ).fetchall()
+        return [r["conv_id"] for r in rows]
+
     async def stats(self) -> dict[str, int]:
         return await asyncio.to_thread(self._stats)
 
@@ -261,6 +277,15 @@ class PgConversationLog:
                 conv_id, instance, limit,
             )
         return [_entry(r) for r in rows]
+
+    async def conv_ids_of_user(self, user_id: str, instance: str) -> list[str]:
+        rows = await self._db.fetch(
+            "SELECT c.conv_id FROM conversation_log c LEFT JOIN conversation_log_turns t ON t.seq = c.seq"
+            " WHERE c.user_id = $1 AND COALESCE(t.instance, '') IN ($2, '')"
+            " GROUP BY c.conv_id ORDER BY MIN(c.seq)",
+            user_id, instance,
+        )
+        return [r["conv_id"] for r in rows]
 
     async def stats(self) -> dict[str, int]:
         row = await self._db.fetchrow(

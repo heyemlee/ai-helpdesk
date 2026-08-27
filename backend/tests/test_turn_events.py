@@ -558,6 +558,18 @@ async def test_postgres_audit_and_tickets_point_back_to_the_turn():
             ("加列之前", "", ""), ("员工这边", "t-staff", "staff")]
         assert len(await log.get_conversation(conv)) == 3
 
+        # 按用户删除事件时从审计找会话：本实例写的，加上分不出实例的老记录
+        who, legacy, staff_conv, customer_conv = (f"u-{uuid.uuid4().hex[:8]}", f"{conv}-a", f"{conv}-b",
+                                                  f"{conv}-c")
+        await db.execute(
+            "INSERT INTO conversation_log (conv_id, user_id, role, content, created_at)"
+            " VALUES ($1, $2, 'user', '加列之前', $3)", legacy, who, time.time())
+        await log.append(staff_conv, who, "user", "员工这边", turn_id="t-1", instance="staff")
+        await log.append(staff_conv, who, "assistant", "回答", turn_id="t-1", instance="staff")
+        await log.append(customer_conv, who, "user", "客户那边", turn_id="t-2", instance="customer")
+        assert await log.conv_ids_of_user(who, "staff") == [legacy, staff_conv]
+        assert await log.conv_ids_of_user(who, "customer") == [legacy, customer_conv]
+
         tickets = PgTicketStore(db)
         ticket = await tickets.create(conv_id=conv, user_id="u1", reason="用户要求人工", turn_id="t-staff")
         assert (await tickets.get(ticket.id)).turn_id == "t-staff"

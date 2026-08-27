@@ -217,6 +217,12 @@ class Database:
         await self._init_schema(embedding_dim, verify_dim)
         logger.info(f"Postgres 已连接，向量维度 {embedding_dim}")
 
+    async def connect_pool(self) -> None:
+        """只建连接池，不建表、不校验维度。给只读、只删事件日志的运维脚本用（scripts/turn_events.py）。"""
+        self._pool = await asyncpg.create_pool(
+            self._dsn, min_size=1, max_size=self._max, timeout=10.0
+        )
+
     async def _init_schema(self, dim: int, verify_dim: bool = True) -> None:
         assert self._pool is not None
         async with self._pool.acquire() as conn:
