@@ -68,6 +68,8 @@ flowchart TD
 
 轨迹 A/B（[评测记录](evaluation/tool-loop-ab.md)）第二轮 10 道打开门槛全过：规则漏掉数据的 B 类问题从 0/30 轮拿到数据变成 26/30，没有越权调用、没有编造数字，所以员工实例上打开了循环，客户实例保持关闭。
 
+每一轮从开始到结束发生的事——上图的每个节点、每次模型调用（意图、改写、重排、作答、摘要、画像，带用途和 token）、每次工具调用、守卫替换、转人工和工单、最终回答，以及没答完、模型不可用、客户端中途断开——都按顺序记成事件（`AI_HELPDESK_EVENT_LOG`，默认关）。记日志不在回答路径上等任何 I/O，写不进去只丢日志、不影响回答；每轮结束时拿内存里的事件投影一次，和真正发出去的响应比（影子校验），对不上只记日志和指标。见第 4 节。
+
 ## 3. Agent 阵容与路由
 
 ```mermaid
@@ -121,6 +123,7 @@ flowchart LR
         UP[(user_profile<br/>用户画像，每用户单条)]
         TK[(tickets<br/>人工工单，四态)]
         CL[(conversation_log<br/>审计原文 append-only)]
+        TE[(turn_events<br/>一轮的事件日志<br/>原文 30 天 · 结构 180 天)]
     end
     subgraph 文件
         SK[skills/*/SKILL.md<br/>可热加载]
@@ -129,7 +132,13 @@ flowchart LR
 
     WM -->|满 15 条触发 LLM 摘要压缩| SUM
     SUM --> EP
+    CL -.->|turn_id| TE
+    TK -.->|turn_id| TE
 ```
+
+`turn_events` 的主键是 `turn_id + seq`：`turn_id` 由服务端生成（`request_id` 在客户实例上由客户端决定，不能当主键），seq 在进程里分配，写入重试时同一条事件还是同一个主键，`ON CONFLICT DO NOTHING` 天然幂等。每条事件分成结构（`data`：枚举、数字、id、哈希）和原文（`body`：客户、模型、知识库、业务系统说的话）两半；原文员工实例 30 天、客户实例 14 天后由服务自己清空，结构留半年。两个实例共用这张表，按 `instance` 列分开，每个查询都带它。审计和工单各有一个 `turn_id` 指回那一轮（Postgres 上记在旁边的 `conversation_log_turns`、`ticket_turns` 里，不给原表加列：两个实例共用一个库，还没升级的那个实例和回滚用的旧镜像都按 `SELECT *` 读原表）：工作台刷新之后、工单详情里，都按它从 `GET /turns/{turn_id}` 取回那一轮的路由和经过。备份只带这张表的结构，不带数据。
+
+这份日志也是持久执行的数据基础：每一步的原始输出和工具结果都在，循环状态可以从事件纯函数地重建（`app/events/replay.py` 的 `rebuild_loop_state`），在途的工具调用看得出来，幂等键（`turn_id:call_id`）已经记在 `tool_started` 上。同步落盘、租约和续跑还没有做。
 
 ## 5. 监控与评测闭环
 

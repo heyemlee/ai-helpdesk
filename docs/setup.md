@@ -79,6 +79,27 @@ The startup log states the deadline in use and warns when an explicit one leaves
 
 [run_trajectory_eval.py](../backend/scripts/run_trajectory_eval.py) compares the loop with the rule-only path on 40 trajectory cases. It calls the model only with `--yes`, prints its call estimate first, and replays order data from the [a2a-contract](https://github.com/heyemlee/a2a-contract) fixtures.
 
+## Keep a record of each turn
+
+`AI_HELPDESK_EVENT_LOG=full` records everything a turn does, in order: memory, the intent vote, the prefetch plan and both rule lookups, routing, every model call (intent, rewrite, rerank, answer, summary, profile) with its tokens, every tool call the loop starts, answer-guard replacements, handoff and ticket, and the final answer, or why there was none. Events go to the `turn_events` table in Postgres, written in batches outside the answer path. If a write fails, the log loses events and the reply goes out unchanged; `GET /health` reports `event_log.dropped`. Without Postgres the last 200 turns are kept in memory.
+
+Each event has a structure half (enums, numbers, ids, hashes) and a text half (what the customer, the model, the knowledge base or the business systems said). The text expires first, so an old turn still shows its routing, scores and outcome without the words.
+
+| Variable                          | Default | Meaning                                                                                              |
+| --------------------------------- | ------- | ---------------------------------------------------------------------------------------------------- |
+| `AI_HELPDESK_EVENT_LOG`           | `off`   | `full` records structure and text, `meta` structure only, `off` nothing. A `turn_id` is returned either way. Set it in `backend/.env`, like the tool loop; both instances read that file |
+| `AI_HELPDESK_INSTANCE`            | unset   | `staff` or `customer`. Both instances share one table; with the log on and this unset, the log stays off |
+| `AI_HELPDESK_EVENT_LOG_BODY_DAYS` | 30      | Days before the text is cleared (14 on the customer instance in compose); `0` keeps it               |
+| `AI_HELPDESK_EVENT_LOG_DAYS`      | 180     | Days before whole rows are deleted; `0` keeps them. The service purges once a day                    |
+| `AI_HELPDESK_EVENT_LOG_READ`      | `on`    | The read endpoints below; compose turns them off on the customer instance                           |
+
+With reads on and the staff key, `GET /turns/{turn_id}` returns a past turn as the same `meta`, `routing` and `result` the stream sent, and the console uses it to reopen the inspector and Learning mode after a refresh and to show a ticket's handed-off turn. `GET /conversations/{conv_id}/turns` lists a conversation's turns, and `GET /turns/{turn_id}/events` returns the raw events. Backups made by `scripts/docker-deploy.sh` keep the table but not its rows.
+
+Two scripts run on the host against `POSTGRES_DSN`:
+
+- [turn_events.py](../backend/scripts/turn_events.py) `show`, `check` and `forget` read one instance's turns, report turns with missing events, and delete a conversation's or a user's events (with `--yes`). A user's conversations are found in the turn log's text and in the audit log, so turns whose text has already expired are still found; the audit log itself is left alone.
+- [replay_turns.py](../backend/scripts/replay_turns.py) replays recorded turns through the current routing (`route`) or answer guard (`guard`) and exports them as trajectory cases (`export`), all without a model call. `answer` re-answers with the current model and only runs with `--yes`.
+
 ## Add your business knowledge
 
 Upload `.txt`, `.md` or JSON document lists in the knowledge page, or use the API:

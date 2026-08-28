@@ -140,6 +140,7 @@ pip install -r requirements.txt && pytest
 | 拦截无依据的价格/时效承诺（日期换了写法也按同一天认出处） | `app/core/answer_policy.py` | `tests/test_answer_policy.py`；响应里的 `policy_violations` |
 | 作答阶段的有边界工具循环（可选，默认关） | `app/agents/tool_loop.py`（预算、去重、准入、墙钟上限）、`app/tools/turn_tools.py`（两个工具、报价策略门、预取委派超时后不再委派） | `tests/test_tool_loop.py`、`tests/test_agent_tool_loop.py`；响应里的 `trajectory` |
 | OpenAI 兼容端点的工具调用 | `app/core/openai_compat.py`：`tools` / `tool_choice`、`tool_use` / `tool_result` 和 `tool_calls` 互译，流式分片按 index 拼 | `tests/test_openai_compat.py` |
+| 一轮的事件日志：每个决定、每次模型和工具调用按顺序落库，原文和结构分开保留 | `app/events/`（记录器、批量写入、按实例隔离的存储、保留期、投影、重放）；模型调用在 `core/llm_guard.GuardedLLMClient` 那一层记 | `tests/test_turn_events.py`、`test_turn_projection.py`、`test_turn_model_calls.py`、`test_turn_replay.py`；`GET /turns/{turn_id}` |
 | 轨迹评测：规则组对循环组 | `app/evaluation/trajectory.py`、`scripts/run_trajectory_eval.py`（订单数据读 a2a-contract 夹具） | `tests/test_trajectory_eval.py`；记录见 `docs/evaluation/tool-loop-ab.md` |
 | 四维 LLM-as-Judge | `app/evaluation/evaluator.py::LLMJudge` | `test_judge_prompt_names_all_four_dimensions` |
 | 相对存档基线的回归检测 | `EndToEndEvaluator._detect_regressions`，基线需显式提升 | `test_baseline_is_not_overwritten_on_every_run` |
@@ -225,6 +226,27 @@ AI_HELPDESK_TOOL_LOOP=on
 启动日志会写出实际用的墙钟上限；显式配得太小、查库塞不进去时会告警。模型网关不支持工具调用时，这一轮退回
 单次生成，`/health` 的 `tool_loop.tools_rejected` 变成 `true`。打开之前可以先用
 `scripts/run_trajectory_eval.py` 在 40 条轨迹用例上比较规则组和循环组（加 `--yes` 才调模型，先打印调用量估算）。
+
+#### 记下每一轮的经过（可选，默认关）
+
+每一轮从开始到结束发生的事按顺序记成事件，追加进 Postgres 的 `turn_events` 表：读记忆、意图投票、预取门控和
+两路规则预取、路由、每次模型调用（意图、改写、重排、作答、摘要、画像，带用途和 token）、工具循环里的每次工具调用、
+守卫替换、转人工和工单、最终回答，以及没答完、模型不可用、客户端中途断开。写入在回答路径之外攒批进行，写不进去
+只丢日志、不影响回答。没有 Postgres 时存进程内最近 200 轮，重启就没了。
+
+```env
+AI_HELPDESK_EVENT_LOG=full                   # full：结构和原文；meta：只记结构；off：一条都不记（turn_id 照样返回）
+AI_HELPDESK_INSTANCE=staff                   # staff 或 customer；日志打开而它没设时，日志不开
+# AI_HELPDESK_EVENT_LOG_BODY_DAYS=30         # 多少天后清空原文；0 不清。compose 给客户实例配 14
+# AI_HELPDESK_EVENT_LOG_DAYS=180             # 多少天后删除整行；0 不删。服务每天自己清一次
+# AI_HELPDESK_EVENT_LOG_READ=on              # 读接口开不开；客户实例设 off
+```
+
+每条事件分成结构（`data`：枚举、数字、id、哈希）和原文（`body`）两半，原文先到期清空。读接口要员工钥匙、只读本实例的行：
+`GET /turns/{turn_id}` 返回和当轮 `meta` / `routing` / `result` 一样形状的投影，工作台刷新后靠它恢复检查器和学习模式、
+工单详情靠它打开"转人工那一轮的经过"。运维脚本 `scripts/turn_events.py`（`show` / `check` / `forget`）和重放脚本
+`scripts/replay_turns.py`（`route` / `guard` / `export` 不调模型，`answer` 要 `--yes`）在本机跑，见
+[docs/ops/turn-event-log.md](../docs/ops/turn-event-log.md)。
 
 Docker Compose 场景下，Redis 和 Postgres(pgvector) 的连接由 `docker-compose.yml` 覆盖为容器内地址。通常不需要手动改：
 
@@ -532,6 +554,9 @@ http://localhost/docs
 | `POST` | `/eval/run` | 无 | 运行内置意图识别和端到端对话评测 | 四维 LLM-as-Judge + 回归检测 |
 | `GET` | `/eval/baseline` | 无 | 查看当前对比基线 | 回归结论都是相对这份数据得出的 |
 | `POST` | `/eval/promote` | 无 | 把最近一次评测提升为新基线 | 人工确认分数可接受后调用 |
+| `GET` | `/turns/{turn_id}` | Path | 一轮的经过：`{turn_id, complete, redacted, meta, routing, result}`，三个对象和当轮流式的同名事件一样。超出保留期、或当时日志没开时 404；`AI_HELPDESK_EVENT_LOG_READ=off` 时一律 404。需要 `X-API-Key` | 刷新后恢复检查器和学习模式、工单打开转人工那一轮 |
+| `GET` | `/turns/{turn_id}/events` | Path | 这一轮的原始事件，按 seq 排好。需要 `X-API-Key` | 排障、看时间都花在哪 |
+| `GET` | `/conversations/{conv_id}/turns` | Query `limit` | 一个会话的各轮（新的在前）：结局、作答 Agent、意图、转人工、工单、耗时、模型调用数、完整不完整。需要 `X-API-Key` | 看一个会话每一轮怎么走的 |
 | `GET` | `/docs` | 浏览器访问 | Swagger UI | 浏览和调试所有接口 |
 
 ### 5.2 Skills 动态能力加载
@@ -629,6 +654,11 @@ curl http://localhost:8080/health
 响应里的 `tool_loop` 一项：`enabled` 是工具循环开没开（`AI_HELPDESK_TOOL_LOOP`）；`tools_rejected` 为 `true`
 说明模型网关明确拒绝过工具调用，专家因此退回了单次生成，开关开着、实际没在用。
 
+响应里的 `event_log` 一项是事件日志的状态：`mode`（`full` / `meta` / `off`）、`instance`、`read`（读接口开没开）、
+`store`（`postgres` 或 `memory`）、`queue_depth`、`written`、`dropped`（按原因分的在 `dropped_by_reason`）、
+`last_error`（只有异常类名：这个接口在客户实例上是匿名可读的）和保留期（`retention`：两个天数和上次清理的时间、清了多少）。
+配了要开、却没开成（比如 `AI_HELPDESK_INSTANCE` 没设）时，`disabled_reason` 写明原因。
+
 已知限制和尚未完成的验证（真实中继下的表现、两项目联调等）记在
 [docs/ops/model-outage-handling.md](../docs/ops/model-outage-handling.md)。
 
@@ -653,6 +683,9 @@ curl http://localhost:8080/health
 | `message` | 是 | 用户输入 |
 | `user_id` | 否 | 用户 ID，默认 `anonymous` |
 | `conv_id` | 否 | 会话 ID，不传则自动生成 |
+
+`user_id`、`conv_id` 会原样进审计、工单和事件日志：含 NUL、控制字符（`\x00`–`\x1f`、`\x7f`）或孤立代理字符，
+或超过 200 个字的，`/chat` 和 `/chat/stream` 都直接回 422，这一轮不开始。正常客户端用 UUID，不受影响。
 
 返回字段：
 
@@ -680,6 +713,7 @@ curl http://localhost:8080/health
 | `trajectory` | 工具循环打开时才有：这一轮的工具调用，从规则预取的两条开始，每条有查询词、结局、是否复用和耗时 |
 | `answer_usage` | 工具循环打开时才有：作答阶段的模型调用次数和 token；被要求直接作答时带 `forced`，退回单次生成时带 `fallback` |
 | `latency_ms` | 端到端耗时 |
+| `turn_id` | 这一轮的 id，服务端生成；事件日志、审计和工单都按它指回这一轮（`GET /turns/{turn_id}`）。日志关着时也有，流式在 `meta` 和 `result` 里 |
 
 ### 5.5 `/search`
 

@@ -296,9 +296,39 @@ JSON 被 markdown 围栏包住、字段名或类型漂了——而三种的表�
 推理模型才认（`reasoning_effort` 传给非推理模型直接 400）。硬映射会把"省点钱"
 换成"整条链路挂掉"；丢掉只影响成本，不影响产出形状。
 
+## 15. 事件日志 · `backend/app/events/`
+
+| 看什么 | 符号 |
+|---|---|
+| 一轮的记录器（contextvar，调用点只写一行） | `recorder.py`：`events()`、`bind()`、`TurnRecorder.emit` |
+| 事件类型（固定集合，有测试列全） | `types.py`：`EVENT_TYPES`、`Event` |
+| 模型调用在哪记、用途怎么标 | `model_calls.py`（套在 `core/llm_guard.GuardedLLMClient` 上）、`recorder.model_call_tag` |
+| 结构和原文怎么分 | `shapes.py`：`tool_call_parts` / `record_from_event` |
+| 攒批写、停机限时写完 | `writer.py`：`EventWriter` |
+| 存储、按实例隔离、保留期 | `store.py`（`PgEventStore` / `MemoryEventStore`）、`retention.py` |
+| 事件 → 响应（读接口、影子校验共用） | `projection.py`：`project_turn` |
+| 重放和运维 | `replay.py`、`ops.py`、`scripts/replay_turns.py`、`scripts/turn_events.py` |
+
+**为什么用 contextvar 而不顺着参数传**：发事件的有准备阶段、编排器、专家、API 层，打用途标签
+的还有意图、检索、记忆、评审几处，而模型调用那一层是共享的客户端单例，拿不到请求对象。
+asyncio 建任务时复制 context，准备任务、并行专家、轮次之后的画像更新都自动带着同一个记录器；
+没绑定时 `events()` 返回什么都不做的那一个，调用点不用判空。
+
+**为什么 `emit` 是同步的**：它在 `finally` 里、在流式生成器被关闭时也要能调（客户端中途
+断开记 `turn_aborted`）。里面只做序列化（当场快照，之后谁改原字典都不影响已记的）和
+`put_nowait`，出任何异常都只计数——记日志不能打断回答。
+
+**为什么分结构和原文**：任何来自客户、模型、知识库、业务系统的文字只进 `body`，`data` 里只有
+代码自己产生的枚举、数字、id 和哈希。`body` 到期清空之后，剩下的行里没有能指向人的东西；
+有一条金丝雀测试守着这条线。
+
+**为什么响应字段和事件要有"影子校验"**：事件从十几个节点发出，迟早有人改了响应、忘了事件。
+每轮结束时拿内存里的事件投影一次，和真正发出去的响应比，对不上记
+`turn_projection_mismatch_total`；八条路径的金标准序列测试也在比同一件事。
+
 ## 测试在哪
 
-`backend/tests/` 下 1074 个测试（设了 `A2A_CONTRACT_DIR` 时契约夹具还会再展开一批），全部不发真实网络请求（PG 合同测试在 CI 的 pgvector
+`backend/tests/` 下 1196 个测试（设了 `A2A_CONTRACT_DIR` 时契约夹具还会再展开一批），全部不发真实网络请求（PG 合同测试在 CI 的 pgvector
 service container 上执行，本地无 `TEST_POSTGRES_DSN` 时跳过）。重点覆盖那些"看起来在工作
 但实际没有"的路径：多实例轮询与 Monitor 惩罚是否真的改变路由选择、跨域工单能否
 提名辅助 Agent、流式下策略守卫是否漏拦、回归检测是否真的在对比基线、
