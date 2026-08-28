@@ -63,12 +63,14 @@ from fastapi import (
     UploadFile,
 )
 from fastapi import Request as HttpRequest
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.security import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 load_dotenv()
 
@@ -90,6 +92,7 @@ from app.core.request_context import (  # noqa: E402
 )
 from app.events import EventLog, EventLogConfig, TurnRecorder, bind, events, instance_from_env  # noqa: E402
 from app.events.projection import mismatches, project_turn, summarize_turn  # noqa: E402
+from app.events.recorder import MAX_ID_CHARS  # noqa: E402
 
 # LOG_FORMAT=json 输出单行 JSON（采集到 ELK/Datadog）；默认文本便于本地阅读。
 # 两种格式都带 request_id，一条日志能定位到一次请求。
@@ -542,6 +545,22 @@ app.add_middleware(
 )
 
 
+class _AsciiJSONResponse(JSONResponse):
+    def render(self, content: Any) -> bytes:
+        return json.dumps(content, ensure_ascii=True, allow_nan=False, separators=(",", ":")).encode("ascii")
+
+
+@app.exception_handler(RequestValidationError)
+async def _request_validation_error(request: HttpRequest, exc: RequestValidationError) -> JSONResponse:
+    """
+    和 FastAPI 默认的一样回 422 和 detail，只是按 ASCII 转义。
+
+    detail 里会回显没通过校验的原值。原值里有孤立代理字符时（/chat 挡掉的坏 id 正是这种），
+    默认的 UTF-8 编码会抛错，客户端拿到的就成了 500。
+    """
+    return _AsciiJSONResponse(status_code=422, content={"detail": jsonable_encoder(exc.errors())})
+
+
 from app.agents.tool_loop import LoopConfig, LoopSetup, deadline_for, deadline_warnings  # noqa: E402
 from app.agents.turn_prep import TurnDeps, prepare_turn  # noqa: E402
 from app.core.metrics import (  # noqa: E402
@@ -846,10 +865,38 @@ def _ticket_fields(result, ticket_id: str | None) -> dict[str, Any]:
 
 
 # ── 请求/响应模型 ─────────────────────────────────────────────────────────────
+def _id_problem(value: str) -> str:
+    """
+    客户端送来的 conv_id、user_id 能不能收：不能收时说为什么，能收返回空串。
+
+    这两个 id 会原样进审计、工单和事件日志。NUL、控制字符、孤立代理字符存不进 Postgres，
+    超长的撑破索引项：这一轮自己的审计和工单就写不进去，等于给了客户一个绕过审计的办法。
+    上限和事件日志里 id 的上限一致（events/recorder.MAX_ID_CHARS），放行的都能原样记下来。
+    正常客户端用 UUID，不受影响。
+    """
+    if len(value) > MAX_ID_CHARS:
+        return f"不能超过 {MAX_ID_CHARS} 个字"
+    for ch in value:
+        code = ord(ch)
+        if code < 0x20 or code == 0x7F:
+            return "不能含控制字符"
+        if 0xD800 <= code <= 0xDFFF:
+            return "不能含孤立代理字符"
+    return ""
+
+
 class ChatRequest(BaseModel):
     message:     str
     user_id:     str = "anonymous"
     conv_id:     str | None = None
+
+    @field_validator("user_id", "conv_id")
+    @classmethod
+    def _storable_id(cls, value: str | None) -> str | None:
+        """/chat 和 /chat/stream 共用这一处：坏 id 直接 422，不进这一轮。message 不在这里管。"""
+        if value is not None and (problem := _id_problem(value)):
+            raise ValueError(problem)
+        return value
 
 
 class ChatResponse(BaseModel):

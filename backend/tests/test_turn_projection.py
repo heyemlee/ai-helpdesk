@@ -17,6 +17,7 @@ import json
 import os
 import re
 import sys
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +30,7 @@ from app.core.intent_recognizer import IntentCategory, UrgencyLevel
 from app.core.llm_guard import GuardedLLMClient, LLMGuard
 from app.events import EventLog, EventLogConfig
 from app.events.projection import KNOWLEDGE_NOT_SEARCHED, mismatches, project_turn
+from app.events.recorder import MAX_ID_CHARS
 from app.memory.conversation_memory import MemoryContext
 from app.tickets.ticket_store import TicketStore
 from app.tools.sql_agent_client import SQLAgentClient
@@ -554,6 +556,48 @@ def test_the_read_endpoints_need_the_staff_key(monkeypatch):
     for path in ("/turns/abc", "/turns/abc/events", "/conversations/c1/turns"):
         assert client.get(path).status_code == 401
         assert client.get(path, headers={"X-API-Key": "staff-key"}).status_code == 404   # 日志没开：没有可读的
+
+
+# ── /chat 入口的 id ───────────────────────────────────────────────────────────
+#
+# conv_id、user_id 由客户端决定，会原样进审计、工单和事件日志。存不进 Postgres 的（NUL、控制
+# 字符、孤立代理字符）和超长的，在 ChatRequest 上直接 422：否则这一轮自己的审计和工单写不进去，
+# 等于给了客户一个绕过审计的办法（设计 §9 第 8 项）。
+
+def _http_app(monkeypatch):
+    for name, value in {"ANTHROPIC_API_KEY": "test-key", "AI_HELPDESK_API_KEY": "",
+                        "AI_HELPDESK_PROTECT_CHAT": "false", "AI_HELPDESK_FRONTEND_DIST": "/nonexistent"}.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.delenv("APP_ENV", raising=False)
+    sys.modules.pop("app.api.main", None)
+    return importlib.import_module("app.api.main")
+
+
+@pytest.mark.parametrize("path", ["/chat", "/chat/stream"])
+@pytest.mark.parametrize("field", ["conv_id", "user_id"])
+@pytest.mark.parametrize("value", ["SO\x001", "第一行\n第二行", "\x7f", "\ud800", "x" * (MAX_ID_CHARS + 1)],
+                         ids=["nul", "newline", "del", "lone_surrogate", "too_long"])
+def test_chat_turns_away_ids_that_could_not_be_stored(monkeypatch, path, field, value):
+    from fastapi.testclient import TestClient
+
+    client = TestClient(_http_app(monkeypatch).app)
+    # json.dumps 默认转义成 ASCII：孤立代理字符也发得出去，服务端解出来还是它
+    response = client.post(path, content=json.dumps({"message": "你好", field: value}),
+                           headers={"Content-Type": "application/json"})
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["loc"][-1] == field
+
+
+async def test_ordinary_ids_still_get_through(monkeypatch):
+    main, log = await _desk(monkeypatch, _Intent(IntentCategory.MISSING_PART))
+    for conv_id in (str(uuid.uuid4()), "", None, "c" * MAX_ID_CHARS, "会话-一"):
+        assert main.ChatRequest(message="你好", user_id="u-1001", conv_id=conv_id).conv_id == conv_id
+
+    picked = str(uuid.uuid4())
+    answer = await main.chat(main.ChatRequest(message="SO-1 的补件到哪了", user_id="u-1001", conv_id=picked), None)
+    assert answer.conv_id == picked and await log.store.events_of(answer.turn_id)
+    fresh = await main.chat(main.ChatRequest(message="SO-1 的补件到哪了", conv_id=""), None)
+    assert fresh.conv_id and fresh.conv_id != picked                 # 空的 conv_id：照旧开一个新会话
 
 
 # ── 前端夹具：刷新之后的历史、取回的那一轮、工单 ──────────────────────────────
