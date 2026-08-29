@@ -181,6 +181,28 @@ describe('工具循环', () => {
       .toHaveTextContent('专家直接用回答前预取的资料作答，没有再调工具。')
   })
 
+  it('模型服务不可用、没人作答时，不说成专家用预取的资料答了，也不写调用了 0 次', () => {
+    render(<MessageBubble explain message={answered({
+      service_unavailable: true, unavailable_reason: 'model_error',
+      answer_usage: { model_calls: 0, input_tokens: 0, output_tokens: 0 }, trajectory: trajectory.slice(0, 1),
+    })} />)
+    const row = screen.getByText('作答时查询').closest('li')!
+    expect(row).toHaveTextContent('模型服务不可用，专家没有作答，也没有自己再查什么。')
+    expect(row).not.toHaveTextContent('预取的资料作答')
+    expect(row).not.toHaveTextContent('作答阶段调用模型')
+  })
+
+  it('查过之后模型才出错的，照实列出查过的，再说没答完', () => {
+    render(<MessageBubble explain message={answered({
+      service_unavailable: true, unavailable_reason: 'model_error',
+      answer_usage: { model_calls: 1 }, trajectory,
+    })} />)
+    const row = screen.getByText('作答时查询').closest('li')!
+    expect(row).toHaveTextContent('专家作答时自己查了 2 次')
+    expect(row).toHaveTextContent('随后模型服务出错，没有答完。')
+    expect(row).not.toHaveTextContent('作答阶段调用模型')
+  })
+
   it('循环关着（老后端或开关没开）时没有这一行', () => {
     render(<MessageBubble explain message={answered({})} />)
     expect(screen.queryByText('作答时查询')).not.toBeInTheDocument()

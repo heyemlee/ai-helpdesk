@@ -168,13 +168,16 @@ export function TurnExplanation({ message, routingConfig, onInspect }: {
   // 4½. 工具循环：专家作答时自己又查了什么。只在循环打开的轮次有（后端才会报 answer_usage）。
   // 网关不支持工具时这一轮退回了单次生成，不能说成"专家决定不查"；被要求直接作答的也照实说，
   // 一次委派要十几秒，耗时到秒的写出来，这一轮为什么慢一眼能看到。
+  // 模型服务不可用的轮次没有人答完：不能说成"专家直接用预取的资料作答"；作答阶段的调用次数
+  // 只数拿到了用量的那几次，出错的那次不在里面，写出"0 次"读起来像根本没调过模型，所以不写。
+  // 出错之前已经查过的照实列出来。
   const usage = result.answer_usage
   if (usage?.model_calls !== undefined) {
     const calls = (result.trajectory ?? []).filter((c) => c.actor === 'model')
     const forced = usage.forced ? FORCED[usage.forced] : undefined
     rows.push(['lm.tools', <>
       {usage.fallback === 'tools_unsupported' ? t('lm.tools.fallback')
-        : calls.length === 0 ? t('lm.tools.none') : <>
+        : calls.length === 0 ? t(unavailable ? 'lm.tools.unavailable' : 'lm.tools.none') : <>
         {t('lm.tools.calls', { n: calls.length })}{' '}
         {calls.map((c, i) => {
           const name = TOOL_NAMES[c.tool]
@@ -189,9 +192,10 @@ export function TurnExplanation({ message, routingConfig, onInspect }: {
             </span>
           )
         })}
+        {unavailable && <> {t('lm.tools.unavailable.after')}</>}
       </>}
       {forced && <> {t(forced)}</>}
-      {' '}{t('lm.tools.usage', { n: usage.model_calls })}
+      {!unavailable && <> {t('lm.tools.usage', { n: usage.model_calls })}</>}
     </>])
   }
 
