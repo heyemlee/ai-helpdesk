@@ -184,6 +184,8 @@ def test_stream_guard_also_drops_mojibake(policy):
      "We will ship it next Tuesday."),
     ("月底前给你装好。",
      "We will have it installed by the end of the month."),
+    ("明天给你送到。",
+     "We will deliver it tomorrow."),
 ])
 def test_same_commitment_is_blocked_in_both_languages(policy, zh, en):
     assert policy.enforce(zh, sources=[]).blocked, f"中文漏拦: {zh}"
@@ -465,3 +467,379 @@ def test_english_dates_follow_the_same_rule(policy):
     assert not policy.enforce("Your cabinets will ship on Oct. 28, 2026.", sources=[ORDER_DATA]).blocked
     assert policy.enforce("Your cabinets will ship on October 28, 2027.", sources=[ORDER_DATA]).blocked
     assert policy.enforce("Your cabinets will ship on November 3.", sources=[ORDER_DATA]).blocked
+
+
+# ── 回答里以前认不出来的日期写法 ──────────────────────────────────────────────
+#
+# 上一组修的是「认出来了，但核错了」。还有几种写法回答里根本认不出是日期：
+# 「2026-11-03 送到」「October 28th」「28 号送到」编出来也原样放行；「十月二十八日」
+# 只截到「十月」，不带数字，出处里明明有也照拦。
+
+# (回答, 有这一天的出处, 没有这一天的出处, 被拦时的证据)
+_NEW_SPELLINGS = [
+    # ISO 写法
+    ("您的柜体 2026-11-03 送到。", "计划 2026-11-03 送货", ORDER_DATA, "2026-11-03"),
+    ("您的柜体 2026/11/03 发货。", "预计 11 月 3 日发货", ORDER_DATA, "2026/11/03"),
+    # 英文序数
+    ("Your cabinets will ship on October 28th.", ORDER_DATA, "计划 2026-11-03 送货", "October 28th"),
+    ("Your cabinets will ship on Oct 3rd.", "计划 2026-10-03 出厂", ORDER_DATA, "Oct 3rd"),
+    ("Your cabinets will ship on Oct. 3rd.", "计划 2026-10-03 出厂", ORDER_DATA, "Oct. 3rd"),
+    # 只写了日
+    ("我们 28 号给您送到。", ORDER_DATA, "计划 2026-11-03 送货", "28 号"),
+    ("我们 28 号前给您送到。", ORDER_DATA, "计划 2026-11-03 送货", "28 号"),
+    ("3 日发货。", "计划 2026-11-03 发货", ORDER_DATA, "3 日"),
+    ("二十八号送到。", ORDER_DATA, "计划 2026-11-03 送货", "二十八号"),
+    # 中文数字
+    ("您的柜体十月二十八日发货。", ORDER_DATA, "计划 2026-11-03 送货", "十月二十八日"),
+    ("二〇二六年十一月三日送到。", "计划 2026-11-03 送货", ORDER_DATA, "二〇二六年十一月三日"),
+]
+
+
+@pytest.mark.parametrize("answer,grounding,other,evidence", _NEW_SPELLINGS)
+def test_new_spelling_is_grounded_by_the_same_day(policy, answer, grounding, other, evidence):
+    assert not policy.enforce(answer, sources=[grounding]).blocked
+
+
+@pytest.mark.parametrize("answer,grounding,other,evidence", _NEW_SPELLINGS)
+def test_new_spelling_is_blocked_without_that_day(policy, answer, grounding, other, evidence):
+    for sources in ([], [other]):
+        result = policy.enforce(answer, sources=sources)
+        assert result.blocked, sources
+        assert result.violations[0].evidence == evidence
+
+
+@pytest.mark.parametrize("answer,grounding,other,evidence", _NEW_SPELLINGS)
+def test_stream_and_batch_agree_on_the_new_spellings(answer, grounding, other, evidence):
+    """流式按 3 个字一片喂进去：「Oct.」和「3rd」分在两片里，也不能被切成两句。"""
+    from app.core.answer_policy import PolicyStreamGuard
+
+    for sources in ([grounding], [other]):
+        batch = AnswerPolicy().enforce(answer, sources=sources).text
+        guard = PolicyStreamGuard(AnswerPolicy(), sources=sources)
+        streamed = "".join(guard.feed(answer[i:i + 3]) for i in range(0, len(answer), 3)) + guard.flush()
+        assert streamed == batch
+
+
+@pytest.mark.parametrize("answer", [
+    "2027-10-28 发货。",
+    "Your cabinets will ship on October 28th, 2027.",
+    "二〇二七年十月二十八日发货。",
+])
+def test_years_must_agree_in_the_new_spellings_too(policy, answer):
+    assert policy.enforce(answer, sources=[ORDER_DATA]).blocked
+
+
+def test_a_day_only_date_grounded_by_a_recurring_day(policy):
+    """出处只写了日（每月 28 号）时，能给只写了日的回答当出处，给写了月份的不行。"""
+    source = "每月 28 号统一发货。"
+    assert not policy.enforce("28 号统一发货。", sources=[source]).blocked
+    assert policy.enforce("10 月 28 日发货。", sources=[source]).blocked
+
+
+@pytest.mark.parametrize("answer", [
+    # 订单号
+    "订单 SO-2410-0815 已发货。",
+    "订单 SO-2024-8891 已发货。",
+    "订单 SO-2026-11-03 已发货。",
+    # 英寸分数
+    "3/4 英寸的侧板已经补发。",
+    # 编号
+    "3 号柜已经发货。",
+    "3 号上柜、5 号下柜已经发货。",
+    "3 号前门板会补发。",
+    "第 3 号已经发货。",
+    "第十一号柜已经发货。",
+    "加州 65 号提案要求的标签已经贴好。",
+    # 英文：marble 2 以前被「前三个字母 + 任意字母」当成了 March 2
+    "The marble 2 cm top will be installed.",
+    "We will deliver the 3rd drawer box.",
+])
+def test_things_that_only_look_like_the_new_spellings_are_not_dates(policy, answer):
+    """这些都不是日期。认成日期的话，没有出处时一律判无依据，正常的回复就被换掉了。"""
+    assert not policy.enforce(answer, sources=[]).blocked
+
+
+@pytest.mark.parametrize("answer,source", [
+    # 区间
+    ("我们 3 号给您送到。", "配送 3-5 个工作日"),
+    ("我们 5 号给您送到。", "配送 3-5 个工作日"),
+    ("6 号发货。", "标准交期 4-6 周"),
+    # 英寸分数
+    ("4 号送到。", "门板厚 3/4 英寸"),
+    # 订单号、编号，以及更长的数字的尾巴
+    ("15 号发货。", "订单 SO-2410-0815 已排产"),
+    ("28 号送到。", "第 28 号柜已排产"),
+    ("5 号送到。", "外包装贴有加州 65 号提案要求的警示标签"),
+    # 价格
+    ("28 号送到。", "运费 28 元"),
+    ("Your cabinets will ship on Oct 28th.", "The refund of $10.28 has been issued."),
+    # 时长
+    ("7 号送到。", "退款 7 日内到账"),
+])
+def test_look_alikes_in_the_sources_do_not_ground_the_new_spellings(policy, answer, source):
+    assert policy.enforce(answer, sources=[source]).blocked
+
+
+def test_ranges_and_prices_are_still_checked_their_own_way(policy):
+    """区间、金额照旧按字面核，不会被新认的日期写法截走。"""
+    assert not policy.enforce("配送 3-5 个工作日送到。", sources=["配送 3-5 个工作日"]).blocked
+    assert not policy.enforce("尾款 2026.11 元已到账。", sources=["尾款 2026.11 元"]).blocked
+    result = policy.enforce("尾款 2026.11 元已到账。", sources=[])
+    assert [v.rule for v in result.violations] == ["price_commitment"]
+
+
+def test_month_abbreviations_do_not_end_a_sentence():
+    """「Oct.」后面切开的话，日期落进没有承诺动词的后半句，编出来的日期两半都判不出来。"""
+    from app.core.answer_policy import split_sentences
+
+    sentences, tail = split_sentences("We will ship on Oct. 28. Thanks.", final=True)
+    assert sentences == ["We will ship on Oct. 28.", " Thanks."]
+
+
+# ── 守卫还看不见、或者看错了的几种时效写法 ────────────────────────────────────
+#
+# 上一组之后还剩四处：中文的「明天送到」根本不当时效（英文 tomorrow 早就核了）；「7 日内
+# 到账」「3 日后发货」不核，时长那一支的单位里没有「日」；美式 10/28/2026 两边都不认，
+# 业务系统要是按这个格式返回，模型转述成「10 月 28 日」反而被拦；日在前的英文日期
+# （28 October、the 28th）回答里认不出来。
+
+@pytest.mark.parametrize("answer,evidence", [
+    ("明天送到。", "明天"),
+    ("后天发货。", "后天"),
+    ("今天给您装好。", "今天"),
+    ("大后天上门安装。", "大后天"),
+    ("明后天发货。", "明后天"),
+    ("今晚发出。", "今晚"),
+    ("明早送货。", "明早"),
+])
+def test_relative_days_are_never_grounded(policy, answer, evidence):
+    """
+    和 马上/当天、英文 today/tomorrow 一个口径：不带数字，恒判无出处。出处里写着同一个词
+    不算；写着明天那一天的日期也不算——守卫没有时钟，不知道「明天」是哪一天。
+    """
+    for sources in ([], [answer], ["计划 2026-10-17 送货"]):
+        result = policy.enforce(answer, sources=sources)
+        assert result.blocked, sources
+        assert result.violations[0].evidence == evidence
+
+
+@pytest.mark.parametrize("answer", [
+    "预计明天发货，具体以物流通知为准。",
+    "明天是周六，展厅照常开门。",
+    # 「后」是前面「装好后」「之后」的，「天…」是下一个词
+    "吊柜装好后天花板的缝我们会上门封好。",
+    "台面送到之后天然石要先养护。",
+    "安装完成后天地柜的门板会补发。",
+])
+def test_relative_day_look_alikes_and_hedged_sentences_pass(policy, answer):
+    assert not policy.enforce(answer, sources=[]).blocked
+
+
+# (回答, 有出处时的出处, 被拦时的证据)
+_DAY_DURATIONS = [
+    ("退款 7 日内到账。", "审核通过后 7 日内退款到账", "7 日内"),
+    ("退款 7 日以内到账。", "审核通过后 7 日内退款到账", "7 日以内"),   # 以内、之内、内是同一处
+    ("付款 3 日后发货。", "付款 3 日后安排发货", "3 日后"),
+    ("现货 3-5 日内发货。", "现货 3~5 日内发货", "3-5 日内"),
+]
+
+
+@pytest.mark.parametrize("answer,grounding,evidence", _DAY_DURATIONS)
+def test_a_day_duration_is_checked_literally(policy, answer, grounding, evidence):
+    """「7 日内」「3 日后」以前不核（时长的单位里没有「日」），现在和「7 天内」一样按字面核。"""
+    assert not policy.enforce(answer, sources=[grounding]).blocked
+
+    result = policy.enforce(answer, sources=[])
+    assert result.blocked
+    assert result.violations[0].evidence == evidence
+
+
+@pytest.mark.parametrize("source", [
+    # 7 日内不是 7 号：出处里 7 号的日期对不上它
+    "计划 2026-10-07 出厂",
+    "每月 7 日统一结算",
+    # 单位不一样，或者说的是另一件事
+    "补件确认后 7 个工作日内从工厂发出",
+    "签收 7 日后不再受理退货",
+    # 按字面核：「天」写的不是「日」的出处，反过来也一样
+    "7 天内退款到账",
+])
+def test_look_alikes_do_not_ground_a_day_duration(policy, source):
+    assert policy.enforce("退款 7 日内到账。", sources=[source]).blocked
+
+
+def test_a_grounded_date_does_not_shield_a_day_duration(policy):
+    """「7 日内」不是日期，占的是时效核查的那个名额，前面有出处的出厂日期替它打不了掩护。"""
+    result = policy.enforce("计划 10 月 28 日出厂，7 日内送到。", sources=[ORDER_DATA])
+
+    assert result.blocked
+    assert result.violations[0].evidence == "7 日内"
+
+
+# (回答, 有这一天的出处, 没有这一天的出处, 被拦时的证据)
+_MORE_SPELLINGS = [
+    # 美式，月在前
+    ("Your cabinets will ship on 10/28/2026.", ORDER_DATA, "计划 2026-11-03 送货", "10/28/2026"),
+    ("您的柜体 11/03/2026 送到。", "计划 2026-11-03 送货", ORDER_DATA, "11/03/2026"),
+    ("Your cabinets will ship on 10-28-2026.", ORDER_DATA, "计划 2026-11-03 送货", "10-28-2026"),
+    # 日在前
+    ("Your cabinets will ship on 28 October.", ORDER_DATA, "计划 2026-11-03 送货", "28 October"),
+    ("Your cabinets will ship on 3rd November 2026.", "计划 2026-11-03 送货", ORDER_DATA, "3rd November 2026"),
+    ("Your cabinets will ship on the 28th of October.", ORDER_DATA, "计划 2026-11-03 送货", "28th of October"),
+    ("Your cabinets will ship on 28 Oct. 2026.", ORDER_DATA, "计划 2026-11-03 送货", "28 Oct. 2026"),
+    ("Your cabinets will ship on 3 May.", "计划 2026-05-03 出厂", ORDER_DATA, "3 May"),
+    # 只写了日
+    ("Your cabinets will ship on the 28th.", ORDER_DATA, "计划 2026-11-03 送货", "the 28th"),
+    ("We will install them on the 3rd at 9 AM.", "计划 2026-11-03 安装", ORDER_DATA, "the 3rd"),
+]
+
+
+@pytest.mark.parametrize("answer,grounding,other,evidence", _MORE_SPELLINGS)
+def test_us_and_day_first_dates_are_grounded_by_the_same_day(policy, answer, grounding, other, evidence):
+    assert not policy.enforce(answer, sources=[grounding]).blocked
+
+
+@pytest.mark.parametrize("answer,grounding,other,evidence", _MORE_SPELLINGS)
+def test_us_and_day_first_dates_are_blocked_without_that_day(policy, answer, grounding, other, evidence):
+    for sources in ([], [other]):
+        result = policy.enforce(answer, sources=sources)
+        assert result.blocked, sources
+        assert result.violations[0].evidence == evidence
+
+
+@pytest.mark.parametrize("answer,grounding,other,evidence", _MORE_SPELLINGS)
+def test_stream_and_batch_agree_on_us_and_day_first_dates(answer, grounding, other, evidence):
+    """流式按 3 个字一片喂进去：「Oct.」「28th.」分在两片里，也得和整段判得一样。"""
+    from app.core.answer_policy import PolicyStreamGuard
+
+    for sources in ([grounding], [other]):
+        batch = AnswerPolicy().enforce(answer, sources=sources).text
+        guard = PolicyStreamGuard(AnswerPolicy(), sources=sources)
+        streamed = "".join(guard.feed(answer[i:i + 3]) for i in range(0, len(answer), 3)) + guard.flush()
+        assert streamed == batch
+
+
+@pytest.mark.parametrize("answer", [
+    "Your cabinets will ship on 10/28/2027.",
+    "Your cabinets will ship on 28 October 2027.",
+])
+def test_years_must_agree_in_us_and_day_first_dates(policy, answer):
+    assert policy.enforce(answer, sources=[ORDER_DATA]).blocked
+
+
+@pytest.mark.parametrize("source", [
+    "ship_date: 10/28/2026",
+    "ship_date: 10/28/2026 2:00 PM",   # 去掉空白后钟点直接粘在年份后面
+    "ship_date: 10-28-2026",
+    "Ships 28 October 2026 from the CA factory.",
+    "Ships 28 Oct, 2026.",
+])
+def test_us_and_day_first_dates_in_the_sources_ground_a_rewrite(policy, source):
+    """业务系统按美式写法返回，模型转述成「10 月 28 日」，是同一天换了写法。"""
+    answer = "您的柜体 10 月 28 日发货。"
+
+    assert policy.enforce(answer, sources=[]).blocked
+    assert not policy.enforce(answer, sources=[source]).blocked
+
+
+def test_an_english_day_only_source_grounds_only_a_day_only_answer(policy):
+    source = "The install window opens on the 28th."
+
+    assert not policy.enforce("28 号送到。", sources=[source]).blocked
+    assert policy.enforce("10 月 28 日送到。", sources=[source]).blocked
+
+
+@pytest.mark.parametrize("answer,source", [
+    # 不带年份的 N/N 不认：这个业务里 3/4、1/2 是英寸分数
+    ("您的柜体 10 月 28 日发货。", "计划 10/28 发货"),
+    ("您的柜体 1 月 2 日发货。", "1/2 英寸背板已补发"),
+    # 去掉空白后，月份缩写后面粘着的是别的词
+    ("Your cabinets will ship on March 5.", "We have 5 marble tops in stock."),
+    ("Your cabinets will ship on December 3.", "All 3 deck boards are cut."),
+    ("Your cabinets will ship on September 2.", "Your 2 separate boxes have shipped."),
+    # 情态动词 may
+    ("Your cabinets will ship on May 3.", "Items 2 and 3 may ship separately."),
+])
+def test_look_alikes_in_the_sources_do_not_ground_us_or_day_first_dates(policy, answer, source):
+    assert policy.enforce(answer, sources=[source]).blocked
+
+
+@pytest.mark.parametrize("answer", [
+    "Items 2 and 3 may ship separately.",
+    "The 5 marble tops will be installed.",
+    "We will ship all 3 decks together.",
+    # 序数，不是日期
+    "We will deliver to the 28th Street store.",
+    "We will deliver to 28th Street.",
+    "We will install it on the 2nd floor.",
+    "We will deliver to the 28th-floor office.",
+    "We will replace the 1st, 2nd and 3rd doors.",
+    "We will replace the 2nd/3rd shelf.",
+    # 不带年份的 N/N
+    "The 3/4 inch panel will ship separately.",
+])
+def test_things_that_only_look_like_us_or_day_first_dates_are_not_dates(policy, answer):
+    """认成日期的话，没有出处时一律判无依据，正常的回复就被换掉了。"""
+    assert not policy.enforce(answer, sources=[]).blocked
+
+
+# ── 按字面核的数字要整个对上 ──────────────────────────────────────────────────
+#
+# 时长、金额按字面去出处里找，以前不看数字边界：出处「17 天」能给「7 天」当出处，
+# 「1280 元」能给「280 元」、「$2,800」能给「$280」、「17 日内」能给「7 日内」当出处。
+
+# (回答, 出处里同一个数, 出处里更长的数——回答里的数只是它的一截, 被拦时的证据)
+_WHOLE_NUMBERS = [
+    ("补件 7 天内送到。", "补件确认后 7 天内送到", "补件确认后 17 天内送到", "7 天"),
+    ("退款 7 日内到账。", "审核通过后 7 日以内退款到账", "审核通过后 17 日内退款到账", "7 日内"),
+    ("加一个抽屉只要 280 元。", "加一个抽屉 280 元", "加一个抽屉 1280 元", "280 元"),
+    ("加一个抽屉只要 280 元。", "加一个抽屉 280 元", "加一个抽屉 1,280 元", "280 元"),
+    ("The upgrade will cost $280.", "Upgrade: $280.00 per door.", "Upgrade: $2,800 per run.", "$280"),
+    ("Production takes 6 weeks.", "Production takes 6 weeks.", "Production takes 16 weeks.", "6 weeks"),
+    # 小数也是更长的数，只是小数部分全是 0 的不算
+    ("The upgrade will cost $280.", "Upgrade: $280.00 per door.", "Upgrade: $280.50 per door.", "$280"),
+    ("The upgrade will cost $280.5.", "Upgrade: $280.50 per door.", "Upgrade: $280.55 per door.", "$280.5"),
+    ("加一个抽屉只要 80 元。", "加一个抽屉 80 元", "加一个抽屉 12.80 元", "80 元"),
+    ("上门安装 5 小时完成。", "上门安装 5 小时完成", "上门安装 1.5 小时完成", "5 小时"),
+    # 回答里的小数整个截进证据，不再只截「5 小时」
+    ("上门安装 1.5 小时完成。", "上门安装 1.5 小时完成", "上门安装 11.5 小时完成", "1.5 小时"),
+]
+
+
+@pytest.mark.parametrize("answer,same,longer,evidence", _WHOLE_NUMBERS)
+def test_the_same_number_grounds_a_literal_check(policy, answer, same, longer, evidence):
+    assert not policy.enforce(answer, sources=[same]).blocked
+
+
+@pytest.mark.parametrize("answer,same,longer,evidence", _WHOLE_NUMBERS)
+def test_part_of_a_longer_number_does_not_ground_it(policy, answer, same, longer, evidence):
+    result = policy.enforce(answer, sources=[longer])
+
+    assert result.blocked
+    assert result.violations[0].evidence == evidence
+
+
+def test_range_and_measure_word_spellings_still_ground(policy):
+    """数字边界不动原来那几处写法差异：区间连接符、量词「个」。"""
+    assert not policy.enforce("配送 3-5 个工作日送到。", sources=["配送 3~5 个工作日"]).blocked
+    assert not policy.enforce("配送 3-5 个工作日送到。", sources=["配送 3至5工作日"]).blocked
+
+
+@pytest.mark.parametrize("answer,source", [
+    # 出处去掉空白和逗号以后，挨着的数会粘上来：「¥500，3 个工作日」→「¥5003个工作日」
+    ("加急费 ¥500，3 个工作日内发出。", "加急费 ¥500，3 个工作日内从工厂发出。"),
+    ("补件 3 个工作日内发出。", "补件流程：\n1. 3 个工作日内从工厂发出。"),
+    ("补件 7 天内送到。", "订单 SO-2410-0815 7 天内送到"),
+    ("Delivery takes 3-5 business days.", "The total is $980. 3-5 business days for delivery."),
+    ("The upgrade will cost $280.", "Upgrade: $280, 3 doors minimum."),
+])
+def test_a_neighbouring_number_in_the_sources_is_not_part_of_it(policy, answer, source):
+    assert not policy.enforce(answer, sources=[source]).blocked
+
+
+def test_a_year_after_a_comma_still_belongs_to_its_date(policy):
+    """日期照原来的去法比：出处「October 28, 2026」的年份不会因为数之间的分隔和日子断开。"""
+    source = "Ships October 28, 2026 from the CA factory."
+
+    assert not policy.enforce("Your cabinets will ship on October 28, 2026.", sources=[source]).blocked
+    assert policy.enforce("Your cabinets will ship on October 28, 2027.", sources=[source]).blocked

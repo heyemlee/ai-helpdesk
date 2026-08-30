@@ -35,21 +35,88 @@ _PRICE_RE = re.compile(
     re.I,
 )
 
+# 日期里的数字。中文数字写的（二〇二六年十月二十八日）和阿拉伯数字一样认：
+# 只认阿拉伯数字时，「十月二十八日」只截到「十月」，不带数字，_is_grounded
+# 恒判无出处，出处里明明有的日期照样被换掉。
+_CN_NUMERALS = "〇零一二三四五六七八九十"
+_CN_YEAR = "[〇零一二三四五六七八九]{4}"
+_CN_MONTH = "十[一二]?|[一二三四五六七八九]"
+_CN_DAY = "三十一?|二十[一二三四五六七八九]?|十[一二三四五六七八九]?|[一二三四五六七八九]"
+# 只写日的时候，日子要在 1–31 之内：「65 号提案」不是日期
+_DAY_DIGITS = r"[12]\d|3[01]|0?[1-9]"
+_DAY_NUM = rf"{_DAY_DIGITS}|{_CN_DAY}"
+# 英文月份只认完整的月份名和标准缩写。之前写的是「前三个字母 + 任意字母」，
+# 「The marble 2 cm top will be installed.」里的「marble 2」也被当成了日期。
+_MONTH_NAME = (
+    r"jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?"
+    r"|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?"
+)
+# 日在前（28 May）时，小写的 may 多半是情态动词：「Items 2 and 3 may ship separately.」
+_MONTH_NAME_DAY_FIRST = _MONTH_NAME.replace("|may|", "|(?-i:May)|")
+
+# 只写了日的日期（28 号送到、3 日发货）后面能接什么。「号」「日」前面只有一个数字
+# 时很多不是日期：「3 号柜」「5 号上柜」是编号，「7 日内」「3 日后」是时长。所以
+# 回答里只认后面接着标点、时间词或动作的，接别的（多半是名词）一律不算——认漏了，
+# 这句和以前一样不核；认错了，一句正常的回复会被换成兜底话术。
+_DAY_FOLLOWER = (
+    r"[^\w\s、]|$"     # 标点或句末。顿号不算：「3 号、5 号柜」是在列编号
+    r"|当[天日]|那天|[上下中]午|早上|晚上|凌晨|傍晚|左右|开始|截止|至|周[一二三四五六日天]|星期|礼拜"
+    r"|就|才|再|会(?!议)|能|可以?|将|要|需|必须|务必|一定|保证|准时|如期|统一|给|由"
+    r"|送[到达货过]|发[货出]|出[厂货]|安[装排]|装[好车]|完[工成]|交[货付]|做[好完]|排[产车]|复尺"
+    r"|补[发件货]|签收|退[款货]|收[货到]|付款|处理|修[好复]|返工|寄出|取货|提货|派送|配送|到[货场账达]"
+    r"|运到|抵达|进场|动工|施工|验收|确认|通知|联系|回复|上门|下单|开[工料具]|生效|恢复|解决|测量|量尺"
+)
+# 「号」后面还可以先接前、后、起（28 号前送到、28 号以后、28 号起）。「日」不行：
+# 「3 日前」「3 日后」「3 日起」更常见的意思是三天前、三天后、三天起。
+_HAO_FOLLOWER = rf"[之以][前后]|[前后起]?(?:{_DAY_FOLLOWER})"
+# 英文只写日的（the 28th）同理：「the 3rd drawer box」「the 2nd floor」「the 28th Street
+# store」里是序数，不是日期。只认后面接着标点、钟点、时段或「this month」这类的；逗号后面
+# 又是一个序数的（the 1st, 2nd and 3rd boxes）是在列东西，连字符、斜杠后面紧跟着词或数字的
+# （the 3rd-floor units、the 2nd/3rd shelf）也是。
+_EN_DAY_FOLLOWER = (
+    r"[^\w\s,/\-]|$|-(?![a-z\d])|,(?!\s*(?:the\s+)?\d{1,2}(?:st|nd|rd|th)\b)"
+    r"|at\s+(?:\d|noon|the\s+latest)|between\s+\d|in\s+the\s+(?:morning|afternoon|evening)"
+    r"|(?:morning|afternoon|evening|night)\b|(?:of\s+)?(?:this|next|the|each|every)\s+month\b"
+)
+
 # 时效表述：带时间单位的数字区间，或"马上/立刻"这类绝对时效词
 _LEAD_TIME_RE = re.compile(
-    # 中文具体日期必须排第一个：「10 月 28 日」开头的「10 月」也符合紧接着的
+    # 具体日期必须排在最前面：「10 月 28 日」开头的「10 月」也符合后面的
     # 「数字 + 月」那一支（时长），分支按顺序试，排在后面就只截到「10 月」。
     # 拿半个日期去出处里找，出处写的是 2026-10-28，有出处的出厂日期就被当成
     # 无依据承诺换掉了。年份一并匹配进来，_is_grounded 要拿它和出处的年份比。
-    r"(?:\d{4}\s*年\s*)?\d{1,2}\s*月\s*\d{1,2}\s*[号日]"
-    r"|(?:\d+|[一二两三四五六七八九十几])\s*(?:[-~至到]\s*\d+\s*)?(?:个)?"
-    r"\s*(?:工作日|自然日|天|小时|分钟|周|个月|月)"
+    rf"(?:(?:\d{{4}}|{_CN_YEAR})\s*年\s*)?(?:\d{{1,2}}|{_CN_MONTH})\s*月\s*(?:\d{{1,2}}|{_CN_DAY})\s*[号日]"
+    # 2026-11-03 / 2026/11/03 / 2026.11.03。前面粘着字母、数字或连接符的是编号
+    # （SO-2026-11-03），年份只认 20xx，月日不在范围里的不算（不认的就不该进来，
+    # 进来了会被当成普通时效按字面核，反而误拦）。
+    r"|(?<![a-z\d/.\-])20\d\d(?P<iso_sep>[-/.])(?:1[0-2]|0?[1-9])(?P=iso_sep)(?:[12]\d|3[01]|0?[1-9])"
+    r"(?!\d|[-/.]\d)"
+    # 10/28/2026 / 10-28-2026：美式，月在前。年份必须写全——只写 10/28 的不认，
+    # 这个业务里 3/4、1/2 是英寸分数。
+    rf"|(?<![a-z\d/.\-])(?:1[0-2]|0?[1-9])(?P<us_sep>[-/])(?:{_DAY_DIGITS})(?P=us_sep)20\d\d"
+    r"(?!\d|[-/.]\d)"
+    # 只写了日的：28 号 / 3 日 / 二十八号。紧跟在区间连接符、小数点、分数线后面的
+    # （3-5 日）不算，「第 3 号」不算，后面接什么见 _DAY_FOLLOWER。
+    rf"|(?<![\d月第./\-~{_CN_NUMERALS}])(?<!第\s)(?:{_DAY_NUM})\s*"
+    rf"(?:号(?=\s*(?:{_HAO_FOLLOWER}))|日(?=\s*(?:{_DAY_FOLLOWER})))"
+    # 时长的数可以带小数（1.5 天、2.5 小时），要整个截进来：只截「5 天」的话，出处原样写着
+    # 「1.5 天」也对不上——_is_grounded 不认更长的数的一截，小数也算
+    r"|(?:\d+(?:\.\d+)?|[一二两三四五六七八九十几])\s*(?:[-~至到]\s*\d+(?:\.\d+)?\s*)?(?:个)?"
+    r"\s*(?:工作日|自然日|天|小时|分钟|周|个月|月"
+    # 「日」后面接着 内/后/前/起 时是时长（7 日内到账、3 日后发货），和「天」一样按字面核；
+    # 接别的是上面那一支只写了日的日期（3 日发货），或者根本不是时效。后缀一并截进证据：
+    # 只截「7 日」的话，_date_of 会把它当成 7 号去比。
+    r"|日\s*(?:[以之]?[内后前]|起))"
     # 数字也可能是拼出来的："in two weeks" / "两周内"——只认 \d+ 会整条漏掉
-    r"|(?:\d+|a\s+(?:few|couple\s+of)|one|two|three|four|five|six|seven|eight|nine|ten)"
-    r"\s*(?:[-~]\s*\d+\s*)?"
+    r"|(?:\d+(?:\.\d+)?|a\s+(?:few|couple\s+of)|one|two|three|four|five|six|seven|eight|nine|ten)"
+    r"\s*(?:[-~]\s*\d+(?:\.\d+)?\s*)?"
     r"(?:business\s+days?|working\s+days?|business\s+hours?|days?|hours?|minutes?"
     r"|weeks?|months?|years?)"
     r"|马上|立刻|立即|当天|次日|隔天|今天内"
+    # 今天/明天/后天和英文的 today/tomorrow 一个口径：不带数字，_is_grounded 恒判无出处。
+    # 守卫没有时钟，出处写着明天的日期（2026-10-17）也对不上「明天」。「装好后天花板……」
+    # 「之后天然石……」里的「后天」是「后」+「天…」，后面接着这几个字的不算。
+    r"|今天|今日|今晚|明天|明日|明早|明晚|[明大]?后天(?![花然窗地台线井气])"
     # 中文具名日期。补英文那一类时才发现中文侧同样漏着：「我们下周二发货」
     # 不含数字，_LEAD_TIME_RE 之前一条都匹配不上，和英文的 next Tuesday 一样
     # 是无出处的具体交付承诺。不补的话英文反而比中文严。
@@ -65,9 +132,14 @@ _LEAD_TIME_RE = re.compile(
     r"|(?:by|before)\s+(?:the\s+)?end\s+of\s+(?:the\s+)?(?:day|week|month)"
     r"|(?:next|this)\s+(?:week|month|quarter)"
     r"|\b(?:today|tonight|tomorrow)\b"
-    # 带上可选的年份（October 28, 2026），和中文那一支同理
-    r"|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2}\b"
-    r"(?:,?\s*\d{4}\b)?",
+    # 带上可选的年份（October 28, 2026），和中文那一支同理；日子可以写成序数（October 28th）
+    rf"|\b(?:{_MONTH_NAME})\.?\s+\d{{1,2}}(?:st|nd|rd|th)?\b(?:,?\s*\d{{4}}\b)?"
+    # 日在前：28 October / 28th of October / 28 Oct. 2026。前面粘着小数点、连接符的
+    # 是金额或编号的尾巴（$10.28）。月份后面的点只在后面还有年份时截进来，不然是句号。
+    rf"|(?<![\d.,/\-$])\b(?:{_DAY_DIGITS})(?:st|nd|rd|th)?\s+(?:of\s+)?(?:{_MONTH_NAME_DAY_FIRST})\b"
+    r"(?:\.?,?\s*\d{4}\b)?"
+    # 只写了日：the 28th，后面接什么见 _EN_DAY_FOLLOWER
+    rf"|\bthe\s+(?:{_DAY_DIGITS})(?:st|nd|rd|th)\b(?=\s*(?:{_EN_DAY_FOLLOWER}))",
     re.I,
 )
 
@@ -89,8 +161,17 @@ _DATE_FORMS = (
         r"(?<![\d.])(?P<y>\d{4})(?P<sep>[-/.])(?P<m>\d{1,2})(?P=sep)(?P<d>\d{1,2})"
         r"(?:(?!\d)|(?=(?:[01]\d|2[0-3]):))"
     ),
-    # 2026年10月28日 / 10月28号
-    re.compile(r"(?:(?<!\d)(?P<y>\d{4})年)?(?<!\d)(?P<m>\d{1,2})月(?P<d>\d{1,2})[日号]"),
+    # 10/28/2026 / 10-28-2026（美式，月在前）。年份必须写全，不带年份的 10/28 不认（英寸
+    # 分数）。时间同样会粘上来，美式还常写一位数的钟点：10/28/2026 2:00 PM → 10/28/20262:00pm。
+    re.compile(
+        r"(?<![\d./\-])(?P<m>\d{1,2})(?P<sep>[/-])(?P<d>\d{1,2})(?P=sep)(?P<y>\d{4})"
+        r"(?:(?!\d)|(?=(?:[01]?\d|2[0-3]):[0-5]\d))"
+    ),
+    # 2026年10月28日 / 10月28号 / 二〇二六年十月二十八日
+    re.compile(
+        rf"(?:(?<![\d{_CN_NUMERALS}])(?P<y>\d{{4}}|{_CN_YEAR})年)?"
+        rf"(?<![\d{_CN_NUMERALS}])(?P<m>\d{{1,2}}|{_CN_MONTH})月(?P<d>\d{{1,2}}|{_CN_DAY})[日号]"
+    ),
     # 10-28（不带年份）。区间长得和它一样——「10-28 天」「3-5 个工作日」「4-6 周」，
     # 后面跟单位的不算；前后粘着字母、数字或连接符的是编号（SO-2410-0815、A10-28）。
     # 不认 10/28：这个业务里 3/4、1/2 是英寸分数。
@@ -98,13 +179,25 @@ _DATE_FORMS = (
         r"(?<![\da-z.:/\-第])(?P<m>\d{1,2})-(?P<d>\d{1,2})"
         rf"(?![\da-z%.:/\-~{_RANGE_UNIT_CHARS}])"
     ),
-    # oct28 / october282026（原文 Oct 28 / October 28, 2026）。去空白后单词都粘在
+    # oct28 / october28th2026（原文 Oct 28 / October 28th, 2026）。去空白后单词都粘在
     # 一起，没法要求月份前面是词边界，所以只认完整的月份名和标准缩写。
+    re.compile(rf"(?P<mon>{_MONTH_NAME})\.?(?P<d>\d{{1,2}})(?:st|nd|rd|th)?(?P<y>\d{{4}})?(?!\d)"),
+    # 28october / 28thofoctober / 28oct.2026（原文 28 October / 28th of October / 28 Oct. 2026）。
+    # 月份后面的词也粘了上来，所以缩写和 may 后面不能再是字母：「5 marble tops」「3 decks」
+    # 「2 separate boxes」「3 may ship」都不是日期。完整的月份名不会是别的词的开头，不用管。
     re.compile(
-        r"(?P<mon>jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?"
-        r"|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)"
-        r"\.?(?P<d>\d{1,2})(?P<y>\d{4})?(?!\d)"
+        r"(?<![\d./\-:])(?P<d>\d{1,2})(?:st|nd|rd|th)?(?:of)?"
+        r"(?P<mon>january|february|march|april|june|july|august|september|october|november|december"
+        r"|(?:jan|feb|mar|apr|may|jun|jul|aug|sept?|oct|nov|dec)(?![a-z]))"
+        r"\.?(?P<y>\d{4})?(?:(?!\d)|(?=(?:[01]?\d|2[0-3]):[0-5]\d))"
     ),
+    # the28th（原文 the 28th，只写了日）。回答里认哪些由 _LEAD_TIME_RE 把关，出处这边和
+    # 下面的「28 号」一样放得宽。
+    re.compile(rf"the(?P<d>{_DAY_DIGITS})(?:st|nd|rd|th)"),
+    # 28号 / 3日 / 二十八号（不带月份）。回答里认哪些由 _LEAD_TIME_RE 把关（见
+    # _DAY_FOLLOWER）；这里同时要解析出处，只排掉「N 日内 / 日后 / 日前 / 日起」这类
+    # 时长写法，其余都认——出处里多认出一个日期，最坏是多放行一句，不会误拦。
+    re.compile(rf"(?<![\d月第./\-~{_CN_NUMERALS}])(?P<d>{_DAY_NUM})(?:号|日(?![以之]?[内后前]|起))"),
 )
 _MONTHS = {
     name: i for i, name in enumerate(
@@ -113,16 +206,31 @@ _MONTHS = {
     )
 }
 
-_Ymd = tuple[int | None, int, int]   # (年，没写就是 None；月；日)
+_CN_DIGIT = {c: i for i, c in enumerate("〇一二三四五六七八九")} | {"零": 0}
+
+_Ymd = tuple[int | None, int | None, int]   # (年，没写就是 None；月，只写了日就是 None；日)
+
+
+def _num(text: str) -> int:
+    """日期里的一个数：28，或者中文数字写的 二〇二六、十、十二、二十八、三十一。"""
+    if text.isdecimal():
+        return int(text)
+    if "十" not in text:   # 年份逐位写：二〇二六
+        return int("".join(str(_CN_DIGIT[c]) for c in text))
+    tens, _, ones = text.partition("十")
+    return _CN_DIGIT.get(tens, 1) * 10 + _CN_DIGIT.get(ones, 0)
 
 
 def _as_date(m: re.Match[str]) -> _Ymd | None:
     """把 _DATE_FORMS 的一次匹配换成 (年, 月, 日)；不像日期的丢掉。"""
     g = m.groupdict()
-    month = _MONTHS[g["mon"][:3]] if g.get("mon") else int(g["m"])
-    day = int(g["d"])
-    year = int(g["y"]) if g.get("y") else None
-    if not (1 <= month <= 12 and 1 <= day <= 31):
+    if g.get("mon"):
+        month = _MONTHS[g["mon"][:3]]
+    else:
+        month = _num(g["m"]) if g.get("m") else None
+    day = _num(g["d"])
+    year = _num(g["y"]) if g.get("y") else None
+    if not 1 <= day <= 31 or (month is not None and not 1 <= month <= 12):
         return None
     # 年份只认 2000–2099：9999-12-31 这类「永不过期」的占位值不是日期
     if year is not None and not 2000 <= year < 2100:
@@ -146,6 +254,15 @@ def _dates_in(norm: str) -> Iterator[_Ymd]:
             date = _as_date(m)
             if date is not None:
                 yield date
+
+
+# 出处去掉空白和逗号以后，挨着的两个数会粘成一个更长的数：「¥500，3 个工作日内发出」去成
+# 「¥5003个工作日内发出」，「¥500」「3 个工作日」都成了「5003」的一截，按字面找出处时被
+# 数字边界挡掉。所以两个数之间原来有的分隔留成这个记号；千位分隔符（12,800）照旧去掉。
+# 记号不能是空白字符（\x1f 在 Python 里也算空白），不然接下来去空白时会被一起去掉。
+_NUMBER_GAP = "\x00"
+_NUMBER_GAP_RE = re.compile(r"(?<=[\d.])[\s,，]+(?=\d)")
+_THOUSANDS_SEP_RE = re.compile(r"(?<=\d),(?=\d{3}(?!\d))")
 
 
 # 承诺动词：出现金额/时效还不够，必须落在"会发生什么"的语境里才算承诺
@@ -221,6 +338,9 @@ _SENT_END_FINAL_RE = re.compile(r"[。！？!?\n]|\.(?=\s|$)")
 _ABBREVIATIONS = frozenset({
     "approx", "est", "etc", "e.g", "i.e", "no", "vs", "mr", "ms", "mrs", "dr",
     "inc", "ltd", "co", "dept", "min", "max", "qty", "ref", "fig", "ext", "apt",
+    # 月份缩写。漏了它们，"We will ship on Oct. 28." 在 Oct. 处切开，日期落进
+    # 没有承诺动词的后半句，编出来的日期两半都判不出来
+    "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec",
 })
 _WORD_BEFORE_DOT_RE = re.compile(r"([A-Za-z][A-Za-z.]*)\.$")
 
@@ -365,7 +485,7 @@ class AnswerPolicy:
             return PolicyResult(text=answer, checked=False)
 
         self.checked_total += 1
-        normalized_sources = [self._normalize(s) for s in (sources or []) if s]
+        normalized_sources = [self._normalize(s, keep_number_gaps=True) for s in (sources or []) if s]
 
         violations: list[PolicyViolation] = []
         rebuilt: list[str] = []
@@ -493,9 +613,10 @@ class AnswerPolicy:
         """
         判断一处金额/时效是否有出处。
 
-        绝对时效词（马上、立刻）永远没有出处——它们本身就是禁止表述。
-        带数字的表述要求"数字和单位在出处里连在一起"出现，只允许量词"个"
-        和区间连接符的写法差异。
+        绝对时效词（马上、立刻、明天）永远没有出处——它们本身就是禁止表述。
+        带数字的表述要求"数字和单位在出处里连在一起"出现，只允许量词"个"、
+        区间连接符和「日内 / 日以内」这几处写法差异。数字还得整个对上：出处里
+        更长的数（17 天、1280 元、$2,800、1.5 天）的一截不算。
 
         这里刻意不做"数字在出处里出现过就算有依据"的宽松匹配：知识库写
         "配送 3-5 个工作日"时，模型说"退款 3 个工作日到账"必须判为无依据——
@@ -504,28 +625,50 @@ class AnswerPolicy:
         具体日期（10 月 28 日、Oct 28）例外，按「哪一天」比而不是按字面比：出处写
         2026-10-28、回答写 2026 年 10 月 28 日，是同一天换了写法。口径并不放宽——
         月和日必须出自出处里的同一个日期（「10 月份……28 号」拼不出 10 月 28 日，
-        「10-28 天」是区间不是日期），两边都写了年份时年份也要对上。
+        「10-28 天」是区间不是日期），两边都写了年份时年份也要对上。只写了日的
+        （28 号）只比日：出处里有哪个日期是 28 号就算，出处原样写着「28 号」也算。
         """
         if not normalized_sources:
             return False
 
         norm = self._normalize(evidence)
-        if not re.search(r"\d", norm):
+        date = _date_of(norm)
+        if date is None and not re.search(r"\d", norm):
             return False  # 马上/立刻/immediately 这类绝对时效，无论如何都没有出处
 
-        date = _date_of(norm)
         if date is not None:
+            # 日期照原来的去法解析，不留数之间的记号：「October 28, 2026」的年份要和日子连上
+            sources = [s.replace(_NUMBER_GAP, "") for s in normalized_sources]
             year, month, day = date
-            return any(
-                (m, d) == (month, day) and (year is None or y is None or y == year)
-                for source in normalized_sources
+            if any(
+                d == day and (month is None or m == month) and (year is None or y is None or y == year)
+                for source in sources
                 for y, m, d in _dates_in(source)
-            )
+            ):
+                return True
+            if month is not None:
+                return False
+            # 只写了日的，出处原样写着也算：「3 日发货」也可能是「三天发货」的意思，
+            # 那就和时长一个口径照字面找。但不能是更长的数字的尾巴或「第 N 号」——
+            # 「加州 65 号提案」里没有 5 号。
+            literal = re.compile(rf"(?<![\d第{_CN_NUMERALS}]){re.escape(norm)}")
+            return any(literal.search(source) for source in sources)
 
         # 量词"个"可有可无，区间连接符（- ~ 至 到）任意写法都算同一处出处。
         # 这里必须一次性替换：逐个 replace 会把前一轮生成的字符类再改坏。
+        # 证据和出处一样去：两个数之间原来的分隔留着记号
+        norm = self._normalize(evidence, keep_number_gaps=True)
         pattern = re.escape(norm).replace("个", "个?")
         pattern = re.sub(r"\\?[-~]|至|到", "[-~至到]", pattern)
+        # 「7 日内」「7 日以内」「7 日之内」是同一处
+        pattern = re.sub(r"日[以之]?([内后前])$", r"日[以之]?\1", pattern)
+        # 数字两头不能连着出处里更长的数：「17 天」里没有「7 天」，「1280 元」里没有「280 元」，
+        # 「$2,800」里没有「$280」。小数也算更长的数：「1.5 天」里没有「5 天」，「$280.50」里
+        # 没有「$280」；只是小数部分全是 0 的不算——$280.00 就是 $280，$280.50 就是 $280.5。
+        if re.match(r"\d", norm):
+            pattern = r"(?<![\d.])" + pattern
+        if re.search(r"\d$", norm):
+            pattern += r"(?!0*[1-9])" if re.search(r"\.\d+$", norm) else r"(?!\d|\.0*[1-9])"
         try:
             regex = re.compile(pattern)
         except re.error:
@@ -534,12 +677,19 @@ class AnswerPolicy:
         return any(regex.search(source) for source in normalized_sources)
 
     @staticmethod
-    def _normalize(text: Any) -> str:
-        """统一大小写、去掉空白和千位分隔符，便于做出处比对。"""
+    def _normalize(text: Any, keep_number_gaps: bool = False) -> str:
+        """
+        统一大小写、去掉空白和千位分隔符，便于做出处比对。
+
+        keep_number_gaps：两个数之间去掉的空白、逗号留成 _NUMBER_GAP，按字面核
+        数字边界时用；按日期比之前要把它去掉。
+        """
         if text is None:
             return ""
         if not isinstance(text, str):
             text = str(text)
+        if keep_number_gaps:
+            text = _NUMBER_GAP_RE.sub(_NUMBER_GAP, _THOUSANDS_SEP_RE.sub("", text))
         return re.sub(r"[\s,，]", "", text).lower()
 
 
