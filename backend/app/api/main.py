@@ -885,6 +885,23 @@ def _id_problem(value: str) -> str:
     return ""
 
 
+def _text_problem(value: str) -> str:
+    """
+    客户原话能不能收：不能收时说为什么，能收返回空串。
+
+    原话会原样进审计。NUL 和孤立代理字符存不进 Postgres，审计里客户原话那一条就写不进去，
+    和坏 id 一样等于给了客户一个绕过审计的办法。换行、制表符是正常的原话，照收；长度不在
+    这里管。
+    """
+    for ch in value:
+        code = ord(ch)
+        if code == 0:
+            return "不能含 NUL 字符"
+        if 0xD800 <= code <= 0xDFFF:
+            return "不能含孤立代理字符"
+    return ""
+
+
 class ChatRequest(BaseModel):
     message:     str
     user_id:     str = "anonymous"
@@ -893,8 +910,16 @@ class ChatRequest(BaseModel):
     @field_validator("user_id", "conv_id")
     @classmethod
     def _storable_id(cls, value: str | None) -> str | None:
-        """/chat 和 /chat/stream 共用这一处：坏 id 直接 422，不进这一轮。message 不在这里管。"""
+        """/chat 和 /chat/stream 共用这一处：坏 id 直接 422，不进这一轮。"""
         if value is not None and (problem := _id_problem(value)):
+            raise ValueError(problem)
+        return value
+
+    @field_validator("message")
+    @classmethod
+    def _storable_message(cls, value: str) -> str:
+        """原话里有存不进审计的字符时直接 422。规则比 id 宽：换行、制表符照收。"""
+        if problem := _text_problem(value):
             raise ValueError(problem)
         return value
 
@@ -1254,7 +1279,8 @@ async def chat(req: ChatRequest, x_user_token: str | None = Header(None, alias="
     user_id = await resolve_user_id(req, x_user_token)
     conv_id = req.conv_id or str(uuid.uuid4())
     turn = _start_turn("chat", conv_id, user_id, req.message)
-    stage = "prepare"
+    # audited：这一轮写过审计没有。没写到那一步就出来的（出错、被取消），收尾时补写客户原话
+    stage, audited = "prepare", False
     try:
         with bind(turn):
             orch_req, intent_result, knowledge_used, evidence_trace = await _prepare_request(
@@ -1276,6 +1302,7 @@ async def chat(req: ChatRequest, x_user_token: str | None = Header(None, alias="
             _spawn_background(_log_turn(conv_id, user_id, req.message, result.response,
                                         result.agent_type.value, current_request_id(),
                                         turn.turn_id))
+            audited = True
 
             # 6. 异步更新用户画像（不阻塞响应）。没答上来的轮次不提炼：那一轮的"助手发言"
             #    是一句故障提示，里面没有客户的任何偏好，提炼只是再花一次模型调用。
@@ -1290,6 +1317,11 @@ async def chat(req: ChatRequest, x_user_token: str | None = Header(None, alias="
         if not turn.terminal:
             # 没有终结事件就出来了：请求被取消（客户端断开、停机）
             turn.emit("turn_aborted", {"stage": stage, "sent_chars": 0})
+        if not audited:
+            # 出错或被取消的轮次：客户的原话照样留档。/chat 不流式，客户什么都没看到，
+            # 所以没有助手那一条
+            _spawn_background(_log_turn(conv_id, user_id, req.message, None, "",
+                                        current_request_id(), turn.turn_id))
         turn.close()
 
     response = ChatResponse(
@@ -1356,8 +1388,11 @@ async def chat_stream(req: ChatRequest, x_user_token: str | None = Header(None, 
         # 在生成器里开始这一轮：响应一个字节都没发出去就断开的，生成器根本不会跑，
         # 也就不留一条没有结尾的轮次
         turn = _start_turn("stream", conv_id, user_id, req.message)
-        # 走到哪一步、客户已经看到了哪些字：中途断开时记进 turn_aborted
-        stage, shown = "prepare", []
+        # 走到哪一步、客户已经看到了哪些字：中途断开时记进 turn_aborted。
+        # audited：这一轮写过审计没有；没写到那一步就出来的，收尾时按客户实际看到的补写。
+        # 生成器可能在请求的 context 之外被关掉（那里取到的是 "-"），request_id 先在这里取好
+        stage, shown, audited, routing = "prepare", [], False, {}
+        request_id = current_request_id()
         with bind(turn):
             try:
                 # 准备阶段（记忆、意图、检索、**委派查库**）以前是先 await 完再发第一个事件——
@@ -1388,7 +1423,7 @@ async def chat_stream(req: ChatRequest, x_user_token: str | None = Header(None, 
                 # 作答阶段同样边等边报进度、静默发心跳：工具循环打开时，专家作答中途也可能
                 # 委派查库（一次十几秒到四十多秒），这段时间编排器一个事件都不出。
                 stage = "answer"
-                final, routing = None, {}
+                final = None
                 answer = _pump_answer(_orchestrator.run_stream(orch_req), progress_q,
                                       heartbeat_s=SSE_HEARTBEAT_S)
                 async for source, item in answer:
@@ -1421,6 +1456,7 @@ async def chat_stream(req: ChatRequest, x_user_token: str | None = Header(None, 
                 _spawn_background(_log_turn(conv_id, user_id, req.message, final.response,
                                             final.agent_type.value, current_request_id(),
                                             turn.turn_id))
+                audited = True
                 if not final.service_unavailable:      # 同 /chat：没答上来的轮次不提炼画像
                     _spawn_background(_memory.update_profile(user_id, conv_id))
                 _complete_turn(turn, final, ticket_id, shown="".join(shown))
@@ -1461,6 +1497,15 @@ async def chat_stream(req: ChatRequest, x_user_token: str | None = Header(None, 
                     # 也不能 await——emit 是同步的，正是为了能在这里调
                     turn.emit("turn_aborted", {"stage": stage,
                                                "sent_chars": sum(len(t) for t in shown)})
+                if not audited:
+                    # 出错或中途断开的轮次也留档：客户的原话，加上已经发出去的那半截回答
+                    # （客户确实看到了它）；一个字都没发出去就只有原话。作答 Agent 取路由给的
+                    # 主专家
+                    seen = "".join(shown)
+                    _spawn_background(_log_turn(
+                        conv_id, user_id, req.message, seen or None,
+                        str(routing.get("primary_agent") or "") if seen else "",
+                        request_id, turn.turn_id))
                 turn.close()
 
     return StreamingResponse(
@@ -1729,13 +1774,19 @@ async def get_ticket(ticket_id: str):
 
 async def _log_turn(
     conv_id: str, user_id: str, user_msg: str,
-    assistant_msg: str, agent_type: str, request_id: str, turn_id: str = "",
+    assistant_msg: str | None, agent_type: str, request_id: str, turn_id: str = "",
 ) -> None:
-    """把一轮对话写入审计日志（user + assistant 各一条），带上 turn_id 和实例。"""
+    """
+    把一轮对话写入审计日志，带上 turn_id 和实例：客户原话一条，助手回答一条。
+
+    assistant_msg 为 None 时只写客户原话：出错或中途断开、客户什么都没看到的轮次。
+    """
     if _conv_log is None:
         return
     await _conv_log.append(conv_id, user_id, "user", user_msg, request_id=request_id,
                            turn_id=turn_id, instance=_INSTANCE)
+    if assistant_msg is None:
+        return
     await _conv_log.append(conv_id, user_id, "assistant", assistant_msg,
                            request_id=request_id, agent_type=agent_type,
                            turn_id=turn_id, instance=_INSTANCE)

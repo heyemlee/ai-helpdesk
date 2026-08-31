@@ -328,7 +328,7 @@ asyncio 建任务时复制 context，准备任务、并行专家、轮次之后�
 
 ## 测试在哪
 
-`backend/tests/` 下 1196 个测试（设了 `A2A_CONTRACT_DIR` 时契约夹具还会再展开一批），全部不发真实网络请求（PG 合同测试在 CI 的 pgvector
+`backend/tests/` 下 1373 个测试（设了 `A2A_CONTRACT_DIR` 时契约夹具还会再展开一批），全部不发真实网络请求（PG 合同测试在 CI 的 pgvector
 service container 上执行，本地无 `TEST_POSTGRES_DSN` 时跳过）。重点覆盖那些"看起来在工作
 但实际没有"的路径：多实例轮询与 Monitor 惩罚是否真的改变路由选择、跨域工单能否
 提名辅助 Agent、流式下策略守卫是否漏拦、回归检测是否真的在对比基线、

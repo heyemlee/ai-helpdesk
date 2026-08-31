@@ -892,18 +892,21 @@ async def test_the_conversation_endpoint_leaves_out_the_other_instance(monkeypat
     await conv_log.close()
 
 
-async def test_a_client_leaving_mid_stream_is_recorded_as_aborted(monkeypatch):
-    main, log = await _desk(monkeypatch, model=ScriptedModel(
-        text_step("第一句已经发出去了。", "第二句还没来得及发。")))
-    response = await main.chat_stream(_ask(main), None)
+async def _leave_after_the_first_sentence(main, request) -> list[tuple[str, dict]]:
+    response = await main.chat_stream(request, None)
     chunks = []
     async for chunk in response.body_iterator:
         chunks.append(chunk)
         if chunk.startswith("event: delta"):
             break
     await response.body_iterator.aclose()                   # 客户端断开：生成器被关掉
+    return _frames(chunks)
 
-    frames = _frames(chunks)
+
+async def test_a_client_leaving_mid_stream_is_recorded_as_aborted(monkeypatch):
+    main, log = await _desk(monkeypatch, model=ScriptedModel(
+        text_step("第一句已经发出去了。", "第二句还没来得及发。")))
+    frames = await _leave_after_the_first_sentence(main, _ask(main))
     turn_id = next(data for kind, data in frames if kind == "meta")["turn_id"]
     sent = "".join(data["text"] for kind, data in frames if kind == "delta")
     recorded = await _recorded(log.store, turn_id)
@@ -939,6 +942,107 @@ async def test_an_orchestrator_error_is_recorded_as_failed(monkeypatch):
         assert failed["data"] == {"error_type": "RuntimeError", "stage": "answer"}
         assert "出错" in failed["body"]["error"]                # 异常信息可能回显输入：放原文那一半
     assert len(await log.store.turn_ids_of("c-fail")) == 2
+
+
+# ── 审计：出错、中途断开的轮次也留档 ──────────────────────────────────────────
+#
+# 审计以前只在作答成功那一步写：出错的轮次、流式中途断开的轮次，客户的原话在审计里都找不到，
+# 等于给了客户一个躲开留档的办法。现在收尾时补写客户的原话；客户已经看到的半截回答也写一条
+# （作答 Agent 取路由给的主专家），一个字都没看到就只有原话。
+
+async def _audit(main, conv_log, conv_id: str) -> list[tuple[str, str, str, str]]:
+    await asyncio.gather(*list(main._background_tasks))
+    return [(e.role, e.content, e.agent_type, e.turn_id)
+            for e in await conv_log.get_conversation(conv_id, instance="staff")]
+
+
+async def test_a_completed_turn_is_audited_once(monkeypatch, tmp_path):
+    conv_log = ConversationLog(db_path=str(tmp_path / "conversations.db"))
+    main, _ = await _desk(monkeypatch, conv_log=conv_log)
+    answer = await main.chat(_ask(main, conv_id="c-chat"), None)
+    frames = await _stream(main, _ask(main, conv_id="c-stream"))
+    result = next(data for kind, data in frames if kind == "result")
+
+    assert await _audit(main, conv_log, "c-chat") == [
+        ("user", CANARY_MESSAGE, "", answer.turn_id),
+        ("assistant", answer.response, answer.agent_type, answer.turn_id)]
+    assert await _audit(main, conv_log, "c-stream") == [
+        ("user", CANARY_MESSAGE, "", result["turn_id"]),
+        ("assistant", result["response"], result["agent_type"], result["turn_id"])]
+    await conv_log.close()
+
+
+async def test_a_failed_turn_still_leaves_the_customers_words_in_the_audit(monkeypatch, tmp_path):
+    conv_log = ConversationLog(db_path=str(tmp_path / "conversations.db"))
+    main, log = await _desk(monkeypatch, conv_log=conv_log)
+
+    async def run(req):
+        raise RuntimeError("编排器出错")
+
+    async def run_stream(req):
+        raise RuntimeError("流式编排器出错")
+        yield  # noqa: B901 - 让它成为异步生成器
+
+    monkeypatch.setattr(main._orchestrator, "run", run)
+    monkeypatch.setattr(main._orchestrator, "run_stream", run_stream)
+    with pytest.raises(RuntimeError):
+        await main.chat(_ask(main, conv_id="c-fail"), None)
+    await _stream(main, _ask(main, conv_id="c-fail"))
+
+    # 两轮客户都什么也没看到：各留一条原话，没有助手那一条
+    turn_ids = await log.store.turn_ids_of("c-fail")
+    assert len(turn_ids) == 2
+    assert sorted(await _audit(main, conv_log, "c-fail")) == sorted(
+        ("user", CANARY_MESSAGE, "", turn_id) for turn_id in turn_ids)
+    await conv_log.close()
+
+
+async def test_a_stream_failing_halfway_keeps_the_half_the_customer_saw(monkeypatch, tmp_path):
+    conv_log = ConversationLog(db_path=str(tmp_path / "conversations.db"))
+    main, _ = await _desk(monkeypatch, conv_log=conv_log)
+
+    async def run_stream(req):
+        yield {"type": "routing", "primary_agent": "order", "supporting_agents": [],
+               "reason": "规则命中", "confidence": 0.9}
+        yield {"type": "delta", "text": "补件已经登记，"}
+        raise RuntimeError("答到一半出错")
+
+    monkeypatch.setattr(main._orchestrator, "run_stream", run_stream)
+    frames = await _stream(main, _ask(main))
+    turn_id = next(data for kind, data in frames if kind == "meta")["turn_id"]
+
+    assert [kind for kind, _ in frames][-1] == "error"
+    assert await _audit(main, conv_log, "c1") == [
+        ("user", CANARY_MESSAGE, "", turn_id), ("assistant", "补件已经登记，", "order", turn_id)]
+    await conv_log.close()
+
+
+async def test_a_client_leaving_mid_stream_leaves_what_it_saw_in_the_audit(monkeypatch, tmp_path):
+    conv_log = ConversationLog(db_path=str(tmp_path / "conversations.db"))
+    main, _ = await _desk(monkeypatch, conv_log=conv_log, model=ScriptedModel(
+        text_step("第一句已经发出去了。", "第二句还没来得及发。")))
+    frames = await _leave_after_the_first_sentence(main, _ask(main))
+    turn_id = next(data for kind, data in frames if kind == "meta")["turn_id"]
+    primary = next(data for kind, data in frames if kind == "routing")["primary_agent"]
+
+    assert await _audit(main, conv_log, "c1") == [
+        ("user", CANARY_MESSAGE, "", turn_id), ("assistant", "第一句已经发出去了。", primary, turn_id)]
+    await conv_log.close()
+
+
+async def test_a_cancelled_chat_still_leaves_the_customers_words_in_the_audit(monkeypatch, tmp_path):
+    """/chat 被取消（停机、客户端断开）时也一样：请求还在准备阶段，客户什么都没看到。"""
+    conv_log = ConversationLog(db_path=str(tmp_path / "conversations.db"))
+    main, log = await _desk(monkeypatch, conv_log=conv_log, memory=_Memory(delay_s=5))
+    task = asyncio.create_task(main.chat(_ask(main), None))
+    await asyncio.sleep(0.05)                                # 停在读记忆那一步
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    [turn_id] = await log.store.turn_ids_of("c1")
+    assert await _audit(main, conv_log, "c1") == [("user", CANARY_MESSAGE, "", turn_id)]
+    await conv_log.close()
 
 
 async def test_without_an_instance_the_log_stays_off_and_health_says_why(monkeypatch):

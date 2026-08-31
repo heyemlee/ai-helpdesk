@@ -600,6 +600,36 @@ async def test_ordinary_ids_still_get_through(monkeypatch):
     assert fresh.conv_id and fresh.conv_id != picked                 # 空的 conv_id：照旧开一个新会话
 
 
+# 客户原话也原样进审计：NUL、孤立代理字符存不进去，审计里客户原话那一条就丢了，同样 422。
+# 规则比 id 宽：换行、制表符是正常的原话，长度也不在这里管。
+
+@pytest.mark.parametrize("path", ["/chat", "/chat/stream"])
+@pytest.mark.parametrize("value", ["SO-7731\x00 补件到哪了", "\udfff 补件到哪了"],
+                         ids=["nul", "lone_surrogate"])
+def test_chat_turns_away_a_message_the_audit_could_not_store(monkeypatch, path, value):
+    from fastapi.testclient import TestClient
+
+    client = TestClient(_http_app(monkeypatch).app)
+    response = client.post(path, content=json.dumps({"message": value}),
+                           headers={"Content-Type": "application/json"})
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["loc"][-1] == "message"
+
+
+def test_a_message_keeps_its_line_breaks_tabs_emoji_and_length(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    main = _http_app(monkeypatch)
+    client = TestClient(main.app)
+    for message in ("第一行\n第二行\r\n第三行", "订单号\tSO-1", "表情 😀 照收", "补" * 5000):
+        assert main.ChatRequest(message=message).message == message
+        # json.dumps 把表情转成一对代理字符的转义，服务端解出来是一个字符，不是孤立代理字符。
+        # 没起编排器，过了校验就是 503
+        response = client.post("/chat", content=json.dumps({"message": message}),
+                               headers={"Content-Type": "application/json"})
+        assert response.status_code == 503
+
+
 # ── 前端夹具：刷新之后的历史、取回的那一轮、工单 ──────────────────────────────
 #
 # 工作台按 turn_id 取回一轮的经过，再交给原来的检查器和学习模式渲染。前端测试用的就是
