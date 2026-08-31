@@ -28,7 +28,7 @@ flowchart LR
     class R,PG store
 ```
 
-客户实例和员工实例是同一个镜像，区别有两处：不委派 SQL Agent（`SQL_AGENT_URL` 留空），关掉跨会话记忆（它的 user_id 取自请求体）。委派走哪条传输由 `SQL_AGENT_TRANSPORT` 决定：`a2a` 走 `message/stream`，把下游每个阶段实时转给工作台；默认的 `query` 调同步的 `POST /query`，没有进度事件。
+客户实例和员工实例是同一个镜像，配置不同（完整对照见第 6 节）：最要紧的两处是不委派 SQL Agent（`SQL_AGENT_URL` 留空），关掉跨会话记忆（它的 user_id 取自请求体）。委派走哪条传输由 `SQL_AGENT_TRANSPORT` 决定：`a2a` 走 `message/stream`，把下游每个阶段实时转给工作台；默认的 `query` 调同步的 `POST /query`，没有进度事件。
 
 对外接口：`/chat`、`/chat/stream`、`/auth/token`、`/search`、`/skills`、`/sops`、
 `/knowledge/*`、`/tickets`、`/conversations/{conv_id}`、`/eval/run`、`/eval/promote`、`/admin/model*`、`/health`、`/monitor`、`/metrics`。
@@ -47,7 +47,7 @@ flowchart TD
     F --> G[知识检索]
     F --> W[委派 SQL Agent 查业务数据<br/>A2A 或 /query]
     G -->|快通道| G1[直接检索<br/>跳过改写与重排]
-    G -->|完整链路| G2[改写成三个子查询 → 并行召回 → 去重<br/>→ cross-encoder 重排，没配时 LLM 重排]
+    G -->|完整链路| G2[改写成三个子查询 → 每个子查询稠密 + 关键词并行召回<br/>真模型 RRF，本地向量关键词优先 → 去重<br/>→ cross-encoder 重排，没配时 LLM 重排]
     G2 --> G3{依据够吗<br/>LLM 判定或分数阈值}
     G3 -->|不够| G4[针对缺口再检索一轮]
     W --> W1[证据判定<br/>success/partial 且无风险、无降级才算证据]
@@ -118,20 +118,26 @@ flowchart LR
         CB[熔断状态 · 路由惩罚<br/>限流计数（多实例共享）]
     end
     subgraph PG[PostgreSQL + pgvector]
+        KD[(kb_documents<br/>文档原文 · 来源 · 分类)]
         KB[(kb_chunks<br/>RAG 知识库切片向量)]
-        EP[(episodic<br/>历史会话摘要)]
-        UP[(user_profile<br/>用户画像，每用户单条)]
+        EP[(memory_episodic<br/>历史会话摘要)]
+        UP[(memory_profile<br/>用户画像，每用户单条)]
         TK[(tickets<br/>人工工单，四态)]
+        TN[(ticket_notifications<br/>工单通知待发送记录)]
         CL[(conversation_log<br/>审计原文 append-only)]
+        SM[(storage_meta<br/>库里的向量是哪个模型算的)]
         TE[(turn_events<br/>一轮的事件日志<br/>原文 30 天 · 结构 180 天)]
     end
     subgraph 文件
         SK[skills/*/SKILL.md<br/>可热加载]
         BL[data/eval/baseline.json<br/>评测基线]
+        MS[data/runtime/model_settings.json<br/>控制台保存的模型连接，权限 0600]
     end
 
     WM -->|满 15 条触发 LLM 摘要压缩| SUM
     SUM --> EP
+    KD --> KB
+    TK -->|配了 webhook 时入队| TN
     CL -.->|turn_id| TE
     TK -.->|turn_id| TE
 ```
@@ -195,6 +201,20 @@ flowchart TD
 ```
 
 共 12 个服务。只有 Nginx 的 80 端口对外，其余端口只绑本机：员工实例和工作台背后没有 API key，不能直接开放给其他机器。两个实例共用 Redis 和 PostgreSQL，并挂同一个模型设置目录：员工工作台保存模型连接后，客户实例几秒内跟上。观测栈（Collector / Tempo / Loki / Promtail / Grafana）与业务无耦合，不需要时删掉对应 service 即可，应用侧只是少了 trace 上报目标。
+
+两个后端实例是同一个镜像、同一套 Redis 和 Postgres，区别在配置：
+
+| | 员工实例 `ai-helpdesk-app` | 客户实例 `ai-helpdesk-customer` |
+|---|---|---|
+| 入口 | `127.0.0.1:8080`；工作台 `127.0.0.1:5174` 经 Docker 内网转发到它 | Nginx 的 80（`127.0.0.1:8081` 只给本机排障） |
+| 模型设置 | 本机控制台可改 | 只读（`AI_HELPDESK_MODEL_SETTINGS_EDITABLE=false`），几秒内跟上员工实例保存的设置 |
+| 跨会话记忆 | 开：读写 `memory_episodic` / `memory_profile` | 关（`ENABLE_CROSS_SESSION_MEMORY=false`），只留当前会话记忆 |
+| SQL Agent | 订单类问题委派给同机的 ai-sql-agent | 不接（`SQL_AGENT_URL` 留空），订单类问题只走知识库 |
+| 工具循环 | 看 `backend/.env` 里的 `AI_HELPDESK_TOOL_LOOP` | 写死关（`AI_HELPDESK_TOOL_LOOP=off`） |
+| 事件日志 | 原文默认留 30 天，读接口开 | 原文留 14 天，读接口关（`AI_HELPDESK_EVENT_LOG_READ=off`） |
+| API key | 无（只绑本机） | `backend/.env.customer` 里配了 `AI_HELPDESK_API_KEY` 后，工单、对话、知识库等端点要 `X-API-Key`，`/chat` 开放 |
+
+客户拿不到订单数据只靠"客户流量必须进客户实例"这一层：委派闸门本身不区分员工和客户。
 
 挂载 `./backend/skills`（热加载 SOP）、`./backend/data/eval`（评测基线）、`./backend/data/runtime`（模型设置）、
 `./backend/logs`（供 Promtail 采集）。

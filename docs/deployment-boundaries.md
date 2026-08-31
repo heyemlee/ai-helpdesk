@@ -100,6 +100,17 @@ with `AI_HELPDESK_API_KEY` set (the customer-facing one is), requests without th
 the public nginx only forwards `/chat`, `/chat/stream` and `/health`. Internal purchasing and cost
 rules and SOPs are therefore not readable through any anonymous endpoint.
 
+**Model connections are guarded one step further.** A model connection decides where every
+customer message, and the knowledge text that goes with it, is sent. `/admin/model*` requires
+`X-API-Key` like the other staff endpoints, and a change is accepted only when the request's `Host`
+is a loopback name and any `Origin` it carries is one too, so a page from another site open in a
+staff browser cannot repoint the model even on the key-less staff instance. Changes also need
+`AI_HELPDESK_MODEL_SETTINGS_PATH`; the customer-facing instance runs with
+`AI_HELPDESK_MODEL_SETTINGS_EDITABLE=false` and only follows the file the staff console writes.
+That file holds keys in plaintext, like `backend/.env`, so it is written with mode 0600. No
+endpoint returns a key (the status shows only whether one is set and its last four characters),
+and `backend/.dockerignore` keeps the directory out of images.
+
 **What the customer entrance still lacks, in the order it has to be built:**
 
 1. **Customer identity.** Without `AI_HELPDESK_AUTH_SECRET`, `user_id` comes from the request body
@@ -109,7 +120,8 @@ rules and SOPs are therefore not readable through any anonymous endpoint.
    carry no internal/customer-safe distinction, so retrieval on the customer instance grounds
    answers in internal material. Integration point: an audience field on `kb_documents` (default
    internal), filtered in `kb_search` / `kb_search_lexical` per instance; newly imported documents
-   stay internal until someone explicitly releases them.
+   stay internal until someone explicitly releases them. The `category` field on `kb_documents` is
+   not this: it only groups documents for browsing, and retrieval ignores it.
 3. **SOPs.** Both instances mount the same `backend/skills`, so customer-instance agents carry
    internal approval limits and scripts in their system prompt. Integration point: a separate
    `AI_HELPDESK_SKILLS_DIR` for the customer instance.

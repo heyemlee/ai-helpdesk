@@ -13,7 +13,7 @@
 | 18 个细粒度意图 | `IntentCategory`、`FINE_GRAINED_INTENTS` |
 | 零延迟规则通道 | `IntentRecognizer._fast_path`、`_FAST_PATH_RULES` |
 | 三路加权投票 | `IntentRecognizer._vote`、`_VOTE_WEIGHTS` |
-| Embedding 一路 | `_embedding_recognize`、`_embed_text`、`_local_embedding` |
+| Embedding 一路 | `_embedding_recognize`、`_embed_texts`、`_local_embedding` |
 | 实体提取 | `_extract_entities`、`_ITEM_CODE_RE` |
 
 **为什么快通道要求"锚点不冲突"**：`_fast_path` 在命中多个不同意图的锚点时会
@@ -23,7 +23,9 @@
 **为什么 Embedding 不能用 base_url 是否为空来开关**：早期版本这么写，配了
 Anthropic 协议网关就等于永久关掉 Embedding，"三路融合"实际只剩两路。现在这一路
 始终参与投票，配了 OpenAI 兼容端点走远端向量，没配就退化为本地字符 n-gram
-向量——换供应商是改环境变量的事，链路在任何配置下都成立。
+向量——换供应商是改环境变量的事，链路在任何配置下都成立。远端暂时不可用时这一路
+改用本地向量现算，但消息和意图模板总在同一个空间里比（`_embed_texts` 返回向量所在的
+空间）：拿本地向量去比远端算的模板向量，得到的是一个和内容无关的数。
 
 **为什么错误码正则要收紧**：`[A-Z][A-Z0-9_-]{2,16}` 会把任意大写单词当错误码，
 "I NEED HELP" 命中 NEED / HELP 之后给技术域加分，直接导致误路由。
@@ -111,6 +113,8 @@ General 重试——已经吐出去的半截回答收不回来，重跑会让用
 | 检索优化链路 | `search_with_rewrite`、`rewrite_query`、`_rerank` |
 | 熔断 | `CircuitBreaker` |
 | 降级 | `_fallback_result` |
+| 证据够不够 | `_evidence_ok`（重排给了判断就用它，否则看 `RAG_EVIDENCE_MIN_SCORE`） |
+| LLM 重排看到的内容 | `_llm_rerank`：标题 + 最多 `PASSAGE_CHARS`（600）字正文，和交给 Agent 的上下文（`turn_tools.knowledge_lookup`）同一个数 |
 
 **为什么 `_rerank` 返回二元组**：结果数不足 `top_k` 时它原样返回，此时不能标记
 `reranked=True`。早期版本外层无条件标记，这个字段一直在说谎。
@@ -156,6 +160,8 @@ General 重试——已经吐出去的半截回答收不回来，重跑会让用
 | 鉴权 | `require_api_key`、`protect_chat` |
 | 知识门控 | `_should_use_knowledge` |
 | 前端挂载 | `_mount_frontend` |
+| 导入出错的分流 | `_import_or_503`：分类不认识 400、正在换向量模型 409、Embedding 不可用 503 |
+| 模型连接接口 | `backend/app/api/model_admin.py`（挂在 `require_api_key` 下） |
 
 **为什么流式和非流式共用 `_prepare_request`**：两条链路一旦各自构造上下文就会
 漂移，最终表现为"同一个问题流式和非流式给出不同答案"。
@@ -214,11 +220,27 @@ Redis 抖动导致整个服务不可用。
 | 双后端向量存储 | `vector_store.py` 的 `PgStore` / `SqliteStore` |
 | 余弦检索 | `PgStore.kb_search`（`<=>` 运算符） |
 | 审计留档 | `conversation_log.py` |
-| 向量化 | `backend/app/core/embedder.py` |
+| 向量化 | `backend/app/core/embedder.py`（`Embedder.signature`、`semantic`） |
+| 两路融合怎么选 | `knowledge_base.fuse_candidates`：`semantic` 为真用 `rrf_fuse`，否则 `lexical_first_fuse` |
+| 向量来源记录 | `storage_meta` 表的 `embedding_signature`（`vector_store.check_embedding_signature`） |
+| 整批换向量 | `replace_embeddings`、`kb_embedding_rows`（`scripts/reembed.py` 和控制台切换共用） |
 
 **为什么维度不一致要 fail fast**：向量列维度建表时就固定了，而维度由当前 Embedder
 决定（远端 1536 维、本地降级 256 维）。换了嵌入后端却不改表，数据库不会报错，
-但检索结果完全无意义——这是最难排查的一类故障，应该在启动时就炸掉。
+但检索结果完全无意义——这是最难排查的一类故障，应该在启动时就炸掉。维度相同、模型
+不同的情况维度检查看不出来，所以 `storage_meta` 另记一份"库里的向量是哪个模型算的"，
+对不上同样拒绝启动。
+
+**为什么远端 Embedding 失败不拿本地向量顶上**：早期版本失败一次就永久改用本地向量，
+维度沿用远端的。维度对得上所以不报错，查询那一路从此在库里随机取片段，这期间导入的
+文档还会把哈希向量写进库。现在远端失败就抛 `EmbeddingUnavailable`，冷却期（默认 30 秒）
+内不再发请求：检索只走关键词一路，导入报错不落库。
+
+**为什么本地 n-gram 向量不参与 RRF**：RRF 的前提是两路互相独立。本地 n-gram 量的也是
+字符重合，和关键词一路是同一种信号、只是噪声更大；拿它投票，两路都沾点边的片段会把关键词
+一路的第 1 名挤出前三。56 个片段、108 条用例上前三命中：只用关键词 80，RRF 62
+（SQLite；PostgreSQL 上是 77 和 64，见 `docs/evaluation/retrieval-ca-factory.md`）。
+所以本地向量只在关键词一路没召回时补位。
 
 **为什么保留 SQLite 后端**：clone 下来不起任何容器就能跑通全链路。两个后端跑同一组
 合同测试，保证行为一致；PG 合同测试在 CI 里通过 service container 始终执行。
@@ -262,6 +284,8 @@ Redis 抖动导致整个服务不可用。
 | effort 统一下发 | `_with_effort`、`STRUCTURED_EFFORT` |
 | 各处的返回形状 | `LLMIntentPayload`、`UserProfilePayload`、`QueryRewritePayload`、`RerankPayload`、`JudgePayload` |
 | OpenAI 侧等价实现 | `openai_compat._Messages.parse` |
+| 中转站丢掉 Schema 时的退路 | `_SCHEMA_NOT_ENFORCED`、`schema_enforced_for` |
+| 接口根地址补 `/v1` | `model_settings.api_root`；回了网页报 `GatewayResponseError` |
 | 工具调用的互译 | `_openai_tool`、`_tool_messages`、`_MessageStream._collect_tool_calls` |
 | 网关不支持工具 | `ToolsUnsupportedError`、`tools_rejected` |
 | 缓存前缀边界 | `BaseAgent._system_blocks` |
@@ -271,6 +295,12 @@ Redis 抖动导致整个服务不可用。
 JSON 被 markdown 围栏包住、字段名或类型漂了——而三种的表现是同一个：
 调用点 except 里的一次静默降级。换成结构化输出之后 schema 在服务端强制，
 这三类失败不再成立，剩下的解析异常都是真异常。
+
+**为什么中转站丢掉 Schema 时把它写进提示词，而不是放弃结构化输出**：有的中转站只转发
+对话、把 `response_format` 丢掉，模型照常写一段文字，于是意图、改写、重排、判分、画像
+五处全部校验失败。`parse` 拿到 200 却校验不过时，把 Schema 写进 system 提示、再按 Schema
+完整校验一次，并记住这个（端点, 模型），之后直接走这条路。约束从服务端挪到了提示词，
+但校验一条没少：仍然不合格式的回答照样报错，不会被当成结果用。连接测试会就此给出警告。
 
 **为什么删掉了 temperature 的探测降级**：SDK 1.x 把 `temperature/top_p/top_k`
 从 `messages.*` 的签名里移除了，再传是 **TypeError** 而不是 400。原来那套探测
@@ -325,6 +355,59 @@ asyncio 建任务时复制 context，准备任务、并行专家、轮次之后�
 **为什么响应字段和事件要有"影子校验"**：事件从十几个节点发出，迟早有人改了响应、忘了事件。
 每轮结束时拿内存里的事件投影一次，和真正发出去的响应比，对不上记
 `turn_projection_mismatch_total`；八条路径的金标准序列测试也在比同一件事。
+
+## 16. 模型连接 · `backend/app/core/model_settings.py`、`model_runtime.py`、`backend/app/api/model_admin.py`
+
+| 看什么 | 符号 |
+|---|---|
+| 存哪、怎么校验 | `settings_path`、`save_section`、`validate_base_url`、`same_address` |
+| 谁能改 | `model_admin.edit_problem`（本机 `Host` / `Origin`、只读实例、没配路径） |
+| 保存前测试 | `probe_chat`（普通 + 结构化输出）、`probe_embedding`（报回实际维度） |
+| 对话换连接 | `ModelRuntime.apply_chat` → 各组件的 `reconfigure_llm` |
+| 向量换模型 | `ModelRuntime.start_embedding_switch`、`_switch`、`Embedder.adopt` |
+| 跨实例跟随 | `ModelRuntime.sync`、`watch` |
+
+**为什么换向量模型要先重建再切换**：新旧模型的向量不在一个空间里，只改配置的话，新模型的
+查询向量会去比旧库。切换任务先把知识片段和情景记忆的向量全部重算，在存储层一个事务里整批
+换上，再让共享的 Embedder 换过去，最后写配置文件。重算期间检索照常用旧模型；导入暂停，
+因为那时进来的分片没有新向量，整批就换不上了。换上之前任何一步失败，库和配置都不动；换上之后
+配置文件写不进去的话，向量已经是新模型的，运行中的实例照新模型走，文件可写后自动补写。
+
+**为什么 Key 留空只在同一台主机上沿用**：换了接口地址而不重填 Key，等于把现有的 Key 交给一台
+新主机。
+
+**为什么要校验 `Host` 和 `Origin`**：员工实例没有钥匙、只靠端口绑本机挡外人，而后端的 CORS
+默认全放开（`CORS_ALLOW_ORIGINS` 默认 `*`）。同一台机器的浏览器里任何网页都能往 127.0.0.1
+发请求；不另外拦，一个恶意网页就能把模型连接改到它自己的地址。`Host` 挡 DNS 重绑定，
+`Origin` 挡跨站请求。
+
+**为什么客户实例要等库里的向量来源对上才换向量模型**：配置一变就跟着换的话，只要库里的向量
+还是旧模型算的（员工实例的切换还没换上，或者配置是手工改的），客户实例就会拿新模型的查询
+向量去比旧向量，检索结果和问题无关。所以它先看 `storage_meta` 里记的向量来源是不是已经是新
+模型，不是就下次再看。另一头也有一小段空窗：员工实例把库里的向量换上之后、客户实例下一次看
+文件之前，客户实例还在用旧模型查询，撞上维度不符的检索退回只走关键词，不报错
+（`KnowledgeBase.search_async`）。
+
+## 17. 知识库分类 · `backend/app/tools/knowledge_base.py`
+
+| 看什么 | 符号 |
+|---|---|
+| 固定的 7 个分类 | `CATEGORIES`、`CATEGORY_KEYS`、`normalize_category` |
+| 按分类列、计数 | `list_documents`（`category`）、`category_overview` |
+| 改分类 | `set_document_category` ← `PATCH /knowledge/documents/{doc_id}` |
+| 给老文档补分类 | `backend/scripts/assign_categories.py` |
+
+**为什么分类不影响检索**：分类只用来整理和浏览。检索和回答都不看它，所以改分类只动
+`kb_documents.category`，分片、向量、关键词索引都不碰，不用重算向量，也不会改变回答。
+
+**为什么一篇的分类写错，整批都不导入**：只导进去一部分的话，用户得自己找出哪些进了、哪些没进。
+导入前先校验，失败时库里什么都没写。
+
+**为什么重复导入不改分类**：文档按内容判重，重复导入命中已有的那篇就跳过。已经归好类（可能是
+有人特意挪过）的文档不该因为同一份文件再导一次而被挪走。
+
+**为什么补分类只认一字不差的标题**：按内容或关键词猜分类会错得很自信。对不上的留在未分类里
+由人去归，已经有分类的一律不碰。
 
 ## 测试在哪
 

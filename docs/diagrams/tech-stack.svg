@@ -98,7 +98,7 @@
   <rect x="60" y="460" width="550" height="190" rx="24" fill="#fff7ed" stroke="#fb923c" class="card"/>
   <text x="90" y="505" class="section">Engineering delivery</text>
   <line x1="90" y1="522" x2="580" y2="522" stroke="#fed7aa" stroke-width="2"/>
-  <text x="90" y="560" class="label">Docker Compose: 11 services, one command</text>
+  <text x="90" y="560" class="label">Docker Compose: 12 services, one command</text>
   <text x="90" y="596" class="body">GitHub Actions: pytest · ruff · Vitest · tsc</text>
   <text x="90" y="632" class="body">687 backend + 48 frontend + pgvector contract tests</text>
 

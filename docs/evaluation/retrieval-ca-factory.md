@@ -8,7 +8,7 @@ This measurement changed how the service fuses the two legs when no embedding mo
 
 ## Conditions
 
-- Backend source: the change set that adds this record, on top of commit `dde94bf`.
+- Backend source: commit `aedd8c9`, which adds this record (parent `dde94bf`).
 - Harness: [eval_retrieval.py](../../backend/scripts/eval_retrieval.py), default `--suite ca`.
 - Corpus: 52 documents, 56 chunks. Six built-in documents from `knowledge_base._DEFAULT_DOCS` plus 46 in [sample_ca_factory_knowledge.json](../../backend/data/demo_docs/sample_ca_factory_knowledge.json). The 46 are **simulated** policies for a California cabinet factory, written for testing. Prices, fees, and time limits in them are invented.
 - Cases: 122 in [retrieval_cases.json](../../backend/data/eval/retrieval_cases.json); 108 have an expected document and 14 have no answer in the corpus.
@@ -101,3 +101,11 @@ Highest cosine among the three served results, which is what the score-threshold
 - This measures recall and rank only. The full chat path rewrites the question into sub-queries and reranks with a generative model, which can recover documents that sit at ranks four to ten here; that path was not run.
 - No remote embedding model was measured here. The [remote-embedding record](retrieval-remote-embedding.md) reruns this suite with one; set `RAG_EVIDENCE_MIN_SCORE` from the score distributions the harness prints for your model.
 - One deterministic run per backend.
+
+## First re-run
+
+SQLite only, on `05e981e`. Since `036641e` every document in the corpus carries a category; retrieval ignores categories, and every SQLite figure above reproduced exactly (hit@3 24 / 80 / 62 / 80, MRR 0.212 / 0.673 / 0.475 / 0.676, superseded document first in 3 of 6, AUC 0.564). PostgreSQL was not re-run. The `--suite smoke` set also reproduced its [recorded MRR and hit@3](retrieval-smoke.md).
+
+## Second re-run
+
+On `4346f3e`, local vectors only, on both backends (PostgreSQL 16.15 from `pgvector/pgvector:pg16` in a throwaway container). Every figure in the tables above reproduced exactly, including the PostgreSQL column the first re-run skipped, and so did the `--suite smoke` set.

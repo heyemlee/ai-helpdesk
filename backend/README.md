@@ -37,7 +37,7 @@ ai-helpdesk 是一个企业级智能客服系统，核心链路为：
 
 ```text
 ai-helpdesk/                             # 仓库根
-├── docker-compose.yml                   # 全栈编排：backend / frontend / Redis / Postgres(pgvector) / 观测栈 / Nginx
+├── docker-compose.yml                   # 全栈编排（12 个服务）：员工 / 客户两个后端实例、frontend、Redis、Postgres(pgvector)、观测栈、Nginx
 ├── .env.example                         # compose 变量替换的模板（REDIS_PASSWORD、AI_HELPDESK_PORT）
 ├── .env                                 # 由上一行复制而来，不入库
 ├── .github/workflows/ci.yml             # 后端 pytest + ruff，前端 vitest + tsc，契约用例，两个镜像构建
@@ -45,26 +45,37 @@ ai-helpdesk/                             # 仓库根
 ├── backend/                             # 本文档描述的部分
 │   ├── app/                             # Python 包：服务本体（uvicorn app.api.main:app）
 │   │   ├── api/main.py                  # FastAPI 入口，/chat /search /knowledge /monitor /eval
+│   │   ├── api/model_admin.py           # /admin/model：模型连接的查看、测试、保存、恢复
 │   │   ├── core/intent_recognizer.py    # 18 类意图：规则快通道 + 三路融合
 │   │   ├── core/answer_policy.py        # 出站策略守卫：拦截无依据的价格/时效承诺
 │   │   ├── core/skill_loader.py         # Markdown SOP 热加载，按 agent 类型注入
 │   │   ├── core/llm_utils.py            # LLM 调用封装
+│   │   ├── core/openai_compat.py        # OpenAI 兼容端点的翻译层（含丢掉 Schema 的中转站）
+│   │   ├── core/embedder.py             # 文本 → 向量：远端 /embeddings 或本地 n-gram，两种不混用
+│   │   ├── core/model_settings.py       # 控制台保存的模型连接：存哪、怎么校验
+│   │   ├── core/model_runtime.py        # 运行中换连接：对话立刻换，向量先重建再换，两个实例保持一致
 │   │   ├── agents/agent_orchestrator.py # 三专家 + 兜底的领域分路由、主辅协作、转人工
+│   │   ├── agents/tool_loop.py          # 作答阶段的有边界工具循环（可选，默认关）
+│   │   ├── events/                      # 一轮的事件日志：记录器、批量写入、存储、保留期、投影、重放
 │   │   ├── memory/conversation_memory.py  # Redis + Postgres(pgvector) 记忆管理
 │   │   ├── tools/tool_manager.py        # 工具调用、查询改写、重排、熔断、缓存、降级
-│   │   ├── tools/knowledge_base.py      # Postgres(pgvector) RAG 知识库
+│   │   ├── tools/knowledge_base.py      # Postgres(pgvector) RAG 知识库：混合检索、文档与分类
 │   │   ├── storage/                     # pgvector / SQLite 存储实现、对话审计日志
 │   │   ├── tickets/                     # 工单存储与转人工通知
 │   │   ├── monitor/performance_monitor.py # Agent/工具在线监控
 │   │   └── evaluation/evaluator.py      # 四维 LLM-as-Judge + 相对存档基线的回归检测
 │   ├── skills/                          # 四份 SOP，与四个 Agent 一一对应（运行时热加载的数据，不是代码）
 │   ├── tests/                           # pytest 用例（不依赖网络和外部服务）
-│   ├── scripts/                         # 检索评测、端到端评测、压测（用后端 venv 跑）
-│   ├── data/demo_docs/                  # 演示知识库文档
+│   ├── scripts/                         # 检索评测、端到端评测、轨迹评测、压测、向量重建（reembed.py）、
+│   │                                    # 给老文档补分类（assign_categories.py）、事件日志运维和重放；用后端 venv 跑
+│   ├── data/demo_docs/                  # 演示知识库文档，含 46 篇仿真工厂资料（检索评测语料）
 │   ├── data/eval/baseline.json          # 评测存档基线，只在 /eval/promote 时更新
+│   ├── data/eval/retrieval_cases.json   # 检索评测用例（122 条），和上面的仿真语料一起改
+│   ├── data/runtime/                    # 控制台保存的模型连接（含明文 Key，不入库、不进镜像）
 │   ├── Dockerfile
 │   ├── requirements.txt
-│   └── .env                             # 由 .env.example 复制而来
+│   ├── .env                             # 由 .env.example 复制而来
+│   └── .env.customer                    # 客户实例专用，叠加在 .env 之上；由 .env.customer.example 复制而来，不入库
 │
 ├── frontend/                            # React 18 + TypeScript 控制台
 │   ├── src/components/RoutingInspector.tsx  # 把每一轮的路由决策过程摊开显示
@@ -88,6 +99,8 @@ ai-helpdesk/                             # 仓库根
     ├── architecture.md                  # Mermaid 架构图
     ├── code-guide.md                    # 代码导读：每个关键取舍在哪个文件、为什么
     ├── auth-token-integration.md
+    ├── deployment-boundaries*.md        # 单租户边界、员工工作台与客户入口的分界
+    ├── evaluation/                      # 实测记录：检索（冒烟 8 条、仿真工厂 122 条、远端 Embedding）、端到端、工具循环 A/B
     ├── integrations/                    # 交给兄弟仓库（a2a-contract、ai-sql-agent）的需求与反馈
     └── ops/                             # 上线检查单、恢复演练记录
 ```
@@ -111,15 +124,23 @@ ai-helpdesk/                             # 仓库根
 
 ## 1.1 跑测试
 
-测试全部用桩替换 LLM 调用，不需要 API Key、Redis 或 Postgres(pgvector)：
+测试全部用桩替换 LLM 调用，不发真实网络请求，不需要真的 Key、Redis 或 Postgres(pgvector)。
+只有一点：`ANTHROPIC_API_KEY` 要有个占位值（CI 用 `test-key`），模型连接那组用例会读它，不设有 14 条失败：
 
 ```bash
-pip install -r requirements.txt && pytest
+pip install -r requirements.txt && ANTHROPIC_API_KEY=test-key pytest
 ```
 
 覆盖的核心行为：意图分类体系与规则快通道、三路融合与 LLM 故障容错、
 领域分路由与主辅协作、低置信度澄清与转人工、专家失败降级、
-出站策略拦截、以及相对存档基线的回归检测。
+出站策略拦截、相对存档基线的回归检测，以及模型连接的测试 / 保存 / 跨实例跟随、
+换向量模型时的整批重建、知识库分类。
+
+PG 合同用例要 `TEST_POSTGRES_DSN`（一个装得上 vector 扩展的空库），A2A 契约用例要
+`A2A_CONTRACT_DIR`（a2a-contract 的 `v1.12` 检出），没配就跳过。在不含 `.env`
+的干净副本里实测（代码同 `4346f3e`）：都不配时 1344 通过、29 跳过（契约相关 19 条、PG 9 条，
+另有 1 条要真的绑定 `0.0.0.0` 端口，在那次的沙箱里跳过）；配上一次性 pgvector 容器和契约
+`v1.12`、不在沙箱里跑时 1466 通过、0 跳过（带 PG 时还会多收集一批 `[postgres]` 参数化用例）。
 
 ## 1.2 能力与代码位置对照
 
@@ -144,6 +165,14 @@ pip install -r requirements.txt && pytest
 | 轨迹评测：规则组对循环组 | `app/evaluation/trajectory.py`、`scripts/run_trajectory_eval.py`（订单数据读 a2a-contract 夹具） | `tests/test_trajectory_eval.py`；记录见 `docs/evaluation/tool-loop-ab.md` |
 | 四维 LLM-as-Judge | `app/evaluation/evaluator.py::LLMJudge` | `test_judge_prompt_names_all_four_dimensions` |
 | 相对存档基线的回归检测 | `EndToEndEvaluator._detect_regressions`，基线需显式提升 | `test_baseline_is_not_overwritten_on_every_run` |
+| 本地向量时关键词优先、真模型时 RRF | `app/tools/knowledge_base.py::fuse_candidates`（`lexical_first_fuse` / `rrf_fuse`） | `test_local_vectors_do_not_push_the_keyword_winner_out_of_the_top_three`；`scripts/eval_retrieval.py` |
+| 远端 Embedding 出故障不拿本地向量顶上 | `app/core/embedder.py`（抛 `EmbeddingUnavailable`，冷却后重试） | `test_remote_failure_raises_instead_of_substituting_local_vectors`、`test_search_falls_back_to_keywords_when_embedding_is_down` |
+| 库里的向量不是当前模型算的就拒绝启动 | `storage_meta` 里的 `embedding_signature`（`check_embedding_signature`） | `test_startup_refuses_vectors_from_another_model` |
+| 控制台换对话模型，不用重启 | `app/api/model_admin.py`、`ModelRuntime.apply_chat` | `test_saving_chat_applies_it_to_every_component_without_restart` |
+| 换向量模型：先整批重建，再切换 | `ModelRuntime._switch`、`replace_embeddings` | `test_saving_embedding_rebuilds_vectors_then_switches`、`test_a_failed_switch_changes_nothing` |
+| 客户实例跟随员工控制台保存的连接 | `ModelRuntime.sync` / `watch` | `test_the_other_instance_follows_chat_and_embedding` |
+| 中转站丢掉结构化输出的 Schema 时照样可用 | `app/core/openai_compat.py` `_Messages.parse` | `test_schema_goes_into_the_prompt_when_the_gateway_drops_it` |
+| 知识库分类（只管浏览，不影响检索） | `knowledge_base.CATEGORIES`、`set_document_category` | `test_documents_are_filed_and_moved_through_the_api`、`test_a_wrong_category_imports_nothing` |
 
 ## 2. 环境准备
 
@@ -195,7 +224,7 @@ ANTHROPIC_MODEL=claude-sonnet-5
 # 走 OpenAI 兼容协议（/chat/completions）
 LLM_PROVIDER=openai
 OPENAI_API_KEY=sk-xxxxxxxx
-OPENAI_BASE_URL=https://your-gateway.example.com/v1          # 注意这组路径带 /v1
+OPENAI_BASE_URL=https://your-gateway.example.com/v1          # 只写到主机时会自动补 /v1；带了路径的原样用
 OPENAI_MODEL=gpt-5.6-luna
 ```
 
@@ -206,6 +235,38 @@ OpenAI 那条路由 `app/core/openai_compat.py` 翻译成 `/chat/completions`，
 `max_tokens`、`stop_reason`、`usage` 计量、流式增量和工具调用逐项对齐。所以换供应商是改
 一行环境变量的事，五处调用点（编排器 / 意图识别 / 工具管理 / 记忆 / 评测）
 一行都不用动，两条链路也不会因为改一处漏一处而产生行为差异。
+
+兼容层顺带处理几种网关差异：effort 翻译成 `reasoning_effort`，模型不认就不再传；
+`max_tokens` / `max_completion_tokens` 被拒时换名重试；有的中转站把结构化输出的
+JSON Schema 丢掉、模型照常写一段文字，这时把 Schema 写进提示词、对回答逐条校验，
+并记住这个端点和模型，之后直接走这条路（校验不过照样报错）；接口回了 200 却不是 JSON
+（多半是地址少了 `/v1`，打到了网页上）时报 `GatewayResponseError`。回复本身的思考深度由
+`AI_HELPDESK_ANSWER_EFFORT` 控制，不设就不传。
+
+#### 在控制台切换模型连接（不重启）
+
+「管理与诊断 → 模型连接」可以在运行中换对话模型和向量模型，对应接口是 `/admin/model`
+（见 5.1）。每组是「当前模型 + 下拉框 + 保存」，接口地址和 Key 收在「连接设置」里；下拉框的候选
+来自 `POST /admin/model/{chat,embedding}/models`（只问接口有哪些模型，不保存、不花 token），
+读不到就手动输入。要点：
+
+- 要设 `AI_HELPDESK_MODEL_SETTINGS_PATH`（compose 里是 `/app/data/runtime/model_settings.json`，
+  宿主机目录 `backend/data/runtime/`）。没设时页面只读，只认 `.env`。
+- 页面保存的那一组压过 `.env`，直到点「恢复为服务端配置」。文件里是明文 Key（权限 0600），
+  没有任何接口把它读回去（状态里只有「配没配」和末四位）；`backend/.dockerignore` 排除了这个目录。
+- 只接受本机打开的控制台发来的修改：`Host` 得是本机的名字，请求带了 `Origin` 的话它也得是本机；
+  配了 `AI_HELPDESK_API_KEY` 时还要带 `X-API-Key`。Key 留空表示沿用现在那把，只在协议和主机都没换时允许。
+- 对话模型：先发两条极短的真实请求（普通回复、结构化输出），测不通不保存（页面上可以「仍然保存」，
+  接口是 `force: true`）；保存后编排器、Agent、意图识别、工具管理、记忆、评测立刻换用新客户端。
+- 向量模型：先测一次拿到实际维度；保存后后台用新模型重算全部知识片段和情景记忆的向量，
+  在存储层一个事务里整批换上，再切换并写配置。重算期间检索照常用旧模型，文档导入返回 409；
+  换上之前失败，库和配置都不动；换上之后配置文件写不进去，向量已经是新模型的，文件可写后自动补写。
+  恢复为 `.env` 的向量配置同样要重建（`.env` 配的正好是现在这个模型时不用，只删掉保存的那一组）。
+- 面向客户的实例设了 `AI_HELPDESK_MODEL_SETTINGS_EDITABLE=false`，每隔
+  `AI_HELPDESK_MODEL_SETTINGS_WATCH_S`（默认 5）秒看一次文件：对话直接跟上，向量要等库里
+  `storage_meta` 记的向量来源已经是新模型才换。
+
+停机时也可以用 `python scripts/reembed.py`（只打印计划）/ `--apply` 重建向量，见 7.6。
 
 #### 让专家自己调工具（可选，默认关）
 
@@ -361,8 +422,9 @@ docker compose up -d --build   # 在仓库根执行
 | 地址 | 内容 |
 |------|------|
 | http://localhost:5174 | 前端控制台 |
-| http://localhost:8080 | 后端 API（Swagger 在 /docs；宿主机端口由 `.env` 的 `AI_HELPDESK_PORT` 决定，默认 8080） |
-| http://localhost:80 | Nginx 反代的后端 API |
+| http://localhost:8080 | 员工实例的后端 API（Swagger 在 /docs；宿主机端口由 `.env` 的 `AI_HELPDESK_PORT` 决定，默认 8080） |
+| http://localhost:8081 | 客户实例的后端 API（宿主机端口由 `AI_HELPDESK_CUSTOMER_PORT` 决定；只读模型设置、不接 SQL Agent、关跨会话记忆） |
+| http://localhost:80 | Nginx 反代，落在客户实例上 |
 | http://localhost:3000 | Grafana（指标、日志、链路） |
 | http://localhost:9090 | Prometheus |
 
@@ -423,20 +485,29 @@ docker compose logs -f ai-helpdesk
 
 看到 ai-helpdesk 启动日志并且健康检查通过后，服务可用。
 
-启动后的端口：
+启动后的端口（除 Nginx 外，宿主机端口都只绑 `127.0.0.1`，同一网络里的其他设备访问不到）：
 
 | 服务 | 容器名 | 宿主机端口 | 容器内端口 | 用途 |
 |------|--------|------------|------------|------|
-| ai-helpdesk API | `ai-helpdesk-app` | `8000` | `8000` | 主 API 服务 |
-| Nginx | `ai-helpdesk-nginx` | `80` | `80` | 反向代理 |
-| Postgres(pgvector) | `ai-helpdesk-postgres` | `8001` | `8000` | 向量数据库 |
-| Redis | `ai-helpdesk-redis` | `6379` | `6379` | 工作记忆 |
+| ai-helpdesk 员工实例 | `ai-helpdesk-app` | `8080`（`AI_HELPDESK_PORT`） | `8000` | 员工用的 API：接 SQL Agent、开跨会话记忆、没有 API key |
+| ai-helpdesk 客户实例 | `ai-helpdesk-customer` | `8081`（`AI_HELPDESK_CUSTOMER_PORT`） | `8000` | 面向客户的 API：只读模型设置、不接 SQL Agent、关跨会话记忆；在 `backend/.env.customer` 里配了 `AI_HELPDESK_API_KEY` 后，工单/对话/知识库等端点要 `X-API-Key` |
+| 前端控制台 | `ai-helpdesk-frontend` | `5174` | `80` | Vite 构建 + Nginx，`/api/` 反代到员工实例 |
+| Nginx | `ai-helpdesk-nginx` | `80`（对外入口） | `80` | 反向代理到**客户实例**，不是员工实例 |
+| Postgres(pgvector) | `ai-helpdesk-postgres` | `5433` | `5432` | 工单、审计、知识库、记忆、画像、事件日志都在这里（见第 8 节）；5432 被同机另一个 compose 项目占用，所以宿主机侧用 5433 |
+| Redis | `ai-helpdesk-redis` | `6379` | `6379` | 工作记忆、限流、熔断共享 |
 | Prometheus | `ai-helpdesk-prometheus` | `9090` | `9090` | 监控数据 |
+| Grafana | `ai-helpdesk-grafana` | `3000` | `3000` | 指标、日志、trace 统一面板 |
+| OTel Collector | `ai-helpdesk-otel` | `4318` | `4318` | OTLP HTTP，后端上报 trace |
+| Tempo / Loki / Promtail | `ai-helpdesk-tempo` / `-loki` / `-promtail` | 无 | — | trace 存储 / 日志存储 / 日志采集，只在内网 |
+
+宿主机的 `8000` 没有占用给这个项目：它留给同机的 ai-sql-agent，容器内的 `8000` 才是应用端口。
+应用容器之间一律走 Docker 内网（`postgres:5432`、`redis:6379`），不经过上表的宿主机端口。
 
 健康检查：
 
 ```bash
-curl http://localhost:8080/health
+curl http://localhost:8080/health   # 员工实例
+curl http://localhost:8081/health   # 客户实例
 ```
 
 Swagger 文档：
@@ -445,7 +516,7 @@ Swagger 文档：
 http://localhost:8080/docs
 ```
 
-也可以通过 Nginx 访问：
+也可以通过 Nginx 访问（落在客户实例上）：
 
 ```bash
 curl http://localhost/health
@@ -551,6 +622,11 @@ http://localhost/docs
 | `GET` | `/knowledge/documents/{doc_id}` | Path | 单篇文档的正文、来源、导入时间、分类和检索片段。需要 `X-API-Key` | 阅读原文、核对回答依据 |
 | `GET` | `/knowledge/categories` | 无 | 固定的 7 个分类（按客户从咨询到售后的顺序）、每类篇数和未分类篇数。需要 `X-API-Key` | 导入时选分类、看各类有多少 |
 | `PATCH` | `/knowledge/documents/{doc_id}` | JSON `{"category": "..."}` | 改一篇文档的分类（空串是未分类）。只改分类，分片、向量和检索不受影响。需要 `X-API-Key` | 整理知识库 |
+| `GET` | `/admin/model` | 无 | 对话和向量两组连接的现状（不含 Key）、能不能改（`editable`，不能时 `reason` 说明原因）、向量切换进度（`switch`）。需要 `X-API-Key` | 控制台「模型连接」页 |
+| `POST` | `/admin/model/chat/models` · `/admin/model/embedding/models` | JSON Body | 这个连接提供哪些模型，给页面的下拉框；不保存、不花 token | 选模型 |
+| `POST` | `/admin/model/chat/test` · `/admin/model/embedding/test` | JSON Body | 用提交的连接发极短的真实请求（对话：普通回复 + 结构化输出；向量：算一个向量并报回实际维度），不保存 | 保存前先试 |
+| `PUT` | `/admin/model/chat` · `/admin/model/embedding` | JSON Body | 先测，测不通不保存（对话可带 `force: true` 硬存）。对话立刻生效；向量返回 202，后台重建全部向量后才切换，期间导入返回 409 | 不重启换模型 |
+| `DELETE` | `/admin/model/chat` · `/admin/model/embedding` | 无 | 恢复为 `.env` 的配置；向量同样要重建（返回 202） | 撤销控制台保存的连接 |
 | `POST` | `/eval/run` | 无 | 运行内置意图识别和端到端对话评测 | 四维 LLM-as-Judge + 回归检测 |
 | `GET` | `/eval/baseline` | 无 | 查看当前对比基线 | 回归结论都是相对这份数据得出的 |
 | `POST` | `/eval/promote` | 无 | 把最近一次评测提升为新基线 | 人工确认分数可接受后调用 |
@@ -558,6 +634,8 @@ http://localhost/docs
 | `GET` | `/turns/{turn_id}/events` | Path | 这一轮的原始事件，按 seq 排好。需要 `X-API-Key` | 排障、看时间都花在哪 |
 | `GET` | `/conversations/{conv_id}/turns` | Query `limit` | 一个会话的各轮（新的在前）：结局、作答 Agent、意图、转人工、工单、耗时、模型调用数、完整不完整。需要 `X-API-Key` | 看一个会话每一轮怎么走的 |
 | `GET` | `/docs` | 浏览器访问 | Swagger UI | 浏览和调试所有接口 |
+
+`/admin/model` 下除 `GET` 外都只认本机控制台发来的请求，客户实例上一律只读，细节见 2.2「在控制台切换模型连接」。
 
 ### 5.2 Skills 动态能力加载
 
@@ -951,11 +1029,8 @@ curl -X POST http://localhost:8080/chat \
 
 ## 7. 知识库使用
 
-ai-helpdesk 的知识库由 `app/tools/knowledge_base.py` 管理，底层使用 Postgres(pgvector) collection：
-
-```text
-knowledge_base
-```
+ai-helpdesk 的知识库由 `app/tools/knowledge_base.py` 管理，底层是 Postgres(pgvector) 里的两张表：
+`kb_documents`（文档原文、来源、分类）和 `kb_chunks`（检索用的片段和向量），表的说明见第 8 节，用 psql 查看见第 9 节。
 
 首次启动时，如果知识库为空，会自动导入默认业务文档，包括定制流程与节点、交期说明、报价构成与变更加价、缺件漏发与补件流程、安装与常见现场问题、保修范围与除外情形。
 
@@ -965,13 +1040,17 @@ knowledge_base
 curl http://localhost:8080/knowledge/stats
 ```
 
-响应示例：
+响应示例（数字随库而变）：
 
 ```json
 {
-  "total_chunks": 18
+  "total_documents": 6,
+  "legacy_documents": 0,
+  "total_chunks": 6
 }
 ```
+
+`legacy_documents` 是其中由加文档表之前的历史分片归档来的篇数，其余都是导入时存下原文的。
 
 ### 7.2 批量导入文档
 
@@ -1029,51 +1108,134 @@ curl -X POST http://localhost:8080/search \
   -d '{"query": "补件需要多久发出", "top_k": 3}'
 ```
 
-响应示例：
+响应示例（数字和 id 是示意）：
 
 ```json
 {
   "query": "补件需要多久发出",
   "results": [
     {
-      "title": "补件流程",
-      "content": "审核通过后，款项将在 5-7 个工作日内退回原支付账户。",
+      "title": "缺件漏发与补件流程",
+      "content": "收货时须按装箱单当场清点。发现缺件、漏发或错发，需在验收单上注明……",
       "score": 0.82,
-      "chunk": 0
+      "chunk": 0,
+      "retrieval": "hybrid",
+      "doc_id": "doc_…",
+      "chunk_id": "…",
+      "doc_title": "缺件漏发与补件流程"
     }
   ],
-  "reranked": true
+  "reranked": true,
+  "corrected": false,
+  "evidence_ok": true
 }
 ```
+
+`score` 是余弦相似度；Embedding 暂时不可用、只走了关键词那一路时是 `null`。`retrieval` 说明这条由哪一路召回：
+`dense`、`lexical` 或 `hybrid`。`corrected` 表示有没有触发过自纠错（补检一轮），`evidence_ok` 是最终的证据充分性判定，
+这一轮没判成（模型调用失败）时是 `null`。
 
 `/search` 使用的是完整检索优化链路：
 
 ```text
 原始查询
-  -> LLM 查询改写成多个角度
-  -> 多个子查询并行召回 Postgres(pgvector)
+  -> LLM 查询改写成多个角度（原始查询也保留）
+  -> 每个子查询稠密 + 关键词两路并行召回
+       接了真正的 Embedding 模型：RRF 融合名次
+       本地 n-gram 向量：关键词结果在前，向量只补位
   -> 合并去重
-  -> LLM 重排
+  -> 重排（配了 cross-encoder 用它；否则 LLM 重排，看每条的标题和最多 600 字正文，顺带判断证据够不够）
+  -> 证据不够：围绕缺口再改写、召回、重排一轮（只补一轮）
   -> 返回 Top-K
 ```
 
+证据够不够：LLM 重排顺带给出判定；用 cross-encoder 或候选太少没调模型时，看前几条里最高的余弦分是否达到
+`RAG_EVIDENCE_MIN_SCORE`（默认 0.5）。远端 Embedding 配了但暂时不可用时，检索只走关键词一路，不拿本地向量
+顶上；冷却期（默认 30 秒）过后自动重试。为什么本地向量不参与 RRF、实测数字是多少，见
+[docs/evaluation/retrieval-ca-factory.md](../docs/evaluation/retrieval-ca-factory.md)。
+
+### 7.5 按分类整理
+
+文档可以归到 7 个固定分类之一（`GET /knowledge/categories` 列出 key、中文名、英文名和篇数，
+顺序是客户从咨询到售后），也可以不分类。分类存在 `kb_documents.category`，老库启动时原地加列，
+已有文档都是未分类。
+
+- 导入：`/knowledge/add` 每篇带 `category`，`/knowledge/upload` 表单带 `category`（见 5.6、5.7）。
+  key、中文名、英文名都认；一批里有一个分类不认识，整批不导入、返回 400；重复导入已有的文档不会改它的分类。
+- 浏览：`GET /knowledge/documents?category=delivery`，`category=uncategorized` 看未分类的。
+- 改分类：`PATCH /knowledge/documents/{doc_id}`，body `{"category": "installation"}`，空串是未分类。
+- 分类只用来整理和浏览：检索、回答都不看它，改分类不碰分片和向量。
+- 老文档补分类：`python scripts/assign_categories.py`（只打印计划）/ `--apply`。默认连员工实例
+  `http://127.0.0.1:8080`（`--api` 改地址，`--api-key` 或 `AI_HELPDESK_API_KEY` 带钥匙），
+  只认和仓库自带资料一字不差的标题、只动未分类的文档；`--corpus` 可以再加一份带分类的 JSON。
+  走的是接口，不用停服务，也不调用模型。
+
+### 7.6 换 Embedding 模型
+
+不同模型的向量不在一个空间里，换模型必须重建库里的向量。库里 `storage_meta` 记着向量是哪个
+模型算的，和当前配置对不上时服务拒绝启动，并提示下面的命令。
+
+- 不停服务：在控制台「模型连接」保存向量模型，见 2.2「在控制台切换模型连接」。
+- 停服务：改好 `backend/.env` 的 `EMBEDDING_*`（`EMBEDDING_DIM` 要等于模型实际输出维度），
+  停掉应用实例，然后
+
+  ```bash
+  python scripts/reembed.py           # 打印现状和计划，并向 Embedding 要一个向量确认能通
+  python scripts/reembed.py --apply   # 先算完全部新向量，再整批换上
+  ```
+
+  不加 `--apply` 也会向 Embedding 发一次真实请求（配了远端的话）。控制台保存过向量模型时，脚本用保存的那一组。
+  默认连服务用的库，也可以 `--dsn` / `--sqlite` 指定。只换向量，文档、分片、关键词索引、记忆摘要都不动。
+- 换完用 `python scripts/eval_retrieval.py --embedding env` 看检索效果（它会按 `EMBEDDING_*` 真的调用远端），
+  并按它打印的分数分布重新定 `RAG_EVIDENCE_MIN_SCORE`。
+
+有的模型要求查询前加一段指令（如 Qwen3-Embedding），用 `EMBEDDING_QUERY_PREFIX` 配；它只加在
+查询上，改它不用重建。
+
 ## 8. Postgres(pgvector) 在项目中的用途
 
-ai-helpdesk 使用了三个 Postgres(pgvector) collection：
+配置了 `POSTGRES_DSN`（全栈 compose 里已经配好）时，工单、对话审计、知识库、记忆、用户画像和事件日志都收敛进同一个 Postgres 库，
+没有单独的向量数据库服务。向量用 pgvector 的 `vector(N)` 列存，`N` 在建表时由当前 Embedding 决定。
+表定义在 `app/storage/pg.py`；读写封装在 `app/storage/vector_store.py`（知识库、记忆、画像）、
+`app/tickets/ticket_store.py`（工单）、`app/storage/conversation_log.py`（对话审计）和 `app/events/store.py`（事件日志）。
 
-| Collection | 模块 | 作用 |
-|------------|------|------|
-| `knowledge_base` | `app/tools/knowledge_base.py` | RAG 知识库文档片段 |
-| `episodic` | `app/memory/conversation_memory.py` | 压缩后的历史对话摘要 |
-| `user_profile` | `app/memory/conversation_memory.py` | 用户画像，包含偏好和关键实体 |
+ai-helpdesk 使用 11 张表：
+
+| 表 | 模块 | 作用 |
+|----|------|------|
+| `kb_documents` | `app/tools/knowledge_base.py` | 知识库文档（人读的单位）：原文、来源、内容哈希、`category` 分类、片段数 |
+| `kb_chunks` | `app/tools/knowledge_base.py` | 知识库片段（检索的单位）：片段文本、`embedding` 稠密向量、`tokens` 关键词索引列，`doc_id` 指回文档 |
+| `memory_episodic` | `app/memory/conversation_memory.py` | 情景记忆：压缩后的历史对话摘要、原文前 500 字、向量 |
+| `memory_profile` | `app/memory/conversation_memory.py` | 用户画像：每个 `user_id` 一行，`profile` 是 JSON 文本，包含偏好和关键实体 |
+| `storage_meta` | `app/storage/vector_store.py` | 存储层自己的元数据，目前只有 `embedding_signature`：库里的向量是哪个模型、多少维算的（`模型名/维度`） |
+| `tickets` | `app/tickets/ticket_store.py` | 转人工工单 |
+| `ticket_turns` | `app/tickets/ticket_store.py` | 工单是转人工的哪一轮：`ticket_id` → `turn_id`。单独成表而不在 `tickets` 上加列：两个实例共用一个库，旧镜像按 `SELECT *` 读 `tickets`；老工单没有行 |
+| `ticket_notifications` | `app/tickets/ticket_store.py`（投递循环在 `notifier.py`） | 工单通知的待发送记录（outbox），`ticket_id` 唯一，同一个工单只入队一次 |
+| `conversation_log` | `app/storage/conversation_log.py` | 对话审计原文，append-only，工单里的 `conv_id` 在这里能查回完整对话 |
+| `conversation_log_turns` | `app/storage/conversation_log.py` | 审计记录是哪一轮、哪个实例写的：`seq` → `turn_id`、`instance`；单独成表的理由同 `ticket_turns` |
+| `turn_events` | `app/events/` | 一轮的事件日志，主键 `turn_id + seq`；两个实例共用，按 `instance` 分开。怎么开、怎么读见 2.2「记下每一轮的经过」和 [docs/ops/turn-event-log.md](../docs/ops/turn-event-log.md) |
 
 数据写入时机：
 
 | 数据 | 写入时机 |
 |------|----------|
-| `knowledge_base` | 启动时自动导入默认文档，或调用 `/knowledge/add`、`/knowledge/upload` |
-| `episodic` | 当前会话工作记忆超过阈值后自动压缩并写入 |
-| `user_profile` | 每次 `/chat` 回复后异步提炼并更新 |
+| `kb_documents` / `kb_chunks` | 知识库为空时启动自动导入内置示例（`source_type = seed`），或调用 `/knowledge/add`、`/knowledge/upload`；改分类只改 `kb_documents.category` |
+| `memory_episodic` | 当前会话工作记忆达到压缩阈值（`MemoryManager.COMPRESS_AT`，15 条）后自动压缩并写入 |
+| `memory_profile` | 每次 `/chat` 回复后异步提炼并更新 |
+| `storage_meta` | 启动时校验向量来源；没有记录就记下当前 Embedding；换模型后用控制台切换或 `scripts/reembed.py --apply` 重建才会更新 |
+| `tickets` / `ticket_turns` | 对话转人工时创建工单，并记下是哪一轮 |
+| `ticket_notifications` | 配置了 `TICKET_WEBHOOK_URL` 才写：创建工单时先落一条待发送记录再投递，后台补投循环负责重试；没配置时转人工只落 `tickets` |
+| `conversation_log` / `conversation_log_turns` | 每次 `/chat` 追加用户消息和回复 |
+| `turn_events` | 事件日志开着（`AI_HELPDESK_EVENT_LOG` 是 `full` 或 `meta`，并设了 `AI_HELPDESK_INSTANCE`）时，每一轮的经过按序追加；原文和整行到期后由服务清理 |
+
+注意：
+
+- 员工实例和客户实例**共用同一个库**。客户实例设置了 `ENABLE_CROSS_SESSION_MEMORY=false`，它不读也不写
+  `memory_episodic` 和 `memory_profile`，所以这两张表里只有员工实例产生的数据。
+- 没配置 `POSTGRES_DSN` 时（本地直跑、单测）回退到 SQLite 文件（`backend/data/vector_store.db`、`backend/data/tickets.db`、
+  `backend/data/conversations.db`），这时没有 pgvector，也就没有下面的 psql 可查。表名和字段基本一致，只有两处不同：
+  工单和审计的 `turn_id`（以及审计的 `instance`）是 `tickets`、`conversation_log` 上的列，没有 `ticket_turns` 和
+  `conversation_log_turns`；没有 `turn_events`，事件只存进程内最近 200 轮，重启就没了。
 
 ## 9. 在 Docker 中查看 Postgres(pgvector) 内容
 
@@ -1083,133 +1245,121 @@ Compose 中 Postgres(pgvector) 容器名是：
 ai-helpdesk-postgres
 ```
 
-宿主机访问端口是：
+宿主机访问端口是 `127.0.0.1:5433`，容器内部端口是 `5432`。默认账号、密码和库名都是 `aihelpdesk`
+（compose 里 `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` 可以覆盖，下文命令里的 `-U`、`-d` 相应替换）。
 
-```text
-http://localhost:8001
-```
-
-容器内部端口是：
-
-```text
-http://localhost:8080
-```
+查看数据最直接的方式是用容器里自带的 `psql`，不需要装任何客户端，也不需要进应用容器。
 
 ### 9.1 查看 Postgres(pgvector) 是否存活
 
-宿主机执行：
+```bash
+docker compose ps postgres
+docker exec ai-helpdesk-postgres pg_isready -U aihelpdesk -d aihelpdesk
+```
+
+输出 `accepting connections` 就是正常的。
+
+### 9.2 进入 psql，查看有哪些表
 
 ```bash
-curl http://localhost:8001/api/v1/heartbeat
+docker exec -it ai-helpdesk-postgres psql -U aihelpdesk -d aihelpdesk
 ```
 
-容器内执行：
+进入后：
+
+```sql
+\dt                 -- 列出表，应该看到第 8 节的 11 张表
+\d kb_chunks        -- 看表结构；embedding 列的类型是 vector(N)，N 是当前 Embedding 的维度
+```
+
+各表行数（`turn_events` 在事件日志关着时是 0）：
+
+```sql
+SELECT 'kb_documents' AS t, count(*) FROM kb_documents
+UNION ALL SELECT 'kb_chunks', count(*) FROM kb_chunks
+UNION ALL SELECT 'memory_episodic', count(*) FROM memory_episodic
+UNION ALL SELECT 'memory_profile', count(*) FROM memory_profile
+UNION ALL SELECT 'tickets', count(*) FROM tickets
+UNION ALL SELECT 'ticket_notifications', count(*) FROM ticket_notifications
+UNION ALL SELECT 'conversation_log', count(*) FROM conversation_log
+UNION ALL SELECT 'turn_events', count(*) FROM turn_events;
+```
+
+只跑一条语句、不进交互界面时用 `-c`：
 
 ```bash
-docker exec -it ai-helpdesk-postgres curl http://localhost:8080/api/v1/heartbeat
+docker exec ai-helpdesk-postgres psql -U aihelpdesk -d aihelpdesk -c "SELECT count(*) FROM kb_documents;"
 ```
 
-### 9.2 查看所有 collection
+宿主机装了 `psql` 的话也可以直接连映射出来的端口：
 
 ```bash
-curl http://localhost:8001/api/v1/collections
+psql "postgresql://aihelpdesk:aihelpdesk123@127.0.0.1:5433/aihelpdesk"
 ```
 
-如果 Postgres(pgvector) 版本返回 tenant/database 相关错误，可以使用 Python 客户端查看，见下一节。
+表里的时间字段（`created_at`、`ts`、`ingested_at`、`next_attempt_at` 等）都是 Unix 秒，用 `to_timestamp(...)` 转成可读时间
+（`turn_events.ts` 同理，它的 `t_ms` 是距这一轮开始的毫秒数）。
+查询时不要 `SELECT *` 带出 `embedding` 列：它是几百到上千个浮点数，只会刷屏。
 
-### 9.3 用 Python 客户端查看 collections
+### 9.3 查看知识库文档 `kb_documents`
 
-进入应用容器：
-
-```bash
-docker exec -it ai-helpdesk-app bash
+```sql
+SELECT id, title, category, origin, source_type, source_name, chunk_count,
+       to_timestamp(created_at) AS created
+FROM kb_documents
+ORDER BY created_at DESC
+LIMIT 10;
 ```
 
-在容器里执行：
+字段说明：
 
-```bash
-python - <<'PY'
-import postgres
+| 字段 | 含义 |
+|------|------|
+| `category` | 分类；空串是未分类 |
+| `origin` | 原文的可信程度：`original` 是导入时存下的原文，`legacy` 是从升级前的片段拼回来的，`legacy_partial` 是历史片段不全、只拼出找得到的那几片 |
+| `source_type` | 来源类型：`seed`（内置示例）、`manual`（工作台粘贴导入）、`upload`（上传文件）、`legacy`（加文档表之前导入、来源没记） |
+| `chunk_count` | 这篇文档切成了几个片段 |
 
-client = postgres.HttpClient(host="postgres", port=8000)
-print("heartbeat:", client.heartbeat())
+每个分类有多少篇：
 
-collections = client.list_collections()
-print("collections:")
-for c in collections:
-    print("-", c.name, "count=", c.count())
-PY
+```sql
+SELECT category, count(*) FROM kb_documents GROUP BY category ORDER BY count(*) DESC;
 ```
 
-预期可以看到：
+### 9.4 查看知识库片段 `kb_chunks` 和向量来源
 
-```text
-collections:
-- knowledge_base count= ...
-- episodic count= ...
-- user_profile count= ...
+```sql
+SELECT id, doc_id, title, chunk_index, total_chunks, left(content, 80) AS preview
+FROM kb_chunks
+ORDER BY doc_id, chunk_index
+LIMIT 10;
 ```
 
-### 9.4 查看 `knowledge_base` 文档内容
+`doc_id` 为空串的是升级前写入、还没归档到文档的老片段，启动时会由 `KnowledgeBase.ensure_documents` 归档。
 
-```bash
-docker exec -it ai-helpdesk-app bash
+库里的向量是哪个 Embedding 模型算的：
+
+```sql
+SELECT * FROM storage_meta;
 ```
 
-执行：
+`embedding_signature` 的值是 `模型名/维度`（本地向量是 `local_ngram/维度`）。它和当前 `EMBEDDING_*` 配置对不上时服务会拒绝启动，
+处理方法见 7.6 节。
 
-```bash
-python - <<'PY'
-import postgres
+### 9.5 在库里按关键词找内容
 
-client = postgres.HttpClient(host="postgres", port=8000)
-col = client.get_collection("knowledge_base")
+psql 里算不出查询向量，所以语义检索只能走 `POST /search`；排查"某段话到底进没进库"时，直接用字面匹配：
 
-data = col.get(limit=10, include=["documents", "metadatas"])
-for i, doc_id in enumerate(data["ids"]):
-    print("=" * 80)
-    print("id:", doc_id)
-    print("metadata:", data["metadatas"][i])
-    print("document:", data["documents"][i][:500])
-PY
+```sql
+SELECT d.id, d.title, d.category
+FROM kb_documents d
+WHERE d.content ILIKE '%补件%'
+LIMIT 10;
 ```
 
-### 9.5 查询 `knowledge_base`
+### 9.6 查看用户画像 `memory_profile`
 
-```bash
-docker exec -it ai-helpdesk-app bash
-```
-
-执行：
-
-```bash
-python - <<'PY'
-import postgres
-
-client = postgres.HttpClient(host="postgres", port=8000)
-col = client.get_collection("knowledge_base")
-
-result = col.query(
-    query_texts=["补件多久能到"],
-    n_results=3,
-    include=["documents", "metadatas", "distances"],
-)
-
-for doc, meta, dist in zip(
-    result["documents"][0],
-    result["metadatas"][0],
-    result["distances"][0],
-):
-    print("=" * 80)
-    print("title:", meta.get("title"))
-    print("distance:", dist)
-    print("content:", doc[:300])
-PY
-```
-
-### 9.6 查看用户画像 `user_profile`
-
-先多调用几次 `/chat`，让系统异步生成用户画像：
+先多调用几次 `/chat`，让系统异步生成用户画像（调用员工实例；客户实例不写画像）：
 
 ```bash
 curl -X POST http://localhost:8080/chat \
@@ -1219,31 +1369,15 @@ curl -X POST http://localhost:8080/chat \
 
 等待几秒后查看：
 
-```bash
-docker exec -it ai-helpdesk-app bash
+```sql
+SELECT user_id, conv_id, to_timestamp(ts) AS updated, jsonb_pretty(profile::jsonb) AS profile
+FROM memory_profile
+WHERE user_id = 'profile_user';
 ```
 
-```bash
-python - <<'PY'
-import json
-import postgres
+每个 `user_id` 只有一行，后续更新会覆盖它。
 
-client = postgres.HttpClient(host="postgres", port=8000)
-col = client.get_collection("user_profile")
-
-data = col.get(
-    where={"user_id": "profile_user"},
-    include=["documents", "metadatas"],
-)
-
-for i, doc in enumerate(data["documents"]):
-    print("=" * 80)
-    print("metadata:", data["metadatas"][i])
-    print(json.dumps(json.loads(doc), ensure_ascii=False, indent=2))
-PY
-```
-
-### 9.7 查看情景记忆 `episodic`
+### 9.7 查看情景记忆 `memory_episodic`
 
 情景记忆只有在当前会话消息数量达到压缩阈值后才会写入。默认阈值在 `MemoryManager.COMPRESS_AT` 中，目前是 15 条消息。
 
@@ -1259,30 +1393,48 @@ done
 
 查看情景记忆：
 
-```bash
-docker exec -it ai-helpdesk-app bash
+```sql
+SELECT id, conv_id, to_timestamp(ts) AS written, summary, full_text
+FROM memory_episodic
+WHERE user_id = 'episodic_user'
+ORDER BY ts;
 ```
 
-```bash
-python - <<'PY'
-import postgres
+### 9.8 查看工单、通知和对话审计
 
-client = postgres.HttpClient(host="postgres", port=8000)
-col = client.get_collection("episodic")
+最近的工单：
 
-data = col.get(
-    where={"user_id": "episodic_user"},
-    include=["documents", "metadatas"],
-)
-
-for i, doc in enumerate(data["documents"]):
-    print("=" * 80)
-    print("metadata:", data["metadatas"][i])
-    print("summary:", doc)
-PY
+```sql
+SELECT id, conv_id, user_id, status, urgency, reason, to_timestamp(created_at) AS created
+FROM tickets
+ORDER BY created_at DESC
+LIMIT 10;
 ```
 
-### 9.8 查看 Postgres(pgvector) 持久化文件
+工单是转人工的哪一轮记在旁边的 `ticket_turns`（`ticket_id`、`turn_id`），老工单没有行。
+
+工单通知的投递状态（`pending` 是待发送或等待重试，`attempts` 是已试次数，失败原因在 `last_error`）：
+
+```sql
+SELECT ticket_id, status, attempts, to_timestamp(next_attempt_at) AS next_attempt, last_error
+FROM ticket_notifications
+ORDER BY created_at DESC
+LIMIT 10;
+```
+
+某个会话的完整对话（用工单里的 `conv_id`）：
+
+```sql
+SELECT seq, role, agent_type, to_timestamp(created_at) AS at, content
+FROM conversation_log
+WHERE conv_id = 'episodic_session'
+ORDER BY seq;
+```
+
+每条记录是哪一轮、哪个实例写的在旁边的 `conversation_log_turns`（`seq`、`turn_id`、`instance`）。两个实例共用这张表，
+客户自己挑的 `conv_id` 可能撞上员工的会话，要区分就按 `seq` 关联过去看 `instance`。
+
+### 9.9 查看 Postgres(pgvector) 持久化文件
 
 Postgres(pgvector) 的持久化卷在 Compose 中定义为：
 
@@ -1298,19 +1450,22 @@ docker volume ls | grep postgres
 docker volume inspect ai-helpdesk_postgres-data
 ```
 
+卷名前缀是 compose 项目名（默认取仓库目录名），以 `docker volume ls` 的输出为准。
+
 查看容器内数据目录：
 
 ```bash
 docker exec -it ai-helpdesk-postgres sh
 ls -lah /var/lib/postgresql/data
-find /var/lib/postgresql/data -maxdepth 2 -type f | head
 ```
 
-注意：不建议直接修改这些底层文件。查看和管理数据应优先使用 Postgres(pgvector) API 或 Python 客户端。
+注意：不要直接修改这些底层文件。查看和管理数据用上面的 psql；备份和恢复见 `scripts/docker-deploy.sh` 与 `docs/ops/`。
 
-### 9.9 清空 Postgres(pgvector) 数据
+### 9.10 清空 Postgres(pgvector) 数据
 
-谨慎操作。停止服务并删除 volume：
+谨慎操作：员工实例和客户实例共用这个库，下面的操作对两边同时生效，且不可撤销。
+
+整库清空（停止服务并删除 volume）：
 
 ```bash
 docker compose down
@@ -1318,23 +1473,14 @@ docker volume rm ai-helpdesk_postgres-data
 docker compose up -d --build
 ```
 
-如果只想删除某个 collection，可以用 Python 客户端：
+只清空知识库，保留工单、记忆和对话审计（两张表必须一起清，否则会留下没有片段的文档或没有文档的片段）：
 
-```bash
-docker exec -it ai-helpdesk-app bash
+```sql
+TRUNCATE kb_chunks, kb_documents;
 ```
 
-```bash
-python - <<'PY'
-import postgres
-
-client = postgres.HttpClient(host="postgres", port=8000)
-client.delete_collection("knowledge_base")
-print("deleted knowledge_base")
-PY
-```
-
-删除后重启应用，`KnowledgeBase` 会在 collection 为空时重新导入默认文档。
+清空后重启应用，`KnowledgeBase` 会在知识库为空时重新导入内置示例文档；你自己导入过的文档不会回来，需要重新导入。
+`storage_meta` 里的向量来源不受影响，只要 Embedding 配置没换就不需要重建。
 
 ## 10. Redis 工作记忆查看
 
@@ -1395,7 +1541,7 @@ COMPRESS_AT = 15
 
 ```text
 旧消息 -> LLM 摘要 -> Redis summary
-旧消息摘要 -> Postgres(pgvector) episodic
+旧消息摘要 -> Postgres(pgvector) memory_episodic 表
 最近 5 条消息 -> 继续保留在 Redis wm 列表
 ```
 
@@ -1452,104 +1598,55 @@ docker exec -it ai-helpdesk-redis redis-cli -a aihelpdesk123 \
 
 - Redis 使用 `LPUSH` 写入，最新消息在列表前面。
 - 代码读取时会 `reversed(raws)` 还原时间顺序。
-- 压缩后 Redis 工作记忆列表只保留最近 5 条；更早的内容会以摘要形式进入 Redis summary 和 Postgres(pgvector) `episodic`。
+- 压缩后 Redis 工作记忆列表只保留最近 5 条；更早的内容会以摘要形式进入 Redis summary 和 Postgres(pgvector) 的 `memory_episodic` 表。
 
 ### 11.3 查看 Postgres(pgvector) 中的情景记忆摘要
 
-如果是全栈部署，应用容器名通常是：
-
-```text
-ai-helpdesk-app
-```
-
-进入应用容器：
+如果是全栈部署，Postgres 容器名是 `ai-helpdesk-postgres`，不需要进应用容器，直接用 psql：
 
 ```bash
-docker exec -it ai-helpdesk-app bash
+docker exec -it ai-helpdesk-postgres psql -U aihelpdesk -d aihelpdesk
 ```
 
-如果你是用 `docker run --rm` 跑 CLI，容器名可能是随机的。先查看：
+如果你是用 `docker run --rm` 跑 CLI，它和全栈 compose 共用同一个 Postgres（要先 `docker compose up -d redis postgres`），
+数据一样在这里查。查某个会话的情景记忆：
 
-```bash
-docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Networks}}\t{{.Status}}'
-```
-
-进入对应容器：
-
-```bash
-docker exec -it <容器名> bash
-```
-
-执行 Python 脚本查询 `episodic`：
-
-```bash
-python - <<'PY'
-import postgres
-
-user_id = "cli_user"
-conv_id = "5a076f2b-b607-4339-9e9f-f0399862d366"
-
-client = postgres.HttpClient(host="postgres", port=8000)
-col = client.get_collection("episodic")
-
-data = col.get(
-    where={"user_id": user_id},
-    include=["documents", "metadatas"],
-)
-
-for i, doc in enumerate(data["documents"]):
-    meta = data["metadatas"][i]
-    if meta.get("conv_id") == conv_id:
-        print("=" * 80)
-        print("metadata:", meta)
-        print("summary:", doc)
-        print("full_text_preview:", meta.get("full_text"))
-PY
+```sql
+SELECT id, to_timestamp(ts) AS written, summary, full_text
+FROM memory_episodic
+WHERE user_id = 'cli_user'
+  AND conv_id = '5a076f2b-b607-4339-9e9f-f0399862d366'
+ORDER BY ts;
 ```
 
 字段说明：
 
 | 字段 | 含义 |
 |------|------|
-| `documents[i]` | LLM 生成的历史对话摘要 |
-| `metadata.user_id` | 用户 ID |
-| `metadata.conv_id` | 会话 ID |
-| `metadata.ts` | 写入时间 |
-| `metadata.full_text` | 被压缩的原始旧消息前 500 字预览 |
+| `summary` | LLM 生成的历史对话摘要 |
+| `user_id` | 用户 ID |
+| `conv_id` | 会话 ID |
+| `ts` | 写入时间（Unix 秒，`to_timestamp(ts)` 转可读时间） |
+| `full_text` | 被压缩的原始旧消息前 500 字预览 |
+| `embedding` | 摘要的向量，跨会话语义检索用；查询时别带出来 |
 
 ### 11.4 如果只想看某个用户的所有情景记忆
 
-```bash
-docker exec -it ai-helpdesk-app bash
+```sql
+SELECT conv_id, to_timestamp(ts) AS written, summary
+FROM memory_episodic
+WHERE user_id = 'cli_user'
+ORDER BY ts;
 ```
 
-```bash
-python - <<'PY'
-import postgres
+查不到时先确认写入的是员工实例：客户实例关了跨会话记忆（`ENABLE_CROSS_SESSION_MEMORY=false`），不读也不写这张表。
 
-user_id = "cli_user"
-
-client = postgres.HttpClient(host="postgres", port=8000)
-col = client.get_collection("episodic")
-
-data = col.get(
-    where={"user_id": user_id},
-    include=["documents", "metadatas"],
-)
-
-for i, doc in enumerate(data["documents"]):
-    print("=" * 80)
-    print("metadata:", data["metadatas"][i])
-    print("summary:", doc)
-PY
-```
-
-### 11.5 Redis summary 和 Postgres(pgvector) episodic 的区别
+### 11.5 Redis summary 和 Postgres(pgvector) memory_episodic 的区别
 
 | 位置 | 保存内容 | 用途 |
 |------|----------|------|
 | Redis `summary:{user_id}:{conv_id}` | 当前会话压缩摘要 | 下一次同会话请求直接拼入 prompt |
-| Postgres(pgvector) `episodic` | 压缩摘要 + metadata | 跨会话按语义检索相关历史 |
+| Postgres(pgvector) `memory_episodic` 表 | 压缩摘要 + 原文前 500 字 + 向量 | 跨会话按语义检索相关历史 |
 | Redis `wm:{user_id}:{conv_id}` | 最近 5 条消息 | 保持当前对话连贯性 |
 
 ## 12. Monitor 在线监控
@@ -1697,19 +1794,22 @@ docker compose logs -f ai-helpdesk
 ```bash
 docker compose ps postgres
 docker compose logs -f postgres
-curl http://localhost:8001/api/v1/heartbeat
+docker exec ai-helpdesk-postgres pg_isready -U aihelpdesk -d aihelpdesk
 ```
 
-应用容器内测试：
+用 psql 确认账号、库名能连上、表都在：
 
 ```bash
-docker exec -it ai-helpdesk-app bash
-python - <<'PY'
-import postgres
-client = postgres.HttpClient(host="postgres", port=8000)
-print(client.heartbeat())
-PY
+docker exec ai-helpdesk-postgres psql -U aihelpdesk -d aihelpdesk -c "\dt"
 ```
+
+应用启动时会连 `POSTGRES_DSN`，连不上就不会起来。compose 已经把应用容器里的 `POSTGRES_DSN` 固定成
+`postgresql://aihelpdesk:…@postgres:5432/aihelpdesk`（走 Docker 内网，端口是容器内的 `5432`，不是宿主机映射的 `5433`）。
+下面几种情况最常见：
+
+- 应用日志里是 `Name or service not known`：应用容器不在 `ai-helpdesk_ai-helpdesk-network` 网络里（`docker run` 忘了 `--network`）。
+- 日志里是向量维度或 `embedding_signature` 报错：不是连接问题，是换过 Embedding 模型后向量没重建，见 7.6 节。
+- 本地直跑（不在容器里）要连宿主机映射的端口：`POSTGRES_DSN=postgresql://aihelpdesk:aihelpdesk123@127.0.0.1:5433/aihelpdesk`。
 
 ### 15.3 Redis 认证失败
 
@@ -1755,7 +1855,7 @@ curl -X POST http://localhost:8080/search \
 1. 先调用 `/chat`，使用固定 `user_id`
 2. 等待几秒
 3. 查看 `docker compose logs -f ai-helpdesk` 是否出现 `用户画像已更新`
-4. 使用第 8.6 节的 Python 脚本查询 `user_profile`
+4. 用 9.6 节的 SQL 查询 `memory_profile` 表（只有员工实例写画像，客户实例不写）
 
 ### 15.6 情景记忆查不到
 
@@ -1765,7 +1865,7 @@ curl -X POST http://localhost:8080/search \
 MemoryManager.COMPRESS_AT = 15
 ```
 
-连续发 16 条以上消息后再查看 `episodic`。
+连续发 16 条以上消息后再用 9.7 节的 SQL 查看 `memory_episodic` 表。同样只有员工实例会写。
 
 ## 16. 推荐验证流程
 

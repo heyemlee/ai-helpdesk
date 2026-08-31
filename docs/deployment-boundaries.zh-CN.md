@@ -77,6 +77,14 @@
 配了 `AI_HELPDESK_API_KEY` 的实例（面向客户的那个就是）上，不带钥匙一律 401；对外的 nginx 只放行
 `/chat`、`/chat/stream`、`/health`。所以内部的采购、成本规则和 SOP 没有任何一条匿名可读的接口。
 
+**模型连接再多一道。** 模型连接决定"每一条客户消息、连同随它一起发出去的知识库文本，发给谁"。
+`/admin/model*` 和别的员工接口一样要 `X-API-Key`；另外，改动只在请求的 `Host` 是本机名字、且带着的
+`Origin`（有的话）也是本机名字时才接受，所以哪怕员工实例没配钥匙，员工浏览器里开着的别家网页也改不了
+模型连接。能改还要配 `AI_HELPDESK_MODEL_SETTINGS_PATH`；面向客户的实例设了
+`AI_HELPDESK_MODEL_SETTINGS_EDITABLE=false`，只跟随员工控制台写的那份文件。文件里是明文 Key，和
+`backend/.env` 一样，所以写成权限 0600；没有任何接口把 Key 读回去（状态里只有"配没配"和末四位），
+`backend/.dockerignore` 也把这个目录挡在镜像外面。
+
 **客户入口还缺的，按接入顺序：**
 
 1. **客户身份。** 没配 `AI_HELPDESK_AUTH_SECRET` 时 `user_id` 取自请求体，任何人可以自称任何人。
@@ -85,6 +93,7 @@
 2. **知识的受众。** 两个实例读的是同一张 `kb_chunks` / `kb_documents`，文档没有"内部 / 可对客"之分，
    客户实例的检索会把内部资料当作回答依据。接入点：给 `kb_documents` 加受众字段（默认内部），
    `kb_search` / `kb_search_lexical` 按实例配置过滤；新导入的文档默认不对客，要有人明确放行。
+   `kb_documents` 上的 `category` 不是这个字段：它只用来分组浏览，检索不看它。
 3. **SOP。** 两个实例挂的是同一个 `backend/skills`，客户实例的 Agent 系统提示里带着内部的审批边界和
    话术。接入点：客户实例用单独的 `AI_HELPDESK_SKILLS_DIR`。
 4. **业务数据。** 客户实例不接 `ai-sql-agent`（`SQL_AGENT_URL` 为空），订单问题只按通用规则回答。
