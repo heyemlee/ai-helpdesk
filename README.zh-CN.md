@@ -174,7 +174,7 @@ cd backend && .venv/bin/python -m pytest    # 后端测试；设了 TEST_POSTGRE
 cd ../frontend && npm test                  # 工作台测试
 ```
 
-CI 跑 Ruff、连 pgvector 的 1,074 个后端用例、227 个工作台用例、生产构建、A2A 契约用例，以及两个 Docker 镜像的构建。端到端评测和轨迹评测要花模型调用，所以只在手动触发时运行。
+CI 跑 Ruff、连 pgvector 的 1,385 个后端用例、239 个工作台用例、生产构建、A2A 契约用例，以及两个 Docker 镜像的构建。端到端评测和轨迹评测要花模型调用，所以只在手动触发时运行。
 
 ## 部署
 

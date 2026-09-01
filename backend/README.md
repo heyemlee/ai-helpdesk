@@ -184,22 +184,25 @@ PG 合同用例要 `TEST_POSTGRES_DSN`（一个装得上 vector 扩展的空库�
 
 ### 2.2 配置 `.env`
 
-项目有**两份** `.env`，分工不同，配错地方会静默失效：
+项目有**三份** env 文件，分工不同，配错地方会静默失效：
 
 | 文件 | 作用 | 谁在读 |
 |------|------|--------|
 | `<仓库根>/.env` | `docker-compose.yml` 里 `${VAR}` 的替换值 | Docker Compose 自己 |
-| `backend/.env` | 应用运行时配置（API Key、模型、Postgres DSN 等） | 容器内的应用，经 `env_file` 注入 |
+| `backend/.env` | 应用运行时配置（API Key、模型、Postgres DSN 等） | 两个实例的应用，经 `env_file` 注入 |
+| `backend/.env.customer` | 客户实例专用，叠加在 `backend/.env` 之上；目前只放它自己的 `AI_HELPDESK_API_KEY` | 只有客户实例（`ai-helpdesk-customer`），经 `env_file` 注入 |
 
 Compose 做变量替换时**只读 compose 文件同目录的 `.env`**，也就是仓库根那份。
 把 `REDIS_PASSWORD` 写进 `backend/.env` 不会影响 Redis 容器的启动密码——
 它会安静地回退到 compose 里的内置默认值 `aihelpdesk123`。
 
-两份都复制一遍：
+三份都复制一遍。`backend/.env.customer` 列在客户实例的 `env_file` 里，缺了它 compose 起不来；
+里面那把钥匙保护客户实例的工单、对话、知识库和评测接口，用
+`python -c "import secrets; print(secrets.token_hex(32))"` 生成：
 
 ```bash
 cd <仓库根> && cp .env.example .env
-cd backend  && cp .env.example .env
+cd backend  && cp .env.example .env && cp .env.customer.example .env.customer
 ```
 
 `backend/.env` 最少需要配置：
@@ -432,7 +435,7 @@ docker compose up -d --build   # 在仓库根执行
 不依赖 `host.docker.internal`，也不会因为宿主机端口占用而失效。
 后端地址由 `API_UPSTREAM` 环境变量注入，改 compose 就能指到别处。
 
-前端镜像是多阶段构建（`node:20-alpine` 里跑 `npm run build`，产物拷进 `nginx:1.27-alpine`），
+前端镜像是多阶段构建（`node:24-alpine` 里跑 `npm run build`，产物拷进 `nginx:1.27-alpine`），
 **不需要**先在本机执行 `npm run build`。
 
 ### 方式 B：本地一条命令起前后端（推荐用于开发）
@@ -584,10 +587,11 @@ compose 的 `AI_HELPDESK_PORT` 默认都是 8080，8000 留给同机的 ai-sql-a
 http://localhost:8080/docs
 ```
 
-如果使用 Nginx 反向代理：
+80 端口的 Nginx 是客户入口，只放行 `/chat`、`/chat/stream` 和 `/health`，经它打开 `/docs` 是 404。
+客户实例自己的 Swagger 在本机：
 
 ```text
-http://localhost/docs
+http://localhost:8081/docs
 ```
 
 打开 Swagger 后，可以点击任意接口右侧的 **Try it out**，填写参数后点 **Execute** 直接调用本地服务。常用调试顺序：

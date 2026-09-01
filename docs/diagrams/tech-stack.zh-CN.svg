@@ -100,7 +100,7 @@
   <line x1="90" y1="522" x2="580" y2="522" stroke="#fed7aa" stroke-width="2"/>
   <text x="90" y="560" class="label">Docker Compose：12 服务一键启动</text>
   <text x="90" y="596" class="body">GitHub Actions：pytest · ruff · Vitest · tsc</text>
-  <text x="90" y="632" class="body">687 后端测试 + 48 前端测试 + pgvector 契约测试</text>
+  <text x="90" y="632" class="body">1,385 后端测试 + 239 前端测试 + pgvector 契约测试</text>
 
   <!-- observability footer -->
   <rect x="60" y="700" width="1480" height="145" rx="24" fill="#f1f5f9" stroke="#94a3b8" stroke-width="2.5"/>

@@ -174,7 +174,7 @@ cd backend && .venv/bin/python -m pytest    # backend tests; TEST_POSTGRES_DSN a
 cd ../frontend && npm test                  # console tests
 ```
 
-CI runs Ruff, 1,074 backend tests against pgvector, 227 console tests, the production build, the A2A contract fixtures and both Docker images. The end-to-end and trajectory evaluations spend model calls, so they run only on request.
+CI runs Ruff, 1,385 backend tests against pgvector, 239 console tests, the production build, the A2A contract fixtures and both Docker images. The end-to-end and trajectory evaluations spend model calls, so they run only on request.
 
 ## Deploy
 
