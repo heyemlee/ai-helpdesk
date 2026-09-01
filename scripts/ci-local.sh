@@ -38,7 +38,7 @@ FRONTEND="$ROOT/frontend"
 
 # 契约仓库钉在这个 tag 上。三处必须一致：这里、ci.yml 的 `ref:`、
 # tests/test_contract_fixtures.py 的 PINNED_TAG。
-CONTRACT_TAG="v1.12"
+CONTRACT_TAG="v1.13"
 CONTRACT_DIR="${A2A_CONTRACT_DIR:-$ROOT/../a2a-contract}"
 
 WITH_IMAGES=0

@@ -30,6 +30,8 @@ ART = {"kind": "artifact-update", "taskId": "t1", "contextId": "c1", "lastChunk"
 DONE = {"kind": "status-update", "taskId": "t1", "contextId": "c1", "final": True,
         "status": {"state": "completed"}, "metadata": {"trace_id": "tr"}}
 FAILED = {**DONE, "status": {"state": "failed"}, "metadata": {"trace_id": "tr", "error": "炸了"}}
+# 契约 v1.13 §4.4：流打开期间被本连接以外的途径取消（服务端取消接口、运维、关停）
+CANCELED = {**DONE, "status": {"state": "canceled"}, "metadata": {"trace_id": "tr", "error": "cancelled: api"}}
 
 
 def _client(handler, **kw) -> A2AClient:
@@ -75,6 +77,12 @@ async def test_artifact_without_terminal_is_a_failure():
 async def test_failed_terminal_is_a_failure():
     with pytest.raises(A2AError, match="failed"):
         await _client(lambda r: _sse(TASK, FAILED)).stream("q", "u", "s")
+
+
+async def test_canceled_terminal_is_a_failure():
+    """v1.13 新增的终态。§5.1「其余一切情况都回落」本来就覆盖它，这里把它钉住。"""
+    with pytest.raises(A2AError, match="canceled"):
+        await _client(lambda r: _sse(TASK, PROG("planning"), CANCELED)).stream("q", "u", "s")
 
 
 async def test_terminal_without_artifact_is_a_failure():
@@ -161,6 +169,16 @@ async def test_send_failed_task_raises():
             "kind": "task", "id": "t", "contextId": "s", "status": {"state": "failed"},
             "artifacts": [], "metadata": {"error": "no"}}})
     with pytest.raises(A2AError):
+        await _client(h).send("q", "u", "s")
+
+
+async def test_send_canceled_task_raises():
+    """契约 v1.13 §4.4：send 返回的 Task 和流式终态用同一套取值，canceled 一样按失败回落。"""
+    def h(req):
+        return httpx.Response(200, json={"jsonrpc": "2.0", "id": "r", "result": {
+            "kind": "task", "id": "t", "contextId": "s", "status": {"state": "canceled"},
+            "artifacts": [], "metadata": {"trace_id": "tr", "error": "cancelled: api"}}})
+    with pytest.raises(A2AError, match="cancelled: api"):
         await _client(h).send("q", "u", "s")
 
 

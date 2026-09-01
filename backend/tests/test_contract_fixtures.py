@@ -43,7 +43,7 @@ REQUIRED = os.getenv("A2A_CONTRACT_REQUIRED", "").strip().lower() in _TRUE
 
 # 契约仓库钉在 tag 上，不跟 main（附录 B）。CI 里 checkout 哪个 tag 见
 # .github/workflows/ci.yml 的 contract job；改 tag 是一次要过评审的改动。
-PINNED_TAG = "v1.12"
+PINNED_TAG = "v1.13"
 
 
 def _contract_dir() -> pathlib.Path | None:
@@ -84,6 +84,7 @@ CONTRACT_INDEX = _load("fixtures/index.json") if CONTRACT else {}
 CASES = CONTRACT_INDEX.get("cases", [])
 DATA_PART_CASES = [c for c in CASES if c["file"].startswith("data-part/")]
 PROGRESS_CASES = [c for c in CASES if c["file"].startswith("progress-event/")]
+TERMINAL_CASES = [c for c in CASES if c["file"].startswith("terminal-event/")]
 
 
 def _ids(cases):
@@ -392,6 +393,19 @@ def test_progress_label_degrades_for_any_shape_valid_identifier():
 
 @pytest.mark.parametrize("case", PROGRESS_CASES, ids=_ids(PROGRESS_CASES))
 def test_progress_event_fixtures_match_the_schema(case):
+    errors = _schema_errors(case, _load(f"fixtures/{case['file']}"))
+    if case["expect"] == "valid":
+        assert not errors, f"{case['id']}: {[e.message for e in errors]}"
+    else:
+        assert errors, f"{case['id']} 应当被拒绝，但校验通过了"
+
+
+@pytest.mark.parametrize("case", TERMINAL_CASES, ids=_ids(TERMINAL_CASES))
+def test_terminal_event_fixtures_match_the_schema(case):
+    """
+    F 组（契约 v1.13）：终态信封有了 schema。`canceled` 是新增的那种终态；
+    `cancelled`（多一个 l）不是——那是 metadata.error 里取消原因的写法。
+    """
     errors = _schema_errors(case, _load(f"fixtures/{case['file']}"))
     if case["expect"] == "valid":
         assert not errors, f"{case['id']}: {[e.message for e in errors]}"
