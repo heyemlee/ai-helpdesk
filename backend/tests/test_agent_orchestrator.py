@@ -252,6 +252,39 @@ async def test_handoff_drops_a_bare_checklist_of_requested_documents(orchestrato
         assert ask not in body, f"转人工后仍在向用户索取信息: {ask}"
 
 
+async def test_handoff_keeps_an_explanatory_list(orchestrator):
+    """
+    反向边界：不是所有清单都是在要资料。
+
+    "清单一律带走"这条规则把破损判定的三条可能原因也吃了，后面那句
+    "这三种情况责任方不同"就成了没有指代的悬空句——评测分数从 0.86 掉到 0.60
+    就是这么来的。判据是条目里有没有资料名词，不是有没有清单。
+    """
+    stub_agents(orchestrator, reply=(
+        "先按破损/开裂登记处理。\n"
+        "\n"
+        "**可能原因**\n"
+        "- 出厂前已存在裂纹（工厂生产环节问题）\n"
+        "- 运输途中磕碰导致开裂（运输损）\n"
+        "\n"
+        "这两种情况责任方不同，需要工厂质检判定。\n"
+        "\n"
+        "**后续流程**\n"
+        "\n"
+        "烦请先补一下订单号和照片。"
+    ))
+    req = make_request("门板送来就是裂的", IntentCategory.DAMAGE_DEFECT, confidence=0.3)
+
+    result = await orchestrator.run(req)
+    body = result.response.split(_HANDOFF_NOTICE)[0]
+
+    assert "出厂前已存在裂纹" in body                 # 说明性清单是回答主体，必须留
+    assert "运输途中磕碰" in body
+    assert "这两种情况责任方不同" in body
+    assert "烦请先补一下" not in body                 # 索取句照样摘掉
+    assert "后续流程" not in body                     # 下面空了的小标题跟着走
+
+
 async def test_handoff_does_not_leave_a_heading_with_nothing_under_it(orchestrator):
     """摘掉追问后，"**下一步说明：**"这种冒号标题下面就空了，标题也得跟着走。"""
     stub_agents(orchestrator, reply=(
