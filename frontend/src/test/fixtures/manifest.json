@@ -1,0 +1,12 @@
+{
+  "recorded_at": "2026-09-02T09:39:23.469Z",
+  "base_url": "http://127.0.0.1:8080",
+  "storage_backend": "postgres_pgvector",
+  "model": "claude-sonnet-5",
+  "commit": "0107805",
+  "turns": [
+    "石英石台面多少钱一米？",
+    "订单 SO-2026-0912 现在生产到哪一步了？大概什么时候能安排安装？"
+  ],
+  "search_query": "门板缝隙不均能自己调吗"
+}

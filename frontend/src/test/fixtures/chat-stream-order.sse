@@ -1,0 +1,36 @@
+event: meta
+data: {"conv_id": "704cd231-0021-4ce3-bc8a-1959fc664729", "intent": "order_status", "intent_group": "query", "intent_confidence": 0.7079, "intent_strategy": "ensemble", "intent_latency_ms": 2536.97, "intent_source_scores": {"llm": 0.9, "embedding": 0.38951782748808106, "rules": 0.5}, "entities": {"order_id": ["SO-2026-0912"], "product": [], "date": [], "amount": [], "item_code": []}, "knowledge_used": true}
+
+event: routing
+data: {"primary_agent": "order", "supporting_agents": [], "reason": "intent=order_status, group=query, primary=order, supporting=none, scores=[order=1.00, technical=0.12, general=0.10, billing=0.00]", "confidence": 1.0, "domain_scores": {"general": 0.1, "technical": 0.12, "billing": 0.0, "order": 1.0}}
+
+event: delta
+data: {"text": "订单号 SO-2026-0912 我已经记录了。这边如实说明一下：\n\n**关于当前生产节点**\n"}
+
+event: delta
+data: {"text": "定制橱柜的生产要经过\"待排产 → 已排产 → 开料中 → 生产中 → 已完工 → 已发货\"这几个节点，具体这单走到了哪一步，需要核对系统的实际排产记录才能告诉你，我不能凭印象说一句笼统的\"在生产中\"——这对你判断后续安排没有实际意义。"}
+
+event: delta
+data: {"text": "我这边帮你去核实，确认后按下面的结构回复你：\n- 当前在哪一步\n"}
+
+event: delta
+data: {"text": "- 下一步是什么（比如等待开料、等待送货预约）\n- 需要你配合什么\n\n**关于安装时间**\n"}
+
+event: delta
+data: {"text": "安装是在生产完工、送货到场且现场具备卸货条件之后才能安排的，安装的具体时间点取决于工厂排产进度和物流送货排班，这两个我这边都不能替它们下定论，所以现在不能给你一个确定的安装日期——给一个不准的日期，反而可能打乱你其他工种（比如水电、瓦工）的安排。\n\n**需要你配合的**\n"}
+
+event: delta
+data: {"text": "- 如果有明确的硬性节点（比如已经约了其他工种进场、有搬家或验收的时间要求），麻烦告诉我具体日期，我会标记优先级，转人工去跟工厂和物流对排产，帮你评估能不能赶上。\n"}
+
+event: delta
+data: {"text": "- 如果方便，也可以告诉我这单具体涉及的柜号/型号，方便我核对得更准确。\n\n"}
+
+event: delta
+data: {"text": "我这边核实到实际生产节点后会尽快回复你准确状态，具体的完工和安装日期会由人工在确认排产后专门告诉你。"}
+
+event: delta
+data: {"text": "\n\n上面需要您补充的信息就不用回复我了——这个问题我已经转交人工客服跟进，稍后会有同事联系您。为了加快处理，请准备好订单号或柜号、以及现场照片等相关资料。"}
+
+event: result
+data: {"conv_id": "704cd231-0021-4ce3-bc8a-1959fc664729", "request_id": "975a6daf2b00", "ticket_id": "tk_1df591939a40", "response": "订单号 SO-2026-0912 我已经记录了。这边如实说明一下：\n\n**关于当前生产节点**\n定制橱柜的生产要经过\"待排产 → 已排产 → 开料中 → 生产中 → 已完工 → 已发货\"这几个节点，具体这单走到了哪一步，需要核对系统的实际排产记录才能告诉你，我不能凭印象说一句笼统的\"在生产中\"——这对你判断后续安排没有实际意义。我这边帮你去核实，确认后按下面的结构回复你：\n- 当前在哪一步\n- 下一步是什么（比如等待开料、等待送货预约）\n- 需要你配合什么\n\n**关于安装时间**\n安装是在生产完工、送货到场且现场具备卸货条件之后才能安排的，安装的具体时间点取决于工厂排产进度和物流送货排班，这两个我这边都不能替它们下定论，所以现在不能给你一个确定的安装日期——给一个不准的日期，反而可能打乱你其他工种（比如水电、瓦工）的安排。\n\n**需要你配合的**\n- 如果有明确的硬性节点（比如已经约了其他工种进场、有搬家或验收的时间要求），麻烦告诉我具体日期，我会标记优先级，转人工去跟工厂和物流对排产，帮你评估能不能赶上。\n- 如果方便，也可以告诉我这单具体涉及的柜号/型号，方便我核对得更准确。\n\n我这边核实到实际生产节点后会尽快回复你准确状态，具体的完工和安装日期会由人工在确认排产后专门告诉你。\n\n上面需要您补充的信息就不用回复我了——这个问题我已经转交人工客服跟进，稍后会有同事联系您。为了加快处理，请准备好订单号或柜号、以及现场照片等相关资料。", "agent_type": "order", "agent_types": ["order"], "primary_agent": "order", "supporting_agents": [], "routing_reason": "intent=order_status, group=query, primary=order, supporting=none, scores=[order=1.00, technical=0.12, general=0.10, billing=0.00]", "routing_confidence": 1.0, "escalated": true, "handoff": true, "handoff_reason": "Agent 自评置信度 0.65 低于 0.7", "needs_clarification": false, "answer_confidence": 0.65, "policy_violations": [], "latency_ms": 28662.9}
+
