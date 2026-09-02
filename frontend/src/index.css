@@ -1,3 +1,18 @@
+/* 字体必须在这里引，而且必须是第一条语句。
+   console.css 自己第 12 行有 `@import url("fonts/fonts.css")`，但它是被
+   index.css 引进来的：tailwind 先被内联成两百多行规则，console.css 的这条
+   @import 于是落在了那些规则后面，触发
+   `[vite:css][postcss] @import must precede all other statements`，
+   整条 @import 被丢掉——构建只警告不报错，页面照常渲染。
+   后果是 4 个 @font-face 一条都没注册（document.fonts.size === 0），
+   OpenAI Sans 静默回落到系统字体栈，肉眼几乎看不出来。
+   console.css 由设计工程单向同步，改那边的副本会被覆盖，所以提到这里。
+
+   ⚠️ OpenAI Sans 是 OpenAI 的品牌字体，见 fonts/fonts.css 顶部与
+      NOTES.md「部署前须替换清单」——这条修复只是让它按设计意图加载，
+      不改变那份替换义务。 */
+@import "./fonts/fonts.css";
+
 @import "tailwindcss";
 
 /* 设计系统：token 层 + 组件层。逐字来自 OpenAI 第一方 ChatKit 的真实 CSS
@@ -38,3 +53,17 @@
   border-radius: var(--radius-lg); background: var(--color-surface-secondary);
   color: var(--color-text-secondary);
 }
+
+/* 检查器抽屉的 grid 子项要允许收缩。console.css 的 .inspector-body 是
+   `display:grid`，grid 子项默认 min-width:auto，会被自身 min-content 顶住——
+   真实后端的 routing_reason 是一行不换行的长串
+   （intent=… , scores=[billing=1.00, technical=0.12, …]），展开「原始路由决策」
+   后那个 <pre> 把轨道撑到 911px、容器只有 371px，整块横向溢出：
+   领域打分的进度条被裁掉、总耗时与 Request ID 直接被推出可视区。
+   .page-inner 早就有同一条修复（console.css 的 `.page-inner > *`），
+   .inspector-body 漏了。
+
+   为什么写在这里而不是 console.css：console.css 由 scripts/sync-console-css.mjs
+   从设计工程单向覆盖，predev/prebuild 都会跑，改在那边下次 `npm run dev` 就没了。
+   要让原型页也修好，得把这条同步回设计工程的 assets/console.css。 */
+.inspector-body > * { min-width: 0; }

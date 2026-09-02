@@ -132,7 +132,8 @@ export function KnowledgePanel({ base }: { base: string }) {
             id="kb-q" value={query} autoFocus
             placeholder="检索知识库"
             onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && runSearch(query)}
+            // 同 ChatPanel：组合态的 Enter 是上屏确认，不是检索
+            onKeyDown={(e) => !e.nativeEvent.isComposing && e.key === 'Enter' && runSearch(query)}
           />
           {search.isPending
             ? <span className="hint">检索中…</span>

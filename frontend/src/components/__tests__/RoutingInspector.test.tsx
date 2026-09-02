@@ -66,6 +66,27 @@ describe('RoutingInspector', () => {
     expect(screen.getByText('3个工作日')).toBeInTheDocument()
   })
 
+  // 真实后端每轮都回全套实体键，抽不到就是空数组——上面几个夹具一个都没带
+  // entities，所以「五个空 chip 常驻」这条一直没人测出来。
+  it('实体抽空时不渲染空 chip，只留有值的那几个', () => {
+    render(
+      <RoutingInspector
+        message={{
+          ...base,
+          meta: {
+            intent: 'order_status',
+            entities: { order_id: ['SO-2026-0912'], product: [], date: [], amount: [], item_code: [] },
+          } as never,
+          routing: { primary_agent: 'order', supporting_agents: [], reason: 'r', confidence: 1 },
+        }}
+      />,
+    )
+    expect(screen.getByText('order_id: SO-2026-0912')).toBeInTheDocument()
+    for (const k of ['product', 'date', 'amount', 'item_code']) {
+      expect(screen.queryByText(new RegExp(`^${k}:\\s*$`))).not.toBeInTheDocument()
+    }
+  })
+
   it('转人工时显示原因', () => {
     render(
       <RoutingInspector

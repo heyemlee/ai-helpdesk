@@ -3,7 +3,9 @@ import { useMonitor } from '@/api/hooks'
 import { Card, Chip, Empty, MeterRow, Stat } from './ui'
 import { Icon } from './Icon'
 import { agentLabel, circuitTone, ms, num, pct } from '@/lib/format'
-import type { AgentStat } from '@/api/types'
+import type { AgentStat, MonitorSummary } from '@/api/types'
+
+type MonitorAlert = MonitorSummary['active_alerts'][number]
 
 /**
  * 在线监控：Agent 在线表现 → Monitor 惩罚 → 路由权重的闭环。
@@ -28,7 +30,14 @@ export function MonitorPanel({ base }: { base: string }) {
   const intent = data?.routing?.intent
   const policy = data?.routing?.answer_policy
   const tools = Object.entries(data?.tool_stats ?? {})
-  const alerts = data?.active_alerts ?? []
+  // 后端 active_alerts 是追加日志：同一个 metric 每轮 Monitor（10s）复发一条，
+  // 带各自的 ts。直接按条数展示，会把「4 个条件持续告警」说成「10 条告警」，
+  // 列表里还并排出现两条一模一样的。按 metric 收敛成当前状态，保留最新一条。
+  const alerts = Object.values(
+    (data?.active_alerts ?? []).reduce<Record<string, MonitorAlert>>(
+      (acc, a) => { acc[a.metric] = a; return acc }, {},
+    ),
+  )
   const suggestions = data?.suggestions ?? []
 
   return (
@@ -88,10 +97,13 @@ export function MonitorPanel({ base }: { base: string }) {
 
         {policy && (
           <dl className="stat-grid">
-            <Stat label="策略校验" value={String(policy.checked_total)} hint="出站回复总数" />
+            {/* checked_total 不是回复条数：非流式一次回复算 1，流式是逐句
+                enforce()（core/answer_policy.py:360），一条回复能算出几十。
+                三轮对话就显示 71，写「出站回复总数」是错的。 */}
+            <Stat label="策略校验" value={String(policy.checked_total)} hint="校验次数（流式逐句计）" />
             <Stat label="拦截" value={String(policy.blocked_total)}
                   hint={Object.entries(policy.blocked_by_rule).map(([k, v]) => `${k} ${v}`).join(' · ') || '无'} />
-            <Stat label="拦截率" value={pct(policy.block_rate, 1)} hint="无依据承诺占比" />
+            <Stat label="拦截率" value={pct(policy.block_rate, 1)} hint="拦截数 / 校验次数" />
           </dl>
         )}
 

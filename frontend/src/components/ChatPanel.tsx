@@ -72,6 +72,11 @@ export function ChatPanel({ messages, busy, onSend, onInspect, explain }: {
             placeholder="输入客户问题，Enter 发送 / Shift+Enter 换行"
             onChange={(e) => { setDraft(e.target.value); grow() }}
             onKeyDown={(e) => {
+              // 输入法组合中的 Enter 是「确认候选」，不是「发送」。少了 isComposing
+              // 这一判，中文用户每打完一个词按 Enter 上屏就会把半截问题发出去——
+              // 而且是真发：一整轮编排、几秒 LLM、可能还建一张工单。
+              // 英文输入和粘贴走不到组合态，所以只有中文/日文/韩文用户会踩到。
+              if (e.nativeEvent.isComposing) return
               if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit() }
             }}
           />

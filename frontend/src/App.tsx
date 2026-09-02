@@ -58,11 +58,23 @@ export default function App() {
 
   const { messages, busy, send, clear } = useChatStream(settings, onConversationId)
 
-  // 检查器默认跟最近一条助手消息；点某一轮的检查按钮后钉在那一轮
+  // 检查器默认跟最近一条助手消息；点某一轮的检查按钮后钉在那一轮。
+  //
+  // 真实后端一轮要 8~21s，而本轮的 routing 事件到达之前这条助手消息上什么都没有，
+  // 直接跟最新一条就等于「一发消息，检查器整块清空、空到 routing 到达为止」——
+  // 演示夹具瞬间返回时这一下闪不出来，接了真后端就是十几秒的空面板，
+  // 而这十几秒恰恰是最想回头看上一轮依据的时候。所以本轮还没有任何决策数据时
+  // 继续显示上一轮，并在面板上标出「这是上一轮」。
   const inspected = useMemo<ChatMessage | undefined>(() => {
     if (pinned) return messages.find((m) => m.id === pinned)
-    return [...messages].reverse().find((m) => m.role === 'assistant')
+    const assistants = messages.filter((m) => m.role === 'assistant')
+    const latest = assistants[assistants.length - 1]
+    if (!latest || latest.routing || latest.result || latest.error) return latest
+    return [...assistants].reverse().find((m) => m.routing || m.result) ?? latest
   }, [messages, pinned])
+
+  // 上面那个回退生效时，面板里的数字属于上一轮，必须说出来——否则读成本轮就是误导
+  const inspectedIsStale = !pinned && !!inspected && inspected !== messages[messages.length - 1]
 
   const isChat = view === 'chat'
 
@@ -132,6 +144,11 @@ export default function App() {
             </button>
           </div>
           <div className="inspector-body scroll">
+            {inspectedIsStale && (
+              <p className="note caution" style={{ marginBottom: 12 }}>
+                本轮仍在编排，下面是上一轮的决策。
+              </p>
+            )}
             <RoutingInspector message={inspected} />
           </div>
         </aside>

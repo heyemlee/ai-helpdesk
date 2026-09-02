@@ -20,7 +20,10 @@ export function RoutingInspector({ message }: { message?: ChatMessage }) {
   const sourceScores = meta?.intent_source_scores ?? {}
   const primary = routing?.primary_agent ?? result?.primary_agent
   const supporting = routing?.supporting_agents ?? result?.supporting_agents ?? []
-  const entities = Object.entries(meta?.entities ?? {})
+  // 真实后端每轮都回全套实体键，抽不到就是空数组（order_id/product/date/amount/
+  // item_code 五个一个不少）。只判 length > 0 等于判「有没有这些键」，永远为真——
+  // 界面上就常驻五个 `order_id:` 这样后面什么都没有的空 chip。要的是有值的那几个。
+  const entities = Object.entries(meta?.entities ?? {}).filter(([, v]) => (v?.length ?? 0) > 0)
 
   return (
     <>
