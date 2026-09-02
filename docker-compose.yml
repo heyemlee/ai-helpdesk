@@ -82,7 +82,9 @@ services:
       target: production
     container_name: ai-helpdesk-app
     ports:
-      - "8000:8000"
+      # 宿主机 8080 → 容器 8000。容器内固定 8000（Dockerfile 的 CMD 写死），
+      # 换宿主机端口只改冒号左边。8000 让给同机的 ai-sql-agent。
+      - "${AI_HELPDESK_PORT:-8080}:8000"
     env_file:
       - ./backend/.env
     environment:
