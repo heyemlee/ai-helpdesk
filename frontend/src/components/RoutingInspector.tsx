@@ -11,6 +11,9 @@ import type { ChatMessage } from '@/hooks/useChatStream'
  * 与对话流的分工：正文里的拦截区块说"切掉了哪句话"，这里说"依据什么规则、为什么"。
  */
 export function RoutingInspector({ message }: { message?: ChatMessage }) {
+  if (message?.restored) {
+    return <Empty>这是刷新前的历史消息。路由决策只在当轮保留，服务端不留存。</Empty>
+  }
   if (!message || (!message.routing && !message.result)) {
     return <Empty>发一条消息后，这里会显示本轮的完整路由决策。</Empty>
   }

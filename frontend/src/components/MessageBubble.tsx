@@ -2,7 +2,7 @@ import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Chip } from './ui'
 import { Icon } from './Icon'
-import { agentIdentity, agentLabel, ms, num } from '@/lib/format'
+import { HANDOFF_AGENT, agentIdentity, agentLabel, ms, num } from '@/lib/format'
 import type { ChatMessage } from '@/hooks/useChatStream'
 
 /**
@@ -102,6 +102,27 @@ export function MessageBubble({ message, onInspect, explain }: {
     return (
       <article className="turn assistant">
         <p className="note danger">{message.error}</p>
+      </article>
+    )
+  }
+
+  // 刷新后从审计日志恢复的历史：只有原文和作答 Agent，没有路由/置信度，
+  // 不能走下面「routing 还没到 = 正在编排」那条分支，否则永远转圈
+  if (message.restored) {
+    const agent = message.agentType === 'handoff' ? HANDOFF_AGENT
+      : message.agentType ? agentIdentity(message.agentType)
+        : { name: '客服回复', mark: '·' }
+    return (
+      <article className="turn assistant restored">
+        <div className="chip-row">
+          <p className="turn-role">{agent.name}</p>
+          <Chip>历史</Chip>
+        </div>
+        <div className="body">
+          <div className="prose-chat">
+            <Markdown remarkPlugins={[remarkGfm]}>{message.content}</Markdown>
+          </div>
+        </div>
       </article>
     )
   }

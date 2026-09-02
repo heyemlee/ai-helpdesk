@@ -11,12 +11,14 @@ const SAMPLES = [
   '石英石台面多少钱一米？',
 ]
 
-export function ChatPanel({ messages, busy, onSend, onInspect, explain }: {
+export function ChatPanel({ messages, busy, onSend, onInspect, explain, restoring }: {
   messages: ChatMessage[]
   busy: boolean
   onSend: (text: string) => void
   onInspect: (m: ChatMessage) => void
   explain?: boolean
+  /** 正在从服务端拉刷新前的历史 */
+  restoring?: boolean
 }) {
   const [draft, setDraft] = useState('')
   const listRef = useRef<HTMLDivElement>(null)
@@ -34,6 +36,8 @@ export function ChatPanel({ messages, busy, onSend, onInspect, explain }: {
     el.style.height = `${Math.min(el.scrollHeight, 200)}px`
   }
 
+  const restoredCount = messages.filter((m) => m.restored).length
+
   const submit = () => {
     const text = draft.trim()
     if (!text || busy) return
@@ -45,7 +49,12 @@ export function ChatPanel({ messages, busy, onSend, onInspect, explain }: {
   return (
     <>
       <div className="thread scroll" ref={listRef}>
-        {messages.length === 0 ? (
+        {messages.length === 0 && restoring ? (
+          // 拉历史的那一两秒别闪一下空态——空态会被读成「这是个新会话」
+          <div className="thread-inner">
+            <div className="thinking"><span className="pulse" />正在恢复会话…</div>
+          </div>
+        ) : messages.length === 0 ? (
           <div className="thread-empty">
             <h2>今天要处理哪一单？</h2>
             <p>发一条客户问题，右侧检查器会摊开这一轮的完整编排决策。</p>
@@ -57,6 +66,12 @@ export function ChatPanel({ messages, busy, onSend, onInspect, explain }: {
           </div>
         ) : (
           <div className="thread-inner">
+            {restoredCount > 0 && (
+              <p className="note neutral" style={{ marginBottom: 16 }}>
+                已从服务端恢复 {restoredCount} 条历史消息。路由决策只在当轮保留，
+                检查器只能查本次新发的消息。
+              </p>
+            )}
             {messages.map((m) => (
               <MessageBubble key={m.id} message={m} explain={explain} onInspect={() => onInspect(m)} />
             ))}

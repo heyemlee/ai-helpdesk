@@ -50,6 +50,25 @@ export interface ChatResponse {
   ticket_id?: string | null
 }
 
+// ── 对话审计日志（GET /conversations/{conv_id}）────────────────────────────
+// 服务端只留原文和作答 Agent；路由决策、置信度这些只存在于当轮的响应里。
+
+export interface ConversationEntry {
+  seq: number
+  conv_id: string
+  user_id: string
+  request_id: string
+  role: 'user' | 'assistant' | string
+  content: string
+  agent_type: string
+  created_at: number
+}
+
+export interface ConversationResponse {
+  conv_id: string
+  messages: ConversationEntry[]
+}
+
 // ── SSE 事件 ────────────────────────────────────────────────────────────────
 // /chat/stream 的事件序列：meta → routing → delta* → result
 

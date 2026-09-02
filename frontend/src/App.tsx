@@ -56,7 +56,19 @@ export default function App() {
     })
   }, [])
 
-  const { messages, busy, send, clear } = useChatStream(settings, onConversationId)
+  // 服务端已不认这个 conv_id（404）：清掉，别让下一条消息顶着一个假的历史 id 发出去
+  const onConversationLost = useCallback(() => updateSettings({ conversationId: '' }), [updateSettings])
+
+  const { messages, busy, restoring, send, clear } =
+    useChatStream(settings, onConversationId, onConversationLost)
+
+  // 「新建对话」和「清空对话」都要连 conv_id 一起清。只清屏幕不清 id，
+  // 服务端记忆还在，下一条消息接着上一个会话答——操作员以为是新客户，模型不这么认为。
+  const startNewChat = useCallback(() => {
+    clear()
+    setPinned(null)
+    updateSettings({ conversationId: '' })
+  }, [clear, updateSettings])
 
   // 检查器默认跟最近一条助手消息；点某一轮的检查按钮后钉在那一轮。
   //
@@ -83,7 +95,7 @@ export default function App() {
       <Sidebar
         settings={settings} onChange={updateSettings}
         view={view} onView={setView}
-        onNewChat={() => { clear(); setPinned(null); setView('chat') }}
+        onNewChat={() => { startNewChat(); setView('chat') }}
         theme={theme} onToggleTheme={toggle}
       />
 
@@ -108,7 +120,7 @@ export default function App() {
                 <span className="track" />讲解
               </label>
               <button className="icon-btn" title="清空对话" aria-label="清空对话"
-                      onClick={() => { clear(); setPinned(null) }}>
+                      onClick={startNewChat}>
                 <Icon name="refresh" />
               </button>
               <button
@@ -124,7 +136,7 @@ export default function App() {
 
         {isChat && (
           <ChatPanel
-            messages={messages} busy={busy} explain={explain}
+            messages={messages} busy={busy} explain={explain} restoring={restoring}
             onSend={(text) => { setPinned(null); send(text, streaming) }}
             onInspect={(m) => { setPinned(m.id); setInspector(true) }}
           />
