@@ -13,8 +13,10 @@
 LLM-as-Judge 是评测 Agent 质量的关键技术：
   人工标注成本高、主观性强；用 LLM 评判可以规模化、可重复。
 """
+import asyncio
 import json
 import logging
+import os
 import pathlib
 import statistics
 from collections.abc import Awaitable, Callable
@@ -32,6 +34,21 @@ from core.llm_utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _default_concurrency() -> int:
+    """
+    评测的并发用例数，EVAL_CONCURRENCY 可调。
+
+    默认 4 是保守值：评测打的是和线上同一个 LLM 供应商，跑评测不该把额度
+    和限流挤给真实用户。上游余量足够时调高能接近线性提速——一次评测的时间
+    几乎全花在等 LLM，本机 CPU 不是瓶颈。
+    """
+    try:
+        return max(1, int(os.getenv("EVAL_CONCURRENCY", "4")))
+    except ValueError:
+        logger.warning("EVAL_CONCURRENCY 不是整数，回退到 4")
+        return 4
 
 
 # ── 数据结构 ──────────────────────────────────────────────────────────────────
@@ -192,15 +209,25 @@ completeness 和 helpfulness 都应给高分——不要因为"没有直接给�
 class IntentEvaluator:
     """评测意图识别的准确率和 F1。"""
 
-    def __init__(self, recognizer: IntentRecognizer):
+    def __init__(self, recognizer: IntentRecognizer, concurrency: int | None = None):
         self._recognizer = recognizer
+        self._concurrency = max(1, concurrency or _default_concurrency())
 
     async def evaluate(self, cases: list[IntentTestCase]) -> dict[str, Any]:
+        # 用例之间互不相干，串行跑纯粹是在排队等网络。gather 保序，
+        # 下面按下标 zip 出 predictions/ground_truth 的口径不受影响。
+        sem = asyncio.Semaphore(self._concurrency)
+
+        async def recognize(case: IntentTestCase):
+            async with sem:
+                return await self._recognizer.recognize(case.message)
+
+        results = await asyncio.gather(*[recognize(c) for c in cases])
+
         predictions, ground_truth = [], []
         case_details: list[dict[str, Any]] = []
 
-        for case in cases:
-            result = await self._recognizer.recognize(case.message)
+        for case, result in zip(cases, results):
             predicted = result.intent.value
             predictions.append(predicted)
             ground_truth.append(case.expected_intent)
@@ -268,6 +295,7 @@ class EndToEndEvaluator:
         baseline_path: str | None = None,
         release:  str = "unknown",
         grounding_provider: Callable[[str, Any], Awaitable[str]] | None = None,
+        concurrency: int | None = None,
     ):
         """
         grounding_provider: `async (message, intent_result) -> knowledge_text`。
@@ -278,6 +306,8 @@ class EndToEndEvaluator:
         不传时评测跳过检索，Agent 手里没有任何出处，答案策略会把所有带
         价格/时效的具体表述判为"无依据"并改写成保守话术。那样测出来的
         completeness 天然偏低，而且和线上不是一回事——所以这个参数该传就传。
+
+        concurrency: 同时在跑的用例数，默认取 EVAL_CONCURRENCY（4）。
         """
         client = create_llm_client(api_key, base_url)
 
@@ -285,7 +315,8 @@ class EndToEndEvaluator:
         self._judge            = LLMJudge(client, model)
         self._recognizer       = recognizer
         self._grounding        = grounding_provider
-        self._intent_evaluator = IntentEvaluator(recognizer)
+        self._concurrency      = max(1, concurrency or _default_concurrency())
+        self._intent_evaluator = IntentEvaluator(recognizer, self._concurrency)
         self._history:         list[EvalReport] = []
         self._release = release
         self._baseline_path = pathlib.Path(baseline_path) if baseline_path else None
@@ -334,8 +365,19 @@ class EndToEndEvaluator:
 
         # 2. 对话质量评测（调用 orchestrator 产出回复，再用 LLM Judge 评分）
         if dialog_cases:
-            for i, case in enumerate(dialog_cases):
-                case_results = await self._evaluate_dialog_case(case, i)
+            # 用例之间各有各的 conv_id，互不影响，可以并发；**一个用例内部的
+            # 多轮必须留在同一个协程里串行**——后一轮要读前一轮的历史。
+            # 并发的是"几个用户同时说话"，这本来就是线上的常态。
+            sem = asyncio.Semaphore(self._concurrency)
+
+            async def run_case(idx: int, case: dict[str, Any]) -> list[EvalResult]:
+                async with sem:
+                    return await self._evaluate_dialog_case(case, idx)
+
+            # gather 保序：结果排列和串行时一致，报告和基线才能逐条对上
+            for case_results in await asyncio.gather(
+                *[run_case(i, c) for i, c in enumerate(dialog_cases)]
+            ):
                 results.extend(case_results)
                 for r in case_results:
                     for k in all_scores:
@@ -391,6 +433,10 @@ class EndToEndEvaluator:
     @property
     def baseline(self) -> EvalReport | None:
         return self._baseline
+
+    @property
+    def concurrency(self) -> int:
+        return self._concurrency
 
     async def _evaluate_dialog_case(self, case: dict[str, Any], case_idx: int) -> list[EvalResult]:
         """评测单轮或多轮对话用例。"""
