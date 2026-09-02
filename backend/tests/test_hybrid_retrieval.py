@@ -290,8 +290,38 @@ def _search_manager(verdicts):
     return manager, calls
 
 
+def test_merge_unique_dedupes_same_content_with_different_scores():
+    """
+    同一 chunk 被三个改写子查询召回，分数各不相同。之前 md5(str(item)) 把 score
+    算进身份，去重从来没生效过——top-5 里同一段出现三次。
+    """
+    items = [
+        {"title": "保修", "content": "柜体保修 5 年", "score": -0.0154},
+        {"title": "安装", "content": "门缝 2-3mm", "score": 0.1283},
+        {"title": "保修", "content": "柜体保修 5 年", "score": 0.0361},
+        {"title": "保修", "content": "柜体保修 5 年", "score": 0.0068},
+        {"title": "安装", "content": "门缝 2-3mm", "score": 0.0},
+    ]
+    merged = MCPToolManager._merge_unique(items)
+    assert [m["content"] for m in merged] == ["柜体保修 5 年", "门缝 2-3mm"]   # 保序
+    assert merged[0]["score"] == 0.0361      # 同内容保留最高分
+    assert merged[1]["score"] == 0.1283
+    assert items[0]["score"] == -0.0154      # 不改动入参
+
+
+def test_merge_unique_falls_back_to_id_then_whole_item():
+    by_id = MCPToolManager._merge_unique([{"id": "a", "score": 0.1}, {"id": "a", "score": 0.9}])
+    assert len(by_id) == 1 and by_id[0]["score"] == 0.9
+    plain = MCPToolManager._merge_unique(["x", "x", "y"])
+    assert plain == ["x", "y"]
+    scoreless = MCPToolManager._merge_unique([{"foo": 1, "score": 1}, {"foo": 1, "score": 2}, {"foo": 2}])
+    assert len(scoreless) == 2
+
+
 async def _stub_handler(params, context):
-    return [{"title": params["query"], "content": "内容", "score": 0.9}]
+    # 内容跟着查询走：候选的身份是内容（入库与去重同一口径），
+    # 常量内容会让两轮召回被当成同一条合并掉——那是夹具失真，不是链路的问题。
+    return [{"title": params["query"], "content": f"{params['query']} 的内容", "score": 0.9}]
 
 
 async def test_sufficient_evidence_short_circuits_the_loop():
