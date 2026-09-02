@@ -1,0 +1,38 @@
+/* OpenAI Sans — 自 OpenAI 第一方 CDN 下载并自托管。
+   来源 @font-face 规则（SOURCE）：
+   https://cdn.platform.openai.com/assets/ck1/index-DG-nzaS1.css
+   字体文件原始地址：
+   https://cdn.openai.com/common/fonts/openai-sans/v2/OpenAISans-<Weight>.woff2
+
+   ⚠️ 部署前须替换：OpenAI Sans 是 OpenAI 的品牌字体，未授权不可用于自有商业产品。
+   见 NOTES.md「部署前须替换清单」。移除后 --font-sans 会自动回落到
+   ChatKit 真实的默认系统栈，视觉仍然成立。 */
+
+@font-face {
+  font-family: "OpenAI Sans";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("OpenAISans-Regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "OpenAI Sans";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("OpenAISans-Medium.woff2") format("woff2");
+}
+@font-face {
+  font-family: "OpenAI Sans";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("OpenAISans-Semibold.woff2") format("woff2");
+}
+@font-face {
+  font-family: "OpenAI Sans";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("OpenAISans-Bold.woff2") format("woff2");
+}

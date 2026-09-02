@@ -4,7 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "sync:css": "node scripts/sync-console-css.mjs",
+    "predev": "npm run sync:css",
     "dev": "vite --host 0.0.0.0",
+    "prebuild": "npm run sync:css",
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 0.0.0.0",
     "typecheck": "tsc -b --noEmit",

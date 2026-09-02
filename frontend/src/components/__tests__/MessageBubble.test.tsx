@@ -11,16 +11,39 @@ describe('MessageBubble', () => {
     expect(screen.queryByText(/主 /)).not.toBeInTheDocument()
   })
 
-  it('助手消息展示主辅 Agent 和置信度', () => {
+  it('助手消息展示答复 Agent 身份、协作 Agent 与置信度', () => {
     const m: ChatMessage = {
       id: '2', role: 'assistant', content: '好的',
       routing: { primary_agent: 'technical', supporting_agents: ['billing'], reason: '', confidence: 1 },
       result: { answer_confidence: 0.82 } as never,
     }
     render(<MessageBubble message={m} />)
-    expect(screen.getByText('主 技术')).toBeInTheDocument()
-    expect(screen.getByText('辅 账单')).toBeInTheDocument()
-    expect(screen.getByText(/置信 0\.82/)).toBeInTheDocument()
+    // 多 Agent 产品里"谁答的"是第一信息，用对外角色名而不是内部类型名
+    expect(screen.getByText(/产品与安装 Agent/)).toBeInTheDocument()
+    expect(screen.getByText(/账单/)).toBeInTheDocument()
+    // 遥测（耗时/置信度）只属于检查器，不该出现在阅读流里
+    expect(screen.queryByText(/置信/)).not.toBeInTheDocument()
+  })
+
+  it('routing 未到时不编造身份，只显示编排中', () => {
+    const m: ChatMessage = { id: '5', role: 'assistant', content: '', streaming: true }
+    render(<MessageBubble message={m} />)
+    expect(screen.getByText(/正在编排/)).toBeInTheDocument()
+  })
+
+  it('result 事件到达前不显示总耗时与综合置信度', () => {
+    // SSE 序列是 meta → routing → delta* → result。
+    // latency_ms 是总耗时、answer_confidence 是对成品答案算的，两者都只在 result 里到达，
+    // 正文还在流的时候把它们画出来 = 展示此刻不可能知道的事实。
+    const m: ChatMessage = {
+      id: '4', role: 'assistant', content: '台面报价我这里不能', streaming: true,
+      meta: { intent_strategy: 'fast_path' } as never,
+      routing: { primary_agent: 'billing', supporting_agents: [], reason: '', confidence: 1 },
+    }
+    render(<MessageBubble message={m} />)
+    expect(screen.getByText(/报价与账款 Agent/)).toBeInTheDocument()
+    expect(screen.queryByText(/置信/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/4\.88s|ms/)).not.toBeInTheDocument()
   })
 
   it('错误消息用错误样式渲染，不显示空气泡', () => {

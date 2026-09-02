@@ -1,5 +1,6 @@
+import { useEffect, useState } from 'react'
 import { useRunEval } from '@/api/hooks'
-import { Badge, EmptyHint, ErrorNote, Panel, ScoreBar } from './ui'
+import { Card, Chip, Empty, ErrorNote } from './ui'
 import { num, pct } from '@/lib/format'
 
 const DIMENSIONS = [
@@ -9,126 +10,178 @@ const DIMENSIONS = [
   { key: 'helpfulness', label: '有用性' },
 ] as const
 
+const tone = (v: number) => (v >= 0.75 ? 'success' : v >= 0.6 ? 'caution' : 'danger')
+
 /**
- * 评测面板：一键跑 LLM-as-judge 四维评分，并与存档基线做回归对比。
+ * 已运行时长。评测要跑好几分钟，静态的"评测中…"和真的卡死长得一模一样，
+ * 这个计时器是页面上唯一能证明"它还活着"的东西。
+ */
+function Elapsed({ since }: { since: number }) {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    setNow(Date.now())
+    const id = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(id)
+  }, [since])
+  const total = Math.max(0, Math.round((now - since) / 1000))
+  return <>{`${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`}</>
+}
+
+/**
+ * 端到端评测：一键跑 LLM-as-judge 四维评分，并与存档基线做回归对比。
  *
- * 关键是 regressions 那一栏——基线不会每次跑完自动覆盖，
- * 只有显式 promote 才更新，所以"相比基线退化"是真的在对比历史，
- * 而不是在跟上一次运行比。
+ * 关键是 regressions 那一栏——基线不会每次跑完自动覆盖，只有显式 promote 才更新，
+ * 所以"相比基线退化"是真的在对比历史，而不是在跟上一次运行比。
  */
 export function EvalPanel({ base }: { base: string }) {
-  const { mutate, data, error, isPending } = useRunEval(base)
+  const { run, data, error, isPending, startedAt } = useRunEval(base)
+  const [onlyFailed, setOnlyFailed] = useState(false)
+
+  const results = (data?.results ?? []).filter((r) => !onlyFailed || !r.passed)
 
   return (
-    <Panel
-      title="端到端评测"
-      badge={<Badge tone="info">LLM-as-Judge</Badge>}
-      actions={
-        <button
-          onClick={() => mutate()}
-          disabled={isPending}
-          className="rounded-lg bg-sky-500/15 px-2.5 py-1 text-[11px] font-medium text-sky-300
-                     ring-1 ring-inset ring-sky-500/25 transition hover:bg-sky-500/25
-                     disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {isPending ? '评测中…' : '运行评测'}
-        </button>
-      }
-    >
-      <div className="space-y-3">
+    <div className="page scroll">
+      <div className="page-inner">
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h2 className="page-title">LLM-as-Judge 四维评分</h2>
+            <p className="page-lede">
+              评测走的是和 <code className="mono">/chat</code> 完全同一套检索与编排，测出来的分数就是线上表现。
+              基线不会跑完自动覆盖——只有显式 promote 才更新，所以「相比基线退化」比的是历史，不是上一次运行。
+            </p>
+          </div>
+          <button className="btn btn-primary" onClick={run}
+                  disabled={isPending} aria-busy={isPending}>
+            {isPending ? '评测中…' : data ? '重新运行' : '运行评测'}
+          </button>
+        </div>
+
         <ErrorNote error={error} />
-        {isPending && <EmptyHint>正在跑用例并让 LLM 打分，通常需要十几秒…</EmptyHint>}
-        {!data && !isPending && !error && (
-          <EmptyHint>点击「运行评测」跑内置用例，四个维度打分并与基线对比</EmptyHint>
+
+        {isPending && (
+          <Card>
+            <div className="empty">
+              <span className="thinking" style={{ justifyContent: 'center' }}>
+                <span className="pulse" />正在跑用例并让 LLM 打分…
+                {startedAt !== undefined && (
+                  <span className="mono" style={{ marginLeft: 6 }}><Elapsed since={startedAt} /></span>
+                )}
+              </span>
+              <p style={{ marginTop: 10, fontSize: 'var(--text-xs)' }}>
+                每条用例都要真的走一遍检索、编排和 LLM 打分，整轮通常要几分钟。
+                中途切到别的页面不会中断，回来还在这里。
+              </p>
+            </div>
+          </Card>
         )}
 
-        {data && (
+        {!data && !isPending && !error && (
+          <Card>
+            <Empty>点击右上角「运行评测」跑内置用例，四个维度打分并与存档基线对比。</Empty>
+          </Card>
+        )}
+
+        {data && !isPending && (
           <>
-            <div className="flex flex-wrap items-center gap-1.5">
-              <Badge tone={data.pass_rate >= 0.8 ? 'good' : data.pass_rate >= 0.6 ? 'warn' : 'bad'}>
+            <div className="chip-row">
+              <Chip tone={data.pass_rate >= 0.8 ? 'success' : data.pass_rate >= 0.6 ? 'caution' : 'danger'}>
                 通过率 {pct(data.pass_rate, 1)}
-              </Badge>
-              <Badge tone="muted">{data.passed}/{data.total} 用例</Badge>
-              {data.release && <Badge tone="info">{data.release}</Badge>}
-              {data.promoted && <Badge tone="good">已提升为新基线</Badge>}
+              </Chip>
+              <Chip>{data.passed}/{data.total} 用例</Chip>
+              {data.release && <Chip tone="info" mono>{data.release}</Chip>}
+              {data.promoted && <Chip tone="success">已提升为新基线</Chip>}
             </div>
 
-            <div>
-              <h3 className="mb-1.5 text-[11px] font-semibold tracking-wide text-slate-400 uppercase">
-                四维质量分
-              </h3>
-              <dl className="space-y-1">
-                {DIMENSIONS.map(({ key, label }) => {
-                  const v = data.avg_scores[key]
-                  return (
-                    <div key={key} className="flex items-center gap-2">
-                      <dt className="w-16 text-[11px] text-slate-400">{label}</dt>
-                      <dd className="flex-1">
-                        <ScoreBar
-                          value={v ?? 0}
-                          tone={(v ?? 0) >= 0.75 ? 'good' : (v ?? 0) >= 0.6 ? 'warn' : 'bad'}
-                          label={num(v)}
-                        />
-                      </dd>
+            <div style={{ display: 'grid', gap: 20, gridTemplateColumns: 'repeat(auto-fit,minmax(min(320px,100%),1fr))' }}>
+              <Card title="四维质量分" actions={<Chip>0–1</Chip>}>
+                <dl className="dl">
+                  {DIMENSIONS.map(({ key, label }) => {
+                    const v = data.avg_scores[key] ?? 0
+                    return (
+                      <div className="meter-row" key={key} style={{ gridTemplateColumns: '72px 1fr auto' }}>
+                        <span className="k">{label}</span>
+                        <span className={`meter ${tone(v)}`}><i style={{ width: `${v * 100}%` }} /></span>
+                        <span className="v">{num(v)}</span>
+                      </div>
+                    )
+                  })}
+                  {data.avg_scores.intent_accuracy !== undefined && (
+                    <div style={{ borderTop: '1px solid var(--color-border-subtle)', paddingTop: 10 }}>
+                      <div className="meter-row" style={{ gridTemplateColumns: '72px 1fr auto' }}>
+                        <span className="k">意图准确</span>
+                        <span className={`meter ${tone(data.avg_scores.intent_accuracy)}`}>
+                          <i style={{ width: `${data.avg_scores.intent_accuracy * 100}%` }} />
+                        </span>
+                        <span className="v">{num(data.avg_scores.intent_accuracy)}</span>
+                      </div>
                     </div>
-                  )
-                })}
-                {data.avg_scores.intent_accuracy !== undefined && (
-                  <div className="flex items-center gap-2 border-t border-slate-800 pt-1.5">
-                    <dt className="w-16 text-[11px] text-slate-400">意图准确</dt>
-                    <dd className="flex-1">
-                      <ScoreBar
-                        value={data.avg_scores.intent_accuracy}
-                        tone={data.avg_scores.intent_accuracy >= 0.9 ? 'good' : 'warn'}
-                        label={num(data.avg_scores.intent_accuracy)}
-                      />
-                    </dd>
-                  </div>
+                  )}
+                </dl>
+              </Card>
+
+              <Card
+                title="回归检测"
+                actions={data.baseline?.release && (
+                  <span className="topbar-sub mono">vs 基线 {data.baseline.release}</span>
                 )}
-              </dl>
+              >
+                {data.regressions.length === 0
+                  ? <p className="note success">相比基线没有退化。</p>
+                  : <div className="dl">{data.regressions.map((r, i) => <p className="note danger" key={i}>{r}</p>)}</div>}
+              </Card>
             </div>
 
-            <div>
-              <h3 className="mb-1.5 text-[11px] font-semibold tracking-wide text-slate-400 uppercase">
-                回归检测
-                {data.baseline.release && (
-                  <span className="ml-1 font-normal normal-case text-slate-600">
-                    vs 基线 {data.baseline.release}
-                  </span>
-                )}
-              </h3>
-              {data.regressions.length === 0 ? (
-                <p className="rounded-lg bg-emerald-500/8 px-2.5 py-1.5 text-[11px] text-emerald-300">
-                  相比基线没有退化
-                </p>
-              ) : (
-                <ul className="space-y-1">
-                  {data.regressions.map((r, i) => (
-                    <li key={i} className="rounded-lg bg-rose-500/8 px-2.5 py-1.5 text-[11px] text-rose-300">
-                      {r}
-                    </li>
+            {data.results.length > 0 && (
+              <Card
+                title="用例明细"
+                actions={
+                  <div className="segmented" role="tablist" aria-label="用例筛选">
+                    <button role="tab" aria-selected={!onlyFailed} onClick={() => setOnlyFailed(false)}>全部</button>
+                    <button role="tab" aria-selected={onlyFailed} onClick={() => setOnlyFailed(true)}>仅未通过</button>
+                  </div>
+                }
+                bodyStyle={{ padding: '8px 12px 12px' }}
+              >
+                <div className="dl" style={{ gap: 4 }}>
+                  {results.map((r) => (
+                    <details className="raw" key={r.test_id} style={{ padding: '8px 10px', borderRadius: 'var(--radius-lg)' }}>
+                      <summary style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--color-text)' }}>
+                        <Chip tone={r.passed ? 'success' : 'danger'} dot>{r.passed ? '通过' : '未通过'}</Chip>
+                        <span className="mono" style={{ fontSize: 'var(--text-xs)' }}>{r.test_id}</span>
+                      </summary>
+                      <div style={{ marginTop: 10, display: 'grid', gap: 8 }}>
+                        <div className="dl" style={{ gap: 5 }}>
+                          {DIMENSIONS.map(({ key, label }) => {
+                            const v = r.scores[key] ?? 0
+                            return (
+                              <div className="meter-row" key={key} style={{ gridTemplateColumns: '72px 1fr auto' }}>
+                                <span className="k">{label}</span>
+                                <span className={`meter ${tone(v)}`}><i style={{ width: `${v * 100}%` }} /></span>
+                                <span className="v">{num(v)}</span>
+                              </div>
+                            )
+                          })}
+                        </div>
+                        <p style={{ fontSize: 'var(--text-xs)', lineHeight: '18px', color: 'var(--color-text-secondary)' }}>
+                          {r.detail}
+                        </p>
+                      </div>
+                    </details>
                   ))}
-                </ul>
-              )}
-            </div>
+                </div>
+              </Card>
+            )}
 
             {data.recommendations.length > 0 && (
-              <details className="text-[11px]">
-                <summary className="cursor-pointer text-slate-500 hover:text-slate-300">
-                  优化建议 · {data.recommendations.length}
-                </summary>
-                <ul className="mt-1.5 space-y-1">
-                  {data.recommendations.map((r, i) => (
-                    <li key={i} className="rounded-lg bg-slate-950/60 px-2.5 py-1.5 leading-relaxed text-slate-400">
-                      {r}
-                    </li>
-                  ))}
-                </ul>
-              </details>
+              <Card title="优化建议">
+                <div className="dl">
+                  {data.recommendations.map((r, i) => <p className="note neutral" key={i}>{r}</p>)}
+                </div>
+              </Card>
             )}
           </>
         )}
       </div>
-    </Panel>
+    </div>
   )
 }

@@ -1,61 +1,40 @@
 @import "tailwindcss";
 
-/* 控制台是深色单一主题，直接固定，不跟随系统 */
-html, body, #root {
-  height: 100%;
-}
+/* 设计系统：token 层 + 组件层。逐字来自 OpenAI 第一方 ChatKit 的真实 CSS
+   （见 OpenDesign 项目 NOTES.md「视觉源」一节），随原型一起做过像素级对比度验收。
+   放在 tailwind 之后，preflight 里冲突的基础样式由它覆盖。 */
+@import "./console.css";
 
-body {
-  margin: 0;
-  background: #020617; /* slate-950 */
-  font-family: ui-sans-serif, system-ui, -apple-system, "PingFang SC",
-               "Microsoft YaHei", "Helvetica Neue", sans-serif;
-  -webkit-font-smoothing: antialiased;
-}
-
-/* 滚动条压暗，避免在深色面板上突兀 */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: #334155 transparent;
-}
-*::-webkit-scrollbar { width: 8px; height: 8px; }
-*::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
-*::-webkit-scrollbar-track { background: transparent; }
-
-/* 对话气泡里的 Markdown。不引 typography 插件——只需要这几个元素，
-   引整个插件会带来大量用不到的样式，还会覆盖气泡自身的字号。 */
+/* react-markdown 的输出挂在 .prose-chat 上，这里把它接到 .turn.assistant .body
+   已经定义好的排版规则上，避免同一套 Markdown 样式写两遍。 */
 .prose-chat > :first-child { margin-top: 0; }
 .prose-chat > :last-child { margin-bottom: 0; }
-.prose-chat p { margin: 0.5em 0; }
-.prose-chat ul, .prose-chat ol { margin: 0.5em 0; padding-left: 1.4em; }
+.prose-chat > * + * { margin-top: 16px; }
+.prose-chat ul, .prose-chat ol { margin: 0; padding-left: 22px; }
 .prose-chat ul { list-style: disc; }
 .prose-chat ol { list-style: decimal; }
-.prose-chat li { margin: 0.2em 0; }
+.prose-chat li + li { margin-top: 6px; }
+.prose-chat strong { font-weight: var(--fw-semibold); }
 .prose-chat h1, .prose-chat h2, .prose-chat h3 {
-  margin: 0.8em 0 0.4em;
-  font-weight: 600;
-  font-size: 1em;
+  margin: 24px 0 8px; font-size: var(--text-md); font-weight: var(--fw-semibold);
 }
 .prose-chat code {
-  padding: 0.1em 0.35em;
-  border-radius: 4px;
-  background: rgb(2 6 23 / 0.6);
-  font-size: 0.9em;
+  padding: 1px 5px; border-radius: var(--radius-xs);
+  background: var(--alpha-06); font-family: var(--font-mono); font-size: var(--text-sm);
 }
 .prose-chat pre {
-  margin: 0.6em 0;
-  padding: 0.7em;
-  overflow-x: auto;
-  border-radius: 8px;
-  background: rgb(2 6 23 / 0.7);
+  margin: 16px 0; padding: 12px 14px; overflow-x: auto;
+  border-radius: var(--radius-lg); background: var(--color-surface-tertiary);
 }
 .prose-chat pre code { padding: 0; background: none; }
-.prose-chat a { color: rgb(125 211 252); text-decoration: underline; }
-.prose-chat table { margin: 0.6em 0; border-collapse: collapse; }
-.prose-chat th, .prose-chat td { padding: 0.3em 0.6em; border: 1px solid rgb(51 65 85); }
+.prose-chat a { color: var(--color-text-info); text-underline-offset: 2px; }
+.prose-chat table { margin: 16px 0; width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
+.prose-chat th, .prose-chat td {
+  padding: 8px 12px; border: 1px solid var(--color-border-subtle); text-align: left;
+}
+.prose-chat th { font-weight: var(--fw-medium); color: var(--color-text-secondary); }
 .prose-chat blockquote {
-  margin: 0.6em 0;
-  padding-left: 0.8em;
-  border-left: 3px solid rgb(51 65 85);
-  color: rgb(148 163 184);
+  margin: 16px 0; padding: 8px 14px;
+  border-radius: var(--radius-lg); background: var(--color-surface-secondary);
+  color: var(--color-text-secondary);
 }

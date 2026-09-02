@@ -38,6 +38,20 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * 拼错误文案。detail 为空体、null 或 undefined 时不要再拼冒号——
+ * 否则界面上会出现 "500 Internal Server Error: null" 或结尾一个孤立冒号。
+ */
+function errorMessage(status: number, statusText: string, detail: unknown): string {
+  const text =
+    typeof detail === 'string' ? detail
+      : detail === null || detail === undefined ? ''
+        : JSON.stringify(detail)
+  const head = `${status} ${statusText}`.trim()
+  const body = text.trim()
+  return body ? `${head}: ${body}` : head
+}
+
 async function request<T>(base: string, path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${trimSlash(base)}${path}`, init)
   const text = await response.text()
@@ -48,8 +62,7 @@ async function request<T>(base: string, path: string, init?: RequestInit): Promi
     data = text
   }
   if (!response.ok) {
-    const detail = typeof data === 'string' ? data : JSON.stringify(data)
-    throw new ApiError(response.status, `${response.status} ${response.statusText}: ${detail}`)
+    throw new ApiError(response.status, errorMessage(response.status, response.statusText, data))
   }
   return data as T
 }
@@ -114,7 +127,7 @@ export async function* streamChat(
     signal: signal ?? null,
   })
   if (!response.ok || !response.body) {
-    throw new ApiError(response.status, `${response.status} ${response.statusText}: ${await response.text()}`)
+    throw new ApiError(response.status, errorMessage(response.status, response.statusText, await response.text()))
   }
 
   const reader = response.body.getReader()
