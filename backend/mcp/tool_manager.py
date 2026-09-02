@@ -37,6 +37,7 @@ from core.llm_utils import (
     STRUCTURED_MAX_TOKENS,
     create_llm_client,
     extract_structured_text,
+    structured_create,
 )
 
 logger = logging.getLogger(__name__)
@@ -376,7 +377,8 @@ class MCPToolManager:
 返回 JSON 数组，例如: ["子查询1", "子查询2", "子查询3"]"""
         prompt = self._clean_text(prompt)
         try:
-            resp = await self._client.messages.create(
+            resp = await structured_create(
+                self._client,
                 model=self._model, max_tokens=STRUCTURED_MAX_TOKENS, temperature=0.3,
                 messages=[{"role": "user", "content": prompt}],
             )
@@ -563,7 +565,8 @@ sufficient 判断标准：排在最前的内容能否直接支撑一个具体、
         prompt = self._clean_text(prompt)
 
         try:
-            resp = await self._client.messages.create(
+            resp = await structured_create(
+                self._client,
                 model=self._model, max_tokens=STRUCTURED_MAX_TOKENS, temperature=0.0,
                 messages=[{"role": "user", "content": prompt}],
             )

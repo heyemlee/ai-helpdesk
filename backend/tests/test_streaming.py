@@ -96,6 +96,26 @@ class TestRunStream:
         assert result.handoff is True
         assert result.escalated is True
 
+    async def test_handoff_after_stream_voids_the_questions_already_sent(self):
+        """
+        流式下草稿已经逐字发出去了，收不回来——转人工文案必须明确作废掉
+        刚才的追问，而不是当它没发生过，否则同一条消息里一边要资料一边说
+        已经转人工。
+        """
+        orch = stub_stream(
+            AgentOrchestrator(api_key="k"),
+            ["我这边负责订单与交付。", "方便告诉我订单号吗？"],
+        )
+        events = await self._collect(
+            orch, make_request("订单进度", IntentCategory.ORDER_STATUS, confidence=0.2))
+        result = events[-1]["result"]
+        deltas = "".join(e["text"] for e in events if e["type"] == "delta")
+
+        assert result.handoff is True
+        assert deltas == result.response            # 增量拼回来必须等于最终文本
+        assert "方便告诉我订单号吗？" in result.response  # 已发出的正文原样保留
+        assert "不用回复我了" in result.response
+
     async def test_handoff_intent_skips_llm_entirely(self):
         orch = stub_stream(AgentOrchestrator(api_key="k"), ["不该出现"])
         events = await self._collect(orch, make_request("转人工", IntentCategory.HUMAN_HANDOFF))

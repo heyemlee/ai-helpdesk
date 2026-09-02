@@ -26,6 +26,7 @@
 import asyncio
 import json
 import logging
+import re
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -439,6 +440,89 @@ class OrderAgent(BaseAgent):
     )
 
 
+# ── 转人工文案 ────────────────────────────────────────────────────────────────
+#
+# 转人工时会把已经生成的回答保留在前面，避免用户白等一轮。但草稿里那些
+# **向用户索取信息的句子**不能一起留下来：Agent 问"具体想咨询什么内容呢？
+# 请提供订单号"，是为了它自己接着往下答；这一轮既然已经建单转人工，
+# 接着往下办的人换成了同事，用户照着补充也没人接。两段拼在一起就是
+# 一条自相矛盾的回复——前半段让用户补资料，后半段说已经转交人工。
+#
+# 所以转人工时先把索取信息的表述过滤掉，只留有信息量的部分，
+# 由固定文案给出唯一一条行动指引：等同事联系，同时把资料准备好。
+
+_HANDOFF_NOTICE = (
+    "这个问题我已经转交人工客服跟进，稍后会有同事联系您。"
+    "为了加快处理，请准备好订单号或柜号、以及现场照片等相关资料。"
+)
+
+# 流式下草稿已经逐句发出去了，收不回来——只能明确作废掉刚才的追问，
+# 而不是当它没发生过。
+_HANDOFF_NOTICE_AFTER_ASK = "上面需要您补充的信息就不用回复我了——" + _HANDOFF_NOTICE
+
+# "向用户要东西"的表述：疑问句，或让用户提供/告知/补充信息的祈使句。
+_ASK_RE = re.compile(
+    r"[？?]"
+    r"|请(?:您)?(?:提供|告知|补充|发|回复|说明一下)"
+    r"|麻烦(?:您)?(?:提供|告知|发|回复)"
+    r"|方便(?:的话)?(?:再)?(?:提供|告知|发)"
+    r"|需要(?:您)?(?:提供|补充|告知|确认一下)"
+    r"|告诉我"
+    r"|发(?:我|给我)"
+    r"|(?:提供|补充)一下"
+)
+
+# 列表项。"……欢迎告诉我："后面挂的清单要跟着一起走，否则留下一串无主的条目。
+_LIST_ITEM_RE = re.compile(r"^\s*(?:[-*•·]|\d+[.、)]|[（(]\d+[）)])\s*")
+
+# 行内断句，用于只摘掉一行里索取信息的那半句，保住同一行里有信息量的部分。
+_LINE_SENTENCE_RE = re.compile(r"(?<=[。！？!?；;])")
+
+
+def _strip_customer_asks(text: str) -> tuple[str, list[str]]:
+    """
+    从待发出的回答里摘掉"要用户补充信息"的表述。
+
+    返回（清理后的正文, 被摘掉的句子）。被摘掉的部分不是丢弃——它正是
+    人工同事接手时还缺的资料，调用方会记进日志随工单一起留痕。
+    """
+    kept_lines: list[str] = []
+    dropped: list[str] = []
+    dropping_list = False
+
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            dropping_list = False
+            kept_lines.append(line)
+            continue
+
+        if dropping_list and _LIST_ITEM_RE.match(line):
+            dropped.append(stripped)
+            continue
+        dropping_list = False
+
+        if not _ASK_RE.search(stripped):
+            kept_lines.append(line)
+            continue
+
+        # 一行里可能只有半句是追问，另外半句仍然有信息量，逐句筛而不是整行扔。
+        kept_parts, dropped_parts = [], []
+        for part in _LINE_SENTENCE_RE.split(line):
+            (dropped_parts if _ASK_RE.search(part) else kept_parts).append(part)
+        dropped.extend(p.strip() for p in dropped_parts if p.strip())
+
+        remainder = "".join(kept_parts).rstrip()
+        if remainder.strip():
+            kept_lines.append(remainder)
+        else:
+            # 整行都是追问。以冒号结尾说明后面挂着待补信息清单，一并带走。
+            dropping_list = stripped.endswith(("：", ":"))
+
+    cleaned = re.sub(r"\n{3,}", "\n\n", "\n".join(kept_lines)).strip()
+    return cleaned, dropped
+
+
 # ── 编排器 ────────────────────────────────────────────────────────────────────
 
 class AgentOrchestrator:
@@ -790,6 +874,7 @@ class AgentOrchestrator:
                 answer_confidence=answer_confidence,
                 policy_violations=response.policy_violations,
                 executed_agent=response.agent_type,
+                answer_already_sent=True,
             )
             # 回答本体已经流出去了，这里只补发转人工提示的增量部分
             yield {"type": "delta", "text": result.response[len(response.content):]}
@@ -845,20 +930,36 @@ class AgentOrchestrator:
         answer_confidence: float = 0.0,
         policy_violations: list[PolicyViolation] | None = None,
         executed_agent: AgentType | None = None,
+        answer_already_sent: bool = False,
     ) -> OrchestratorResult:
         """
         产出转人工结果。
 
         转人工不是"再调一次 LLM"，而是编排器直接给出确定文案并打上标记，
-        由上层创建工单。已经生成的回答会保留在前面，避免用户白等一轮。
+        由上层创建工单。已经生成的回答会保留在前面，避免用户白等一轮——
+        但只保留有信息量的部分：让用户补资料的追问要摘掉，否则这一条回复
+        会一边让用户补充信息、一边说已经转交人工，自相矛盾。
+
+        answer_already_sent=True 用于流式：正文已经逐句发出去了，一个字都改不了，
+        只能在结尾明确作废掉刚才的追问。
         """
-        notice = (
-            "这个问题我已经转交人工客服跟进，稍后会有同事联系您。"
-            "为了加快处理，请准备好订单号、发生时间和相关截图。"
-        )
-        content = f"{answer.rstrip()}\n\n{notice}" if answer.strip() else notice
+        if answer_already_sent:
+            # 已发出的正文必须原样保留，否则流式的增量切片会对不上。
+            body = answer if answer.strip() else ""
+            asks = _strip_customer_asks(answer)[1]
+        else:
+            body, asks = _strip_customer_asks(answer)
+
+        notice = _HANDOFF_NOTICE_AFTER_ASK if (asks and answer_already_sent) else _HANDOFF_NOTICE
+        content = f"{body}\n\n{notice}" if body.strip() else notice
 
         logger.warning("请求 %s 转人工: %s", req.request_id, reason)
+        if asks:
+            # 摘掉的正是"人工接手时还缺的资料"，留痕给值班同事，不是丢弃。
+            logger.info(
+                "请求 %s 转人工，移除 %d 处向用户索取信息的表述: %s",
+                req.request_id, len(asks), " | ".join(asks)[:300],
+            )
         # 生产环境：此处创建工单、通知人工客服坐席
         return OrchestratorResult(
             request_id=req.request_id,

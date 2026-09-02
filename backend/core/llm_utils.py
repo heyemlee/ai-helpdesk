@@ -1,9 +1,12 @@
 """LLM 客户端工厂与响应解析，供 Anthropic 协议与 OpenAI 兼容协议共用。"""
+import logging
 import os
 from collections.abc import Iterable
 from typing import Any
 
 from anthropic import AsyncAnthropic
+
+logger = logging.getLogger(__name__)
 
 # 全项目按 Anthropic 的 messages 形状调 LLM；OpenAI 兼容端点由
 # core/openai_compat.py 翻译成同一套接口，所以调用点只认这个别名。
@@ -49,6 +52,80 @@ def extract_structured_text(resp: Any, budget_env: str = "AI_HELPDESK_STRUCTURED
             f"推理模型会先输出 thinking 块——调高 {budget_env}。"
         )
     raise ValueError("模型返回了空正文")
+
+
+# ── temperature 兼容 ──────────────────────────────────────────────────────────
+#
+# 新一代模型不再接受 temperature，网关直接回：
+#   400 invalid_request_error: `temperature` is deprecated for this model
+#
+# 而项目里所有结构化调用（意图识别 / 记忆摘要与画像 / 查询改写 / 重排 / LLM Judge）
+# 原本都显式传 temperature，于是这些调用**全部**失败，又各自在 except 里静默降级：
+# 意图识别退化成 Embedding 单路投票、摘要和画像写不进去、RAG 改写与重排不生效、
+# Judge 全给 0.5 默认分。Agent 回复不传 temperature，所以链路"看起来还在跑"——
+# 这正是这类失败最难发现的地方（一次真实事故：问候语被 Embedding 噪声判成
+# payment_issue 0.11，路由到账款 Agent，再因为置信度过低立刻开转人工工单）。
+#
+# 处理方式和远端 Embedding 那一路一致：探测一次，被拒就本进程永久降级。
+# 不写死"哪些模型不支持"——那份名单一定会过期，而 400 的信号是准确的。
+_SEND_TEMPERATURE = os.getenv("LLM_SEND_TEMPERATURE", "true").strip().lower() not in (
+    "0", "false", "no", "off",
+)
+
+
+def temperature_enabled() -> bool:
+    """当前是否还在给结构化调用发送 temperature。供 /health 和排障读取。"""
+    return _SEND_TEMPERATURE
+
+
+def reset_temperature_support(enabled: bool = True) -> None:
+    """重置探测状态。供测试和配置热更新使用。"""
+    global _SEND_TEMPERATURE
+    _SEND_TEMPERATURE = enabled
+
+
+def _rejects_temperature(ex: Exception) -> bool:
+    """判断异常是不是"这个模型不接受 temperature"，而不是别的 400。"""
+    status = getattr(ex, "status_code", None)
+    if status is not None and status != 400:
+        return False
+    text = str(ex).lower()
+    if "temperature" not in text:
+        return False
+    return any(
+        kw in text
+        for kw in ("deprecat", "unsupported", "not supported", "no longer", "invalid_request")
+    )
+
+
+async def structured_create(
+    client: LLMClient,
+    *,
+    temperature: float | None = None,
+    **kwargs: Any,
+) -> Any:
+    """
+    结构化调用的统一入口：所有需要确定性输出的调用都走这里，不要直接
+    `client.messages.create(temperature=...)`。
+
+    带 temperature 发一次；模型明确拒收就关掉开关、原样重试一次，
+    之后本进程不再发送该参数。降级只发生一次，不会每条消息白等一轮 400。
+    """
+    global _SEND_TEMPERATURE
+
+    if temperature is None or not _SEND_TEMPERATURE:
+        return await client.messages.create(**kwargs)
+
+    try:
+        return await client.messages.create(temperature=temperature, **kwargs)
+    except Exception as ex:
+        if not _rejects_temperature(ex):
+            raise
+        _SEND_TEMPERATURE = False
+        logger.warning(
+            "模型不接受 temperature（%s）；本进程起结构化调用不再发送该参数。", ex
+        )
+        return await client.messages.create(**kwargs)
 
 
 def anthropic_client_kwargs(api_key: str, base_url: str | None = None) -> dict[str, Any]:

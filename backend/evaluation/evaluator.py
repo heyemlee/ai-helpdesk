@@ -28,6 +28,7 @@ from core.llm_utils import (
     LLMClient,
     create_llm_client,
     extract_structured_text,
+    structured_create,
 )
 
 logger = logging.getLogger(__name__)
@@ -129,7 +130,8 @@ Agent 响应: {response}
         )
         prompt = self._clean_text(prompt)
         try:
-            resp = await self._client.messages.create(
+            resp = await structured_create(
+                self._client,
                 model=self._model, max_tokens=STRUCTURED_MAX_TOKENS, temperature=0.0,
                 messages=[{"role": "user", "content": prompt}],
             )

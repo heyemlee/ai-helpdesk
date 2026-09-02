@@ -145,6 +145,48 @@ async def test_vote_survives_llm_failure(recognizer):
     assert result.intent == IntentCategory.MISSING_PART
 
 
+async def test_llm_failure_does_not_launder_noise_into_a_specific_intent(recognizer):
+    """
+    LLM 挂掉后剩下两路仍要过同一道阈值。
+
+    本地 n-gram 向量对短句给出的最佳匹配基本是噪声。以前这个噪声分被原样
+    当成"已定性的具体意图"送进路由：一句问候被判成 payment_issue（0.11），
+    路由到账款 Agent，又因为 0.11 低于转人工阈值当场开出一张工单。
+    """
+    async def _broken_llm(message, history=None):
+        return {"intent": IntentCategory.OTHER, "confidence": 0.0,
+                "reasoning": "LLM 失败", "failed": True}
+
+    async def _noisy_emb(message):
+        return {"intent": IntentCategory.PAYMENT_ISSUE, "confidence": 0.11}
+
+    recognizer._llm_recognize = _broken_llm
+    recognizer._embedding_recognize = _noisy_emb
+
+    result = await recognizer.recognize("我想了解一下你们公司")
+
+    assert result.intent == IntentCategory.OTHER
+    assert recognizer.llm_failures == 1
+    assert recognizer.fast_path_stats["llm_failure_rate"] == 1.0
+
+
+async def test_llm_failure_falls_back_to_the_strongest_remaining_signal(recognizer):
+    """两路都还在时取更强的一路，而不是无条件偏向 Embedding。"""
+    async def _broken_llm(message, history=None):
+        return {"intent": IntentCategory.OTHER, "confidence": 0.0,
+                "reasoning": "LLM 失败", "failed": True}
+
+    async def _noisy_emb(message):
+        return {"intent": IntentCategory.PAYMENT_ISSUE, "confidence": 0.11}
+
+    recognizer._llm_recognize = _broken_llm
+    recognizer._embedding_recognize = _noisy_emb
+
+    result = await recognizer.recognize("你好")   # 规则这一路命中 GREETING 0.5
+
+    assert result.intent == IntentCategory.GREETING
+
+
 async def test_low_confidence_falls_back_to_other(recognizer):
     async def _weak_llm(message, history=None):
         return {"intent": IntentCategory.QUERY, "confidence": 0.1, "reasoning": ""}

@@ -33,6 +33,7 @@ from core.llm_utils import (
     STRUCTURED_MAX_TOKENS,
     create_llm_client,
     extract_structured_text,
+    structured_create,
 )
 from core.telemetry import span
 
@@ -253,6 +254,9 @@ class IntentRecognizer:
         self.cache_misses = 0
         self.fast_path_hits = 0
         self.ensemble_hits  = 0
+        # LLM 这一路的失败次数。三路融合的容错设计让它挂掉也不报错，
+        # 所以必须计数并暴露出去，否则"主力信号长期掉线"只有日志里看得见。
+        self.llm_failures   = 0
 
     @property
     def embedding_backend(self) -> str:
@@ -316,6 +320,9 @@ class IntentRecognizer:
         emb_task = asyncio.create_task(self._embedding_recognize(message))
         pat      = self._pattern_recognize(message)
         llm, emb = await asyncio.gather(llm_task, emb_task)
+
+        if llm.get("failed"):
+            self.llm_failures += 1
 
         intent, confidence, source_scores = self._vote(llm, emb, pat)
         entities = self._extract_entities(message)
@@ -392,6 +399,12 @@ class IntentRecognizer:
             "ensemble_hits": self.ensemble_hits,
             "fast_path_rate": round(self.fast_path_hits / total, 4) if total else 0.0,
             "llm_calls_saved": self.fast_path_hits,
+            # 融合路里 LLM 这一路挂掉的次数。持续 > 0 说明主力信号掉线，
+            # 意图识别正在靠 Embedding + 规则两路硬撑。
+            "llm_failures": self.llm_failures,
+            "llm_failure_rate": (
+                round(self.llm_failures / self.ensemble_hits, 4) if self.ensemble_hits else 0.0
+            ),
         }
 
     # ── 三路识别策略 ──────────────────────────────────────────────────────────
@@ -435,7 +448,8 @@ class IntentRecognizer:
         prompt = self._clean_text(prompt)
 
         try:
-            resp = await self.client.messages.create(
+            resp = await structured_create(
+                self.client,
                 model=self.model,
                 max_tokens=STRUCTURED_MAX_TOKENS,
                 temperature=0.1,
@@ -515,12 +529,24 @@ class IntentRecognizer:
             "rules": float(pat.get("confidence", 0.0) or 0.0),
         }
         if llm.get("failed"):
-            # LLM 这一路挂了，剩余两路仍能给出结果——这是三路融合的容错价值。
-            if emb.get("intent") != IntentCategory.OTHER and emb.get("confidence", 0.0) > 0:
-                return emb["intent"], source_scores["embedding"], source_scores
-            if pat.get("intent") != IntentCategory.OTHER and pat.get("confidence", 0.0) > 0:
-                return pat["intent"], source_scores["rules"], source_scores
-            return IntentCategory.OTHER, 0.0, source_scores
+            # LLM 这一路挂了，剩下两路继续给结果——这是三路融合的容错价值。
+            # 但降级有两条硬约束：取**更强**的那一路，且必须过和正常路径同一道阈值。
+            #
+            # 之前这里无条件优先 Embedding、且完全跳过阈值判断，于是本地 n-gram
+            # 向量对短句给出的噪声匹配被当成"已定性的具体意图"送进路由：
+            # "hello" 判成 payment_issue（0.11）→ 路由到账款 Agent → 0.11 又低于
+            # 转人工阈值 → 立刻开一张工单。噪声不该冒充证据，够不到阈值就老实
+            # 落到 OTHER，交给上层澄清追问。
+            fallback_intent, fallback_conf = max(
+                (
+                    (emb.get("intent", IntentCategory.OTHER), source_scores["embedding"]),
+                    (pat.get("intent", IntentCategory.OTHER), source_scores["rules"]),
+                ),
+                key=lambda item: item[1],
+            )
+            if fallback_intent is IntentCategory.OTHER or fallback_conf < self.threshold:
+                return IntentCategory.OTHER, fallback_conf, source_scores
+            return fallback_intent, fallback_conf, source_scores
 
         weights = [
             (llm, self._VOTE_WEIGHTS["llm"]),
