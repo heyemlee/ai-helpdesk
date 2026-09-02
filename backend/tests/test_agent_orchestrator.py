@@ -385,6 +385,71 @@ async def test_policy_violation_drags_confidence_toward_handoff(orchestrator):
 
 # ── 监控反馈 ──────────────────────────────────────────────────────────────────
 
+async def test_in_flight_request_does_not_dilute_success_rate(orchestrator):
+    """
+    total 必须和 success 同时记，不能在请求开始时先 +1。
+
+    真模型一轮 8~20s，Monitor 每 10s 采一次：首个请求在途时 success_rate 曾是
+    0/1 = 0.000，被当成 ERROR 告警并记 0.5 路由惩罚——一个从没失败过的实例。
+    """
+    import asyncio
+    agent = orchestrator._pool[AgentType.BILLING][0]
+    gate = asyncio.Event()
+
+    async def _slow(req, skill_prompt=""):
+        await gate.wait()
+        return "[billing] 好的"
+
+    agent._call_llm = _slow
+    task = asyncio.create_task(agent.handle(make_request("报价", IntentCategory.QUOTE_PRICING)))
+    await asyncio.sleep(0)            # 让 handle 跑到 await _call_llm
+
+    assert agent.stats.total == 0     # 在途：什么都没记
+    assert agent.stats.success_rate == 1.0
+    assert agent.stats.routing_score() == pytest.approx(1.0)
+
+    gate.set()
+    await task
+    assert (agent.stats.total, agent.stats.success) == (1, 1)
+
+
+async def test_failed_request_counts_once_as_failure(orchestrator):
+    stub_agents(orchestrator, fail_types=(AgentType.BILLING,))
+    agent = orchestrator._pool[AgentType.BILLING][0]
+    resp = await agent.handle(make_request("报价", IntentCategory.QUOTE_PRICING))
+    assert resp.success is False
+    assert (agent.stats.total, agent.stats.success) == (1, 0)
+    assert agent.stats.success_rate == 0.0
+
+
+async def test_stream_records_stats_only_at_completion(orchestrator):
+    import asyncio
+    agent = orchestrator._pool[AgentType.ORDER][0]
+    gate = asyncio.Event()
+
+    async def _slow_stream(req, skill_prompt=""):
+        yield "第一句。"
+        await gate.wait()
+        yield "第二句。"
+
+    agent._stream_llm = _slow_stream
+    events = []
+
+    async def _consume():
+        async for evt in agent.stream(make_request("进度", IntentCategory.ORDER_STATUS)):
+            events.append(evt)
+
+    task = asyncio.create_task(_consume())
+    for _ in range(5):
+        await asyncio.sleep(0)
+    assert agent.stats.total == 0     # 首句已经吐出去了，统计仍未动
+
+    gate.set()
+    await task
+    assert events[-1]["type"] == "end"
+    assert (agent.stats.total, agent.stats.success) == (1, 1)
+
+
 def test_monitor_penalty_lowers_routing_score(orchestrator):
     agent = orchestrator._pool[AgentType.BILLING][0]
     agent.stats.total, agent.stats.success = 10, 10
