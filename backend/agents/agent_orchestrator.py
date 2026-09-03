@@ -43,7 +43,7 @@ from core.llm_utils import (
     create_llm_client,
     extract_structured_text,
 )
-from core.metrics import record_llm_tokens
+from core.metrics import record_agent_latency, record_llm_tokens
 from core.telemetry import span
 
 logger = logging.getLogger(__name__)
@@ -242,6 +242,16 @@ class BaseAgent:
     def model(self) -> str:
         return self._model
 
+    def _record(self, ok: bool, ms: float) -> None:
+        """
+        一次请求结束时同时记本地统计和 Prometheus 延迟。
+
+        两者必须在同一处：分开写过一次就会有人只补其中一个，然后 /monitor 的
+        avg_ms 和 Grafana 的 p95 各说各话，而且没有任何测试会失败。
+        """
+        self.stats.record(ok=ok, ms=ms)
+        record_agent_latency(self.key, ms)
+
     async def handle(self, req: Request) -> AgentResponse:
         with span("agent.handle", agent=self.agent_type.value):
             return await self._handle_inner(req)
@@ -255,7 +265,7 @@ class BaseAgent:
         try:
             content = await self._call_llm(req, skill_prompt)
             ms = (time.monotonic() - t0) * 1000
-            self.stats.record(ok=True, ms=ms)
+            self._record(ok=True, ms=ms)
 
             # 出站策略校验：拦截无依据的价格/时效承诺
             sources = list(req.grounding_sources)
@@ -282,7 +292,7 @@ class BaseAgent:
             )
         except Exception as ex:
             ms = (time.monotonic() - t0) * 1000
-            self.stats.record(ok=False, ms=ms)
+            self._record(ok=False, ms=ms)
             logger.error(f"{self.agent_type.value} 处理失败: {ex}")
             return AgentResponse(
                 agent_type=self.agent_type,
@@ -323,7 +333,7 @@ class BaseAgent:
                 yield {"type": "delta", "text": tail}
 
             ms = (time.monotonic() - t0) * 1000
-            self.stats.record(ok=True, ms=ms)
+            self._record(ok=True, ms=ms)
 
             content = "".join(full)
             escalate = self._needs_escalation(content)
@@ -347,7 +357,7 @@ class BaseAgent:
             }
         except Exception as ex:
             ms = (time.monotonic() - t0) * 1000
-            self.stats.record(ok=False, ms=ms)
+            self._record(ok=False, ms=ms)
             logger.error(f"{self.agent_type.value} 流式处理失败: {ex}")
             yield {
                 "type": "end",
@@ -465,7 +475,9 @@ class BaseAgent:
     # 于是 escalate 恒为 False——自评置信度不扣分、不建工单，明明说了转人工却没转。
     _ESCALATION_KEYWORDS = (
         "转人工", "人工客服", "无法处理", "处理不了",
-        "escalate", "specialist", "hand this over", "hand it over",
+        # 用词干 "escalat"：escalate / escalating / escalation / escalated 都算。
+        # 写全词会漏——语料里 "I'm escalating this to our operations team." 就漏过。
+        "escalat", "specialist", "hand this over", "hand it over",
         "hand you over", "connect you with", "transfer you", "refer you to",
         "a human agent", "our team will", "cannot resolve", "can't resolve",
         "unable to resolve", "beyond what i can",
