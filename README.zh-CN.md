@@ -89,7 +89,7 @@ cd backend && pytest && ruff check .
 cd frontend && npm test && npm run typecheck
 ```
 
-当前：后端 **216 passed / 2 skipped**，前端 **13 passed**。
+当前：后端 **461 passed / 2 skipped**，前端 **46 passed**。
 CI 分 3 阶段，其中一阶段带 pgvector service container，跑真实 Postgres 路径而不是 SQLite 兜底。
 
 ## 性能

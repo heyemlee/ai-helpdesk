@@ -65,7 +65,7 @@ one able to degrade on its own.
   seconds from agent success rate and latency, shared across instances through
   Redis. LLM-as-Judge replays evaluations on four dimensions — relevance, accuracy,
   completeness, helpfulness — and detects regressions against a baseline that is
-  only updated on an explicit promote. 216 backend tests, 13 frontend tests, an
+  only updated on an explicit promote. 461 backend tests, 46 frontend tests, an
   11-service Docker Compose environment, and metrics, logs and traces via
   Prometheus, Grafana, Tempo, Loki and OpenTelemetry.
 
@@ -143,7 +143,7 @@ cd backend && pytest && ruff check .
 cd frontend && npm test && npm run typecheck
 ```
 
-Currently **216 passed / 2 skipped** on the backend and **13 passed** on the
+Currently **461 passed / 2 skipped** on the backend and **46 passed** on the
 frontend. CI runs in 3 stages; one of them brings up a pgvector service container
 so the Postgres path is exercised for real rather than falling back to SQLite.
 
