@@ -1,5 +1,6 @@
 import { Chip, Empty, KV, MeterRow, SectionLabel } from './ui'
 import { agentLabel, confidenceTone, ms, num } from '@/lib/format'
+import { useT } from '@/i18n'
 import type { ChatMessage } from '@/hooks/useChatStream'
 
 /**
@@ -10,12 +11,18 @@ import type { ChatMessage } from '@/hooks/useChatStream'
  *
  * 与对话流的分工：正文里的拦截区块说"切掉了哪句话"，这里说"依据什么规则、为什么"。
  */
-export function RoutingInspector({ message }: { message?: ChatMessage }) {
+export function RoutingInspector({ message, thresholds }: {
+  message?: ChatMessage
+  /** 协作门槛的两个后端常量，来自 /monitor 快照。拿不到就不画门槛线——
+   *  前端不写死后端常量，宁可少画一条线也不要一个会悄悄漂移的数字。 */
+  thresholds?: { minScore: number; minRatio: number }
+}) {
+  const { t } = useT()
   if (message?.restored) {
-    return <Empty>这是刷新前的历史消息。路由决策只在当轮保留，服务端不留存。</Empty>
+    return <Empty>{t('in.restored')}</Empty>
   }
   if (!message || (!message.routing && !message.result)) {
-    return <Empty>发一条消息后，这里会显示本轮的完整路由决策。</Empty>
+    return <Empty>{t('in.empty')}</Empty>
   }
 
   const { meta, routing, result } = message
@@ -31,16 +38,16 @@ export function RoutingInspector({ message }: { message?: ChatMessage }) {
   return (
     <>
       <section>
-        <SectionLabel>意图识别</SectionLabel>
+        <SectionLabel>{t('in.intent')}</SectionLabel>
         <div className="chip-row" style={{ marginBottom: 10 }}>
           {meta?.intent && <Chip mono>{meta.intent}</Chip>}
           {meta?.intent_strategy === 'fast_path' ? (
-            <Chip tone="success" title="规则锚点命中，跳过 Embedding 和 LLM 两路网络调用">
-              规则快通道 · 0 次 LLM
+            <Chip tone="success" title={t('in.fast.title')}>
+              {t('in.fast')}
             </Chip>
           ) : meta?.intent_strategy ? (
-            <Chip tone="info" title="规则 10% + Embedding 20% + LLM 70% 加权投票">
-              三路加权投票
+            <Chip tone="info" title={t('in.vote.title')}>
+              {t('in.vote')}
             </Chip>
           ) : null}
           {meta?.intent_latency_ms !== undefined && <Chip mono>{ms(meta.intent_latency_ms)}</Chip>}
@@ -51,6 +58,8 @@ export function RoutingInspector({ message }: { message?: ChatMessage }) {
               <MeterRow
                 key={k} label={k} value={sourceScores[k] ?? 0}
                 tone={(sourceScores[k] ?? 0) > 0 ? 'primary' : undefined}
+                skipped={meta?.intent_strategy === 'fast_path' && k !== 'rules'}
+                notStartedLabel={t('cw.notStarted')}
               />
             ))}
           </dl>
@@ -66,49 +75,67 @@ export function RoutingInspector({ message }: { message?: ChatMessage }) {
 
       {Object.keys(scores).length > 0 && (
         <section>
-          <SectionLabel>领域打分</SectionLabel>
+          <SectionLabel>{t('in.domain')}</SectionLabel>
           <dl className="dl">
-            {Object.entries(scores).sort(([, a], [, b]) => b - a).map(([agent, score]) => {
-              const isPrimary = agent === primary
-              const isSupport = supporting.includes(agent)
-              return (
-                <MeterRow
-                  key={agent}
-                  label={agentLabel(agent)}
-                  suffix={isPrimary ? ' ●' : isSupport ? ' ○' : ''}
-                  value={score}
-                  tone={isPrimary ? 'primary' : isSupport ? 'info' : undefined}
-                />
-              )
-            })}
+            {(() => {
+              const ranked = Object.entries(scores).sort(([, a], [, b]) => b - a)
+              // 门槛取两者较大值：绝对分与「主分 × 比例」。主 Agent 不受它约束，
+              // 所以只画在其余行上。
+              const gate = thresholds
+                ? Math.max(thresholds.minScore, (ranked[0]?.[1] ?? 0) * thresholds.minRatio)
+                : undefined
+              return ranked.map(([agent, score]) => {
+                const isPrimary = agent === primary
+                const isSupport = supporting.includes(agent)
+                return (
+                  <MeterRow
+                    key={agent}
+                    label={agentLabel(agent, t)}
+                    suffix={isPrimary ? ' ●' : isSupport ? ' ○' : ''}
+                    value={score}
+                    tone={isPrimary ? 'primary' : isSupport ? 'info' : undefined}
+                    gate={isPrimary ? undefined : gate}
+                  />
+                )
+              })
+            })()}
           </dl>
           <p className="legend" style={{ marginTop: 10 }}>
-            <span><i className="p" />主 Agent</span>
-            <span><i className="s" />辅助 Agent（跨域时并行执行）</span>
+            <span><i className="p" />{t('in.primary')}</span>
+            <span><i className="s" />{t('in.support')}</span>
+            {thresholds && (
+              <span>
+                <i className="g" />{t('in.gate')}{' '}
+                {num(Math.max(
+                  thresholds.minScore,
+                  (Object.values(scores).sort((a, b) => b - a)[0] ?? 0) * thresholds.minRatio,
+                ))}
+              </span>
+            )}
           </p>
         </section>
       )}
 
       <section>
-        <SectionLabel>置信度与处置</SectionLabel>
+        <SectionLabel>{t('in.disp')}</SectionLabel>
         <div className="chip-row">
           {routing?.confidence !== undefined && (
-            <Chip tone={confidenceTone(routing.confidence)}>路由 {num(routing.confidence)}</Chip>
+            <Chip tone={confidenceTone(routing.confidence)}>{t('in.route')} {num(routing.confidence)}</Chip>
           )}
           {result?.answer_confidence !== undefined && (
             <Chip tone={confidenceTone(result.answer_confidence)}>
-              综合 {num(result.answer_confidence)}
+              {t('in.combined')} {num(result.answer_confidence)}
             </Chip>
           )}
-          {result?.handoff && <Chip tone="danger">已转人工</Chip>}
-          {result?.needs_clarification && <Chip tone="caution">澄清追问</Chip>}
-          {result?.escalated && !result.handoff && <Chip tone="caution">已升级</Chip>}
+          {result?.handoff && <Chip tone="danger">{t('cw.handedOff')}</Chip>}
+          {result?.needs_clarification && <Chip tone="caution">{t('in.clarify')}</Chip>}
+          {result?.escalated && !result.handoff && <Chip tone="caution">{t('cw.escalated')}</Chip>}
           {meta?.knowledge_used && <Chip tone="info">RAG</Chip>}
         </div>
         <dl style={{ marginTop: 10 }}>
-          {result?.latency_ms !== undefined && <KV label="总耗时">{ms(result.latency_ms)}</KV>}
+          {result?.latency_ms !== undefined && <KV label={t('in.total')}>{ms(result.latency_ms)}</KV>}
           {result?.request_id && <KV label="Request ID"><span className="mono">{result.request_id}</span></KV>}
-          {result?.ticket_id && <KV label="工单"><span className="mono">{result.ticket_id}</span></KV>}
+          {result?.ticket_id && <KV label={t('cw.ticket')}><span className="mono">{result.ticket_id}</span></KV>}
         </dl>
         {result?.handoff_reason && (
           <p className="note danger" style={{ marginTop: 10 }}>{result.handoff_reason}</p>
@@ -117,12 +144,12 @@ export function RoutingInspector({ message }: { message?: ChatMessage }) {
 
       {result?.policy_violations && result.policy_violations.length > 0 && (
         <section>
-          <SectionLabel>答案策略拦截 · {result.policy_violations.length} 处</SectionLabel>
+          <SectionLabel>{t('in.policy')} · {result.policy_violations.length}</SectionLabel>
           <div className="dl">
             {result.policy_violations.map((v, i) => (
               <div className="violation" key={i}>
                 <b>{v.label}</b> · <code>{v.rule}</code>
-                <p>命中依据：<code>{v.evidence}</code></p>
+                <p>{t('in.evidence')} <code>{v.evidence}</code></p>
                 <p>{v.reason}</p>
               </div>
             ))}
@@ -132,7 +159,7 @@ export function RoutingInspector({ message }: { message?: ChatMessage }) {
 
       {routing?.reason && (
         <details className="raw">
-          <summary>原始路由决策</summary>
+          <summary>{t('in.raw')}</summary>
           <pre>{routing.reason}</pre>
         </details>
       )}

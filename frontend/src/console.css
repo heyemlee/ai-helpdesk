@@ -9,7 +9,6 @@
  *    （predev / prebuild 会自动跑一次）。不要直接改副本——下次同步会被覆盖。
  */
 
-@import url("fonts/fonts.css");
 
 /* ── 1. 原始色阶（SOURCE，逐字） ───────────────────────────────── */
 
@@ -427,7 +426,31 @@ textarea.field { resize: vertical; line-height: var(--lh-sm); }
   .agent-row > :nth-child(2) { grid-area: 2 / 1 / 3 / 4; }
   .agent-row > :nth-child(4) { grid-area: 3 / 1 / 4 / 4; text-align: left; }
 }
-.meter { height: 6px; border-radius: var(--radius-full); background: var(--alpha-08); overflow: hidden; }
+.meter { position: relative; height: 6px; border-radius: var(--radius-full); background: var(--alpha-08); overflow: hidden; }
+
+/* 「这一路没跑」≠「跑了得 0 分」。
+   fast_path 命中时 intent_recognizer.py:299 在任何网络调用之前就返回了，
+   source_scores 里的 embedding/llm 两个 0.0 是占位符、不是测出来的分。
+   画成 6px 空胶囊只会被读成「参与了但得零分」，正好抹掉快通道省下两次
+   网络往返这件事。降成 1px 发丝线——有测量值才配有胶囊。 */
+.meter-row.skipped > .meter { height: 1px; border-radius: 0; background: var(--color-border-strong); }
+.meter-row.skipped > .meter > i { display: none; }
+.meter-row.skipped > .k,
+.meter-row.skipped > .v { color: var(--color-text-tertiary); }
+.meter-row.skipped > .v { font-variant-numeric: normal; }
+
+/* 协作门槛线：辅助 Agent 要同时过绝对门槛与「主分×比例」，取较大值。
+   画在轨道上，读者就不用为「0.18 差多远」心算。
+   只画在非主 Agent 行——主 Agent 不需要过这道门槛。 */
+.meter.gated { overflow: visible; }
+.meter > .gate {
+  position: absolute; top: -3px; bottom: -3px; width: 1px;
+  /* 这条线会横跨两种底：深色填充段和浅色空轨。单一颜色必然在其中一边糊掉
+     （实测 0.61 那条压在蓝色填充上几乎看不见）。加一圈表面色描边，
+     两种底上都能分离出来——1px 标记要够 3:1，这是常规解法。 */
+  background: var(--color-text-secondary);
+  box-shadow: 0 0 0 1px var(--color-surface);
+}
 .meter > i {
   display: block; height: 100%; border-radius: var(--radius-full);
   background: var(--gray-500); transition: width .45s cubic-bezier(.22,.61,.36,1);
@@ -831,6 +854,9 @@ dialog.modal .card {
 .legend i { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 5px; vertical-align: 1px; }
 .legend .p { background: var(--color-solid); }
 .legend .s { background: var(--blue-400); }
+/* 门槛的图例要长得像轨道上那条线，不是又一个圆点——图例和标记对不上，
+   读者就得反过来猜哪个符号对应哪条说明。 */
+.legend .g { width: 1px; height: 9px; border-radius: 0; background: var(--color-text-tertiary); vertical-align: -1px; }
 
 .kv { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 7px 0; font-size: var(--text-xs); }
 .kv + .kv { border-top: 1px solid var(--color-border-subtle); }

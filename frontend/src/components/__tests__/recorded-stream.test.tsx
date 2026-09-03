@@ -3,7 +3,7 @@
  * 夹具怎么来的、什么时候录的：src/test/fixtures/manifest.json。
  */
 import { describe, expect, it } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen } from '@/test/render'
 import { RoutingInspector } from '../RoutingInspector'
 import { MessageBubble } from '../MessageBubble'
 import { restoreMessages } from '@/hooks/useChatStream'

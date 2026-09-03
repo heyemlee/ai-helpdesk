@@ -27,6 +27,22 @@ export function useMonitor(base: string, enabled = true) {
   })
 }
 
+/**
+ * 编排器阈值（协作门槛等）。复用 ['monitor', base] 这个键——MonitorPanel 打开时
+ * 已经在轮询它，这里只是搭个便车读缓存，不额外制造请求，也不轮询。
+ * 拿不到就返回 undefined：前端**不写死**后端常量，宁可不画那条线，
+ * 也不要一个会跟着后端悄悄漂移的数字。
+ */
+export function useOrchestratorConfig(base: string) {
+  return useQuery({
+    queryKey: ['monitor', base],
+    queryFn: () => api.monitor(base),
+    refetchInterval: false,
+    staleTime: 60_000,
+    retry: false,
+  })
+}
+
 export function useKnowledgeStats(base: string) {
   return useQuery({
     queryKey: ['knowledge-stats', base],

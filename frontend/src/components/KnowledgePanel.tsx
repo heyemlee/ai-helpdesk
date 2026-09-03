@@ -3,19 +3,34 @@ import { useAddKnowledge, useKnowledgeStats, useSearch, useUploadKnowledge } fro
 import { Card, Chip, Empty, ErrorNote } from './ui'
 import { Icon } from './Icon'
 import { num } from '@/lib/format'
+import { useT } from '@/i18n'
 
 /** 中文功能词。不剔掉的话「什么时候」这类片段会把无关文本涂满黄底。 */
-const STOP = /[的了吗呢吧和与及或是在有个能不什么怎样时候多少哪要请我你他她它们这那]/g
+const STOP_ZH = /[的了吗呢吧和与及或是在有个能不什么怎样时候多少哪要请我你他她它们这那]/g
+
+/** 英文功能词。中文那套按字切，英文必须按词切——把空格剥掉再做字符 n-gram，
+ *  "what documents for a part" 会变成一整串，高亮出来全是噪声。 */
+const STOP_EN = new Set(['the', 'a', 'an', 'of', 'to', 'for', 'in', 'on', 'at', 'is', 'are', 'do',
+  'does', 'did', 'i', 'we', 'you', 'it', 'my', 'our', 'can', 'could', 'will', 'would', 'how',
+  'what', 'when', 'where', 'why', 'and', 'or', 'if', 'be', 'with', 'about', 'need', 'needs', 'after'])
 
 /**
  * 命中高亮。按「合并后的连续区间」涂色，不是逐个 n-gram 涂——
  * 后者会把「材料」拆成两块黄底、还可能正好跨行断开，高亮反而破坏阅读。
+ *
+ * 按**查询本身**的语种分路，不是按界面语言：界面开着英文也可能搜中文。
  */
 function highlightParts(text: string, query: string): Array<{ t: string; hit: boolean }> {
-  const core = query.replace(/[\s，。？?、,.!！]/g, '').replace(STOP, '')
-  if (!core) return [{ t: text, hit: false }]
+  const spans = /[\u4e00-\u9fff]/.test(query)
+    ? spansZh(text, query)
+    : spansEn(text, query)
+  return toParts(text, spans)
+}
 
+function spansZh(text: string, query: string): Array<[number, number]> {
+  const core = query.replace(/[\s，。？?、,.!！]/g, '').replace(STOP_ZH, '')
   const spans: Array<[number, number]> = []
+  if (!core) return spans
   for (let n = Math.min(6, core.length); n >= 2; n--) {
     for (let i = 0; i + n <= core.length; i++) {
       const g = core.slice(i, i + n)
@@ -23,6 +38,27 @@ function highlightParts(text: string, query: string): Array<{ t: string; hit: bo
       while ((at = text.indexOf(g, from)) !== -1) { spans.push([at, at + n]); from = at + 1 }
     }
   }
+  return spans
+}
+
+function spansEn(text: string, query: string): Array<[number, number]> {
+  const words = query.toLowerCase().split(/[^a-z0-9]+/)
+    .filter((w) => w.length > 2 && !STOP_EN.has(w))
+  const spans: Array<[number, number]> = []
+  if (!words.length) return spans
+  const lower = text.toLowerCase()
+  for (const w of words) {
+    // 后缀归并：复数/时态不该漏掉命中，但只在词首匹配，避免 "the" 命中 "other"
+    const stem = w.replace(/(ies|es|s|ing|ed)$/, '')
+    if (stem.length < 3) continue
+    const re = new RegExp(`\\b${stem.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[a-z]*`, 'g')
+    let m: RegExpExecArray | null
+    while ((m = re.exec(lower)) !== null) spans.push([m.index, m.index + m[0].length])
+  }
+  return spans
+}
+
+function toParts(text: string, spans: Array<[number, number]>): Array<{ t: string; hit: boolean }> {
   if (!spans.length) return [{ t: text, hit: false }]
 
   spans.sort((a, b) => a[0] - b[0])
@@ -46,12 +82,7 @@ function highlightParts(text: string, query: string): Array<{ t: string; hit: bo
 }
 
 /** 空态的邀请。用真实的橱柜域问法，点一下就搜——比一个空白页面有用得多。 */
-const SAMPLES = [
-  '补件需要提交什么材料',
-  '尾款什么时候开票',
-  '已开料还能改吊柜尺寸吗',
-  '门板缝隙不均能自己调吗',
-]
+const SAMPLE_KEYS = ['kb.sample.1', 'kb.sample.2', 'kb.sample.3', 'kb.sample.4'] as const
 
 /**
  * 知识库：稠密向量 + 关键词双路混合检索，RRF 融合后再过一次重排。
@@ -63,6 +94,7 @@ const SAMPLES = [
  *   - 导入走模态，不把检索结果推走；导入成功后自动检索新片段，让用户看见它确实进去了。
  */
 export function KnowledgePanel({ base }: { base: string }) {
+  const { t } = useT()
   const [query, setQuery] = useState('')
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
@@ -104,40 +136,39 @@ export function KnowledgePanel({ base }: { base: string }) {
       <div className="page-inner">
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <h2 className="page-title">混合检索与重排</h2>
+            <h2 className="page-title">{t('kb.pageTitle')}</h2>
             <p className="page-lede">
-              稠密向量与关键词双路并行检索，RRF 融合后再过一次重排模型。
-              这里检索到什么，对话工作台里 RAG 就引用什么。
+              {t('kb.lede')}
             </p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
             {/* 拿不到统计就说拿不到，不拿占位符冒充数据 */}
             {stats.isError
               ? <Chip tone="danger" dot title={stats.error instanceof Error ? stats.error.message : undefined}>
-                  统计不可用
+                  {t('kb.statsDown')}
                 </Chip>
               : stats.data
-                ? <Chip mono>{stats.data.total_chunks} 片段</Chip>
-                : <Chip>统计加载中…</Chip>}
+                ? <Chip mono>{stats.data.total_chunks} {t('kb.chunks')}</Chip>
+                : <Chip>{t('kb.statsLoading')}</Chip>}
             <button className="btn btn-primary" onClick={openImport}>
-              <Icon name="upload" size={16} />导入文档
+              <Icon name="upload" size={16} />{t('kb.import')}
             </button>
           </div>
         </div>
 
         <div className="searchbar">
           <Icon name="search" />
-          <label className="sr-only" htmlFor="kb-q">检索知识库</label>
+          <label className="sr-only" htmlFor="kb-q">{t('kb.searchLabel')}</label>
           <input
             id="kb-q" value={query} autoFocus
-            placeholder="检索知识库"
+            placeholder={t('kb.searchLabel')}
             onChange={(e) => setQuery(e.target.value)}
             // 同 ChatPanel：组合态的 Enter 是上屏确认，不是检索
             onKeyDown={(e) => !e.nativeEvent.isComposing && e.key === 'Enter' && runSearch(query)}
           />
           {search.isPending
-            ? <span className="hint">检索中…</span>
-            : query.trim() && <span className="hint">Enter 检索</span>}
+            ? <span className="hint">{t('kb.searching')}</span>
+            : query.trim() && <span className="hint">{t('kb.enterHint')}</span>}
         </div>
 
         <ErrorNote error={search.error} />
@@ -145,10 +176,10 @@ export function KnowledgePanel({ base }: { base: string }) {
         {/* 还没搜过：给邀请，不给空白。空白会被读成"搜过了没结果"。 */}
         {!searched && !search.error && (
           <section>
-            <p className="section-label">试试这些</p>
+            <p className="section-label">{t('kb.try')}</p>
             <div className="suggestions">
-              {SAMPLES.map((s) => (
-                <button key={s} className="suggestion" onClick={() => runSearch(s)}>{s}</button>
+              {SAMPLE_KEYS.map((k) => (
+                <button key={k} className="suggestion" onClick={() => runSearch(t(k))}>{t(k)}</button>
               ))}
             </div>
           </section>
@@ -158,23 +189,23 @@ export function KnowledgePanel({ base }: { base: string }) {
           <section>
             <div className="chip-row" style={{ marginBottom: 12 }}>
               <span className="section-label" style={{ margin: 0 }}>
-                {results.length} 条命中
+                {results.length} {t('kb.hitsN')}
               </span>
-              {search.data?.reranked && <Chip tone="info">已重排</Chip>}
+              {search.data?.reranked && <Chip tone="info">{t('kb.reranked')}</Chip>}
             </div>
             {results.length === 0
-              ? <Empty>没有命中结果。换个说法，或把对应文档导入知识库。</Empty>
+              ? <Empty>{t('kb.noResults')}</Empty>
               : (
                 <div className="dl">
                   {results.map((item, i) => (
                     <article className="hit" key={i}>
                       <div className="hit-body">
                         <div className="hit-head">
-                          <strong>{item.title || '未命名'}</strong>
-                          {item.fallback && <Chip tone="caution">降级结果</Chip>}
+                          <strong>{item.title || t('kb.untitled')}</strong>
+                          {item.fallback && <Chip tone="caution">{t('kb.degraded')}</Chip>}
                           {item.score !== undefined && (
-                            <span className="hit-score">
-                              相关度 <span className="mono">{num(item.score, 3)}</span>
+                            <span className="hit-score" title={t('kb.relevance.hint')}>
+                              {t('kb.relevance')} <span className="mono">{num(item.score, 3)}</span>
                             </span>
                           )}
                         </div>
@@ -193,39 +224,39 @@ export function KnowledgePanel({ base }: { base: string }) {
 
         <dialog className="modal" ref={dialogRef} onClose={closeImport}>
           <Card
-            title="导入文档"
+            title={t('kb.import')}
             actions={
-              <button className="icon-btn" aria-label="关闭" onClick={closeImport}>
+              <button className="icon-btn" aria-label={t('kb.close')} onClick={closeImport}>
                 <Icon name="close" />
               </button>
             }
             bodyStyle={{ display: 'grid', gap: 12 }}
           >
             <label className="field-row">
-              <span>标题</span>
+              <span>{t('kb.fTitle')}</span>
               <input className="field" value={title} onChange={(e) => setTitle(e.target.value)}
-                     placeholder="例如：补件材料清单（2026 版）" />
+                     placeholder={t('kb.fTitlePh')} />
             </label>
             <label className="field-row">
-              <span>内容</span>
+              <span>{t('kb.fBody')}</span>
               <textarea className="field" rows={5} value={content} onChange={(e) => setContent(e.target.value)}
-                        placeholder="正文。导入后会触发一次增量向量化。" />
+                        placeholder={t('kb.fBodyPh')} />
             </label>
             <ErrorNote error={add.error ?? upload.error} />
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
               <button className="btn btn-ghost" disabled={upload.isPending} aria-busy={upload.isPending}
                       onClick={() => fileRef.current?.click()}>
                 <Icon name="upload" size={16} />
-                {upload.isPending ? '上传中…' : '上传文件'}
+                {upload.isPending ? t('kb.uploading') : t('kb.upload')}
               </button>
               <span className="spacer" />
-              <button className="btn btn-secondary" onClick={closeImport}>取消</button>
+              <button className="btn btn-secondary" onClick={closeImport}>{t('kb.cancel')}</button>
               <button
                 className="btn btn-primary" aria-busy={add.isPending}
                 disabled={add.isPending || !title.trim() || !content.trim()}
                 onClick={() => add.mutate([{ title: title.trim(), content: content.trim() }])}
               >
-                {add.isPending ? '导入中…' : '导入'}
+                {add.isPending ? t('kb.importing') : t('kb.doImport')}
               </button>
               <input
                 ref={fileRef} type="file" accept=".txt,.md,.json" hidden
