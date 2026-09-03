@@ -116,14 +116,14 @@ async def lifespan(app: FastAPI):
     from core.shared_state import SharedState
     from core.skill_loader import SkillManager
     from evaluation.evaluator import EndToEndEvaluator
-    from mcp.knowledge_base import KnowledgeBase
-    from mcp.tool_manager import MCPToolManager, Tool
     from memory.conversation_memory import MemoryManager
     from monitor.performance_monitor import PerformanceMonitor
     from storage.conversation_log import ConversationLog, PgConversationLog
     from storage.pg import Database
     from storage.vector_store import LocalStore, PgStore
     from tickets.ticket_store import PgTicketStore, TicketStore
+    from tools.knowledge_base import KnowledgeBase
+    from tools.tool_manager import Tool, ToolManager
 
     global _user_auth, _rate_limiter, _ticket_store, _shared_state, _infra_redis
     global _conv_log, _pg_database, _reranker
@@ -228,9 +228,9 @@ async def lifespan(app: FastAPI):
         model=cfg["model"],
     )
 
-    # MCP 工具管理器 + RAG 知识库（pgvector / SQLite 双后端的混合检索）
+    # 工具管理器 + RAG 知识库（pgvector / SQLite 双后端的混合检索）
     _reranker = Reranker.from_env()
-    _tool_manager = MCPToolManager(
+    _tool_manager = ToolManager(
         api_key=cfg["api_key"],
         base_url=cfg.get("base_url"),
         model=cfg["model"],
@@ -358,7 +358,7 @@ app.add_middleware(
 
 from core.metrics import RATE_LIMIT_HITS, observe_http  # noqa: E402
 from core.telemetry import setup_telemetry  # noqa: E402
-from mcp.knowledge_base import should_use_knowledge  # noqa: E402
+from tools.knowledge_base import should_use_knowledge  # noqa: E402
 
 # OTel：配置 OTEL_EXPORTER_OTLP_ENDPOINT 后启用 FastAPI/httpx/redis/asyncpg
 # 自动埋点 + 业务 span；未配置时零开销。
@@ -799,7 +799,7 @@ async def _build_knowledge_context(
     """
     为 /chat 主链路构建 RAG 知识上下文。
 
-    完整链路会复用 MCPToolManager 的查询改写、并行召回、重排 + 证据判定、
+    完整链路会复用 ToolManager 的查询改写、并行召回、重排 + 证据判定、
     自纠错、fallback；fast_path=True 时走单次直检，用两次 LLM 往返换检索
     广度——意图已经由规则通道确定的高频问题不需要多角度改写。
 

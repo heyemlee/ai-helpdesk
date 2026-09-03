@@ -8,9 +8,9 @@ import pytest
 
 from core.lexical import bm25_scores, index_text, query_tokens, tokenize
 from core.reranker import Reranker
-from mcp.knowledge_base import KnowledgeBase, rrf_fuse
-from mcp.tool_manager import MCPToolManager, RerankOutcome, Tool
 from storage.vector_store import LocalStore
+from tools.knowledge_base import KnowledgeBase, rrf_fuse
+from tools.tool_manager import RerankOutcome, Tool, ToolManager
 
 # ── 分词 ──────────────────────────────────────────────────────────────────────
 
@@ -196,7 +196,7 @@ async def test_cross_encoder_reorders_and_llm_is_not_called():
         async def rerank(self, query, documents, top_k):
             return [(2, 0.9), (0, 0.4)]
 
-    manager = MCPToolManager(api_key="test-key", reranker=FakeReranker())
+    manager = ToolManager(api_key="test-key", reranker=FakeReranker())
     manager._llm_rerank = _boom_llm
 
     items = [{"title": "a"}, {"title": "b"}, {"title": "c"}]
@@ -207,7 +207,7 @@ async def test_cross_encoder_reorders_and_llm_is_not_called():
 
 
 async def test_rerank_is_skipped_when_there_is_nothing_to_reorder():
-    manager = MCPToolManager(api_key="test-key")
+    manager = ToolManager(api_key="test-key")
     manager._llm_rerank = _boom_llm
     outcome = await manager._rerank("q", [{"title": "a"}], top_k=3)
     assert outcome.reranked is False   # 候选数 <= top_k，没有可排的东西
@@ -220,7 +220,7 @@ async def _boom_llm(*args, **kwargs):
 # ── 重排响应解析 ──────────────────────────────────────────────────────────────
 
 def test_parse_rerank_payload_reads_order_and_verdict():
-    order, sufficient, missing = MCPToolManager._parse_rerank_payload(
+    order, sufficient, missing = ToolManager._parse_rerank_payload(
         '{"order": [2, 0], "sufficient": false, "missing": "缺少补件时效"}'
     )
     assert order == [2, 0]
@@ -233,7 +233,7 @@ def test_parse_rerank_payload_tolerates_bare_array():
     模型没按对象格式回答时，排序照用，充分性判定取 None 而不是猜一个布尔值——
     猜 True 会让自纠错永不触发，猜 False 会让它每次都触发。
     """
-    order, sufficient, missing = MCPToolManager._parse_rerank_payload("[1, 0]")
+    order, sufficient, missing = ToolManager._parse_rerank_payload("[1, 0]")
     assert order == [1, 0]
     assert sufficient is None
     assert missing == ""
@@ -243,28 +243,28 @@ def test_parse_rerank_payload_tolerates_bare_array():
 
 def test_model_verdict_wins_over_score_threshold():
     outcome = RerankOutcome(items=[{"score": 0.95}], reranked=True, sufficient=False)
-    assert MCPToolManager._evidence_ok(outcome) is False
+    assert ToolManager._evidence_ok(outcome) is False
 
 
 def test_score_threshold_is_used_when_model_gave_no_verdict():
-    assert MCPToolManager._evidence_ok(RerankOutcome([{"score": 0.8}], True)) is True
-    assert MCPToolManager._evidence_ok(RerankOutcome([{"score": 0.1}], True)) is False
+    assert ToolManager._evidence_ok(RerankOutcome([{"score": 0.8}], True)) is True
+    assert ToolManager._evidence_ok(RerankOutcome([{"score": 0.1}], True)) is False
 
 
 def test_empty_result_is_never_sufficient():
-    assert MCPToolManager._evidence_ok(RerankOutcome([], False, sufficient=True)) is False
+    assert ToolManager._evidence_ok(RerankOutcome([], False, sufficient=True)) is False
 
 
 def test_scoreless_items_are_treated_as_sufficient():
     """取不到分数就别拿一个假信号去多打一整轮检索。"""
-    assert MCPToolManager._evidence_ok(RerankOutcome([{"title": "a"}], True)) is True
+    assert ToolManager._evidence_ok(RerankOutcome([{"title": "a"}], True)) is True
 
 
 # ── 检索自纠错 ────────────────────────────────────────────────────────────────
 
 def _search_manager(verdicts):
     """构造一个把改写和重排都打好桩的 manager，verdicts 按轮次给出充分性判定。"""
-    manager = MCPToolManager(api_key="test-key")
+    manager = ToolManager(api_key="test-key")
     manager.register(Tool(
         name="kb",
         description="stub",
@@ -302,7 +302,7 @@ def test_merge_unique_dedupes_same_content_with_different_scores():
         {"title": "保修", "content": "柜体保修 5 年", "score": 0.0068},
         {"title": "安装", "content": "门缝 2-3mm", "score": 0.0},
     ]
-    merged = MCPToolManager._merge_unique(items)
+    merged = ToolManager._merge_unique(items)
     assert [m["content"] for m in merged] == ["柜体保修 5 年", "门缝 2-3mm"]   # 保序
     assert merged[0]["score"] == 0.0361      # 同内容保留最高分
     assert merged[1]["score"] == 0.1283
@@ -310,11 +310,11 @@ def test_merge_unique_dedupes_same_content_with_different_scores():
 
 
 def test_merge_unique_falls_back_to_id_then_whole_item():
-    by_id = MCPToolManager._merge_unique([{"id": "a", "score": 0.1}, {"id": "a", "score": 0.9}])
+    by_id = ToolManager._merge_unique([{"id": "a", "score": 0.1}, {"id": "a", "score": 0.9}])
     assert len(by_id) == 1 and by_id[0]["score"] == 0.9
-    plain = MCPToolManager._merge_unique(["x", "x", "y"])
+    plain = ToolManager._merge_unique(["x", "x", "y"])
     assert plain == ["x", "y"]
-    scoreless = MCPToolManager._merge_unique([{"foo": 1, "score": 1}, {"foo": 1, "score": 2}, {"foo": 2}])
+    scoreless = ToolManager._merge_unique([{"foo": 1, "score": 1}, {"foo": 1, "score": 2}, {"foo": 2}])
     assert len(scoreless) == 2
 
 

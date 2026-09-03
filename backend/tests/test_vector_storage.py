@@ -11,8 +11,8 @@ import pytest
 
 from core.embedder import Embedder, cosine
 from core.lexical import index_text, query_tokens
-from mcp.knowledge_base import KnowledgeBase
 from storage.vector_store import LocalStore
+from tools.knowledge_base import KnowledgeBase
 
 TEST_PG_DSN = os.getenv("TEST_POSTGRES_DSN", "").strip()
 

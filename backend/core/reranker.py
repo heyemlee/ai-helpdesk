@@ -12,7 +12,7 @@ Cross-encoder 重排客户端（Cohere / Voyage / bge-reranker 的 /rerank 端�
 是因为"重排不可用"不是错误——原始召回顺序仍然是可用结果，链路不该因此中断。
 
 失败后本进程永久降级（`_remote_ok = False`）：重排端点挂掉时，每次请求都
-重试一遍只会把它的超时叠加到用户延迟上。熔断交给 MCPToolManager 管工具，
+重试一遍只会把它的超时叠加到用户延迟上。熔断交给 ToolManager 管工具，
 这里管的是一个可选增强项，直接放弃更合适。
 """
 from __future__ import annotations
