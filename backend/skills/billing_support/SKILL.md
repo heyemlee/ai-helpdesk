@@ -1,7 +1,7 @@
 ---
 name: 报价与账款处理规范
 description: 适用于 ai-helpdesk BillingAgent 的橱柜报价构成、变更加价、定金与尾款、账单核对、发票和退补款规范
-keywords: 报价,报价单,价格,多少钱,加多少钱,单价,总价,预算,折扣,优惠,定金,订金,首付,尾款,余款,付款,收费,多收,少收,重复扣款,账单,对账,发票,开票,抬头,税号,退款,退定金,补款,变更费用,quote,price,invoice,payment,deposit
+keywords: 报价,报价单,价格,多少钱,加多少钱,单价,总价,预算,折扣,优惠,定金,订金,首付,尾款,余款,付款,收费,多收,少收,重复扣款,账单,对账,发票,开票,抬头,税号,退款,退定金,补款,变更费用,quote,price,invoice,payment,deposit,quotation,pricing,cost,how much,billing,bill,pay,paid,balance,due,charge,charged,overcharged,duplicate charge,credit,discount,upcharge,change order,surcharge,tax,receipt,estimate
 agents: billing
 enabled: true
 ---
@@ -109,3 +109,25 @@ enabled: true
 - "加一个岛台的价格要看岛台尺寸、台面材质和是否走水电，这几项都会影响造价，我这边不能给你一个口头数。我帮你转销售出一版正式报价单，上面会把每一项拆开列清楚。"
 - "我按订单 #12345 对了一下：合同总价和已付定金都能对上，差异出在后来那次改门板饰面的变更加价。这笔加价需要以正式变更单为准，我先帮你把变更单调出来核对。"
 - "定金显示未付有两种可能：一是银行到账还没入账，二是付款信息没和订单匹配上。麻烦提供付款时间、付款方式和付款账户后四位，我这边请财务核一下。核完会给你明确答复，但具体多久我不能替财务定。"
+
+## 术语对照（用英文作答时）
+
+客户用英文提问时，规则一条都不变，只是把下面这些概念用右列的英文说出来。
+不要中英夹注（"production (排产)" 这种），也不要每次现编一个译法——
+同一个概念在不同轮次里换说法，客户会以为是两件事。
+
+| 中文 | English |
+| --- | --- |
+| 报价单 | formal quotation |
+| 变更单 | change order |
+| 定金 | deposit |
+| 尾款 | balance |
+| 合同总价 | contract total |
+| 当前应付 | amount currently due |
+| 加价 | upcharge |
+| 发票 | invoice |
+| 抬头 | bill-to name |
+| 税号 | tax ID |
+| 退款 | refund |
+| 补款 | additional payment |
+| 对账 | reconciliation |
