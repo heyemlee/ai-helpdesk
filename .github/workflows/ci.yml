@@ -4,6 +4,12 @@ on:
   push:
     branches: [main, master]
   pull_request:
+  # 手动触发。加它有两个理由：
+  # 一是 2026-08-21 之后 push 事件不再触发本工作流（aa98d87 是最后一次运行，
+  # 其后落到 main 的提交 check runs 全是 0），需要一条不依赖 push 的路子来判断
+  # 是"触发失效"还是"Actions 整个不跑"；二是往后想在某个提交上补跑一次时，
+  # 不必靠推一个空提交去骗触发。
+  workflow_dispatch:
 
 jobs:
   backend:
