@@ -255,10 +255,42 @@ class TestContextBuilder:
         _wire(m, monkeypatch, payload)
         assert await m._build_order_data_context("q", intent="order_status") == ("", False)
 
-    async def test_unavailable_fallback_is_dropped(self, monkeypatch):
+    async def test_unavailable_becomes_a_visible_notice(self, monkeypatch):
+        """
+        委派失败不能静默。
+
+        实测里最危险的一种形态：下游其实查完了（HTTP 200，40.5s），只是调用方
+        在超时点先放弃，客户拿到一段听起来完全合理、实则没有任何系统依据的
+        回答——客户和坐席都分辨不出来这次降级发生过。所以失败要明写进上下文。
+        """
         m = _load_main(monkeypatch)
-        _wire(m, monkeypatch, {"answer": "", "queried_database": False, "unavailable": True}, success=False)
-        assert await m._build_order_data_context("q", intent="order_status") == ("", False)
+        _wire(m, monkeypatch,
+              {"answer": "", "queried_database": False, "unavailable": True, "error": "ReadTimeout"},
+              success=False)
+        text, is_evidence = await m._build_order_data_context("q", intent="order_status")
+        assert text, "失败必须留下可见提示，不能返回空"
+        assert "ReadTimeout" in text, "提示里要带上原因，否则排查时看不出是超时"
+        assert "不要给出任何具体的订单状态" in text
+        assert is_evidence is False, "降级提示不是证据，不能进 grounding_sources"
+
+    async def test_notice_never_becomes_evidence(self, monkeypatch):
+        """
+        提示块绝不能当出处。
+
+        它进了 grounding_sources 的话，答案策略会拿"查询失败了"这句话去给
+        一个凭空的价格或日期找到"出处"——等于用一条故障通知批准一次无依据承诺。
+        """
+        m = _load_main(monkeypatch)
+        _wire(m, monkeypatch, {"unavailable": True, "error": "boom"}, success=False)
+        _text, is_evidence = await m._build_order_data_context("q", intent="order_status")
+        assert is_evidence is False
+
+    async def test_real_data_is_evidence(self, monkeypatch):
+        """反过来：真数据必须是证据，否则真实交期会被答案策略替换成安全话术。"""
+        m = _load_main(monkeypatch)
+        _wire(m, monkeypatch, dict(OK_PAYLOAD))
+        _text, is_evidence = await m._build_order_data_context("q", intent="order_status")
+        assert is_evidence is True
 
     async def test_empty_answer_dropped(self, monkeypatch):
         m = _load_main(monkeypatch)
