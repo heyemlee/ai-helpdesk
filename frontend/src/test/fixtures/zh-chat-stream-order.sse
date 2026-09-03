@@ -1,0 +1,57 @@
+event: meta
+data: {"conv_id": "2bb6f9e7-9740-45d9-b0b6-8bda0f3fda37", "intent": "order_status", "intent_group": "query", "intent_confidence": 0.6729, "intent_strategy": "ensemble", "intent_latency_ms": 1943.01, "intent_source_scores": {"llm": 0.85, "embedding": 0.38951782748808106, "rules": 0.5}, "entities": {"order_id": ["SO-2026-0912"], "product": [], "date": [], "amount": [], "item_code": []}, "knowledge_used": true}
+
+event: routing
+data: {"primary_agent": "order", "supporting_agents": [], "reason": "intent=order_status, group=query, primary=order, supporting=none, scores=[order=1.00, technical=0.12, general=0.10, billing=0.00]", "confidence": 1.0, "domain_scores": {"general": 0.1, "technical": 0.12, "billing": 0.0, "order": 1.0}}
+
+event: delta
+data: {"text": "关于订单 **SO-2026-0912** 的当前生产节点，我这边需要核实一下系统里的排产记录才能准确回复——定制橱柜的生产分为七个节点（量尺→设计出图→报价→签约收定金→排产开料→生产完工与送货→安装验收），不同节点对应的状态和可改动范围都不一样，我不想凭印象给您一个不准的进度。\n\n"}
+
+event: delta
+data: {"text": "**当前在哪一步**\n"}
+
+event: delta
+data: {"text": "麻烦稍等，我这边会去核实这单目前是处于\"待排产\"\"已排产未开料\"\"开料/生产中\"还是\"已完工待发货\"哪一档，确认后第一时间同步给您。\n\n"}
+
+event: delta
+data: {"text": "**关于安装时间**\n"}
+
+event: delta
+data: {"text": "即便查到具体生产节点，安装/到场的具体日期也不是我这边能直接给的——原因：\n"}
+
+event: delta
+data: {"text": "- 交期是从\"图纸确认日\"起算，不是下单日，且以工厂实际排产确认为准；\n"}
+
+event: delta
+data: {"text": "- 如果这单涉及特殊饰面/颜色调色、需要外购件、异形柜或到顶柜，或者当前处于旺季排产队列，都会影响实际完工和送货时间；\n"}
+
+event: delta
+data: {"text": "- 送货前还需要提前预约，且现场要具备卸货条件（有无电梯、楼层、可接收时段），这些也会影响能不能顺利安排安装。\n\n"}
+
+event: delta
+data: {"text": "所以任何具体的完工/安装日期，我都不能自己确定或承诺，需要工厂排产确认后由人工正式回复您。\n\n"}
+
+event: delta
+data: {"text": "**需要您配合的信息**\n1."}
+
+event: delta
+data: {"text": " 您是否有明确的到场硬性节点（比如已经约好其他工种进场、搬家日期）？"}
+
+event: delta
+data: {"text": "如果有，请告诉我具体日期，我会标记优先级转人工去协调；\n2."}
+
+event: delta
+data: {"text": " 方便的话确认一下这单是否已经量尺、图纸是否已确认——这会决定后面能不能推进。"}
+
+event: delta
+data: {"text": "\n\n"}
+
+event: delta
+data: {"text": "我这边先去核实具体生产状态，确认后尽快回复您。"}
+
+event: delta
+data: {"text": "\n\n这个问题我已经转交人工客服跟进，稍后会有同事联系您。为了加快处理，请准备好订单号或柜号、以及现场照片等相关资料。"}
+
+event: result
+data: {"conv_id": "2bb6f9e7-9740-45d9-b0b6-8bda0f3fda37", "request_id": "61b2469de197", "ticket_id": "tk_9ffe905972dc", "response": "关于订单 **SO-2026-0912** 的当前生产节点，我这边需要核实一下系统里的排产记录才能准确回复——定制橱柜的生产分为七个节点（量尺→设计出图→报价→签约收定金→排产开料→生产完工与送货→安装验收），不同节点对应的状态和可改动范围都不一样，我不想凭印象给您一个不准的进度。\n\n**当前在哪一步**\n麻烦稍等，我这边会去核实这单目前是处于\"待排产\"\"已排产未开料\"\"开料/生产中\"还是\"已完工待发货\"哪一档，确认后第一时间同步给您。\n\n**关于安装时间**\n即便查到具体生产节点，安装/到场的具体日期也不是我这边能直接给的——原因：\n- 交期是从\"图纸确认日\"起算，不是下单日，且以工厂实际排产确认为准；\n- 如果这单涉及特殊饰面/颜色调色、需要外购件、异形柜或到顶柜，或者当前处于旺季排产队列，都会影响实际完工和送货时间；\n- 送货前还需要提前预约，且现场要具备卸货条件（有无电梯、楼层、可接收时段），这些也会影响能不能顺利安排安装。\n\n所以任何具体的完工/安装日期，我都不能自己确定或承诺，需要工厂排产确认后由人工正式回复您。\n\n**需要您配合的信息**\n1. 您是否有明确的到场硬性节点（比如已经约好其他工种进场、搬家日期）？如果有，请告诉我具体日期，我会标记优先级转人工去协调；\n2. 方便的话确认一下这单是否已经量尺、图纸是否已确认——这会决定后面能不能推进。\n\n我这边先去核实具体生产状态，确认后尽快回复您。\n\n这个问题我已经转交人工客服跟进，稍后会有同事联系您。为了加快处理，请准备好订单号或柜号、以及现场照片等相关资料。", "agent_type": "order", "agent_types": ["order"], "primary_agent": "order", "supporting_agents": [], "routing_reason": "intent=order_status, group=query, primary=order, supporting=none, scores=[order=1.00, technical=0.12, general=0.10, billing=0.00]", "routing_confidence": 1.0, "escalated": true, "handoff": true, "handoff_reason": "Agent 自评置信度 0.65 低于 0.7", "needs_clarification": false, "answer_confidence": 0.65, "policy_violations": [], "latency_ms": 21687.3}
+

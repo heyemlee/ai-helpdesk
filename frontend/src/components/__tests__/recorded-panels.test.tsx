@@ -10,7 +10,7 @@ import { fixtureJson } from '@/test/fixtures'
 import type { KnowledgeStats, MonitorSummary, SearchResponse } from '@/api/types'
 
 const monitor = fixtureJson<MonitorSummary>('monitor.json')
-const search = fixtureJson<SearchResponse>('search.json')
+const search = fixtureJson<SearchResponse>('zh-search.json')
 const health = fixtureJson<{ knowledge?: unknown }>('health.json')
 
 const mocks = vi.hoisted(() => ({
