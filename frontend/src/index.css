@@ -1,12 +1,13 @@
 /* 字体必须在这里引，而且必须是第一条语句。
-   console.css 自己第 12 行有 `@import url("fonts/fonts.css")`，但它是被
-   index.css 引进来的：tailwind 先被内联成两百多行规则，console.css 的这条
-   @import 于是落在了那些规则后面，触发
+   设计工程那份 console.css 自带 `@import url("fonts/fonts.css")`。在原型页里
+   它是第一条语句，合法；被 index.css 引进来就不是了——tailwind 先被内联成
+   两百多行规则，那条 @import 落在规则之后，触发
    `[vite:css][postcss] @import must precede all other statements`，
-   整条 @import 被丢掉——构建只警告不报错，页面照常渲染。
-   后果是 4 个 @font-face 一条都没注册（document.fonts.size === 0），
+   整条被丢掉。构建只警告不报错，页面照常渲染，
+   但 4 个 @font-face 一条都没注册（document.fonts.size === 0），
    OpenAI Sans 静默回落到系统字体栈，肉眼几乎看不出来。
-   console.css 由设计工程单向同步，改那边的副本会被覆盖，所以提到这里。
+   现在 scripts/sync-console-css.mjs 同步时会摘掉那一条（摘除对 --check 同样生效），
+   字体只由下面这一行负责。改设计工程的副本没用，同步会覆盖。
 
    ⚠️ OpenAI Sans 是 OpenAI 的品牌字体，见 fonts/fonts.css 顶部与
       NOTES.md「部署前须替换清单」——这条修复只是让它按设计意图加载，
