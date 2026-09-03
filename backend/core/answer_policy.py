@@ -24,6 +24,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
+from core.text_lang import detect_language
+
 # ── 检测规则 ──────────────────────────────────────────────────────────────────
 
 # 价格表述：带货币符号的金额，或带货币单位的数字
@@ -129,11 +131,6 @@ _ABBREVIATIONS = frozenset({
 })
 _WORD_BEFORE_DOT_RE = re.compile(r"([A-Za-z][A-Za-z.]*)\.$")
 
-# 判定回复语言：有汉字就按中文处理。只用来选安全话术的语种，
-# 不影响拦不拦——拦截规则本身是双语的。
-_CJK_RE = re.compile(r"[\u4e00-\u9fff]")
-
-
 def _is_sentence_period(text: str, idx: int) -> bool:
     """
     text[idx] 是 '.'。判断它是句末还是缩写点。
@@ -190,8 +187,11 @@ _SAFE_REPLACEMENT = {
 
 
 def _safe_replacement(rule: str, sentence: str) -> str:
-    """按被替换句子的语种取安全话术。"""
-    return _SAFE_REPLACEMENT["zh" if _CJK_RE.search(sentence) else "en"][rule]
+    """
+    按被替换句子的语种取安全话术。判定与编排器的脚手架共用 detect_language，
+    免得两处对"这句是中文还是英文"给出不同答案。
+    """
+    return _SAFE_REPLACEMENT[detect_language(sentence)][rule]
 
 _RULE_LABEL = {
     "price_commitment": "无依据的价格承诺",
