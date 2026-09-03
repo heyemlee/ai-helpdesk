@@ -95,7 +95,7 @@ Once it is up:
 | URL | What it is |
 | --- | --- |
 | http://localhost:5174 | Support console |
-| http://localhost:8000/docs | API docs |
+| http://localhost:8080/docs | API docs |
 | http://localhost:3000 | Grafana — metrics, logs and traces |
 | http://localhost:9090 | Prometheus metrics |
 
@@ -121,7 +121,7 @@ That starts the backend and the frontend together. Open http://localhost:5173.
 | Service health | `GET /health`, `GET /monitor` |
 | Run an evaluation | `POST /eval/run` |
 
-Full API reference is at http://localhost:8000/docs once the service is running.
+Full API reference is at http://localhost:8080/docs once the service is running.
 
 ## Layout
 

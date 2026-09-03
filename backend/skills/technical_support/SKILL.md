@@ -1,7 +1,7 @@
 ---
 name: 产品与安装处理规范
 description: 适用于 ai-helpdesk TechnicalAgent 的柜体台面规格、门板饰面色差、五金调整、现场安装偏差、破损瑕疵判定和返工升级规范
-keywords: 门板,柜门,柜体,台面,面板,饰面,贴面,油漆,色差,划痕,破损,开裂,起泡,变形,鼓包,五金,铰链,滑轨,阻尼,拉手,关不严,对不齐,不平,有缝,装不上,尺寸不对,开孔,水槽开孔,返工,重做,安装,install,hinge,countertop
+keywords: 门板,柜门,柜体,台面,面板,饰面,贴面,油漆,色差,划痕,破损,开裂,起泡,变形,鼓包,五金,铰链,滑轨,阻尼,拉手,关不严,对不齐,不平,有缝,装不上,尺寸不对,开孔,水槽开孔,返工,重做,安装,install,hinge,countertop,door,panel,cabinet,carcass,worktop,finish,veneer,laminate,color,colour,color variation,scratch,chip,chipped,crack,cracked,damage,damaged,dent,warp,peeling,bubble,slide,drawer slide,hardware,soft close,align,line up,gap,fit,installation,rework,remake,measurement,dimension,cutout
 agents: technical
 enabled: true
 ---
@@ -109,3 +109,31 @@ enabled: true
 - "从描述看更像是铰链没调到位，不是柜体做错了。请先试着调铰链的左右方向，一次半圈，关门看四周缝隙是否均匀；调完还是对不齐，我们再安排现场复尺。"
 - "台面和墙之间有缝在毛坯墙面上是常见的，标准做法是打胶收边。不过要先确认缝宽——麻烦拍一张接缝处的特写，我看下是否超出正常收边范围。"
 - "这块门板的划痕需要工厂质检确认后才能定性。请提供柜号、整体照片和划痕特写各一张，我这边先按破损补件登记；具体的补件时间要等工厂排产确认，我不能先给你一个日期。"
+
+## 术语对照（用英文作答时）
+
+客户用英文提问时，规则一条都不变，只是把下面这些概念用右列的英文说出来。
+不要中英夹注（"production (排产)" 这种），也不要每次现编一个译法——
+同一个概念在不同轮次里换说法，客户会以为是两件事。
+
+| 中文 | English |
+| --- | --- |
+| 柜体 | cabinet box / carcass |
+| 门板 | door panel |
+| 台面 | countertop |
+| 饰面 | finish |
+| 色差 | color variation |
+| 划痕 | scratch |
+| 破损 | damage |
+| 开裂 | crack |
+| 起泡 | bubbling / delamination |
+| 变形 | warping |
+| 五金 | hardware |
+| 铰链 | hinge |
+| 滑轨 | drawer slide |
+| 阻尼 | soft-close |
+| 关不严 | doesn't close flush |
+| 对不齐 | misaligned |
+| 返工 | rework |
+| 复尺 | field measure |
+| 开孔 | cutout |

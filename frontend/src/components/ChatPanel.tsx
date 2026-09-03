@@ -1,111 +1,107 @@
 import { useEffect, useRef, useState } from 'react'
 import { MessageBubble } from './MessageBubble'
-import { Badge, Panel } from './ui'
+import { Icon } from './Icon'
 import type { ChatMessage } from '@/hooks/useChatStream'
+import { useT } from '@/i18n'
 
-const SAMPLES = [
-  '我要退款，订单号 #12345',
-  '我登录不上，而且这个月被重复扣款了',
-  '转人工',
-  '退款多久能到账？',
-]
+/** 内置示例问题，覆盖规则快通道、跨域主辅协作、答案策略拦截三条典型链路。 */
+/* 建议问句跟着界面语言走：夹具的匹配在演示原型里，真实后端不依赖问句语种。 */
+const SAMPLE_KEYS = ['cw.sample.1', 'cw.sample.2', 'cw.sample.3', 'cw.sample.4'] as const
 
-export function ChatPanel({ messages, busy, streaming, onStreamingChange, onSend, onClear }: {
+export function ChatPanel({ messages, busy, onSend, onInspect, explain, restoring }: {
   messages: ChatMessage[]
   busy: boolean
-  streaming: boolean
-  onStreamingChange: (v: boolean) => void
   onSend: (text: string) => void
-  onClear: () => void
+  onInspect: (m: ChatMessage) => void
+  explain?: boolean
+  /** 正在从服务端拉刷新前的历史 */
+  restoring?: boolean
 }) {
+  const { t } = useT()
   const [draft, setDraft] = useState('')
   const listRef = useRef<HTMLDivElement>(null)
+  const areaRef = useRef<HTMLTextAreaElement>(null)
 
-  // 新增量到达时贴底滚动
+  // 新增量到达时贴底滚动；讲解模式事后开启会在已有轮次下方展开新内容，同样要贴底
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight })
-  }, [messages])
+  }, [messages, explain])
+
+  const grow = () => {
+    const el = areaRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`
+  }
+
+  const restoredCount = messages.filter((m) => m.restored).length
 
   const submit = () => {
     const text = draft.trim()
     if (!text || busy) return
     onSend(text)
     setDraft('')
+    requestAnimationFrame(grow)
   }
 
   return (
-    <Panel
-      title="对话调试"
-      badge={<Badge tone="muted">{messages.length} 条</Badge>}
-      className="flex min-h-0 flex-1 flex-col [&>div]:flex [&>div]:min-h-0 [&>div]:flex-1 [&>div]:flex-col"
-      actions={
-        <div className="flex items-center gap-3">
-          <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-slate-400">
-            <input
-              type="checkbox"
-              checked={streaming}
-              onChange={(e) => onStreamingChange(e.target.checked)}
-              className="accent-sky-500"
-            />
-            流式
-          </label>
-          <button
-            onClick={onClear}
-            className="text-[11px] text-slate-500 transition hover:text-slate-300"
-          >
-            清空
-          </button>
-        </div>
-      }
-    >
-      <div ref={listRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
-        {messages.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-            <p className="text-sm text-slate-400">开始一次客服对话</p>
-            <div className="flex flex-wrap justify-center gap-1.5">
-              {SAMPLES.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => onSend(s)}
-                  className="rounded-full bg-slate-800/70 px-2.5 py-1 text-[11px] text-slate-300
-                             ring-1 ring-inset ring-slate-700 transition hover:bg-slate-700/70"
-                >
-                  {s}
-                </button>
+    <>
+      <div className="thread scroll" ref={listRef}>
+        {messages.length === 0 && restoring ? (
+          // 拉历史的那一两秒别闪一下空态——空态会被读成「这是个新会话」
+          <div className="thread-inner">
+            <div className="thinking"><span className="pulse" />{t('cw.restoring')}</div>
+          </div>
+        ) : messages.length === 0 ? (
+          <div className="thread-empty">
+            <h2>{t('cw.empty.title')}</h2>
+            <p>{t('cw.empty.body')}</p>
+            <div className="suggestions">
+              {SAMPLE_KEYS.map((k) => (
+                <button key={k} className="suggestion" onClick={() => onSend(t(k))}>{t(k)}</button>
               ))}
             </div>
           </div>
         ) : (
-          messages.map((m) => <MessageBubble key={m.id} message={m} />)
+          <div className="thread-inner">
+            {restoredCount > 0 && (
+              <p className="note neutral" style={{ marginBottom: 16 }}>
+                {t('cw.restored', { n: restoredCount })}
+              </p>
+            )}
+            {messages.map((m) => (
+              <MessageBubble key={m.id} message={m} explain={explain} onInspect={() => onInspect(m)} />
+            ))}
+          </div>
         )}
       </div>
 
-      <form
-        className="mt-3 flex gap-2"
-        onSubmit={(e) => { e.preventDefault(); submit() }}
-      >
-        <textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            // Enter 发送，Shift+Enter 换行
-            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit() }
-          }}
-          rows={2}
-          placeholder="输入问题，Enter 发送 / Shift+Enter 换行"
-          className="flex-1 resize-none rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2
-                     text-sm text-slate-100 outline-none transition placeholder:text-slate-600
-                     focus:border-sky-500/50"
-        />
-        <button
-          type="submit"
-          disabled={busy || !draft.trim()}
-          className="self-end rounded-lg bg-sky-500 px-4 py-2 text-sm font-medium text-white
-                     transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          {busy ? '…' : '发送'}
-        </button>
-      </form>
-    </Panel>
+      <div className="composer-wrap">
+        <form className="composer" onSubmit={(e) => { e.preventDefault(); submit() }}>
+          <label className="sr-only" htmlFor="draft">{t('cw.composeLabel')}</label>
+          <textarea
+            id="draft" ref={areaRef} rows={1} value={draft}
+            placeholder={t('cw.placeholder')}
+            onChange={(e) => { setDraft(e.target.value); grow() }}
+            onKeyDown={(e) => {
+              // 输入法组合中的 Enter 是「确认候选」，不是「发送」。少了 isComposing
+              // 这一判，中文用户每打完一个词按 Enter 上屏就会把半截问题发出去——
+              // 而且是真发：一整轮编排、几秒 LLM、可能还建一张工单。
+              // 英文输入和粘贴走不到组合态，所以只有中文/日文/韩文用户会踩到。
+              if (e.nativeEvent.isComposing) return
+              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit() }
+            }}
+          />
+          <div className="composer-bar">
+            <button className="send" type="submit" disabled={busy || !draft.trim()} aria-label={t('cw.send')}>
+              <Icon name="send" size={18} />
+            </button>
+          </div>
+        </form>
+        <p className="composer-hint">
+          {t('cw.hint')}
+        </p>
+      </div>
+    </>
   )
 }

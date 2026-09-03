@@ -24,6 +24,18 @@ server {
         try_files $uri $uri/ /index.html;
     }
 
+    # /api/docs 是 FastAPI 的 Swagger 页，里面写死 `url: '/openapi.json'`（无前缀）。
+    # 不单独转发的话它会命中上面的 SPA 兜底拿到 index.html，文档页永远加载不出规格。
+    location = /openapi.json {
+        set $api_upstream "${API_UPSTREAM}";
+        proxy_pass http://$api_upstream/openapi.json;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
     location /api/ {
         set $api_upstream "${API_UPSTREAM}";
         # proxy_pass 用变量时 nginx 不会自动剥掉 location 前缀，必须手动 rewrite

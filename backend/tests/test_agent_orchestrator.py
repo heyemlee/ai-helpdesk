@@ -3,6 +3,7 @@ import pytest
 from conftest import make_request, stub_agents
 
 from agents.agent_orchestrator import (
+    _HANDOFF_NOTICE,
     SPECIALIST_AGENTS,
     AgentOrchestrator,
     AgentType,
@@ -192,6 +193,127 @@ async def test_answer_confidence_reports_the_weakest_signal(orchestrator):
     assert result.answer_confidence == pytest.approx(0.62, abs=1e-6)
 
 
+async def test_handoff_drops_the_draft_follow_up_questions(orchestrator):
+    """
+    已经建单转人工，就不该再让用户补资料。
+
+    低置信度那一轮的草稿常常正好是一句追问（"具体想咨询什么内容呢？"），
+    直接拼上转人工文案就是一条自相矛盾的回复：前半段让用户补充信息，
+    后半段说已经转交人工——用户照着回复也没人接。
+    """
+    stub_agents(orchestrator, reply=(
+        "我这边负责订单与交付。\n"
+        "如果您已经下单，欢迎告诉我：\n"
+        "- 订单号或柜号\n"
+        "- 具体想咨询的内容\n"
+        "需要我协助什么呢？"
+    ))
+    req = make_request("报价的事", IntentCategory.QUOTE_PRICING, confidence=0.3)
+
+    result = await orchestrator.run(req)
+
+    assert result.handoff is True
+    assert _HANDOFF_NOTICE in result.response
+
+    body = result.response.split(_HANDOFF_NOTICE)[0]
+    assert "我这边负责订单与交付。" in body                  # 有信息量的部分保留
+    for ask in ("欢迎告诉我", "订单号或柜号", "具体想咨询的内容", "需要我协助什么呢"):
+        assert ask not in body, f"转人工后仍在向用户索取信息: {ask}"
+
+
+async def test_handoff_drops_a_bare_checklist_of_requested_documents(orchestrator):
+    """
+    没有引导句、直接甩出来的待补资料清单也要带走。
+
+    评测里 dialog_6（"尾款被扣了两次"）的真实回复就是这个形状：解释完直接跟
+    三条 markdown 清单，最后一句"请先提供订单号"。第一版过滤只认
+    "……欢迎告诉我："这种冒号引导的清单和"请提供"的原型说法，两处都漏了。
+
+    同时守住反向的边界：行首的 `**加粗**` 不是列表项，那一行的内容要保留。
+    """
+    stub_agents(orchestrator, reply=(
+        "这种情况我需要先核对系统账目，不能凭描述直接判断。\n"
+        "\n"
+        "- **订单号或合同号**（必须，用来定位账目）\n"
+        "- 两次扣款分别的时间、金额、支付方式\n"
+        "\n"
+        "**如果核实确实是重复扣款**，属于实际退款，必须转人工财务审核处理。\n"
+        "\n"
+        "请先提供订单号，我帮您先做初步核对。"
+    ))
+    req = make_request("尾款被扣了两次", IntentCategory.PAYMENT_ISSUE, confidence=0.3)
+
+    result = await orchestrator.run(req)
+    body = result.response.split(_HANDOFF_NOTICE)[0]
+
+    assert "必须转人工财务审核处理" in body        # 加粗开头的整句不能被当成列表项
+    assert "核对系统账目" in body
+    for ask in ("订单号或合同号", "支付方式", "请先提供"):
+        assert ask not in body, f"转人工后仍在向用户索取信息: {ask}"
+
+
+async def test_handoff_keeps_an_explanatory_list(orchestrator):
+    """
+    反向边界：不是所有清单都是在要资料。
+
+    "清单一律带走"这条规则把破损判定的三条可能原因也吃了，后面那句
+    "这三种情况责任方不同"就成了没有指代的悬空句——评测分数从 0.86 掉到 0.60
+    就是这么来的。判据是条目里有没有资料名词，不是有没有清单。
+    """
+    stub_agents(orchestrator, reply=(
+        "先按破损/开裂登记处理。\n"
+        "\n"
+        "**可能原因**\n"
+        "- 出厂前已存在裂纹（工厂生产环节问题）\n"
+        "- 运输途中磕碰导致开裂（运输损）\n"
+        "\n"
+        "这两种情况责任方不同，需要工厂质检判定。\n"
+        "\n"
+        "**后续流程**\n"
+        "\n"
+        "烦请先补一下订单号和照片。"
+    ))
+    req = make_request("门板送来就是裂的", IntentCategory.DAMAGE_DEFECT, confidence=0.3)
+
+    result = await orchestrator.run(req)
+    body = result.response.split(_HANDOFF_NOTICE)[0]
+
+    assert "出厂前已存在裂纹" in body                 # 说明性清单是回答主体，必须留
+    assert "运输途中磕碰" in body
+    assert "这两种情况责任方不同" in body
+    assert "烦请先补一下" not in body                 # 索取句照样摘掉
+    assert "后续流程" not in body                     # 下面空了的小标题跟着走
+
+
+async def test_handoff_does_not_leave_a_heading_with_nothing_under_it(orchestrator):
+    """摘掉追问后，"**下一步说明：**"这种冒号标题下面就空了，标题也得跟着走。"""
+    stub_agents(orchestrator, reply=(
+        "这个问题涉及账目核对，我不能直接给结论。\n"
+        "\n"
+        "**下一步说明：**\n"
+        "\n"
+        "请您提供订单号和两笔扣款截图。"
+    ))
+    req = make_request("尾款被扣了两次", IntentCategory.PAYMENT_ISSUE, confidence=0.3)
+
+    result = await orchestrator.run(req)
+    body = result.response.split(_HANDOFF_NOTICE)[0]
+
+    assert "我不能直接给结论" in body
+    assert "下一步说明" not in body
+    assert body.rstrip().endswith("。")
+
+
+async def test_handoff_sends_only_the_notice_when_the_draft_was_all_questions(orchestrator):
+    """整段草稿都是追问时，转人工文案是唯一该发出去的内容。"""
+    stub_agents(orchestrator, reply="请问您具体想咨询什么内容呢？")
+    req = make_request("报价的事", IntentCategory.QUOTE_PRICING, confidence=0.3)
+
+    result = await orchestrator.run(req)
+
+    assert result.response == _HANDOFF_NOTICE
+
+
 async def test_handoff_keeps_the_answer_already_produced(orchestrator):
     stub_agents(orchestrator, reply="这里是已经生成的回答")
     req = make_request("报价的事", IntentCategory.QUOTE_PRICING, confidence=0.3)
@@ -262,6 +384,71 @@ async def test_policy_violation_drags_confidence_toward_handoff(orchestrator):
 
 
 # ── 监控反馈 ──────────────────────────────────────────────────────────────────
+
+async def test_in_flight_request_does_not_dilute_success_rate(orchestrator):
+    """
+    total 必须和 success 同时记，不能在请求开始时先 +1。
+
+    真模型一轮 8~20s，Monitor 每 10s 采一次：首个请求在途时 success_rate 曾是
+    0/1 = 0.000，被当成 ERROR 告警并记 0.5 路由惩罚——一个从没失败过的实例。
+    """
+    import asyncio
+    agent = orchestrator._pool[AgentType.BILLING][0]
+    gate = asyncio.Event()
+
+    async def _slow(req, skill_prompt=""):
+        await gate.wait()
+        return "[billing] 好的"
+
+    agent._call_llm = _slow
+    task = asyncio.create_task(agent.handle(make_request("报价", IntentCategory.QUOTE_PRICING)))
+    await asyncio.sleep(0)            # 让 handle 跑到 await _call_llm
+
+    assert agent.stats.total == 0     # 在途：什么都没记
+    assert agent.stats.success_rate == 1.0
+    assert agent.stats.routing_score() == pytest.approx(1.0)
+
+    gate.set()
+    await task
+    assert (agent.stats.total, agent.stats.success) == (1, 1)
+
+
+async def test_failed_request_counts_once_as_failure(orchestrator):
+    stub_agents(orchestrator, fail_types=(AgentType.BILLING,))
+    agent = orchestrator._pool[AgentType.BILLING][0]
+    resp = await agent.handle(make_request("报价", IntentCategory.QUOTE_PRICING))
+    assert resp.success is False
+    assert (agent.stats.total, agent.stats.success) == (1, 0)
+    assert agent.stats.success_rate == 0.0
+
+
+async def test_stream_records_stats_only_at_completion(orchestrator):
+    import asyncio
+    agent = orchestrator._pool[AgentType.ORDER][0]
+    gate = asyncio.Event()
+
+    async def _slow_stream(req, skill_prompt=""):
+        yield "第一句。"
+        await gate.wait()
+        yield "第二句。"
+
+    agent._stream_llm = _slow_stream
+    events = []
+
+    async def _consume():
+        async for evt in agent.stream(make_request("进度", IntentCategory.ORDER_STATUS)):
+            events.append(evt)
+
+    task = asyncio.create_task(_consume())
+    for _ in range(5):
+        await asyncio.sleep(0)
+    assert agent.stats.total == 0     # 首句已经吐出去了，统计仍未动
+
+    gate.set()
+    await task
+    assert events[-1]["type"] == "end"
+    assert (agent.stats.total, agent.stats.success) == (1, 1)
+
 
 def test_monitor_penalty_lowers_routing_score(orchestrator):
     agent = orchestrator._pool[AgentType.BILLING][0]
@@ -353,3 +540,163 @@ class TestAgentReplicas:
         orch.update_routing_penalties({"technical_0": 5.0, "technical_1": -3.0})
         assert orch._pool[AgentType.TECHNICAL][0].stats.monitor_penalty == 0.9
         assert orch._pool[AgentType.TECHNICAL][1].stats.monitor_penalty == 0.0
+
+
+# ── 双语作答 ──────────────────────────────────────────────────────────────────
+
+def test_system_prompt_pins_reply_language_to_the_customer(orchestrator):
+    """
+    在此之前系统提示词里一条语言指令都没有，中文回复只是模型顺着中文 SOP 和
+    中文脚手架走出来的结果——是巧合不是契约。
+    """
+    for agents in orchestrator._pool.values():
+        prompt = agents[0]._build_system_prompt()
+        assert "[回复语言]" in prompt
+        assert "客户提问所用的语言" in prompt
+
+
+def test_language_rule_survives_dynamic_skills(orchestrator):
+    """Skill SOP 是拼在语言规则之后的，别把规则挤掉。"""
+    agent = orchestrator._pool[AgentType.BILLING][0]
+    prompt = agent._build_system_prompt("【报价SOP】不得口头承诺单价")
+    assert "[回复语言]" in prompt and "【报价SOP】" in prompt
+
+
+@pytest.mark.parametrize("content", [
+    "I'll hand this over to our project team.",
+    "Let me connect you with a specialist who can help.",
+    "This is beyond what I can confirm here — our team will follow up.",
+    "我帮你转人工客服。",
+])
+def test_escalation_is_detected_in_both_languages(orchestrator, content):
+    """
+    回复语言跟客户走之后，英文回复说"要转人工"用的是 hand this over /
+    connect you with 这类说法，一个中文关键词都不含。漏检的后果是
+    escalate 恒为 False：不扣自评置信度、不建工单，说了转人工却没转。
+    """
+    assert orchestrator._pool[AgentType.GENERAL][0]._needs_escalation(content) is True
+
+
+def test_normal_answers_are_not_mistaken_for_escalation(orchestrator):
+    agent = orchestrator._pool[AgentType.TECHNICAL][0]
+    assert agent._needs_escalation("Here are the three hinge adjustment screws.") is False
+    assert agent._needs_escalation("铰链上有三颗调节螺丝，先调左右那颗。") is False
+
+
+def test_scaffolding_follows_the_customer_language(orchestrator):
+    """
+    _build_messages 注入的那两轮是**伪造的助手发言**。写死中文等于让模型看见
+    自己刚用中文说过两句话，再用系统提示词要求它用英文回答英文客户——
+    拿指令去对抗上下文。这里让脚手架跟客户走，不制造这个对抗。
+    """
+    req = make_request("The door arrived damaged.", IntentCategory.DAMAGE_DEFECT,
+                       entities={"item_code": ["W3012"]})
+    req.context = "客户上一轮提到订单 SO-2026-0912。"
+
+    messages = orchestrator._pool[AgentType.TECHNICAL][0]._build_messages(req)
+    spoken = [m["content"] for m in messages if m["role"] == "assistant"]
+
+    assert spoken and all("好的" not in s for s in spoken), f"英文对话里出现中文助手发言: {spoken}"
+    assert any("Understood" in s for s in spoken)
+    # 注入的资料保持原样：那是依据的语言，不是回复的语言
+    assert any("SO-2026-0912" in m["content"] for m in messages)
+    assert any("客户上一轮" in m["content"] for m in messages)
+
+
+def test_chinese_question_keeps_chinese_scaffolding(orchestrator):
+    req = make_request("送来的门板有划痕。", IntentCategory.DAMAGE_DEFECT)
+    req.context = "客户上一轮提到订单 SO-2026-0912。"
+
+    messages = orchestrator._pool[AgentType.TECHNICAL][0]._build_messages(req)
+    spoken = [m["content"] for m in messages if m["role"] == "assistant"]
+
+    assert any("好的" in s for s in spoken)
+    assert all("Understood" not in s for s in spoken)
+
+
+@pytest.mark.parametrize("message,forbidden,expected", [
+    ("The door arrived damaged.", "转交人工客服", "passed this to a human colleague"),
+    ("送来的门板有划痕。", "human colleague", "转交人工客服"),
+])
+def test_handoff_notice_follows_the_customer_language(
+    orchestrator, message, forbidden, expected,
+):
+    """
+    转人工通知是客户读的正文。写死中文时，一整段英文回答的结尾会突然接上
+    一段中文——实测就是这样。
+    """
+    from agents.agent_orchestrator import _customer_text
+
+    assert forbidden not in _customer_text(message, "handoff_notice")
+    assert expected in _customer_text(message, "handoff_notice")
+
+
+@pytest.mark.parametrize("key", [
+    "handoff_notice", "handoff_after_ask", "agent_error",
+    "all_failed", "unavailable", "clarify", "role_primary", "role_supporting",
+])
+def test_every_customer_string_exists_in_both_languages(key):
+    """漏一条就是一段中文掉进英文回复里，加新文案时这条会拦住。"""
+    from agents.agent_orchestrator import _CUSTOMER_TEXT
+
+    for lang in ("zh", "en"):
+        assert _CUSTOMER_TEXT[lang].get(key), f"{lang} 缺少文案 {key}"
+
+
+def test_english_asks_are_stripped_before_the_handoff_notice():
+    """
+    转人工前要摘掉"让客户补资料"的表述，否则同一条回复一边要资料、一边说
+    已经转交人工。_ASK_RE 原本一条英文规则都没有，英文回复必然自相矛盾。
+    """
+    from agents.agent_orchestrator import _strip_customer_asks
+
+    answer = (
+        "A deep scratch is usually a transit issue.\n"
+        "Could you send me photos of the damage?\n"
+        "Please provide your order number as well.\n"
+        "We will classify it once QC reviews the case."
+    )
+    body, asks = _strip_customer_asks(answer)
+
+    assert len(asks) == 2, f"英文索取表述没被识别: {asks}"
+    assert "photos of the damage" not in body
+    assert "order number" not in body
+    assert "transit issue" in body and "QC reviews" in body
+
+
+# ── 升级检测覆盖率语料 ────────────────────────────────────────────────────────
+#
+# 关键词匹配天生脆。固定成语料至少让"英文那半又退化了"这件事会被测出来，
+# 而不是等到 escalate 恒为 False、工单不建、置信度不扣，从面板上看不出来。
+
+_ESCALATION_PHRASINGS = [
+    "I'll hand this over to our project team.",
+    "Let me connect you with a specialist who can help.",
+    "This is beyond what I can confirm here — our team will follow up.",
+    "I'm escalating this to our operations team.",
+    "I can't resolve this from here, so I'm referring you to our service desk.",
+    "I'll transfer you to a human agent.",
+    "我帮你转人工客服。",
+    "这个我处理不了，需要转人工。",
+    "这超出我能确认的范围，我先转交人工客服。",
+]
+
+_NOT_ESCALATION = [
+    "Here are the three hinge adjustment screws.",
+    "Turnaround is typically 4-6 weeks, subject to factory scheduling.",
+    "The showroom is open Monday through Friday.",
+    "铰链上有三颗调节螺丝，先调左右那颗。",
+    "门缝正常应为 2-3mm，且上下一致。",
+]
+
+
+@pytest.mark.parametrize("content", _ESCALATION_PHRASINGS)
+def test_escalation_corpus_is_detected(orchestrator, content):
+    agent = orchestrator._pool[AgentType.GENERAL][0]
+    assert agent._needs_escalation(content) is True, f"漏检: {content}"
+
+
+@pytest.mark.parametrize("content", _NOT_ESCALATION)
+def test_normal_answers_stay_out_of_escalation(orchestrator, content):
+    agent = orchestrator._pool[AgentType.GENERAL][0]
+    assert agent._needs_escalation(content) is False, f"误检: {content}"

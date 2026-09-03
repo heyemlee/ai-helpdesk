@@ -26,6 +26,7 @@
 import asyncio
 import json
 import logging
+import re
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -34,6 +35,7 @@ from enum import Enum
 from typing import Any
 
 from core.answer_policy import AnswerPolicy, PolicyStreamGuard, PolicyViolation
+from core.text_lang import detect_language
 from core.intent_recognizer import IntentCategory, IntentRecognizer, UrgencyLevel
 from core.llm_utils import (
     ANSWER_MAX_TOKENS,
@@ -41,7 +43,7 @@ from core.llm_utils import (
     create_llm_client,
     extract_structured_text,
 )
-from core.metrics import record_llm_tokens
+from core.metrics import record_agent_latency, record_llm_tokens
 from core.telemetry import span
 
 logger = logging.getLogger(__name__)
@@ -83,6 +85,21 @@ class AgentStats:
     def success_rate(self) -> float:
         return self.success / self.total if self.total else 1.0
 
+    def record(self, ok: bool, ms: float) -> None:
+        """
+        一次请求结束时记账。total / success / total_ms 必须在同一时刻更新。
+
+        之前 total 在请求开始时 +1、success 在 LLM 返回后才 +1，中间隔着一整次
+        LLM 调用。演示夹具毫秒返回时这个窗口采不中；真模型 8~20s，Monitor 每
+        10s 采一次，几乎每次都落在里面——首个请求的窗口里 success_rate 是
+        0/1 = 0.000，Monitor 按 < 0.9 报 ERROR，_routing_penalty 再给这个
+        一次都没失败过的实例记 0.5 的惩罚，把流量倒给隔壁那个同样在途的实例。
+        """
+        self.total += 1
+        if ok:
+            self.success += 1
+        self.total_ms += ms
+
     @property
     def avg_ms(self) -> float:
         return self.total_ms / self.total if self.total else 0.0
@@ -92,6 +109,37 @@ class AgentStats:
         latency_score = 1.0 / (1.0 + self.avg_ms / 1000)
         base_score = self.success_rate * 0.7 + latency_score * 0.3
         return base_score * max(0.0, 1.0 - self.monitor_penalty)
+
+
+# 回复语言。此前系统提示词和 SKILL.md 里一条语言指令都没有——中文回复只是模型
+# 顺着中文 SOP、中文知识库和 _build_messages 注入的中文脚手架走出来的结果，
+# 是巧合不是契约：换个模型、把 SOP 写成双语，它就会漂。
+#
+# 只约束给客户看的正文。routing_reason / handoff_reason / 策略拦截理由是给
+# 控制台操作员看的诊断串，仍然保持中文——接英文客户的操作员多半说中文，
+# 这两拨人不是同一批，不该共用一个语言开关。
+# 脚手架消息的两套措辞，见 _build_messages
+_SCAFFOLD = {
+    "zh": {
+        "context_label":  "[背景信息]",
+        "context_ack":    "好的，我已了解背景信息。",
+        "entities_label": "[结构化实体]",
+        "entities_ack":   "好的，我会结合这些结构化实体处理。",
+    },
+    "en": {
+        "context_label":  "[Context]",
+        "context_ack":    "Understood — I've read the context.",
+        "entities_label": "[Extracted entities]",
+        "entities_ack":   "Understood — I'll take these entities into account.",
+    },
+}
+
+_LANGUAGE_RULE = (
+    "\n\n[回复语言]\n"
+    "始终使用客户提问所用的语言作答：客户用中文问就用中文答，用英文问就用英文答。"
+    "知识库、SOP 和上文的背景信息都是中文的，但这只是资料的语言，不是回复的语言——"
+    "给英文客户作答时把依据翻译成英文表述，不要因为资料是中文就改用中文回复。"
+)
 
 
 @dataclass
@@ -194,21 +242,30 @@ class BaseAgent:
     def model(self) -> str:
         return self._model
 
+    def _record(self, ok: bool, ms: float) -> None:
+        """
+        一次请求结束时同时记本地统计和 Prometheus 延迟。
+
+        两者必须在同一处：分开写过一次就会有人只补其中一个，然后 /monitor 的
+        avg_ms 和 Grafana 的 p95 各说各话，而且没有任何测试会失败。
+        """
+        self.stats.record(ok=ok, ms=ms)
+        record_agent_latency(self.key, ms)
+
     async def handle(self, req: Request) -> AgentResponse:
         with span("agent.handle", agent=self.agent_type.value):
             return await self._handle_inner(req)
 
     async def _handle_inner(self, req: Request) -> AgentResponse:
         t0 = time.monotonic()
-        self.stats.total += 1
+        # 统计只在请求结束时记（stats.record），在途期间不动——见 AgentStats.record
         # Skill SOP 既要注入 prompt，也要作为 AnswerPolicy 判断"有无出处"的依据，
         # 所以这里取一次，两处复用。
         skill_prompt = self._skill_prompt(req)
         try:
             content = await self._call_llm(req, skill_prompt)
             ms = (time.monotonic() - t0) * 1000
-            self.stats.success += 1
-            self.stats.total_ms += ms
+            self._record(ok=True, ms=ms)
 
             # 出站策略校验：拦截无依据的价格/时效承诺
             sources = list(req.grounding_sources)
@@ -235,11 +292,11 @@ class BaseAgent:
             )
         except Exception as ex:
             ms = (time.monotonic() - t0) * 1000
-            self.stats.total_ms += ms
+            self._record(ok=False, ms=ms)
             logger.error(f"{self.agent_type.value} 处理失败: {ex}")
             return AgentResponse(
                 agent_type=self.agent_type,
-                content="抱歉，处理您的请求时出现问题，请稍后重试。",
+                content=_customer_text(req, "agent_error"),
                 success=False,
                 confidence=0.0,
                 latency_ms=ms,
@@ -255,7 +312,6 @@ class BaseAgent:
         用户走了流式接口而失真。
         """
         t0 = time.monotonic()
-        self.stats.total += 1
         skill_prompt = self._skill_prompt(req)
 
         sources = list(req.grounding_sources)
@@ -277,8 +333,7 @@ class BaseAgent:
                 yield {"type": "delta", "text": tail}
 
             ms = (time.monotonic() - t0) * 1000
-            self.stats.success += 1
-            self.stats.total_ms += ms
+            self._record(ok=True, ms=ms)
 
             content = "".join(full)
             escalate = self._needs_escalation(content)
@@ -302,13 +357,13 @@ class BaseAgent:
             }
         except Exception as ex:
             ms = (time.monotonic() - t0) * 1000
-            self.stats.total_ms += ms
+            self._record(ok=False, ms=ms)
             logger.error(f"{self.agent_type.value} 流式处理失败: {ex}")
             yield {
                 "type": "end",
                 "response": AgentResponse(
                     agent_type=self.agent_type,
-                    content="抱歉，处理您的请求时出现问题，请稍后重试。",
+                    content=_customer_text(req, "agent_error"),
                     success=False,
                     confidence=0.0,
                     latency_ms=ms,
@@ -357,18 +412,34 @@ class BaseAgent:
 
     @staticmethod
     def _build_messages(req: Request) -> list[dict[str, str]]:
-        """流式和非流式共用同一套消息构造，避免两条链路的上下文出现差异。"""
+        """
+        流式和非流式共用同一套消息构造，避免两条链路的上下文出现差异。
+
+        脚手架那两轮的语言跟客户走。它们是**伪造的助手发言**——写死中文等于让
+        模型看见自己刚用中文说过两句话，然后再用系统提示词要求它用英文回答英文
+        客户，是拿指令去对抗上下文。语言规则压得住（实测没漂），但没必要先制造
+        这个对抗再去压。注入的资料本身（req.context 来自中文知识库）保持原样：
+        那是依据的语言，不是回复的语言。
+        """
         def _clean(s: str) -> str:
             return s.encode("utf-8", errors="ignore").decode("utf-8")
 
+        scaffold = _SCAFFOLD[detect_language(req.message)]
+
         messages = []
         if req.context:
-            messages.append({"role": "user", "content": f"[背景信息]\n{_clean(req.context)}"})
-            messages.append({"role": "assistant", "content": "好的，我已了解背景信息。"})
+            messages.append({
+                "role": "user",
+                "content": f"{scaffold['context_label']}\n{_clean(req.context)}",
+            })
+            messages.append({"role": "assistant", "content": scaffold["context_ack"]})
         if req.entities:
             entities_text = json.dumps(req.entities, ensure_ascii=False)
-            messages.append({"role": "user", "content": f"[结构化实体]\n{_clean(entities_text)}"})
-            messages.append({"role": "assistant", "content": "好的，我会结合这些结构化实体处理。"})
+            messages.append({
+                "role": "user",
+                "content": f"{scaffold['entities_label']}\n{_clean(entities_text)}",
+            })
+            messages.append({"role": "assistant", "content": scaffold["entities_ack"]})
         messages.append({"role": "user", "content": _clean(req.message)})
         return messages
 
@@ -380,9 +451,10 @@ class BaseAgent:
 
     def _build_system_prompt(self, skill_prompt: str = "") -> str:
         """把动态加载的 Skills 拼入 system prompt，让业务规则随请求生效。"""
+        prompt = self.system_prompt + _LANGUAGE_RULE
         if not skill_prompt:
-            return self.system_prompt
-        return f"{self.system_prompt}\n\n[动态 Skills]\n{skill_prompt}"
+            return prompt
+        return f"{prompt}\n\n[动态 Skills]\n{skill_prompt}"
 
     @staticmethod
     def _self_confidence(violations: list[PolicyViolation], escalate: bool) -> float:
@@ -398,10 +470,23 @@ class BaseAgent:
             confidence -= 0.35
         return round(max(0.0, confidence), 3)
 
+    # 英文那几条是补的：回复语言跟客户走之后，英文回复里说"我处理不了、要转人工"
+    # 用的是 hand this over / connect you with 这类说法，一个中文关键词都不含，
+    # 于是 escalate 恒为 False——自评置信度不扣分、不建工单，明明说了转人工却没转。
+    _ESCALATION_KEYWORDS = (
+        "转人工", "人工客服", "无法处理", "处理不了",
+        # 用词干 "escalat"：escalate / escalating / escalation / escalated 都算。
+        # 写全词会漏——语料里 "I'm escalating this to our operations team." 就漏过。
+        "escalat", "specialist", "hand this over", "hand it over",
+        "hand you over", "connect you with", "transfer you", "refer you to",
+        "a human agent", "our team will", "cannot resolve", "can't resolve",
+        "unable to resolve", "beyond what i can",
+    )
+
     def _needs_escalation(self, content: str) -> bool:
-        """检测 Agent 是否建议升级（简单关键词检测）。"""
-        keywords = ["转人工", "人工客服", "escalate", "specialist", "无法处理"]
-        return any(kw in content for kw in keywords)
+        """检测 Agent 是否建议升级（简单关键词检测，中英双语）。"""
+        lowered = content.lower()
+        return any(kw.lower() in lowered for kw in self._ESCALATION_KEYWORDS)
 
 
 class GeneralAgent(BaseAgent):
@@ -437,6 +522,215 @@ class OrderAgent(BaseAgent):
         "缺件漏发的补件流程、送货与到场排期。没有查到系统记录时，先说明需要订单号或柜号，"
         "不要凭空描述订单状态。交期以工厂排产实际情况为准，不要给出确定的完工或到货日期。"
     )
+
+
+# ── 转人工文案 ────────────────────────────────────────────────────────────────
+#
+# 转人工时会把已经生成的回答保留在前面，避免用户白等一轮。但草稿里那些
+# **向用户索取信息的句子**不能一起留下来：Agent 问"具体想咨询什么内容呢？
+# 请提供订单号"，是为了它自己接着往下答；这一轮既然已经建单转人工，
+# 接着往下办的人换成了同事，用户照着补充也没人接。两段拼在一起就是
+# 一条自相矛盾的回复——前半段让用户补资料，后半段说已经转交人工。
+#
+# 所以转人工时先把索取信息的表述过滤掉，只留有信息量的部分，
+# 由固定文案给出唯一一条行动指引：等同事联系，同时把资料准备好。
+
+# 所有会进到 response 正文、被客户读到的固定文案。集中在这里分语种，
+# 是因为它们散落时全是中文硬编码：回复语言跟客户走之后，一段英文回答的结尾
+# 会突然接上一整段中文转人工通知（实测就是这样）。这类文案和安全话术同性质——
+# 客户读的，就跟客户的语言。
+#
+# 诊断串（routing_reason / handoff_reason / 日志）不在这里：那是给控制台
+# 操作员看的，保持中文。
+_CUSTOMER_TEXT = {
+    "zh": {
+        "handoff_notice": (
+            "这个问题我已经转交人工客服跟进，稍后会有同事联系您。"
+            "为了加快处理，请准备好订单号或柜号、以及现场照片等相关资料。"
+        ),
+        # 流式下草稿已经逐句发出去了，收不回来——只能明确作废掉刚才的追问，
+        # 而不是当它没发生过。
+        "handoff_after_ask": "上面需要您补充的信息就不用回复我了——",
+        "agent_error": "抱歉，处理您的请求时出现问题，请稍后重试。",
+        "all_failed": "抱歉，所有 Agent 均处理失败。",
+        "unavailable": "服务暂时不可用，请稍后重试。",
+        "clarify": (
+            "我还不能确定您要处理的是哪类问题。请补充一下是订单交付、报价账款，"
+            "还是产品安装方面的问题？"
+        ),
+        "role_primary": "主处理",
+        "role_supporting": "辅助处理",
+    },
+    "en": {
+        "handoff_notice": (
+            "I've passed this to a human colleague, who will follow up with you shortly. "
+            "To speed things up, please have your order or cabinet number and any "
+            "on-site photos ready."
+        ),
+        "handoff_after_ask": "You don't need to reply with the details I asked for above — ",
+        "agent_error": "Sorry, something went wrong handling your request. Please try again shortly.",
+        "all_failed": "Sorry, none of the agents were able to handle this request.",
+        "unavailable": "The service is temporarily unavailable. Please try again shortly.",
+        "clarify": (
+            "I'm not yet sure which kind of issue this is. Could you tell me whether it's "
+            "about order delivery, quoting and billing, or product and installation?"
+        ),
+        "role_primary": "primary",
+        "role_supporting": "supporting",
+    },
+}
+
+
+# 中文转人工文案的模块级别名：既有用例按它断言，保留住不让这次重构波及无关测试。
+_HANDOFF_NOTICE = _CUSTOMER_TEXT["zh"]["handoff_notice"]
+
+
+def _customer_text(req_or_message, key: str) -> str:
+    """取面向客户的文案，语种跟客户提问走。"""
+    message = getattr(req_or_message, "message", req_or_message) or ""
+    return _CUSTOMER_TEXT[detect_language(message)][key]
+
+# "向用户要东西"的表述：疑问句，或让用户提供/告知/补充信息的祈使句。
+# 动词前允许插一个副词——"请**先**提供订单号""烦请**先**补一下照片"都漏网过。
+# 英文那几条是补的：转人工时要先摘掉"让客户补资料"的表述，否则同一条回复会
+# 一边让客户补充信息、一边说已经转交人工。中文侧早就这么做了，英文侧一条规则
+# 都没有——于是英文回复里 "Could you send me photos?" 原样留着，后面紧跟
+# "I've passed this to a human colleague"，正是这段注释说已经修掉的自相矛盾。
+_ASK_RE = re.compile(
+    r"[？?]"
+    r"|(?:please|kindly)\s+(?:also\s+|first\s+)?"
+    r"(?:provide|send|share|confirm|upload|attach|reply|forward|let\s+me\s+know)"
+    r"|(?:could|can|would)\s+you\s+(?:please\s+)?"
+    r"(?:provide|send|share|confirm|upload|attach|forward|let\s+me\s+know)"
+    r"|(?:we|i)(?:'?ll|\s+will)?\s+need\s+(?:you\s+to\s+)?"
+    r"(?:provide|send|share|confirm|the\b|a\b|your\b)"
+    r"|send\s+(?:me|us|over)\b"
+    r"|let\s+me\s+know\b"
+    r"|(?:provide|share|confirm)\s+the\s+following"
+    r"|(?:请|麻烦|烦请|还请)(?:您)?(?:先|再|帮我|把|尽快)?(?:提供|告知|发|回复|补充|补|传|说明|确认)"
+    r"|方便(?:的话)?(?:再|先)?(?:提供|告知|发)"
+    r"|需要(?:您)?(?:先|再)?(?:提供|补充|告知|确认)"
+    r"|告诉我"
+    r"|发(?:我|给我)"
+    r"|(?:提供|补充|确认|补)一下",
+    re.I,
+)
+
+# 列表项。`-`/`*` 必须带空格才算——行首的 `**加粗**` 会撞上 `*`，
+# 把"**如果核实确实是重复扣款**，……必须转人工财务审核"这种整句误删。
+_LIST_ITEM_RE = re.compile(r"^\s*(?:[-*]\s+|[•·]\s*|\d+[.、)]\s*|[（(]\d+[）)]\s*)")
+
+# 资料名词。清单里出现这些，说明它是"要你交上来的东西"，不是解释。
+# 刻意不收"时间/金额/尺寸"这类两边都会出现的词——宁可漏判，不可错杀说明性内容。
+_DOC_NOUN_RE = re.compile(
+    r"订单号|合同号|柜号|单号|编号|截图|照片|图片|凭证|发票|验收单|签收单"
+    r"|流水|账号|后四位|联系方式|收货地址"
+    r"|order\s+number|po\s+number|cabinet\s+number|job\s+number|reference\s+number"
+    r"|photo|picture|screenshot|invoice|receipt|packing\s+slip|delivery\s+note"
+    r"|proof\s+of\s+(?:delivery|purchase)|contact\s+(?:number|details)|shipping\s+address",
+    re.I,
+)
+
+# 冒号引导句 / 小标题。清单被摘掉后它就成了没有下文的标题，要跟着走。
+_LEAD_IN_RE = re.compile(r"[：:]\s*$")
+_HEADING_RE = re.compile(r"^\s*(?:\*\*[^*]{1,24}\*\*|#{1,6}\s+.{1,24}|.{1,24}[：:])\s*$")
+
+# 行内断句，用于只摘掉一行里索取信息的那半句，保住同一行里有信息量的部分。
+_LINE_SENTENCE_RE = re.compile(r"(?<=[。！？!?；;])")
+
+
+def _last_content_line(lines: list[str]) -> str:
+    for line in reversed(lines):
+        if line.strip():
+            return line.strip()
+    return ""
+
+
+def _is_request_list(block: list[str], kept_lines: list[str]) -> bool:
+    """
+    判断一个清单是"待补资料"还是"说明内容"。
+
+    两条证据任取其一即可判为待补资料：
+      1. 条目里出现资料名词——真实回复里有过完全没有索取动词的
+         "- **订单号或合同号**（必须，用来定位账目）"，只看动词一定漏；
+      2. 引导句本身就在要东西——"**需要您补充的材料**"、"欢迎告诉我："。
+
+    两条都不成立就当说明内容留下。破损判定那种
+    "- 出厂前已存在裂纹 / - 运输途中磕碰"是回答的主体，删了会让后面
+    "这三种情况责任方不同"变成没有指代的悬空句。
+    """
+    if any(_DOC_NOUN_RE.search(item) for item in block):
+        return True
+    lead_in = _last_content_line(kept_lines)
+    return bool(lead_in and _ASK_RE.search(lead_in))
+
+
+def _drop_dangling_lead_in(kept_lines: list[str], dropped: list[str]) -> None:
+    """清单被丢掉后，回收它的引导句，不留没有下文的标题。"""
+    while kept_lines and not kept_lines[-1].strip():
+        kept_lines.pop()
+    if not kept_lines:
+        return
+    tail = kept_lines[-1]
+    if _LEAD_IN_RE.search(tail.rstrip("*　 ")) or _ASK_RE.search(tail) or _HEADING_RE.match(tail):
+        dropped.append(kept_lines.pop().strip())
+
+
+def _strip_customer_asks(text: str) -> tuple[str, list[str]]:
+    """
+    从待发出的回答里摘掉"要用户补充信息"的表述。
+
+    返回（清理后的正文, 被摘掉的句子）。被摘掉的部分不是丢弃——它正是
+    人工同事接手时还缺的资料，调用方会记进日志随工单一起留痕。
+    """
+    lines = text.splitlines()
+    kept_lines: list[str] = []
+    dropped: list[str] = []
+
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+
+        # 清单整块判定：整块留或整块走，不逐条挑——挑剩半截清单比全留还难读
+        if _LIST_ITEM_RE.match(line):
+            j = i
+            while j < len(lines) and _LIST_ITEM_RE.match(lines[j]):
+                j += 1
+            block = lines[i:j]
+            if _is_request_list([b.strip() for b in block], kept_lines):
+                dropped.extend(b.strip() for b in block)
+                _drop_dangling_lead_in(kept_lines, dropped)
+            else:
+                kept_lines.extend(block)
+            i = j
+            continue
+
+        i += 1
+        stripped = line.strip()
+        if not stripped or not _ASK_RE.search(stripped):
+            kept_lines.append(line)
+            continue
+
+        # 一行里可能只有半句是追问，另外半句仍然有信息量，逐句筛而不是整行扔。
+        kept_parts, dropped_parts = [], []
+        for part in _LINE_SENTENCE_RE.split(line):
+            (dropped_parts if _ASK_RE.search(part) else kept_parts).append(part)
+        dropped.extend(p.strip() for p in dropped_parts if p.strip())
+
+        remainder = "".join(kept_parts).rstrip()
+        if remainder.strip():
+            kept_lines.append(remainder)
+
+    # 收尾：末尾剩下的"**后续流程**"这种小标题，下面已经空了，一并回收
+    while True:
+        while kept_lines and not kept_lines[-1].strip():
+            kept_lines.pop()
+        if not (kept_lines and _HEADING_RE.match(kept_lines[-1])):
+            break
+        dropped.append(kept_lines.pop().strip())
+
+    cleaned = re.sub(r"\n{3,}", "\n\n", "\n".join(kept_lines)).strip()
+    return cleaned, dropped
 
 
 # ── 编排器 ────────────────────────────────────────────────────────────────────
@@ -667,10 +961,12 @@ class AgentOrchestrator:
         # 合并：主 Agent 在前，辅助 Agent 在后。
         parts = []
         for r in ok:
-            role = "主处理" if r.agent_type == decision.primary_agent else "辅助处理"
+            role = _customer_text(
+                req, "role_primary" if r.agent_type == decision.primary_agent else "role_supporting"
+            )
             parts.append(f"[{r.agent_type.value} - {role}]\n{r.content}")
 
-        combined = "\n\n".join(parts) if parts else "抱歉，所有 Agent 均处理失败。"
+        combined = "\n\n".join(parts) if parts else _customer_text(req, "all_failed")
         escalated = any(r.escalate for r in ok)
         violations = [v for r in ok for v in r.policy_violations]
         answer_confidence = self._answer_confidence(req, decision, ok)
@@ -790,6 +1086,7 @@ class AgentOrchestrator:
                 answer_confidence=answer_confidence,
                 policy_violations=response.policy_violations,
                 executed_agent=response.agent_type,
+                answer_already_sent=True,
             )
             # 回答本体已经流出去了，这里只补发转人工提示的增量部分
             yield {"type": "delta", "text": result.response[len(response.content):]}
@@ -820,10 +1117,7 @@ class AgentOrchestrator:
         """意图没定性时的澄清追问。run() 和 run_stream() 共用。"""
         return OrchestratorResult(
             request_id=req.request_id,
-            response=(
-                "我还不能确定您要处理的是哪类问题。请补充一下是订单交付、报价账款，"
-                "还是产品安装方面的问题？"
-            ),
+            response=_customer_text(req, "clarify"),
             agent_type=AgentType.GENERAL,
             intent=req.intent,
             latency_ms=(time.monotonic() - t0) * 1000,
@@ -845,20 +1139,38 @@ class AgentOrchestrator:
         answer_confidence: float = 0.0,
         policy_violations: list[PolicyViolation] | None = None,
         executed_agent: AgentType | None = None,
+        answer_already_sent: bool = False,
     ) -> OrchestratorResult:
         """
         产出转人工结果。
 
         转人工不是"再调一次 LLM"，而是编排器直接给出确定文案并打上标记，
-        由上层创建工单。已经生成的回答会保留在前面，避免用户白等一轮。
+        由上层创建工单。已经生成的回答会保留在前面，避免用户白等一轮——
+        但只保留有信息量的部分：让用户补资料的追问要摘掉，否则这一条回复
+        会一边让用户补充信息、一边说已经转交人工，自相矛盾。
+
+        answer_already_sent=True 用于流式：正文已经逐句发出去了，一个字都改不了，
+        只能在结尾明确作废掉刚才的追问。
         """
-        notice = (
-            "这个问题我已经转交人工客服跟进，稍后会有同事联系您。"
-            "为了加快处理，请准备好订单号、发生时间和相关截图。"
-        )
-        content = f"{answer.rstrip()}\n\n{notice}" if answer.strip() else notice
+        if answer_already_sent:
+            # 已发出的正文必须原样保留，否则流式的增量切片会对不上。
+            body = answer if answer.strip() else ""
+            asks = _strip_customer_asks(answer)[1]
+        else:
+            body, asks = _strip_customer_asks(answer)
+
+        notice = _customer_text(req, "handoff_notice")
+        if asks and answer_already_sent:
+            notice = _customer_text(req, "handoff_after_ask") + notice
+        content = f"{body}\n\n{notice}" if body.strip() else notice
 
         logger.warning("请求 %s 转人工: %s", req.request_id, reason)
+        if asks:
+            # 摘掉的正是"人工接手时还缺的资料"，留痕给值班同事，不是丢弃。
+            logger.info(
+                "请求 %s 转人工，移除 %d 处向用户索取信息的表述: %s",
+                req.request_id, len(asks), " | ".join(asks)[:300],
+            )
         # 生产环境：此处创建工单、通知人工客服坐席
         return OrchestratorResult(
             request_id=req.request_id,
@@ -1097,7 +1409,7 @@ class AgentOrchestrator:
         if agent is None:
             return AgentResponse(
                 agent_type=AgentType.GENERAL,
-                content="服务暂时不可用，请稍后重试。",
+                content=_customer_text(req, "unavailable"),
                 success=False,
                 confidence=0.0,
             )

@@ -1,0 +1,183 @@
+{
+  "agent_stats": {
+    "general_0": {
+      "total": 0,
+      "success_rate": 1,
+      "avg_ms": 0,
+      "monitor_penalty": 0,
+      "routing_score": 1,
+      "specialist": false,
+      "display_name": "展厅接待 Agent",
+      "model": "claude-sonnet-5"
+    },
+    "general_1": {
+      "total": 0,
+      "success_rate": 1,
+      "avg_ms": 0,
+      "monitor_penalty": 0,
+      "routing_score": 1,
+      "specialist": false,
+      "display_name": "展厅接待 Agent",
+      "model": "claude-sonnet-5"
+    },
+    "technical_0": {
+      "total": 0,
+      "success_rate": 1,
+      "avg_ms": 0,
+      "monitor_penalty": 0,
+      "routing_score": 1,
+      "specialist": true,
+      "display_name": "产品与安装 Agent",
+      "model": "claude-sonnet-5"
+    },
+    "technical_1": {
+      "total": 0,
+      "success_rate": 1,
+      "avg_ms": 0,
+      "monitor_penalty": 0,
+      "routing_score": 1,
+      "specialist": true,
+      "display_name": "产品与安装 Agent",
+      "model": "claude-sonnet-5"
+    },
+    "billing_0": {
+      "total": 1,
+      "success_rate": 1,
+      "avg_ms": 8384.5,
+      "monitor_penalty": 0,
+      "routing_score": 0.732,
+      "specialist": true,
+      "display_name": "报价与账款 Agent",
+      "model": "claude-sonnet-5"
+    },
+    "billing_1": {
+      "total": 1,
+      "success_rate": 1,
+      "avg_ms": 5979.1,
+      "monitor_penalty": 0,
+      "routing_score": 0.743,
+      "specialist": true,
+      "display_name": "报价与账款 Agent",
+      "model": "claude-sonnet-5"
+    },
+    "order_0": {
+      "total": 1,
+      "success_rate": 1,
+      "avg_ms": 21686.1,
+      "monitor_penalty": 0,
+      "routing_score": 0.713,
+      "specialist": true,
+      "display_name": "订单履约 Agent",
+      "model": "claude-sonnet-5"
+    },
+    "order_1": {
+      "total": 1,
+      "success_rate": 1,
+      "avg_ms": 15118.3,
+      "monitor_penalty": 0,
+      "routing_score": 0.719,
+      "specialist": true,
+      "display_name": "订单履约 Agent",
+      "model": "claude-sonnet-5"
+    }
+  },
+  "tool_stats": {
+    "knowledge_search": {
+      "total": 30,
+      "success_rate": 1,
+      "avg_latency_ms": 19,
+      "consecutive_fails": 0,
+      "circuit_state": "closed"
+    }
+  },
+  "routing": {
+    "specialists": [
+      "technical",
+      "billing",
+      "order"
+    ],
+    "fallback_agent": "general",
+    "display_names": {
+      "general": "展厅接待 Agent",
+      "technical": "产品与安装 Agent",
+      "billing": "报价与账款 Agent",
+      "order": "订单履约 Agent",
+      "handoff": "运营升级通道"
+    },
+    "replicas_per_type": 2,
+    "handoff_thresholds": {
+      "intent": 0.45,
+      "routing": 0.35,
+      "agent": 0.7
+    },
+    "clarify_confidence_threshold": 0.5,
+    "supporting_min_score": 0.45,
+    "supporting_min_ratio": 0.55,
+    "answer_policy": {
+      "enabled": true,
+      "checked_total": 87,
+      "blocked_total": 0,
+      "block_rate": 0,
+      "blocked_by_rule": {},
+      "mojibake_dropped_chars": 0,
+      "mojibake_events": 0
+    },
+    "intent": {
+      "fine_grained_intents": 18,
+      "vote_weights": {
+        "llm": 0.7,
+        "embedding": 0.2,
+        "rules": 0.1
+      },
+      "embedding_backend": "local_ngram",
+      "cache": {
+        "size": 4,
+        "hits": 0,
+        "misses": 4,
+        "hit_rate": 0
+      },
+      "fast_path_hits": 1,
+      "ensemble_hits": 3,
+      "fast_path_rate": 0.25,
+      "llm_calls_saved": 1,
+      "llm_failures": 0,
+      "llm_failure_rate": 0
+    }
+  },
+  "answer_policy": {
+    "enabled": true,
+    "checked_total": 87,
+    "blocked_total": 0,
+    "block_rate": 0,
+    "blocked_by_rule": {},
+    "mojibake_dropped_chars": 0,
+    "mojibake_events": 0
+  },
+  "intent": {
+    "fine_grained_intents": 18,
+    "vote_weights": {
+      "llm": 0.7,
+      "embedding": 0.2,
+      "rules": 0.1
+    },
+    "embedding_backend": "local_ngram",
+    "cache": {
+      "size": 4,
+      "hits": 0,
+      "misses": 4,
+      "hit_rate": 0
+    },
+    "fast_path_hits": 1,
+    "ensemble_hits": 3,
+    "fast_path_rate": 0.25,
+    "llm_calls_saved": 1,
+    "llm_failures": 0,
+    "llm_failure_rate": 0
+  },
+  "prometheus": {
+    "exporter_ok": true,
+    "error": null
+  },
+  "active_alerts": [],
+  "suggestions": []
+}

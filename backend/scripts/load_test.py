@@ -103,7 +103,7 @@ def percentile(values: list[float], p: float) -> float:
 
 async def main() -> int:
     parser = argparse.ArgumentParser(description="ai-helpdesk /chat 压测")
-    parser.add_argument("--base-url", default="http://localhost:8000")
+    parser.add_argument("--base-url", default="http://localhost:8080")
     parser.add_argument("--concurrency", type=int, default=10)
     parser.add_argument("--requests", type=int, default=100)
     parser.add_argument("--fast-path-only", action="store_true",

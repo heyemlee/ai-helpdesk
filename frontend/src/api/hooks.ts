@@ -1,3 +1,4 @@
+import { useCallback } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
 
@@ -26,6 +27,22 @@ export function useMonitor(base: string, enabled = true) {
   })
 }
 
+/**
+ * 编排器阈值（协作门槛等）。复用 ['monitor', base] 这个键——MonitorPanel 打开时
+ * 已经在轮询它，这里只是搭个便车读缓存，不额外制造请求，也不轮询。
+ * 拿不到就返回 undefined：前端**不写死**后端常量，宁可不画那条线，
+ * 也不要一个会跟着后端悄悄漂移的数字。
+ */
+export function useOrchestratorConfig(base: string) {
+  return useQuery({
+    queryKey: ['monitor', base],
+    queryFn: () => api.monitor(base),
+    refetchInterval: false,
+    staleTime: 60_000,
+    retry: false,
+  })
+}
+
 export function useKnowledgeStats(base: string) {
   return useQuery({
     queryKey: ['knowledge-stats', base],
@@ -41,8 +58,43 @@ export function useSearch(base: string) {
   })
 }
 
+/** 评测开始时间。放模块级而不是组件里：面板会随切页卸载，计时器要活得比组件久。 */
+const evalStartedAt = new Map<string, number>()
+
+/**
+ * 跑一次端到端评测。
+ *
+ * 刻意用 useQuery + 手动 refetch，而不是 useMutation：一次评测是分钟级的
+ * （内置用例逐条走真实检索、编排和 LLM 打分），用户很可能中途切去别的页面。
+ * useMutation 的状态活在组件里，EvalPanel 一卸载，pending 和结果就都没了——
+ * 而请求并不会停（fetch 没有 signal），后端照样跑到底再把结果丢进垃圾桶。
+ * 查询缓存挂在 QueryClient 上，切走再切回来还能接上同一次运行。
+ */
 export function useRunEval(base: string) {
-  return useMutation({ mutationFn: () => api.runEval(base) })
+  const { refetch, data, error, isFetching } = useQuery({
+    queryKey: ['eval-run', base],
+    queryFn: () => api.runEval(base),
+    enabled: false,       // 只由「运行评测」按钮触发，不在挂载时自动跑
+    retry: false,
+    staleTime: Infinity,  // 结果是一次快照，没有"过期后台重取"一说
+    // 面板卸载期间这条缓存没有观察者，默认 5 分钟就被回收——比一次评测还短
+    gcTime: Infinity,
+  })
+
+  const run = useCallback(() => {
+    evalStartedAt.set(base, Date.now())
+    // cancelRefetch: false —— 已经在跑就复用那一次，不并发第二次评测
+    void refetch({ cancelRefetch: false })
+  }, [base, refetch])
+
+  return {
+    run,
+    data,
+    // 正在重跑时，别把上一次的失败继续挂在页面上
+    error: isFetching ? null : error,
+    isPending: isFetching,
+    startedAt: evalStartedAt.get(base),
+  }
 }
 
 export function useAddKnowledge(base: string) {

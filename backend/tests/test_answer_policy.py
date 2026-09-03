@@ -119,3 +119,239 @@ def test_stats_track_block_rate(policy):
     assert stats["blocked_total"] == 1
     assert stats["block_rate"] == 0.5
     assert stats["blocked_by_rule"]["lead_time_commitment"] == 1
+
+
+# ── 上游网关乱码 ──────────────────────────────────────────────────────────────
+
+def test_drops_replacement_chars_from_answer(policy):
+    """U+FFFD 是上游网关重编码留下的，本进程恢复不了，只能不发给客户。"""
+    result = policy.enforce("好的，我帮你查一下这个���订单的进度。", sources=[])
+
+    assert "�" not in result.text
+    assert result.text == "好的，我帮你查一下这个订单的进度。"
+
+
+def test_mojibake_is_dropped_even_when_policy_disabled():
+    """数据卫生不受策略开关管：关掉策略也不该把乱码发出去。"""
+    policy = AnswerPolicy(enabled=False)
+
+    result = policy.enforce("已受理���。", sources=[])
+
+    assert result.text == "已受理。"
+    assert result.checked is False
+
+
+def test_mojibake_counted_for_monitor(policy):
+    policy.enforce("第一句有三个���。", sources=[])
+    policy.enforce("第二句只有一个�。", sources=[])
+    policy.enforce("这句是干净的。", sources=[])
+
+    stats = policy.stats()
+    # 只统计出现过乱码的那几次调用，干净的那次不计入
+    assert stats["mojibake_events"] == 2
+    assert stats["mojibake_dropped_chars"] == 4
+
+
+def test_clean_answer_is_untouched(policy):
+    answer = "请提供订单号，我这边帮你查。"
+    assert policy.enforce(answer, sources=[]).text == answer
+    assert policy.stats()["mojibake_events"] == 0
+
+
+def test_stream_guard_also_drops_mojibake(policy):
+    """流式和非流式共用 enforce，所以流式链路必须同样干净。"""
+    from core.answer_policy import PolicyStreamGuard
+
+    guard = PolicyStreamGuard(policy, sources=[])
+    out = guard.feed("好的���，") + guard.feed("我这就帮你查。") + guard.flush()
+
+    assert "�" not in out
+    assert out == "好的，我这就帮你查。"
+
+
+# ── 双语守卫 ──────────────────────────────────────────────────────────────────
+#
+# 这一组全部是"回复语言跟客户走"之后才成立的用例。在此之前英文回复里的
+# 价格/时效承诺一条也拦不下来：_COMMIT_RE 没有任何英文词，四条件里"承诺动词"
+# 这一条永远凑不齐；而 _SENT_SPLIT_RE 不认 '.'，整段英文还会被当成一个句子。
+
+@pytest.mark.parametrize("zh,en", [
+    ("退款会在 3 个工作日内到账。",
+     "The refund will arrive within 3 business days."),
+    ("这套柜子的价格是 12800 元。",
+     "The total for this cabinet run is $12,800."),
+    ("我们下周二发货。",
+     "We will ship it next Tuesday."),
+    ("月底前给你装好。",
+     "We will have it installed by the end of the month."),
+])
+def test_same_commitment_is_blocked_in_both_languages(policy, zh, en):
+    assert policy.enforce(zh, sources=[]).blocked, f"中文漏拦: {zh}"
+    assert policy.enforce(en, sources=[]).blocked, f"英文漏拦: {en}"
+
+
+@pytest.mark.parametrize("zh,en", [
+    ("通常 3-5 个工作日，具体以排产为准。",
+     "Typically 3-5 business days, subject to factory scheduling."),
+    ("展厅周二到周四都开门。",
+     "The showroom is open Tuesday through Thursday."),
+])
+def test_hedged_or_non_commitment_passes_in_both_languages(policy, zh, en):
+    assert not policy.enforce(zh, sources=[]).blocked, f"中文误拦: {zh}"
+    assert not policy.enforce(en, sources=[]).blocked, f"英文误拦: {en}"
+
+
+def test_english_reply_gets_english_replacement(policy):
+    """
+    安全话术要跟回复语言走。只有中文版时，拦下一句英文承诺会往英文回复里
+    插一段中文——客户读到的是语言突然跳变的一段话，比不拦更糟。
+    """
+    result = policy.enforce("We will ship it next Tuesday.", sources=[])
+
+    assert result.blocked
+    assert "can't commit to a date" in result.text
+    assert "具体时间" not in result.text
+
+
+def test_replacement_keeps_the_space_between_sentences(policy):
+    """
+    句首空白必须保留。之前只保留句尾空白——中文看不出来（句子之间没有空格），
+    英文会把替换句和前一句黏成 "...verified.The invoice..."。
+    """
+    text = "Thanks for waiting. The total is $980. Let me know."
+    out = policy.enforce(text, sources=[]).text
+
+    assert "verified. Let me know." in out
+    assert ".The" not in out and ".Let" not in out
+
+
+def test_english_paragraph_is_checked_sentence_by_sentence(policy):
+    """
+    '.' 不算句末时整段英文只有一个句子，一处违规就会把整段换成安全话术，
+    干净的句子跟着一起被吞掉。
+    """
+    text = "Thanks for waiting. The total is $980. Happy to help further."
+    out = policy.enforce(text, sources=[]).text
+
+    assert out.startswith("Thanks for waiting.")
+    assert out.endswith("Happy to help further.")
+    assert "$980" not in out
+
+
+def test_decimals_and_abbreviations_do_not_split_sentences():
+    """3.5 / $12,800.00 / approx. 里的句号不是句末——切错会把承诺动词和金额拆散。"""
+    from core.answer_policy import split_sentences
+
+    text = "It will take 3.5 business days. Cost is approx. $12,800.00 total. Thanks."
+    sentences, tail = split_sentences(text, final=True)
+
+    assert "".join(sentences) + tail == text          # 拼回去必须等于原文
+    assert sentences[0] == "It will take 3.5 business days."
+    assert "approx. $12,800.00 total." in sentences[1]
+
+
+def test_stream_and_batch_agree_on_english(policy):
+    """流式逐句、非流式整段，两条路对同一段英文必须给出同一个结果。"""
+    from core.answer_policy import PolicyStreamGuard
+
+    text = "Thanks for waiting. The total is $980. We will ship it next Tuesday."
+    batch = policy.enforce(text, sources=[]).text
+
+    # 按固定长度切片喂进去，原文一个字符都不丢——网络分片本来就不按词边界来
+    guard = PolicyStreamGuard(AnswerPolicy(enabled=True), sources=[])
+    chunks = [text[i:i + 7] for i in range(0, len(text), 7)]
+    streamed = "".join(guard.feed(c) for c in chunks) + guard.flush()
+
+    assert streamed == batch
+    assert len(guard.violations) == 2
+
+
+def test_a_trailing_period_is_not_flushed_early():
+    """
+    流式里结尾的 '.' 后面还没有空白，可能是没写完的小数（"3." → "3.5"）。
+    必须留在缓冲区等下一片，不能当句末抢先发出去。
+    """
+    from core.answer_policy import PolicyStreamGuard
+
+    # 刻意选一句不构成承诺的（毫米不是时效），这里测的是缓冲边界不是拦截
+    guard = PolicyStreamGuard(AnswerPolicy(enabled=True), sources=[])
+    assert guard.feed("The gap measures 3.") == ""
+    # 句末的空格留在缓冲区当下一句的句首空白——和非流式那条路同一个口径
+    assert guard.feed("5 mm across. ") == "The gap measures 3.5 mm across."
+    assert guard.flush() == " "
+
+
+# ── 承诺表述覆盖率语料 ────────────────────────────────────────────────────────
+#
+# 这两套正则本质是枚举，枚举一定有洞。中文那套是长期真实流量磨出来的，英文
+# 这套是一次性列的——所以把语料固定成用例：以后加规则不许把已覆盖的弄丢，
+# 发现新漏法就往语料里加一条。语料里的句子都是这个业务真会说出口的话。
+
+_UNGROUNDED_COMMITMENTS = [
+    # 价格
+    "The replacement door will be $340.",
+    "That upgrade adds $1,200 to your total.",
+    "Shipping comes to $85.",
+    "The labor charge is 600 dollars.",
+    "The total comes out to $12,800 including freight.",
+    "这套柜子的价格是 12800 元。",
+    # 时效：带数字
+    "Your cabinets will ship in 10 business days.",
+    "The refund posts within 5 days.",
+    "Expect the credit on your card in 3-5 business days.",
+    "退款会在 3 个工作日内到账。",
+    # 时效：拼出来的数字
+    "The remake will be done in two weeks.",
+    "两周内给你发货。",
+    # 时效：耗时陈述（主语是流程，不是"我们"）
+    "Production takes 6 weeks.",
+    # 时效：具名日期 / 绝对时点
+    "We'll have the replacement to you by Friday.",
+    "Installation is scheduled for March 14.",
+    "We can install it this Thursday.",
+    "Your order completes next week.",
+    "I'll get the invoice issued today.",
+    "We'll deliver same day.",
+    "我们下周二发货。",
+    "下周把发票开好。",
+    "月底前给你装好。",
+]
+
+_ACCEPTABLE = [
+    # 有对冲，符合 SOP 的保守表述
+    "Turnaround is typically 4-6 weeks, subject to factory scheduling.",
+    "Roughly 3 weeks, but that's an estimate pending scheduling.",
+    "通常两到三周，具体以排产为准。",
+    "返工大概要三天。",
+    # 根本不是承诺
+    "The showroom is open Monday through Friday.",
+    "展厅周二到周四都开门。",
+    "I can't quote a price without the formal quotation.",
+    "Pricing depends on the slab, edge profile and cutouts.",
+    "Once QC confirms responsibility, we'll schedule the remake.",
+    "How much would you like to budget for the countertop?",
+]
+
+
+@pytest.mark.parametrize("sentence", _UNGROUNDED_COMMITMENTS)
+def test_ungrounded_commitments_are_blocked(policy, sentence):
+    assert policy.enforce(sentence, sources=[]).blocked, f"漏拦: {sentence}"
+
+
+@pytest.mark.parametrize("sentence", _ACCEPTABLE)
+def test_acceptable_sentences_are_not_blocked(policy, sentence):
+    assert not policy.enforce(sentence, sources=[]).blocked, f"误拦: {sentence}"
+
+
+def test_both_languages_are_covered_by_the_corpus():
+    """
+    语料本身要中英都有，否则某一边的规则退化时测试全绿。
+    英文那套是一次性列的，最容易悄悄退化的就是它。
+    """
+    import re
+
+    for name, corpus in (("承诺", _UNGROUNDED_COMMITMENTS), ("放行", _ACCEPTABLE)):
+        zh = [s for s in corpus if re.search(r"[一-鿿]", s)]
+        en = [s for s in corpus if not re.search(r"[一-鿿]", s)]
+        assert len(zh) >= 3, f"{name}语料缺中文样本"
+        assert len(en) >= 5, f"{name}语料缺英文样本"

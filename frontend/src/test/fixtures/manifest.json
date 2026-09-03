@@ -1,0 +1,25 @@
+{
+  "recorded_at": "2026-09-03T05:25:28.869Z",
+  "base_url": "http://127.0.0.1:8080",
+  "storage_backend": "postgres_pgvector",
+  "model": "claude-sonnet-5",
+  "commit": "9f0c4a7",
+  "suites": [
+    {
+      "lang": "zh",
+      "turns": [
+        "石英石台面多少钱一米？",
+        "订单 SO-2026-0912 现在生产到哪一步了？大概什么时候能安排安装？"
+      ],
+      "search": "门板缝隙不均能自己调吗"
+    },
+    {
+      "lang": "en",
+      "turns": [
+        "How much is a quartz countertop per metre?",
+        "Where is order SO-2026-0912, and when can installation be scheduled?"
+      ],
+      "search": "can I adjust an uneven door gap myself"
+    }
+  ]
+}

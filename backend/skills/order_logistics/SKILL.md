@@ -1,7 +1,7 @@
 ---
 name: 订单与交付处理规范
 description: 适用于 ai-helpdesk OrderAgent 的订单与生产进度、交期说明、改单取消、缺件漏发补件、送货与到场排期规范
-keywords: 订单,订单号,工单,柜号,生产,排产,开料,进度,做好,交期,工期,什么时候,送货,发货,运输,到场,卸货,签收,改单,改尺寸,改颜色,改配置,取消,少发,漏发,错发,缺件,少件,补件,配件,重做,order,delivery,shipping,lead time
+keywords: 订单,订单号,工单,柜号,生产,排产,开料,进度,做好,交期,工期,什么时候,送货,发货,运输,到场,卸货,签收,改单,改尺寸,改颜色,改配置,取消,少发,漏发,错发,缺件,少件,补件,配件,重做,order,delivery,shipping,lead time,order number,status,production,in production,turnaround,deliver,ship,shipping,shipment,dispatch,arrive,truck,schedule,reschedule,cancel,change my order,missing,missing part,short shipped,never received,replacement part,backorder,install date,ready
 agents: order
 enabled: true
 ---
@@ -116,3 +116,26 @@ enabled: true
 - "订单 #12345 现在的状态是已排产、还没开料。这个阶段改柜体尺寸是可以的，但需要重新确认图纸，而且会重新走一版报价。你确认要改的话，我这边先帮你把排产暂停，避免开料后再改产生材料损失。"
 - "少发的这块门板我先按补件登记，麻烦提供柜号、装箱单编号和现场清点的照片。补件需要工厂重新排产，具体哪天能到我这边定不了，确认排期后会有人工专门回复你。"
 - "我理解你着急，现场停工确实耽误事。我把这单标成高优先级转给运营，让他们直接跟工厂对排产。在那之前我不能给你一个日期，给了不准反而更耽误你安排工人。"
+
+## 术语对照（用英文作答时）
+
+客户用英文提问时，规则一条都不变，只是把下面这些概念用右列的英文说出来。
+不要中英夹注（"production (排产)" 这种），也不要每次现编一个译法——
+同一个概念在不同轮次里换说法，客户会以为是两件事。
+
+| 中文 | English |
+| --- | --- |
+| 下单 | order placed |
+| 排产 | production scheduling |
+| 开料 | material cut |
+| 完工 | fabrication complete |
+| 交期 | lead time |
+| 送货 | delivery |
+| 到场 | on-site delivery |
+| 签收 | sign-off |
+| 柜号 | cabinet number |
+| 订单号 | order number |
+| 改单 | order change |
+| 缺件/漏发 | missing part / short shipment |
+| 补件 | replacement part |
+| 重做 | remake |

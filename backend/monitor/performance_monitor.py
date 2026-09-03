@@ -11,6 +11,7 @@
   4. 优化建议 —— 基于规则生成可操作的优化建议（不是空话）
   5. 告警 —— 超阈值时打日志 + 可选 Webhook
 """
+import os
 import asyncio
 import logging
 import statistics
@@ -109,13 +110,45 @@ class PerformanceMonitor:
     这就是"利用 Monitor 监控在线表现"的闭环。
     """
 
-    # 告警阈值
+    # 告警阈值（默认值）。实例化时可用环境变量逐项覆盖：
+    #   AI_HELPDESK_ALERT_<METRIC 大写>，例如 AI_HELPDESK_ALERT_AGENT_AVG_MS=45000
+    #
+    # agent_avg_ms 原来是 3000，那是按演示夹具的速度定的：真模型一轮 4~21s
+    # （system prompt 带整份 SKILL.md，回复上限 4096 token），八个实例全部
+    # 持续告警，每个服务过请求的实例都挂着 -0.40 惩罚，路由权重集体塌到 0.43，
+    # 面板永远全红，真出问题时没人看。
+    #
+    # 30000 的依据（2026-09-02，relay + claude-sonnet-5，14 次真实请求覆盖
+    # 中英文 × 全部四类 Agent，实例级直方图）：
+    #   单实例平均   3.7s ~ 13.8s
+    #   单实例 p95   7.9s ~ 19.6s
+    #   LLM_TIMEOUT_S 默认 60s
+    # 告警看的是滚动平均，所以线要落在「最差实例的平均」之上、超时之下：
+    # 平均都到 30s，意味着相当比例的请求已经在往 60s 超时上撞了。
+    # n=14 偏小，样本攒够之后用 histogram_quantile(0.95, agent_latency_ms_bucket)
+    # 复核——那个指标现在才是可用的，见 core/metrics.py 里的桶与观测点说明。
     THRESHOLDS = {
-        "agent_success_rate":  (0.90, Severity.ERROR,   "less_than"),
-        "tool_success_rate":   (0.95, Severity.WARNING,  "less_than"),
-        "agent_avg_ms":        (3000, Severity.WARNING,  "greater_than"),
-        "tool_avg_ms":         (5000, Severity.ERROR,    "greater_than"),
+        "agent_success_rate":  (0.90,  Severity.ERROR,   "less_than"),
+        "tool_success_rate":   (0.95,  Severity.WARNING, "less_than"),
+        "agent_avg_ms":        (30000, Severity.WARNING, "greater_than"),
+        "tool_avg_ms":         (5000,  Severity.ERROR,   "greater_than"),
     }
+
+    @classmethod
+    def thresholds_from_env(cls) -> dict[str, tuple[float, Severity, str]]:
+        """类默认值叠加环境变量覆盖。非数字的覆盖值忽略并告警，不让监控起不来。"""
+        out = dict(cls.THRESHOLDS)
+        for metric, (default, severity, op) in cls.THRESHOLDS.items():
+            raw = os.getenv(f"AI_HELPDESK_ALERT_{metric.upper()}", "").strip()
+            if not raw:
+                continue
+            try:
+                out[metric] = (float(raw), severity, op)
+            except ValueError:
+                logger.warning(
+                    "AI_HELPDESK_ALERT_%s=%r 不是数字，沿用默认 %s", metric.upper(), raw, default
+                )
+        return out
 
     def __init__(
         self,
@@ -129,6 +162,8 @@ class PerformanceMonitor:
         self._orchestrator = orchestrator
         self._tool_manager = tool_manager
         self._interval     = interval_s
+        # 实例属性遮住类属性：环境变量覆盖只影响这个实例，测试里改类默认值也不受干扰
+        self.THRESHOLDS    = self.thresholds_from_env()
         self._webhook      = webhook_url
         # 多实例部署时经 SharedState 共享路由惩罚：任一实例观测到某 Agent
         # 劣化，其余实例在下个采集周期同样降权（取本地与共享的较大值）。
@@ -143,17 +178,42 @@ class PerformanceMonitor:
 
         # Prometheus 指标（可选）
         self._prom: dict[str, Any] = {}
+        # None = 独立 exporter 正常或未要求启动；字符串 = 没起来的原因，进 summary()
+        self.prometheus_error: str | None = None
         if prometheus_port:
             self._setup_prometheus(prometheus_port)
 
     def _setup_prometheus(self, port: int) -> None:
+        # 指标先注册：它们进的是 prometheus_client 的全局 REGISTRY，
+        # API 层 GET /metrics 的 generate_latest() 读的就是这个。下面那个
+        # start_http_server 只是**第二条**暴露路径，绑不上不影响 /metrics。
         self._prom = {
             "agent_success_rate": Gauge("agent_success_rate", "Agent 成功率", ["agent"]),
-            "agent_latency_ms":   Histogram("agent_latency_ms", "Agent 延迟", ["agent"]),
+            # agent_latency_ms 不在这里建：它是 per-request 指标，由
+            # core.metrics.record_agent_latency 在每次请求结束时观测。
+            # 这里能拿到的只有 stats.avg_ms（滚动平均），观测它得到的是
+            # "平均值的重采样"，不是延迟分布。
             "tool_success_rate":  Gauge("tool_success_rate", "工具成功率", ["tool"]),
             "requests_total":     Counter("requests_total", "总请求数"),
         }
-        start_http_server(port)
+        # 端口被占不能拖垮整个应用。之前这里的 OSError 一路冒到 lifespan，
+        # uvicorn 打三十行 traceback 然后 "Application startup failed. Exiting."——
+        # 栈底只写 `[Errno 48] Address already in use`，不说是哪个端口、
+        # 更不说挂掉的是可选的监控侧车。最常见的触发就是「上一个实例还在跑」。
+        #
+        # 不静默吞：记 ERROR 日志，并把原因挂到 summary() 的 prometheus 字段，
+        # 让 /monitor 也能看见「指标没在导出」，而不是以为一切正常。
+        try:
+            start_http_server(port)
+        except OSError as ex:
+            self.prometheus_error = f"{type(ex).__name__}: {ex}"
+            logger.error(
+                f"Prometheus 独立 exporter 未能监听 :{port}（{ex}）——应用继续运行，"
+                f"指标仍可从 API 端口的 GET /metrics 抓取。"
+                f"端口多半被上一个实例占着：`lsof -nP -iTCP:{port} -sTCP:LISTEN` 查，"
+                f"或改 PROMETHEUS_PORT，设 0 则不启动这条路径。"
+            )
+            return
         logger.info(f"Prometheus 已启动: :{port}")
 
     # ── 生命周期 ──────────────────────────────────────────────────────────────
@@ -213,7 +273,6 @@ class PerformanceMonitor:
             # Prometheus
             if "agent_success_rate" in self._prom:
                 self._prom["agent_success_rate"].labels(agent=agent_key).set(sr)
-                self._prom["agent_latency_ms"].labels(agent=agent_key).observe(ms)
 
             routing_penalties[agent_key] = self._routing_penalty(sr, ms)
 
@@ -270,14 +329,19 @@ class PerformanceMonitor:
             for key in set(local) | set(shared)
         }
 
-    @staticmethod
-    def _routing_penalty(success_rate: float, avg_ms: float) -> float:
-        """把在线表现转成 0-0.9 的路由降权系数。"""
+    def _routing_penalty(self, success_rate: float, avg_ms: float) -> float:
+        """
+        把在线表现转成 0-0.9 的路由降权系数。
+
+        延迟这一项和告警用同一个阈值（THRESHOLDS["agent_avg_ms"]）：之前这里
+        写死 3000，告警阈值改了惩罚不跟着改，面板说正常、路由却还在降权。
+        """
+        slow_ms = self.THRESHOLDS["agent_avg_ms"][0]
         penalty = 0.0
         if success_rate < 0.90:
             penalty += min(0.5, (0.90 - success_rate) * 2)
-        if avg_ms > 3000:
-            penalty += min(0.4, (avg_ms - 3000) / 10000)
+        if avg_ms > slow_ms:
+            penalty += min(0.4, (avg_ms - slow_ms) / 10000)
         return min(penalty, 0.9)
 
     def _check_threshold(self, metric: str, value: float, label: str) -> None:
@@ -344,6 +408,10 @@ class PerformanceMonitor:
             "routing":       routing,
             "answer_policy": routing.get("answer_policy", {}),
             "intent":        routing.get("intent", {}),
+            "prometheus":    {
+                "exporter_ok": self.prometheus_error is None,
+                "error":       self.prometheus_error,
+            },
             "active_alerts": [asdict(a) for a in self._alerts if not a.resolved][-10:],
             "suggestions":   [
                 {"title": s.title, "action": s.action, "priority": s.priority}

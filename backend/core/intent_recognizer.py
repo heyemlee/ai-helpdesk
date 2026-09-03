@@ -33,6 +33,7 @@ from core.llm_utils import (
     STRUCTURED_MAX_TOKENS,
     create_llm_client,
     extract_structured_text,
+    structured_create,
 )
 from core.telemetry import span
 
@@ -142,19 +143,73 @@ _SPECIFIC_INTENTS = {
 # ── 零延迟规则通道的锚点短语 ──────────────────────────────────────────────────
 # 与 _pattern_recognize 里的宽泛关键词不同，这里每条短语单独出现就足以定性，
 # 不需要再花一次 LLM 往返去确认。命中即直接返回，不做任何网络调用。
+# 英文锚点必须和中文一样密：快通道命中即返回，**不做任何网络调用**，
+# 没有第二意见能纠正它。原来每个意图只挂一条英文锚点，其中 QUOTE_PRICING 那条
+# 还是宽泛的 "how much"——于是
+#   "My quartz countertop arrived with a chipped edge ... how much will it cost?"
+# 只命中 how much 一条，快通道以 0.82 抢答成 quote_pricing 送去账款 Agent，
+# 而它其实是破损投诉。中文侧不会这样：破损那一类有 5 条锚点，"有划痕/破损/开裂"
+# 会同时命中，跨意图冲突让快通道整体让位给三路融合。
+#
+# 所以这里做两件事：把 "how much" 换成带宾语的完整问法，并把每个意图的英文锚点
+# 补到和中文同等密度——锚点越密，复合问题越容易触发冲突回退，这是安全的方向。
 _FAST_PATH_RULES: dict[IntentCategory, list[str]] = {
-    IntentCategory.HUMAN_HANDOFF: ["转人工", "人工客服", "找人工", "转接人工", "要人工"],
-    IntentCategory.ORDER_STATUS: ["订单状态", "生产进度", "排产了吗", "订单进度", "order status"],
-    IntentCategory.DELIVERY: ["什么时候送货", "送货日期", "送货时间", "改送货", "安排送货", "delivery date"],
-    IntentCategory.ORDER_CHANGE: ["改尺寸", "改颜色", "改一下订单", "修改订单", "取消订单", "change my order"],
+    IntentCategory.HUMAN_HANDOFF: [
+        "转人工", "人工客服", "找人工", "转接人工", "要人工",
+        "speak to a human", "talk to a person", "talk to someone", "real person",
+        "escalate this", "transfer me", "your manager",
+    ],
+    IntentCategory.ORDER_STATUS: [
+        "订单状态", "生产进度", "排产了吗", "订单进度",
+        "order status", "production status", "where is my order",
+        "status of my order", "status of order", "when will my order",
+        "when will it be ready", "is it in production", "in production yet",
+    ],
+    IntentCategory.DELIVERY: [
+        "什么时候送货", "送货日期", "送货时间", "改送货", "安排送货",
+        "delivery date", "delivery time", "when will it ship", "when will it arrive",
+        "reschedule delivery", "schedule delivery", "shipping date", "the truck",
+    ],
+    IntentCategory.ORDER_CHANGE: [
+        "改尺寸", "改颜色", "改一下订单", "修改订单", "取消订单",
+        "change my order", "cancel my order", "modify my order",
+        "change the color", "change the colour", "change the size", "different finish",
+    ],
     # "少了" 与 "少发了" 并存：前者覆盖"拆箱发现少了两个铰链"这类只说"少了"的表述。
     # 它比其他锚点宽，但宽在安全的方向——一旦同时命中别的意图锚点（如"铰链"），
     # 跨意图冲突会让快通道整体让位给三路融合，而不是抢答。
-    IntentCategory.MISSING_PART: ["少发了", "少了", "漏发", "缺一块", "缺件", "补件", "missing part"],
-    IntentCategory.QUOTE_PRICING: ["报价单", "报价多少", "价格是多少", "要加多少钱", "能便宜点", "how much"],
-    IntentCategory.PAYMENT_ISSUE: ["定金", "尾款", "多收了", "重复扣款", "付款失败", "duplicate charge"],
-    IntentCategory.INSTALLATION: ["关不严", "铰链", "对不齐", "有条缝", "装不上", "adjust the hinge"],
-    IntentCategory.DAMAGE_DEFECT: ["有划痕", "破损", "开裂", "起泡", "色差", "damaged panel"],
+    IntentCategory.MISSING_PART: [
+        "少发了", "少了", "漏发", "缺一块", "缺件", "补件",
+        "missing part", "missing parts", "missing piece", "didn't receive",
+        "did not receive", "never received", "short shipped", "not in the box",
+        "wasn't included", "weren't included", "we're short", "we are short",
+    ],
+    IntentCategory.QUOTE_PRICING: [
+        "报价单", "报价多少", "价格是多少", "要加多少钱", "能便宜点",
+        # 用 "how much <助动词>" 而不是完整问法，也不是裸的 "how much"：
+        # 完整问法挡不住 "how much does a quartz countertop cost"（宾语插在中间），
+        # 裸的 "how much" 又会把 "how much longer will my order take" 判成询价。
+        # 这几个前缀两边都覆盖到。
+        "how much does", "how much is", "how much will", "how much would",
+        "how much for", "what's the price", "what is the price",
+        "send me a quote", "price quote", "quote for", "price list",
+    ],
+    IntentCategory.PAYMENT_ISSUE: [
+        "定金", "尾款", "多收了", "重复扣款", "付款失败",
+        "duplicate charge", "charged twice", "double charged", "overcharged",
+        "payment failed", "payment didn't go through", "billed twice",
+    ],
+    IntentCategory.INSTALLATION: [
+        "关不严", "铰链", "对不齐", "有条缝", "装不上",
+        "adjust the hinge", "hinge is loose", "loose hinge", "won't close",
+        "doesn't close", "doesn't line up", "don't line up", "not aligned", "gap between",
+        "won't fit", "doesn't fit",
+    ],
+    IntentCategory.DAMAGE_DEFECT: [
+        "有划痕", "破损", "开裂", "起泡", "色差",
+        "damaged panel", "damaged", "chipped", "cracked", "scratch", "dented",
+        "warped", "peeling", "arrived broken", "color mismatch", "colour mismatch",
+    ],
 }
 
 # 命中锚点后的置信度：单条 0.82，每多命中一条 +0.05，上限 0.95。
@@ -253,6 +308,9 @@ class IntentRecognizer:
         self.cache_misses = 0
         self.fast_path_hits = 0
         self.ensemble_hits  = 0
+        # LLM 这一路的失败次数。三路融合的容错设计让它挂掉也不报错，
+        # 所以必须计数并暴露出去，否则"主力信号长期掉线"只有日志里看得见。
+        self.llm_failures   = 0
 
     @property
     def embedding_backend(self) -> str:
@@ -316,6 +374,9 @@ class IntentRecognizer:
         emb_task = asyncio.create_task(self._embedding_recognize(message))
         pat      = self._pattern_recognize(message)
         llm, emb = await asyncio.gather(llm_task, emb_task)
+
+        if llm.get("failed"):
+            self.llm_failures += 1
 
         intent, confidence, source_scores = self._vote(llm, emb, pat)
         entities = self._extract_entities(message)
@@ -392,6 +453,12 @@ class IntentRecognizer:
             "ensemble_hits": self.ensemble_hits,
             "fast_path_rate": round(self.fast_path_hits / total, 4) if total else 0.0,
             "llm_calls_saved": self.fast_path_hits,
+            # 融合路里 LLM 这一路挂掉的次数。持续 > 0 说明主力信号掉线，
+            # 意图识别正在靠 Embedding + 规则两路硬撑。
+            "llm_failures": self.llm_failures,
+            "llm_failure_rate": (
+                round(self.llm_failures / self.ensemble_hits, 4) if self.ensemble_hits else 0.0
+            ),
         }
 
     # ── 三路识别策略 ──────────────────────────────────────────────────────────
@@ -435,7 +502,8 @@ class IntentRecognizer:
         prompt = self._clean_text(prompt)
 
         try:
-            resp = await self.client.messages.create(
+            resp = await structured_create(
+                self.client,
                 model=self.model,
                 max_tokens=STRUCTURED_MAX_TOKENS,
                 temperature=0.1,
@@ -515,12 +583,24 @@ class IntentRecognizer:
             "rules": float(pat.get("confidence", 0.0) or 0.0),
         }
         if llm.get("failed"):
-            # LLM 这一路挂了，剩余两路仍能给出结果——这是三路融合的容错价值。
-            if emb.get("intent") != IntentCategory.OTHER and emb.get("confidence", 0.0) > 0:
-                return emb["intent"], source_scores["embedding"], source_scores
-            if pat.get("intent") != IntentCategory.OTHER and pat.get("confidence", 0.0) > 0:
-                return pat["intent"], source_scores["rules"], source_scores
-            return IntentCategory.OTHER, 0.0, source_scores
+            # LLM 这一路挂了，剩下两路继续给结果——这是三路融合的容错价值。
+            # 但降级有两条硬约束：取**更强**的那一路，且必须过和正常路径同一道阈值。
+            #
+            # 之前这里无条件优先 Embedding、且完全跳过阈值判断，于是本地 n-gram
+            # 向量对短句给出的噪声匹配被当成"已定性的具体意图"送进路由：
+            # "hello" 判成 payment_issue（0.11）→ 路由到账款 Agent → 0.11 又低于
+            # 转人工阈值 → 立刻开一张工单。噪声不该冒充证据，够不到阈值就老实
+            # 落到 OTHER，交给上层澄清追问。
+            fallback_intent, fallback_conf = max(
+                (
+                    (emb.get("intent", IntentCategory.OTHER), source_scores["embedding"]),
+                    (pat.get("intent", IntentCategory.OTHER), source_scores["rules"]),
+                ),
+                key=lambda item: item[1],
+            )
+            if fallback_intent is IntentCategory.OTHER or fallback_conf < self.threshold:
+                return IntentCategory.OTHER, fallback_conf, source_scores
+            return fallback_intent, fallback_conf, source_scores
 
         weights = [
             (llm, self._VOTE_WEIGHTS["llm"]),

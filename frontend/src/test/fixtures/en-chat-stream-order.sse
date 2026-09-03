@@ -1,0 +1,36 @@
+event: meta
+data: {"conv_id": "c8e2c7a8-ee05-43cc-b2d7-013b356e4fde", "intent": "order_status", "intent_group": "query", "intent_confidence": 0.525, "intent_strategy": "ensemble", "intent_latency_ms": 1984.19, "intent_source_scores": {"llm": 0.75, "embedding": 0.18793639429397582, "rules": 0.5}, "entities": {"order_id": ["SO-2026-0912"], "product": [], "date": [], "amount": [], "item_code": []}, "knowledge_used": true}
+
+event: routing
+data: {"primary_agent": "order", "supporting_agents": [], "reason": "intent=order_status, group=query, primary=order, supporting=none, scores=[order=1.00, technical=0.12, general=0.10, billing=0.00]", "confidence": 1.0, "domain_scores": {"general": 0.1, "technical": 0.12, "billing": 0.0, "order": 1.0}}
+
+event: delta
+data: {"text": "I don't have live access to SO-2026-0912's actual production/system status in this conversation, so I can't state exactly which stage it's currently at (e.g., pending scheduling, cutting in progress, in production, completed) — I don't want to guess and give you a wrong picture.\n\n"}
+
+event: delta
+data: {"text": "**To check this properly, I'd need to confirm:**\n- The confirmed design drawing date for this order (production timeline starts from drawing confirmation, not order date)\n"}
+
+event: delta
+data: {"text": "- Whether the deposit has been received and the order has entered the production queue\n"}
+
+event: delta
+data: {"text": "- Current production stage: not yet scheduled / scheduled but not cut / cutting in progress / in production / completed / shipping\n\nCould you confirm the drawing confirmation date, or do you have a recent status update from your sales rep?"}
+
+event: delta
+data: {"text": " That will help me (or a colleague) verify the real production stage rather than assuming.\n\n**On installation scheduling specifically:**\n"}
+
+event: delta
+data: {"text": "Per our standard process, installation can only be scheduled after production is completed and delivery has taken place — delivery itself needs to be booked in advance, and the site needs to be ready to receive goods (accessible for unloading, elevator/floor access confirmed if applicable). I can't give you a specific installation date until:\n1. Production status is confirmed as completed, and\n2. Delivery is booked and confirmed\n\n**What I'd suggest:**\n"}
+
+event: delta
+data: {"text": "- Share the drawing confirmation date or any order confirmation reference you have, and I'll help verify which stage the order is genuinely at.\n"}
+
+event: delta
+data: {"text": "- Let me know your site's delivery conditions (address, floor/elevator access, preferred delivery window) so that once production is confirmed complete, we're ready to move straight into delivery/installation scheduling.\n\n"}
+
+event: delta
+data: {"text": "If you have a hard deadline (e.g., other trades moving in, move-in date), flag that now — I'll mark it and route it to our operations team so they can assess feasibility directly with the factory, rather than me guessing a date."}
+
+event: result
+data: {"conv_id": "c8e2c7a8-ee05-43cc-b2d7-013b356e4fde", "request_id": "6fc4ddc8c3b1", "ticket_id": null, "response": "I don't have live access to SO-2026-0912's actual production/system status in this conversation, so I can't state exactly which stage it's currently at (e.g., pending scheduling, cutting in progress, in production, completed) — I don't want to guess and give you a wrong picture.\n\n**To check this properly, I'd need to confirm:**\n- The confirmed design drawing date for this order (production timeline starts from drawing confirmation, not order date)\n- Whether the deposit has been received and the order has entered the production queue\n- Current production stage: not yet scheduled / scheduled but not cut / cutting in progress / in production / completed / shipping\n\nCould you confirm the drawing confirmation date, or do you have a recent status update from your sales rep? That will help me (or a colleague) verify the real production stage rather than assuming.\n\n**On installation scheduling specifically:**\nPer our standard process, installation can only be scheduled after production is completed and delivery has taken place — delivery itself needs to be booked in advance, and the site needs to be ready to receive goods (accessible for unloading, elevator/floor access confirmed if applicable). I can't give you a specific installation date until:\n1. Production status is confirmed as completed, and\n2. Delivery is booked and confirmed\n\n**What I'd suggest:**\n- Share the drawing confirmation date or any order confirmation reference you have, and I'll help verify which stage the order is genuinely at.\n- Let me know your site's delivery conditions (address, floor/elevator access, preferred delivery window) so that once production is confirmed complete, we're ready to move straight into delivery/installation scheduling.\n\nIf you have a hard deadline (e.g., other trades moving in, move-in date), flag that now — I'll mark it and route it to our operations team so they can assess feasibility directly with the factory, rather than me guessing a date.", "agent_type": "order", "agent_types": ["order"], "primary_agent": "order", "supporting_agents": [], "routing_reason": "intent=order_status, group=query, primary=order, supporting=none, scores=[order=1.00, technical=0.12, general=0.10, billing=0.00]", "routing_confidence": 1.0, "escalated": false, "handoff": false, "handoff_reason": "", "needs_clarification": false, "answer_confidence": 0.525, "policy_violations": [], "latency_ms": 15118.9}
+
