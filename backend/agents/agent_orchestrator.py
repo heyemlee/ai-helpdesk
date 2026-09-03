@@ -110,6 +110,21 @@ class AgentStats:
         return base_score * max(0.0, 1.0 - self.monitor_penalty)
 
 
+# 回复语言。此前系统提示词和 SKILL.md 里一条语言指令都没有——中文回复只是模型
+# 顺着中文 SOP、中文知识库和 _build_messages 注入的中文脚手架走出来的结果，
+# 是巧合不是契约：换个模型、把 SOP 写成双语，它就会漂。
+#
+# 只约束给客户看的正文。routing_reason / handoff_reason / 策略拦截理由是给
+# 控制台操作员看的诊断串，仍然保持中文——接英文客户的操作员多半说中文，
+# 这两拨人不是同一批，不该共用一个语言开关。
+_LANGUAGE_RULE = (
+    "\n\n[回复语言]\n"
+    "始终使用客户提问所用的语言作答：客户用中文问就用中文答，用英文问就用英文答。"
+    "知识库、SOP 和上文的背景信息都是中文的，但这只是资料的语言，不是回复的语言——"
+    "给英文客户作答时把依据翻译成英文表述，不要因为资料是中文就改用中文回复。"
+)
+
+
 @dataclass
 class AgentResponse:
     agent_type:  AgentType
@@ -393,9 +408,10 @@ class BaseAgent:
 
     def _build_system_prompt(self, skill_prompt: str = "") -> str:
         """把动态加载的 Skills 拼入 system prompt，让业务规则随请求生效。"""
+        prompt = self.system_prompt + _LANGUAGE_RULE
         if not skill_prompt:
-            return self.system_prompt
-        return f"{self.system_prompt}\n\n[动态 Skills]\n{skill_prompt}"
+            return prompt
+        return f"{prompt}\n\n[动态 Skills]\n{skill_prompt}"
 
     @staticmethod
     def _self_confidence(violations: list[PolicyViolation], escalate: bool) -> float:
@@ -411,10 +427,21 @@ class BaseAgent:
             confidence -= 0.35
         return round(max(0.0, confidence), 3)
 
+    # 英文那几条是补的：回复语言跟客户走之后，英文回复里说"我处理不了、要转人工"
+    # 用的是 hand this over / connect you with 这类说法，一个中文关键词都不含，
+    # 于是 escalate 恒为 False——自评置信度不扣分、不建工单，明明说了转人工却没转。
+    _ESCALATION_KEYWORDS = (
+        "转人工", "人工客服", "无法处理", "处理不了",
+        "escalate", "specialist", "hand this over", "hand it over",
+        "hand you over", "connect you with", "transfer you", "refer you to",
+        "a human agent", "our team will", "cannot resolve", "can't resolve",
+        "unable to resolve", "beyond what i can",
+    )
+
     def _needs_escalation(self, content: str) -> bool:
-        """检测 Agent 是否建议升级（简单关键词检测）。"""
-        keywords = ["转人工", "人工客服", "escalate", "specialist", "无法处理"]
-        return any(kw in content for kw in keywords)
+        """检测 Agent 是否建议升级（简单关键词检测，中英双语）。"""
+        lowered = content.lower()
+        return any(kw.lower() in lowered for kw in self._ESCALATION_KEYWORDS)
 
 
 class GeneralAgent(BaseAgent):

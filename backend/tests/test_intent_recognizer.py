@@ -236,3 +236,38 @@ def test_entity_extraction_pulls_order_amount_and_item_code(recognizer):
     assert entities["order_id"] == ["A1B2C3D4"]
     assert entities["amount"] == ["199 元"]
     assert entities["item_code"] == ["W3012"]
+
+
+# ── 英文快通道锚点 ────────────────────────────────────────────────────────────
+#
+# 快通道命中即返回，**不做任何网络调用**，没有第二意见能纠正它。所以英文锚点
+# 必须和中文一样密：锚点越密，复合问题越容易触发跨意图冲突而回退到三路融合。
+
+@pytest.mark.parametrize("message,expected", [
+    ("How much does a quartz countertop cost per metre?", "quote_pricing"),
+    ("How much will the replacement door be?",            "quote_pricing"),
+    ("Where is my order?",                                "order_status"),
+    ("I was charged twice for the deposit.",              "payment_issue"),
+    ("I never received the drawer slides.",               "missing_part"),
+])
+def test_english_anchors_hit_the_fast_path(recognizer, message, expected):
+    hit = recognizer._fast_path(message)
+    assert hit is not None, f"英文锚点没命中，白花一次 LLM 往返: {message}"
+    assert hit["intent"].value == expected
+
+
+@pytest.mark.parametrize("message", [
+    # 破损 + 询价：英文锚点只有一条 "how much" 时，这句会被快通道以 0.82
+    # 抢答成 quote_pricing 送去账款 Agent，而它其实是破损投诉。
+    "My quartz countertop arrived with a chipped edge. How much will it cost to replace?",
+    "The cabinet door arrived damaged and the hinge is loose.",
+    "送来的门板有划痕，另外报价多少？",
+])
+def test_compound_questions_fall_back_to_the_ensemble(recognizer, message):
+    assert recognizer._fast_path(message) is None
+
+
+def test_how_much_longer_is_not_a_pricing_question(recognizer):
+    """裸的 "how much" 会把这句判成询价——锚点要带助动词。"""
+    hit = recognizer._fast_path("How much longer will my order take?")
+    assert hit is None or hit["intent"].value != "quote_pricing"

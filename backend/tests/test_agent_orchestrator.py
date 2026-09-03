@@ -540,3 +540,44 @@ class TestAgentReplicas:
         orch.update_routing_penalties({"technical_0": 5.0, "technical_1": -3.0})
         assert orch._pool[AgentType.TECHNICAL][0].stats.monitor_penalty == 0.9
         assert orch._pool[AgentType.TECHNICAL][1].stats.monitor_penalty == 0.0
+
+
+# ── 双语作答 ──────────────────────────────────────────────────────────────────
+
+def test_system_prompt_pins_reply_language_to_the_customer(orchestrator):
+    """
+    在此之前系统提示词里一条语言指令都没有，中文回复只是模型顺着中文 SOP 和
+    中文脚手架走出来的结果——是巧合不是契约。
+    """
+    for agents in orchestrator._pool.values():
+        prompt = agents[0]._build_system_prompt()
+        assert "[回复语言]" in prompt
+        assert "客户提问所用的语言" in prompt
+
+
+def test_language_rule_survives_dynamic_skills(orchestrator):
+    """Skill SOP 是拼在语言规则之后的，别把规则挤掉。"""
+    agent = orchestrator._pool[AgentType.BILLING][0]
+    prompt = agent._build_system_prompt("【报价SOP】不得口头承诺单价")
+    assert "[回复语言]" in prompt and "【报价SOP】" in prompt
+
+
+@pytest.mark.parametrize("content", [
+    "I'll hand this over to our project team.",
+    "Let me connect you with a specialist who can help.",
+    "This is beyond what I can confirm here — our team will follow up.",
+    "我帮你转人工客服。",
+])
+def test_escalation_is_detected_in_both_languages(orchestrator, content):
+    """
+    回复语言跟客户走之后，英文回复说"要转人工"用的是 hand this over /
+    connect you with 这类说法，一个中文关键词都不含。漏检的后果是
+    escalate 恒为 False：不扣自评置信度、不建工单，说了转人工却没转。
+    """
+    assert orchestrator._pool[AgentType.GENERAL][0]._needs_escalation(content) is True
+
+
+def test_normal_answers_are_not_mistaken_for_escalation(orchestrator):
+    agent = orchestrator._pool[AgentType.TECHNICAL][0]
+    assert agent._needs_escalation("Here are the three hinge adjustment screws.") is False
+    assert agent._needs_escalation("铰链上有三颗调节螺丝，先调左右那颗。") is False

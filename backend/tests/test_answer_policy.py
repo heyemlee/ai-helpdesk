@@ -167,3 +167,115 @@ def test_stream_guard_also_drops_mojibake(policy):
 
     assert "�" not in out
     assert out == "好的，我这就帮你查。"
+
+
+# ── 双语守卫 ──────────────────────────────────────────────────────────────────
+#
+# 这一组全部是"回复语言跟客户走"之后才成立的用例。在此之前英文回复里的
+# 价格/时效承诺一条也拦不下来：_COMMIT_RE 没有任何英文词，四条件里"承诺动词"
+# 这一条永远凑不齐；而 _SENT_SPLIT_RE 不认 '.'，整段英文还会被当成一个句子。
+
+@pytest.mark.parametrize("zh,en", [
+    ("退款会在 3 个工作日内到账。",
+     "The refund will arrive within 3 business days."),
+    ("这套柜子的价格是 12800 元。",
+     "The total for this cabinet run is $12,800."),
+    ("我们下周二发货。",
+     "We will ship it next Tuesday."),
+    ("月底前给你装好。",
+     "We will have it installed by the end of the month."),
+])
+def test_same_commitment_is_blocked_in_both_languages(policy, zh, en):
+    assert policy.enforce(zh, sources=[]).blocked, f"中文漏拦: {zh}"
+    assert policy.enforce(en, sources=[]).blocked, f"英文漏拦: {en}"
+
+
+@pytest.mark.parametrize("zh,en", [
+    ("通常 3-5 个工作日，具体以排产为准。",
+     "Typically 3-5 business days, subject to factory scheduling."),
+    ("展厅周二到周四都开门。",
+     "The showroom is open Tuesday through Thursday."),
+])
+def test_hedged_or_non_commitment_passes_in_both_languages(policy, zh, en):
+    assert not policy.enforce(zh, sources=[]).blocked, f"中文误拦: {zh}"
+    assert not policy.enforce(en, sources=[]).blocked, f"英文误拦: {en}"
+
+
+def test_english_reply_gets_english_replacement(policy):
+    """
+    安全话术要跟回复语言走。只有中文版时，拦下一句英文承诺会往英文回复里
+    插一段中文——客户读到的是语言突然跳变的一段话，比不拦更糟。
+    """
+    result = policy.enforce("We will ship it next Tuesday.", sources=[])
+
+    assert result.blocked
+    assert "can't commit to a date" in result.text
+    assert "具体时间" not in result.text
+
+
+def test_replacement_keeps_the_space_between_sentences(policy):
+    """
+    句首空白必须保留。之前只保留句尾空白——中文看不出来（句子之间没有空格），
+    英文会把替换句和前一句黏成 "...verified.The invoice..."。
+    """
+    text = "Thanks for waiting. The total is $980. Let me know."
+    out = policy.enforce(text, sources=[]).text
+
+    assert "verified. Let me know." in out
+    assert ".The" not in out and ".Let" not in out
+
+
+def test_english_paragraph_is_checked_sentence_by_sentence(policy):
+    """
+    '.' 不算句末时整段英文只有一个句子，一处违规就会把整段换成安全话术，
+    干净的句子跟着一起被吞掉。
+    """
+    text = "Thanks for waiting. The total is $980. Happy to help further."
+    out = policy.enforce(text, sources=[]).text
+
+    assert out.startswith("Thanks for waiting.")
+    assert out.endswith("Happy to help further.")
+    assert "$980" not in out
+
+
+def test_decimals_and_abbreviations_do_not_split_sentences():
+    """3.5 / $12,800.00 / approx. 里的句号不是句末——切错会把承诺动词和金额拆散。"""
+    from core.answer_policy import split_sentences
+
+    text = "It will take 3.5 business days. Cost is approx. $12,800.00 total. Thanks."
+    sentences, tail = split_sentences(text, final=True)
+
+    assert "".join(sentences) + tail == text          # 拼回去必须等于原文
+    assert sentences[0] == "It will take 3.5 business days."
+    assert "approx. $12,800.00 total." in sentences[1]
+
+
+def test_stream_and_batch_agree_on_english(policy):
+    """流式逐句、非流式整段，两条路对同一段英文必须给出同一个结果。"""
+    from core.answer_policy import PolicyStreamGuard
+
+    text = "Thanks for waiting. The total is $980. We will ship it next Tuesday."
+    batch = policy.enforce(text, sources=[]).text
+
+    # 按固定长度切片喂进去，原文一个字符都不丢——网络分片本来就不按词边界来
+    guard = PolicyStreamGuard(AnswerPolicy(enabled=True), sources=[])
+    chunks = [text[i:i + 7] for i in range(0, len(text), 7)]
+    streamed = "".join(guard.feed(c) for c in chunks) + guard.flush()
+
+    assert streamed == batch
+    assert len(guard.violations) == 2
+
+
+def test_a_trailing_period_is_not_flushed_early():
+    """
+    流式里结尾的 '.' 后面还没有空白，可能是没写完的小数（"3." → "3.5"）。
+    必须留在缓冲区等下一片，不能当句末抢先发出去。
+    """
+    from core.answer_policy import PolicyStreamGuard
+
+    # 刻意选一句不构成承诺的（毫米不是时效），这里测的是缓冲边界不是拦截
+    guard = PolicyStreamGuard(AnswerPolicy(enabled=True), sources=[])
+    assert guard.feed("The gap measures 3.") == ""
+    # 句末的空格留在缓冲区当下一句的句首空白——和非流式那条路同一个口径
+    assert guard.feed("5 mm across. ") == "The gap measures 3.5 mm across."
+    assert guard.flush() == " "
