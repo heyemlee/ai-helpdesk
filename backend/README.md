@@ -162,16 +162,16 @@ ANTHROPIC_API_KEY=your_api_key
 # 走 Anthropic 协议（默认）
 LLM_PROVIDER=anthropic
 ANTHROPIC_API_KEY=sk-ant-xxxxxxxx
-ANTHROPIC_BASE_URL=https://api.kabi.pro          # 留空则走 Anthropic 官方端点
-ANTHROPIC_MODEL=claude-sonnet-4-5-20250929
+ANTHROPIC_BASE_URL=https://your-gateway.example.com          # 留空则走 Anthropic 官方端点
+ANTHROPIC_MODEL=claude-sonnet-5
 ```
 
 ```env
 # 走 OpenAI 兼容协议（/chat/completions）
 LLM_PROVIDER=openai
 OPENAI_API_KEY=sk-xxxxxxxx
-OPENAI_BASE_URL=https://api.kabi.pro/v1          # 注意这组路径带 /v1
-OPENAI_MODEL=gpt-4o
+OPENAI_BASE_URL=https://your-gateway.example.com/v1          # 注意这组路径带 /v1
+OPENAI_MODEL=gpt-5.6-luna
 ```
 
 模型名以网关支持的清单为准（`GET $OPENAI_BASE_URL/models` 可查）。
@@ -339,9 +339,9 @@ docker run -it --rm \
   --network ai-helpdesk_ai-helpdesk-network \
   -p 8000:8000 \
   -e LLM_PROVIDER="anthropic" \
-  -e ANTHROPIC_BASE_URL="https://api.kabi.pro" \
+  -e ANTHROPIC_BASE_URL="https://your-gateway.example.com" \
   -e ANTHROPIC_API_KEY="your_key" \
-  -e ANTHROPIC_MODEL="claude-sonnet-4-5-20250929" \
+  -e ANTHROPIC_MODEL="claude-sonnet-5" \
   -e REDIS_URL="redis://:aihelpdesk123@redis:6379/0" \
   -e CHROMA_HOST="postgres" \
   -e CHROMA_PORT="8000" \
@@ -357,9 +357,9 @@ CLI 交互模式：
 docker run -it --rm \
   --network ai-helpdesk_ai-helpdesk-network \
   -e LLM_PROVIDER="anthropic" \
-  -e ANTHROPIC_BASE_URL="https://api.kabi.pro" \
+  -e ANTHROPIC_BASE_URL="https://your-gateway.example.com" \
   -e ANTHROPIC_API_KEY="your_key" \
-  -e ANTHROPIC_MODEL="claude-sonnet-4-5-20250929" \
+  -e ANTHROPIC_MODEL="claude-sonnet-5" \
   -e REDIS_URL="redis://:aihelpdesk123@redis:6379/0" \
   -e CHROMA_HOST="postgres" \
   -e CHROMA_PORT="8000" \

@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 # core/openai_compat.py 翻译成同一套接口，所以调用点只认这个别名。
 LLMClient = Any
 
-DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-5-20250929"
-DEFAULT_OPENAI_MODEL = "gpt-4o"
+DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5"
+DEFAULT_OPENAI_MODEL = "gpt-5.6-luna"
 
 # 结构化调用（意图识别、LLM Judge、查询改写、重排）的 token 预算。
 #
