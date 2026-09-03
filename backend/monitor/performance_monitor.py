@@ -22,7 +22,7 @@ from enum import Enum
 from typing import Any
 
 import httpx
-from prometheus_client import Counter, Gauge, Histogram, start_http_server
+from prometheus_client import Counter, Gauge, start_http_server
 
 logger = logging.getLogger(__name__)
 
