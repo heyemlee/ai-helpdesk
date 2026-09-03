@@ -277,7 +277,11 @@ class ToolManager:
             return await self._fallback_result(tool, params, context, error)
 
         t0 = time.monotonic()
-        tool.stats.total += 1
+        # total 在**结束时**和 success/failed 一起记，不在开始时先加。
+        # 开始就加会让在途请求把成功率稀释成 0：Monitor 每 10s 采一次，
+        # 而 order_data_query 这类委派工具一次要跑十几秒，几乎每次采样都落在
+        # 在途窗口里，一个从没失败过的工具会被报成 0.000 成功率。
+        # Agent 侧的同一个毛病已经这么修过，工具侧当时漏了。
         try:
             # 参数校验（根据 JSON Schema 的 required 和 properties.type）
             self._validate_params(tool, params)
@@ -285,6 +289,7 @@ class ToolManager:
             data = await asyncio.wait_for(self._run_handler(tool, params, context), timeout=tool.timeout_s)
             latency = (time.monotonic() - t0) * 1000
 
+            tool.stats.total += 1
             tool.stats.success += 1
             tool.stats.consecutive_fails = 0
             tool.stats.total_latency_ms += latency
@@ -304,6 +309,7 @@ class ToolManager:
                               latency_ms=latency, reranked=reranked)
 
         except TimeoutError:
+            tool.stats.total += 1
             tool.stats.failed += 1
             tool.stats.consecutive_fails += 1
             await self._breaker_failure(tool)
@@ -311,6 +317,7 @@ class ToolManager:
             return await self._fallback_result(tool, params, context, "执行超时")
 
         except Exception as ex:
+            tool.stats.total += 1
             tool.stats.failed += 1
             tool.stats.consecutive_fails += 1
             await self._breaker_failure(tool)

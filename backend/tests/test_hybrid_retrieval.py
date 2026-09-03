@@ -371,3 +371,56 @@ async def test_empty_recall_fails_without_burning_a_correction_round():
     result = await manager.search_with_rewrite("kb", "补件流程", top_k=3)
     assert result.success is False
     assert calls["rerank"] == 0
+
+
+# ── 工具统计口径 ──────────────────────────────────────────────────────────────
+
+async def test_in_flight_call_does_not_dilute_success_rate():
+    """
+    在途请求不能把成功率拉成 0。
+
+    total 如果在调用开始就加、success 等结束才加，那么一个跑十几秒的工具
+    （order_data_query 这类跨服务委派）在 Monitor 的 10s 采样窗口里几乎必然
+    被抓在在途状态，成功率报成 0.000，触发一串假告警。Agent 侧已经这么修过。
+    """
+    import asyncio
+
+    manager = ToolManager(api_key="test-key")
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def _slow(params, context):
+        started.set()
+        await release.wait()
+        return ["ok"]
+
+    manager.register(Tool(
+        name="slow", description="慢工具", handler=_slow,
+        schema={"type": "object", "properties": {"query": {"type": "string"}}},
+    ))
+    stats = manager._tools["slow"].stats
+
+    task = asyncio.create_task(manager.call("slow", {"query": "q"}))
+    await started.wait()
+    assert stats.success_rate == 1.0, "在途请求不该被记成失败"
+    assert stats.total == 0, "total 要等调用结束才记"
+
+    release.set()
+    await task
+    assert (stats.total, stats.success) == (1, 1)
+
+
+async def test_failed_call_is_counted():
+    """结束时记账不能把失败漏掉。"""
+    manager = ToolManager(api_key="test-key")
+
+    async def _boom(params, context):
+        raise RuntimeError("下游挂了")
+
+    manager.register(Tool(
+        name="boom", description="必失败", handler=_boom,
+        schema={"type": "object", "properties": {}},
+    ))
+    await manager.call("boom", {})
+    stats = manager._tools["boom"].stats
+    assert (stats.total, stats.failed, stats.success_rate) == (1, 1, 0.0)
