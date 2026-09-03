@@ -562,6 +562,68 @@ def test_language_rule_survives_dynamic_skills(orchestrator):
     assert "[回复语言]" in prompt and "【报价SOP】" in prompt
 
 
+# ── 提示词缓存 ────────────────────────────────────────────────────────────────
+
+def test_system_prompt_is_marked_cacheable(orchestrator):
+    """
+    缓存标记必须落在 system 上。
+
+    system = 角色提示词 + 语言规则 + SKILL.md，同一个 Agent 在同一份 SOP 下
+    每次都一样；messages 里装的是记忆、检索出处和用户这句话，每次都不一样。
+    标记挪到 messages 那侧（顶层 cache_control 的默认行为就是这样）等于每次
+    写一份再也命中不了的新缓存，还要按 1.25 倍写入价付钱。
+    """
+    agent = orchestrator._pool[AgentType.BILLING][0]
+    blocks = agent._system_blocks("【报价SOP】不得口头承诺单价")
+
+    assert [b["type"] for b in blocks] == ["text"]
+    assert blocks[0]["cache_control"] == {"type": "ephemeral"}
+    # 缓存的就是那份完整 system prompt，不是被截过的片段
+    assert blocks[0]["text"] == agent._build_system_prompt("【报价SOP】不得口头承诺单价")
+
+
+async def test_both_call_paths_send_the_same_cached_system(orchestrator):
+    """
+    流式和非流式必须送同一份 system。
+
+    两条链路的上下文一旦漂移，表现是"同一个问题流式和非流式给出不同答案"；
+    放到缓存上还多一层代价——两份只差一个字节的前缀会各占一份缓存，命中率减半。
+    """
+    agent = orchestrator._pool[AgentType.TECHNICAL][0]
+    sent: list = []
+
+    class _Stream:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *exc): return False
+        @property
+        def text_stream(self): return self._iter()
+        async def _iter(self):
+            yield "ok"
+        async def get_final_message(self): return type("M", (), {"usage": None})()
+
+    class _Messages:
+        async def create(self, **kwargs):
+            sent.append(kwargs["system"])
+            return type("R", (), {"content": [type("B", (), {"type": "text", "text": "ok"})()],
+                                  "usage": None, "stop_reason": "end_turn"})()
+
+        def stream(self, **kwargs):
+            sent.append(kwargs["system"])
+            return _Stream()
+
+    agent._client = type("C", (), {"messages": _Messages()})()
+    agent._skill_manager = None
+
+    req = make_request("柜门关不严", IntentCategory.INSTALLATION)
+    await agent._call_llm(req)
+    async for _ in agent._stream_llm(req):
+        pass
+
+    assert len(sent) == 2
+    assert sent[0] == sent[1]
+    assert sent[0][0]["cache_control"] == {"type": "ephemeral"}
+
+
 @pytest.mark.parametrize("content", [
     "I'll hand this over to our project team.",
     "Let me connect you with a specialist who can help.",
