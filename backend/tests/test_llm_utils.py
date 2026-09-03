@@ -1,96 +1,134 @@
-"""LLM 调用的公共约束：token 预算解释、temperature 兼容降级。"""
+"""LLM 调用的公共约束：token 预算解释、结构化输出、effort 下发。"""
 import pytest
+from pydantic import BaseModel
 
 from core import llm_utils
-from core.llm_utils import reset_temperature_support, structured_create, temperature_enabled
+from core.llm_utils import structured_create, structured_parse
+
+
+class _Payload(BaseModel):
+    verdict: str
+
+
+class _Usage:
+    def __init__(self, output_tokens: int):
+        self.output_tokens = output_tokens
+
+
+class _Resp:
+    """对齐 anthropic 的 ParsedMessage：parsed_output + stop_reason + usage。"""
+
+    def __init__(self, parsed_output=None, stop_reason="end_turn", output_tokens=12):
+        self.parsed_output = parsed_output
+        self.stop_reason = stop_reason
+        self.usage = _Usage(output_tokens)
 
 
 class _FakeMessages:
-    """记录每次调用的参数；按需在第一次调用时抛出网关的 400。"""
+    """记录每次调用的参数，返回预置响应。"""
 
-    def __init__(self, error: Exception | None = None):
-        self.error = error
+    def __init__(self, resp: _Resp | None = None):
+        self.resp = resp or _Resp()
         self.calls: list[dict] = []
 
     async def create(self, **kwargs):
         self.calls.append(kwargs)
-        if self.error is not None and len(self.calls) == 1:
-            raise self.error
         return "ok"
+
+    async def parse(self, **kwargs):
+        self.calls.append(kwargs)
+        return self.resp
 
 
 class _FakeClient:
-    def __init__(self, error: Exception | None = None):
-        self.messages = _FakeMessages(error)
+    def __init__(self, resp: _Resp | None = None):
+        self.messages = _FakeMessages(resp)
 
 
-class _APIError(Exception):
-    def __init__(self, message: str, status_code: int = 400):
-        super().__init__(message)
-        self.status_code = status_code
+# ── effort 下发 ───────────────────────────────────────────────────────────────
 
+async def test_structured_calls_carry_effort():
+    """
+    结构化调用统一带 effort，调用点不用各写一遍。
 
-_DEPRECATED = _APIError(
-    "Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', "
-    "'message': '`temperature` is deprecated for this model.'}}"
-)
-
-
-@pytest.fixture(autouse=True)
-def _restore_switch():
-    reset_temperature_support(True)
-    yield
-    reset_temperature_support(True)
-
-
-async def test_temperature_is_sent_when_the_model_accepts_it():
+    这几个调用都是判别式任务（分类、排序、判分），不需要长推理。留着默认的
+    高 effort 不只是贵：推理块会先吃掉 max_tokens，正文没产出就是一次静默降级。
+    """
     client = _FakeClient()
 
-    await structured_create(client, model="m", max_tokens=8, temperature=0.0, messages=[])
+    await structured_create(client, model="m", max_tokens=8, messages=[])
 
-    assert client.messages.calls[0]["temperature"] == 0.0
-    assert temperature_enabled() is True
+    assert client.messages.calls[0]["output_config"]["effort"] == llm_utils.STRUCTURED_EFFORT
 
 
-async def test_model_rejecting_temperature_is_retried_without_it():
+async def test_caller_supplied_output_config_wins():
+    """调用方自带 output_config 时按它来，不被默认值覆盖。"""
+    client = _FakeClient()
+
+    await structured_create(
+        client, model="m", max_tokens=8, messages=[], output_config={"effort": "high"}
+    )
+
+    assert client.messages.calls[0]["output_config"]["effort"] == "high"
+
+
+# ── 结构化输出 ────────────────────────────────────────────────────────────────
+
+async def test_parse_returns_the_validated_model():
+    client = _FakeClient(_Resp(parsed_output=_Payload(verdict="ok")))
+
+    payload = await structured_parse(
+        client, output_format=_Payload, model="m", max_tokens=8, messages=[]
+    )
+
+    assert payload.verdict == "ok"
+    assert client.messages.calls[0]["output_format"] is _Payload
+
+
+async def test_budget_exhausted_before_output_names_the_knob():
     """
-    网关回 400 `temperature` is deprecated 时，结构化调用不能就这么失败。
+    推理吃光预算是这条链路最阴险的失败：拿到一个合法响应，但正文是空的。
 
-    这些调用点（意图识别 / 记忆摘要 / 查询改写 / 重排 / Judge）每一个都在
-    except 里静默降级，所以一旦这里失败，链路"看起来还在跑"，实际上
-    意图识别只剩 Embedding 一路、Judge 全给默认分。
+    报错必须点名该调哪个环境变量，否则调用方 except 里只会记下一句
+    "解析失败"，跟真正的原因隔着好几层。
     """
-    client = _FakeClient(error=_DEPRECATED)
+    client = _FakeClient(_Resp(parsed_output=None, stop_reason="max_tokens", output_tokens=2048))
 
-    result = await structured_create(client, model="m", max_tokens=8, temperature=0.0, messages=[])
-
-    assert result == "ok"
-    assert len(client.messages.calls) == 2
-    assert "temperature" not in client.messages.calls[1]
-    assert temperature_enabled() is False
+    with pytest.raises(ValueError, match="AI_HELPDESK_STRUCTURED_MAX_TOKENS"):
+        await structured_parse(
+            client, output_format=_Payload, model="m", max_tokens=8, messages=[]
+        )
 
 
-async def test_downgrade_is_remembered_for_the_process():
-    """降级只探测一次，不能每条消息都白等一轮 400。"""
-    first = _FakeClient(error=_DEPRECATED)
-    await structured_create(first, model="m", max_tokens=8, temperature=0.0, messages=[])
+async def test_missing_parse_result_raises_instead_of_returning_none():
+    """
+    拿不到结果就抛。返回 None 会让调用方的降级路径变成隐式的——
+    意图退回投票、重排退回原序都该是显式决定，不是这里悄悄给个空对象。
+    """
+    client = _FakeClient(_Resp(parsed_output=None))
 
-    second = _FakeClient()
-    await structured_create(second, model="m", max_tokens=8, temperature=0.0, messages=[])
+    with pytest.raises(ValueError, match="_Payload"):
+        await structured_parse(
+            client, output_format=_Payload, model="m", max_tokens=8, messages=[]
+        )
 
-    assert len(second.messages.calls) == 1
-    assert "temperature" not in second.messages.calls[0]
 
+async def test_no_sampling_parameters_are_sent():
+    """
+    SDK 1.x 把 temperature/top_p/top_k 从签名里删了，再传是 TypeError 而不是 400。
 
-async def test_other_errors_are_not_swallowed():
-    """只兜 temperature 这一种 400，其余照常抛出去，别把真故障吃掉。"""
-    client = _FakeClient(error=_APIError("400 - overloaded_error: upstream is busy"))
+    原来那套"探测 400 再降级"的兼容逻辑接不住 TypeError，会被调用点的
+    except Exception 吃掉后照样静默降级——所以这里一个都不能传。
+    """
+    client = _FakeClient(_Resp(parsed_output=_Payload(verdict="ok")))
 
-    with pytest.raises(_APIError):
-        await structured_create(client, model="m", max_tokens=8, temperature=0.0, messages=[])
+    await structured_create(client, model="m", max_tokens=8, messages=[])
+    await structured_parse(
+        client, output_format=_Payload, model="m", max_tokens=8, messages=[]
+    )
 
-    assert len(client.messages.calls) == 1
-    assert temperature_enabled() is True
+    for call in client.messages.calls:
+        assert not {"temperature", "top_p", "top_k"} & call.keys()
 
 
 def test_structured_budget_leaves_room_for_reasoning_blocks():

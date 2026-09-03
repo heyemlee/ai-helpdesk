@@ -7,10 +7,13 @@ OpenAI 兼容端点的适配层：把 `client.messages.create/stream` 这套 Ant
 五处全改成双分支，要么在客户端做一次翻译。选后者——调用点一行不用改，换供应商
 只是 .env 里 LLM_PROVIDER 的事，两条链路也不会因为改一处忘一处而产生行为差异。
 
-只翻译项目真正用到的子集：system / messages / max_tokens / temperature、文本流式，
-以及 stop_reason 和 usage（token 计量和"推理把预算吃光"的报错都依赖这两个字段）。
-项目没有用 tools= 走原生 function calling（工具编排在 tools/tool_manager.py 里自己做），
-因此工具调用不在翻译范围内。
+只翻译项目真正用到的子集：system / messages / max_tokens、文本流式、结构化输出
+（create / stream / parse 三个入口），以及 stop_reason 和 usage（token 计量和
+"推理把预算吃光"的报错都依赖这两个字段）。项目没有用 tools= 走原生 function
+calling（工具编排在 tools/tool_manager.py 里自己做），因此工具调用不在翻译范围内。
+
+Anthropic 独有的 output_config（effort）/ cache_control / thinking 会被丢掉而不是
+硬映射，理由见 _Messages._params。
 """
 from __future__ import annotations
 
@@ -46,12 +49,23 @@ class _TextBlock:
 
 
 class _Message:
-    def __init__(self, text: str, stop_reason: str, usage: _Usage, model: str):
+    # parsed_output 对齐 anthropic 的 ParsedMessage：create() 出来的消息没有它
+    # （None），parse() 出来的带着已校验的 Pydantic 实例。core.llm_utils
+    # 的 structured_parse 只认这一个属性，两个供应商因此不用分支。
+    def __init__(
+        self,
+        text: str,
+        stop_reason: str,
+        usage: _Usage,
+        model: str,
+        parsed_output: Any = None,
+    ):
         self.content = [_TextBlock(text)]
         self.stop_reason = stop_reason
         self.usage = usage
         self.model = model
         self.role = "assistant"
+        self.parsed_output = parsed_output
 
 
 def _stop_reason(finish_reason: str | None) -> str:
@@ -70,11 +84,31 @@ def _stop_reason(finish_reason: str | None) -> str:
     }.get(finish_reason or "", "end_turn")
 
 
-def _to_openai_messages(messages: list[dict[str, Any]], system: str | None) -> list[dict[str, Any]]:
+def _flatten_text(value: Any) -> str:
+    """
+    把 Anthropic 的"文本块数组"压成一个字符串。
+
+    Agent 回复那条链路会把 system 写成 `[{"type": "text", "text": ...,
+    "cache_control": {...}}]`，为的是给缓存划一个明确的前缀边界。cache_control
+    是 Anthropic 独有的，OpenAI 侧没有对应物（它的前缀缓存是自动的、不需要标注），
+    所以这里只取文本、丢掉标注——两边语义一致，只是省不省钱的差别。
+    """
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        return "\n".join(
+            b.get("text", "") if isinstance(b, dict) else str(getattr(b, "text", ""))
+            for b in value
+        )
+    return str(value or "")
+
+
+def _to_openai_messages(messages: list[dict[str, Any]], system: Any = None) -> list[dict[str, Any]]:
     """system 在 Anthropic 是顶层参数，在 OpenAI 是消息列表里的第一条。"""
     out: list[dict[str, Any]] = []
-    if system:
-        out.append({"role": "system", "content": system})
+    system_text = _flatten_text(system)
+    if system_text:
+        out.append({"role": "system", "content": system_text})
     for m in messages:
         content = m.get("content", "")
         # 项目里的 content 都是纯字符串；万一传了 Anthropic 的块数组，取文本拼起来
@@ -115,24 +149,32 @@ class _Messages:
         model: str,
         messages: list[dict[str, Any]],
         max_tokens: int,
-        system: str | None = None,
-        temperature: float | None = None,
+        system: Any = None,
         **_ignored: Any,
     ) -> dict[str, Any]:
-        params: dict[str, Any] = {
+        """
+        翻译两边都有的那部分参数。
+
+        落进 `_ignored` 被丢掉的是 Anthropic 独有的旋钮：`output_config`（effort）、
+        `cache_control`、`thinking`。它们在 OpenAI 侧要么没有对应物、要么只有
+        推理模型才认（`reasoning_effort` 传给非推理模型直接 400），硬映射会把
+        "省点钱"换成"整条链路挂掉"。丢掉它们只影响成本和思考深度，不影响产出形状。
+
+        temperature 也不在这里了：anthropic SDK 1.x 已经把它从签名里删除，
+        调用点一处都不再传，留着就是一段没人走的分支。见 core/llm_utils.py。
+        """
+        return {
             "model": model,
             "messages": _to_openai_messages(messages, system),
             _MAX_TOKENS_FIELD: max_tokens,
         }
-        if temperature is not None:
-            params["temperature"] = temperature
-        return params
 
-    async def _create_raw(self, params: dict[str, Any], **extra: Any) -> Any:
+    async def _create_raw(self, params: dict[str, Any], _method: str = "create", **extra: Any) -> Any:
         """发请求，并在网关只认另一个 token 上限字段名时自动换名重试一次。"""
         global _MAX_TOKENS_FIELD
+        call = getattr(self._client.chat.completions, _method)
         try:
-            return await self._client.chat.completions.create(**params, **extra)
+            return await call(**params, **extra)
         except BadRequestError as ex:
             other = "max_completion_tokens" if _MAX_TOKENS_FIELD == "max_tokens" else "max_tokens"
             if other not in str(ex) or _MAX_TOKENS_FIELD not in params:
@@ -141,7 +183,7 @@ class _Messages:
             params = dict(params)
             params[other] = params.pop(_MAX_TOKENS_FIELD)
             _MAX_TOKENS_FIELD = other
-            return await self._client.chat.completions.create(**params, **extra)
+            return await call(**params, **extra)
 
     async def create(self, **kwargs: Any) -> _Message:
         params = self._params(**kwargs)
@@ -156,6 +198,36 @@ class _Messages:
                 output_tokens=getattr(usage, "completion_tokens", 0) or 0,
             ),
             model=getattr(resp, "model", params["model"]),
+        )
+
+    async def parse(self, *, output_format: type, **kwargs: Any) -> _Message:
+        """
+        结构化输出。对齐 `anthropic` 的 `messages.parse(output_format=Model)`。
+
+        OpenAI 侧走 `chat.completions.parse(response_format=Model)`——同样是服务端
+        按 JSON Schema 约束解码，不是"提示模型输出 JSON 然后祈祷"。两边都由服务端
+        保证形状，所以调用点拿到的东西是一样的：一个已校验的 Pydantic 实例。
+
+        网关不支持结构化输出时这里会抛 BadRequestError，**不做降级**。降级回手工
+        抠 JSON 等于把刚删掉的那类静默失败又请回来；让它响亮地失败，调用方各自的
+        except 会接住并记录真实原因。
+        """
+        params = self._params(**kwargs)
+        params["response_format"] = output_format
+        resp = await self._create_raw(params, _method="parse")
+
+        choice = resp.choices[0] if resp.choices else None
+        message = getattr(choice, "message", None)
+        usage = getattr(resp, "usage", None)
+        return _Message(
+            text=_message_text(message) if choice else "",
+            stop_reason=_stop_reason(getattr(choice, "finish_reason", None) if choice else None),
+            usage=_Usage(
+                input_tokens=getattr(usage, "prompt_tokens", 0) or 0,
+                output_tokens=getattr(usage, "completion_tokens", 0) or 0,
+            ),
+            model=getattr(resp, "model", params["model"]),
+            parsed_output=getattr(message, "parsed", None),
         )
 
     def stream(self, **kwargs: Any) -> _MessageStream:

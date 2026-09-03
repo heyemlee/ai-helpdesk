@@ -98,7 +98,7 @@ def _messages(client) -> _Messages:
 async def test_system_becomes_first_message_and_params_map():
     client = _FakeClient(_FakeResponse(content="好的"))
     resp = await _messages(client).create(
-        model="gpt-test", max_tokens=1024, temperature=0.3,
+        model="gpt-test", max_tokens=1024,
         system="你是客服", messages=[{"role": "user", "content": "在吗"}],
     )
     sent = client.chat.completions.calls[0]
@@ -107,8 +107,37 @@ async def test_system_becomes_first_message_and_params_map():
         {"role": "user", "content": "在吗"},
     ]
     assert sent["max_tokens"] == 1024
-    assert sent["temperature"] == 0.3
     assert extract_structured_text(resp) == "好的"
+
+
+async def test_anthropic_only_knobs_are_dropped_not_forwarded():
+    """
+    output_config（effort）/ cache_control 是 Anthropic 独有的，OpenAI 侧没有
+    对应物。硬映射成 reasoning_effort 会在非推理模型上直接 400——把"省点钱"
+    换成"整条链路挂掉"。丢掉它们只影响成本，不影响产出形状。
+    """
+    client = _FakeClient(_FakeResponse(content="x"))
+    await _messages(client).create(
+        model="m", max_tokens=64, messages=[{"role": "user", "content": "hi"}],
+        output_config={"effort": "low"}, cache_control={"type": "ephemeral"},
+    )
+    sent = client.chat.completions.calls[0]
+    assert not {"output_config", "cache_control", "effort", "reasoning_effort"} & sent.keys()
+
+
+async def test_block_form_system_is_flattened():
+    """
+    Agent 回复那条链路把 system 写成带 cache_control 的文本块数组。
+    兼容层要能取出文本，否则 OpenAI 侧会收到一个 list 直接报错。
+    """
+    client = _FakeClient(_FakeResponse(content="x"))
+    await _messages(client).create(
+        model="m", max_tokens=64, messages=[{"role": "user", "content": "hi"}],
+        system=[{"type": "text", "text": "你是客服", "cache_control": {"type": "ephemeral"}}],
+    )
+    assert client.chat.completions.calls[0]["messages"][0] == {
+        "role": "system", "content": "你是客服",
+    }
 
 
 async def test_usage_maps_to_anthropic_field_names():

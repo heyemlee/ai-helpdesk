@@ -10,7 +10,7 @@ from core.lexical import bm25_scores, index_text, query_tokens, tokenize
 from core.reranker import Reranker
 from storage.vector_store import LocalStore
 from tools.knowledge_base import KnowledgeBase, rrf_fuse
-from tools.tool_manager import RerankOutcome, Tool, ToolManager
+from tools.tool_manager import RerankOutcome, RerankPayload, Tool, ToolManager
 
 # ── 分词 ──────────────────────────────────────────────────────────────────────
 
@@ -219,24 +219,63 @@ async def _boom_llm(*args, **kwargs):
 
 # ── 重排响应解析 ──────────────────────────────────────────────────────────────
 
-def test_parse_rerank_payload_reads_order_and_verdict():
-    order, sufficient, missing = ToolManager._parse_rerank_payload(
-        '{"order": [2, 0], "sufficient": false, "missing": "缺少补件时效"}'
+class _FakeParseMessages:
+    """按结构化输出的形状返回：parsed_output 是一个已校验的 Pydantic 实例。"""
+
+    def __init__(self, payload):
+        self.payload = payload
+        self.calls: list[dict] = []
+
+    async def parse(self, **kwargs):
+        self.calls.append(kwargs)
+        return type("R", (), {"parsed_output": self.payload, "stop_reason": "end_turn"})()
+
+
+def _manager_returning(payload) -> ToolManager:
+    manager = ToolManager(api_key="test-key")
+    manager._client = type("C", (), {"messages": _FakeParseMessages(payload)})()
+    return manager
+
+
+async def test_llm_rerank_applies_order_and_verdict():
+    manager = _manager_returning(
+        RerankPayload(order=[2, 0], sufficient=False, missing="缺少补件时效")
     )
-    assert order == [2, 0]
-    assert sufficient is False
-    assert missing == "缺少补件时效"
+
+    items = [{"title": "a"}, {"title": "b"}, {"title": "c"}]
+    outcome = await manager._llm_rerank("q", items, top_k=2)
+
+    assert [i["title"] for i in outcome.items] == ["c", "a"]
+    assert outcome.reranked is True
+    assert outcome.sufficient is False
+    assert outcome.missing == "缺少补件时效"
 
 
-def test_parse_rerank_payload_tolerates_bare_array():
+async def test_llm_rerank_drops_out_of_range_indices():
     """
-    模型没按对象格式回答时，排序照用，充分性判定取 None 而不是猜一个布尔值——
-    猜 True 会让自纠错永不触发，猜 False 会让它每次都触发。
+    schema 保证得了"是一个整数数组"，保证不了每个整数落在候选范围内。
+
+    不过滤的话越界索引会 IndexError 掉进 except，把一次本来可用的重排
+    整个降级成"返回原始顺序"。
     """
-    order, sufficient, missing = ToolManager._parse_rerank_payload("[1, 0]")
-    assert order == [1, 0]
-    assert sufficient is None
-    assert missing == ""
+    manager = _manager_returning(RerankPayload(order=[9, 1, -1], sufficient=True, missing=""))
+
+    items = [{"title": "a"}, {"title": "b"}]
+    outcome = await manager._llm_rerank("q", items, top_k=2)
+
+    assert [i["title"] for i in outcome.items] == ["b"]
+    assert outcome.reranked is True
+
+
+async def test_llm_rerank_sends_no_sampling_parameters():
+    """SDK 1.x 下 temperature 是 TypeError，会被 except 吃掉后静默退回原始顺序。"""
+    manager = _manager_returning(RerankPayload(order=[0], sufficient=True, missing=""))
+
+    await manager._llm_rerank("q", [{"title": "a"}, {"title": "b"}], top_k=1)
+
+    sent = manager._client.messages.calls[0]
+    assert not {"temperature", "top_p", "top_k"} & sent.keys()
+    assert sent["output_format"] is RerankPayload
 
 
 # ── 证据充分性判定 ────────────────────────────────────────────────────────────

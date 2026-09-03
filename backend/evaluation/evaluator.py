@@ -24,16 +24,31 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import Any
 
+from pydantic import BaseModel
+
 from core.intent_recognizer import IntentRecognizer
 from core.llm_utils import (
+    DEFAULT_ANTHROPIC_MODEL,
     STRUCTURED_MAX_TOKENS,
     LLMClient,
     create_llm_client,
-    extract_structured_text,
-    structured_create,
+    structured_parse,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _clamp01(value: float) -> float:
+    return min(1.0, max(0.0, float(value)))
+
+
+class JudgePayload(BaseModel):
+    """LLM Judge 的四维打分，由结构化输出在服务端按 schema 约束。"""
+
+    relevance: float
+    accuracy: float
+    completeness: float
+    helpfulness: float
 
 
 def _default_concurrency() -> int:
@@ -146,13 +161,11 @@ completeness 和 helpfulness 都应给高分——不要因为"没有直接给�
 - 本来就能直接答的问题（工艺做法、材质、保修范围、流程说明）却推给人工
   （relevance 和 helpfulness 低）。
 
-请从以下四个维度评分（0.0-1.0），返回 JSON：
+请从以下四个维度评分，每个维度都是 0.0 到 1.0 之间的小数：
 - relevance: 响应是否直接针对用户问题（0=完全无关，1=完全相关）
 - accuracy: 信息是否准确，且没有越过上面的业务边界（0=编造或越界，1=准确合规）
 - completeness: 在业务边界内该说的是否都说清楚了，包含下一步怎么走
-- helpfulness: 用户看完能不能据此采取下一步行动
-
-只返回 JSON，例如: {{"relevance": 0.9, "accuracy": 0.8, "completeness": 0.7, "helpfulness": 0.85}}"""
+- helpfulness: 用户看完能不能据此采取下一步行动"""
 
     def __init__(self, client: LLMClient, model: str):
         self._client = client
@@ -172,19 +185,21 @@ completeness 和 helpfulness 都应给高分——不要因为"没有直接给�
         )
         prompt = self._clean_text(prompt)
         try:
-            resp = await structured_create(
+            payload = await structured_parse(
                 self._client,
-                model=self._model, max_tokens=STRUCTURED_MAX_TOKENS, temperature=0.0,
+                output_format=JudgePayload,
+                model=self._model, max_tokens=STRUCTURED_MAX_TOKENS,
                 messages=[{"role": "user", "content": prompt}],
             )
-            raw = extract_structured_text(resp)
-            s, e = raw.find("{"), raw.rfind("}") + 1
-            data = json.loads(raw[s:e])
+            # 四个维度现在都是必填字段，不再有 `data.get(..., 0.5)` 那种
+            # "字段缺失就按 0.5 记"——那个默认值会把一次解析失败伪装成一个
+            # 中等分数，混进平均分和基线里，回归检测再也看不出来。
+            # 越界值仍然要钳：schema 保证是 float，保证不了在 0-1 之间。
             return QualityScores(
-                relevance=float(data.get("relevance", 0.5)),
-                accuracy=float(data.get("accuracy", 0.5)),
-                completeness=float(data.get("completeness", 0.5)),
-                helpfulness=float(data.get("helpfulness", 0.5)),
+                relevance=_clamp01(payload.relevance),
+                accuracy=_clamp01(payload.accuracy),
+                completeness=_clamp01(payload.completeness),
+                helpfulness=_clamp01(payload.helpfulness),
             )
         except Exception as ex:
             logger.warning(f"LLM Judge 失败: {ex}")
@@ -291,7 +306,7 @@ class EndToEndEvaluator:
         recognizer: IntentRecognizer,
         api_key:  str,
         base_url: str | None = None,
-        model:    str = "claude-3-5-sonnet-20241022",
+        model: str = DEFAULT_ANTHROPIC_MODEL,
         baseline_path: str | None = None,
         release:  str = "unknown",
         grounding_provider: Callable[[str, Any], Awaitable[str]] | None = None,

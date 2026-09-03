@@ -26,8 +26,15 @@ from enum import Enum
 from typing import Any
 
 import redis.asyncio as redis
+from pydantic import BaseModel
 
-from core.llm_utils import create_llm_client, extract_text_content, structured_create
+from core.llm_utils import (
+    DEFAULT_ANTHROPIC_MODEL,
+    create_llm_client,
+    extract_text_content,
+    structured_create,
+    structured_parse,
+)
 from core.telemetry import span
 
 logger = logging.getLogger(__name__)
@@ -45,6 +52,25 @@ class Message:
     content:    str
     timestamp:  datetime = field(default_factory=datetime.now)
     metadata:   dict[str, Any] = field(default_factory=dict)
+
+
+class UserProfilePayload(BaseModel):
+    """
+    用户画像的提炼结果，由结构化输出在服务端按 schema 约束。
+
+    字段是写死的三条而不是一个自由 dict：strict schema 不允许
+    `additionalProperties`，而且原来那版 prompt 里给的样例
+    `{"entities": {"产品": [], "问题类型": []}}` 也从来没有约束力——模型换个
+    key 名（"产品类型"、"products"）画像就变形，读的人无从发现。
+
+    key 用英文还有个附带好处：画像会被 `json.dumps(..., ensure_ascii=True)`
+    渲染进 prompt，中文 key 在那一步会变成一串 \\uXXXX 转义，白占 token
+    还不好读。
+    """
+
+    preferences: list[str]
+    products: list[str]
+    issue_types: list[str]
 
 
 @dataclass
@@ -94,7 +120,7 @@ class MemoryManager:
         redis_url:    str = "redis://localhost:6379/0",
         api_key:      str = "",
         base_url:     str | None = None,
-        model:        str = "claude-3-5-sonnet-20241022",
+        model: str = DEFAULT_ANTHROPIC_MODEL,
     ):
         self._client = create_llm_client(api_key, base_url)
         self._model  = model
@@ -150,25 +176,21 @@ class MemoryManager:
             return
 
         text = self._safe_text("\n".join(f"{m.role.value}: {m.content}" for m in messages[-10:]))
-        prompt = f"""从以下对话中提炼用户偏好和关键实体，返回 JSON。
-对话:
-{text}
-
-返回格式: {{"preferences": ["..."], "entities": {{"产品": [], "问题类型": []}}}}"""
-        prompt = self._safe_text(prompt)
+        prompt = self._safe_text(
+            f"从以下对话中提炼这位客户的长期偏好和反复出现的关键实体。\n"
+            f"只提炼跨轮次仍然成立的信息，一次性的寒暄和当轮细节不要收进来。\n\n对话:\n{text}"
+        )
 
         try:
-            resp = await structured_create(
+            payload = await structured_parse(
                 self._client,
-                model=self._model, max_tokens=512, temperature=0.0,
+                output_format=UserProfilePayload,
+                model=self._model, max_tokens=512,
                 messages=[{"role": "user", "content": prompt}],
             )
-            raw = extract_text_content(resp.content)
-            s, e = raw.find("{"), raw.rfind("}") + 1
-            profile_data = json.loads(raw[s:e])
 
             # 每个用户只保留一条画像，整条覆盖（存储层 ON CONFLICT/REPLACE 保证）。
-            doc_text = self._safe_text(json.dumps(profile_data, ensure_ascii=False))
+            doc_text = self._safe_text(json.dumps(payload.model_dump(), ensure_ascii=False))
             await self._store.profile_set(user_id, conv_id, doc_text)
             logger.info(f"用户画像已更新: {user_id}")
         except Exception as ex:
@@ -232,7 +254,7 @@ class MemoryManager:
         try:
             resp = await structured_create(
                 self._client,
-                model=self._model, max_tokens=256, temperature=0.0,
+                model=self._model, max_tokens=256,
                 messages=[{"role": "user", "content": prompt}],
             )
             summary = self._safe_text(extract_text_content(resp.content)).strip()
