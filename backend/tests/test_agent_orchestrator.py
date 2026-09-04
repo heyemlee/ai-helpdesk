@@ -762,3 +762,56 @@ def test_escalation_corpus_is_detected(orchestrator, content):
 def test_normal_answers_stay_out_of_escalation(orchestrator, content):
     agent = orchestrator._pool[AgentType.GENERAL][0]
     assert agent._needs_escalation(content) is False, f"误检: {content}"
+
+
+# ── 「提到人工」≠「需要人工」 ────────────────────────────────────────────────
+#
+# 实测过的误判：Agent 查到真实数据、算对了欠款，收尾加了一句「如果您有异议，需要
+# 转人工财务审核」。「转人工」命中关键词 → 自评扣到 0.65 → 真的开工单转人工，还把
+# Agent 的追问删了。一个好答案被系统自己改坏。
+
+@pytest.mark.parametrize("content", [
+    "如果您对这个数字有异议，需要转人工财务审核后再确认。",
+    "有任何问题随时联系人工客服。",
+    "If you'd like, I can connect you with a specialist.",
+    "Feel free to reach our team will if anything looks off.",
+])
+def test_offering_a_human_is_not_escalating(orchestrator, content):
+    """条件句里提到人工是把话说周全，不是宣布自己不行——有没有数据都不该算。"""
+    agent = orchestrator._pool[AgentType.GENERAL][0]
+    assert agent._needs_escalation(content, grounded=False) is False
+    assert agent._needs_escalation(content, grounded=True) is False
+
+
+def test_bare_mention_counts_only_without_grounding(orchestrator):
+    """
+    光秃秃一句「请联系人工客服」：没有数据支撑时它就是在推卸，该转；
+    有数据支撑时它已经证明了能答，提一句人工只是收尾。
+    """
+    agent = orchestrator._pool[AgentType.GENERAL][0]
+    bare = "这个金额以系统为准。请联系人工客服。"
+    assert agent._needs_escalation(bare, grounded=False) is True
+    assert agent._needs_escalation(bare, grounded=True) is False
+
+
+@pytest.mark.parametrize("content", [
+    "订单查到了。取消需要人工审批，我帮您转人工。",
+    "I found the order. Cancellation needs approval, so I'll hand this over to our team.",
+    "这超出我能确认的范围，我先转交人工客服。",
+    "这个我处理不了。",
+])
+def test_a_real_decision_escalates_even_when_grounded(orchestrator, content):
+    """
+    「能答就答」不能绝对化。客户要取消订单，Agent 查到了订单（有数据），
+    然后明确说「我帮您转」——这必须转。豁免只放过「提到人工」，不放过「决定转」
+    和「做不到」。这条边界不能省。
+    """
+    agent = orchestrator._pool[AgentType.GENERAL][0]
+    assert agent._needs_escalation(content, grounded=True) is True
+
+
+def test_a_conditional_decision_is_still_waiting(orchestrator):
+    """「如果您确认要取消，我帮您转人工」——还在等客户确认，这一轮没转。"""
+    agent = orchestrator._pool[AgentType.GENERAL][0]
+    assert agent._needs_escalation("如果您确认要取消，我帮您转人工。", grounded=True) is False
+    assert agent._needs_escalation("If you confirm, I'll hand this over.", grounded=False) is False
