@@ -127,12 +127,14 @@ class SQLAgentClient:
         timeout_s: float = DEFAULT_TIMEOUT_S,
         service_user_id: str = "ai-helpdesk",
         impersonate: bool = False,
+        currency: str = "",
     ):
         self._base_url = (base_url or "").rstrip("/") or None
         self._api_key = api_key or None
         self._timeout_s = timeout_s
         self._service_user_id = service_user_id or "ai-helpdesk"
         self._impersonate = impersonate
+        self._currency = (currency or "").strip()
 
     @classmethod
     def from_env(cls) -> SQLAgentClient:
@@ -142,11 +144,26 @@ class SQLAgentClient:
             timeout_s=float(os.getenv("SQL_AGENT_TIMEOUT_S", str(DEFAULT_TIMEOUT_S))),
             service_user_id=os.getenv("SQL_AGENT_USER_ID", "ai-helpdesk").strip(),
             impersonate=os.getenv("SQL_AGENT_IMPERSONATE", "false").lower() == "true",
+            currency=os.getenv("SQL_AGENT_CURRENCY", "").strip(),
         )
 
     @property
     def enabled(self) -> bool:
         return self._base_url is not None
+
+    @property
+    def currency(self) -> str:
+        """
+        下游金额的币种，未声明时为空串。
+
+        为什么要单独声明：ai-sql-agent 的响应里**只有数字，没有币种**
+        （`{"contract_amount": 103007.55}`），客服这边无从得知，于是在中文
+        句子里默认写成「元」——接的是美国厂的库时，报给 builder 的金额就带了
+        错误的币种。这不是能从数据里推断出来的东西，只能由部署方声明。
+
+        留空则不声明，行为与加这个字段之前一致。
+        """
+        return self._currency
 
     @property
     def endpoint(self) -> str:

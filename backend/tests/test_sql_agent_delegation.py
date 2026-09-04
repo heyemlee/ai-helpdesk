@@ -315,3 +315,39 @@ class TestContextBuilder:
         monkeypatch.setattr(m, "_sql_agent", SQLAgentClient())   # 没有 base_url
         monkeypatch.setattr(m, "_tool_manager", _StubToolManager(dict(OK_PAYLOAD)))
         assert await m._build_order_data_context("q", intent="order_status") == ("", False)
+
+
+class TestCurrencyIsDeclared:
+    """
+    下游只返回数字不返回币种（`{"contract_amount": 103007.55}`），客服无从得知，
+    中文回答里会默认写成「元」——接美国厂的库时，报给 builder 的金额就带了错误
+    的币种。这不是能从数据推断的东西，只能由部署方声明。
+    """
+
+    async def test_currency_appears_in_the_context_when_declared(self, monkeypatch):
+        m = _load_main(monkeypatch)
+        _wire(m, monkeypatch, dict(OK_PAYLOAD))
+        monkeypatch.setattr(
+            m, "_sql_agent", SQLAgentClient(base_url="http://x:8000", currency="USD（美元）")
+        )
+        text, is_evidence = await m._build_order_data_context("q", intent="order_status")
+        assert "USD（美元）" in text
+        assert "不要换算" in text
+        assert is_evidence is True, "币种说明不能把这块降级成非证据"
+
+    async def test_nothing_is_said_when_not_declared(self, monkeypatch):
+        """未声明时一个字不加——行为与加这个字段之前完全一致。"""
+        m = _load_main(monkeypatch)
+        _wire(m, monkeypatch, dict(OK_PAYLOAD))
+        text, _ = await m._build_order_data_context("q", intent="order_status")
+        assert "币种" not in text
+
+    def test_from_env_picks_the_declaration_up(self, monkeypatch):
+        monkeypatch.setenv("SQL_AGENT_URL", "http://x:8000")
+        monkeypatch.setenv("SQL_AGENT_CURRENCY", "USD（美元）")
+        assert SQLAgentClient.from_env().currency == "USD（美元）"
+
+    def test_from_env_defaults_to_silent(self, monkeypatch):
+        monkeypatch.setenv("SQL_AGENT_URL", "http://x:8000")
+        monkeypatch.delenv("SQL_AGENT_CURRENCY", raising=False)
+        assert SQLAgentClient.from_env().currency == ""
