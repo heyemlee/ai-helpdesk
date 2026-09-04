@@ -17,9 +17,10 @@ def _sse(*results):
 
 
 TASK = {"kind": "task", "id": "t1", "contextId": "c1", "status": {"state": "submitted"}}
-PROG = lambda stage, **m: {"kind": "status-update", "taskId": "t1", "contextId": "c1", "final": False,
-                           "status": {"state": "working", "message": {"parts": [{"kind": "text", "text": "x"}]}},
-                           "metadata": {"stage": stage, "trace_id": "tr", **m}}
+def PROG(stage, **m):
+    return {"kind": "status-update", "taskId": "t1", "contextId": "c1", "final": False,
+            "status": {"state": "working", "message": {"parts": [{"kind": "text", "text": "x"}]}},
+            "metadata": {"stage": stage, "trace_id": "tr", **m}}
 ART = {"kind": "artifact-update", "taskId": "t1", "contextId": "c1", "lastChunk": True,
        "artifact": {"artifactId": "a", "parts": [
            {"kind": "text", "text": "订单已排产。"},
