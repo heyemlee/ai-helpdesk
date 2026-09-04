@@ -68,3 +68,18 @@
    从设计工程单向覆盖，predev/prebuild 都会跑，改在那边下次 `npm run dev` 就没了。
    要让原型页也修好，得把这条同步回设计工程的 assets/console.css。 */
 .inspector-body > * { min-width: 0; }
+
+/* 准备阶段的进度列表。委派查库要十几到四十秒，光一个转圈等于让客户盯着不动的
+   点看半分钟；有 progress 事件就铺成步骤，最后一条是正在做的，前面的划掉。
+
+   写在这里而不是 console.css，理由同上：console.css 由 sync-console-css.mjs
+   从设计工程单向覆盖，改在那边下次 `npm run dev` 就没了。 */
+.progress-steps {
+  display: flex; flex-direction: column; gap: 6px;
+  margin: 0; padding: 0; list-style: none;
+  font-size: var(--text-sm); color: var(--color-text-secondary);
+}
+.progress-steps li { display: flex; align-items: center; gap: 8px; }
+.progress-steps li.done { opacity: 0.55; }
+.progress-steps li.done svg { color: var(--color-success, currentColor); }
+.progress-steps li.active { color: var(--color-text-primary); }

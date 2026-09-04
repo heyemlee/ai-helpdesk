@@ -129,11 +129,27 @@ export function MessageBubble({ message, onInspect, explain }: {
     )
   }
 
-  // routing 还没到 —— 谁在答都不知道，不编造身份
+  // routing 还没到 —— 谁在答都不知道，不编造身份。
+  // 但准备阶段（记忆、意图、检索、委派查库）本身就要十几到四十秒，光转圈等于
+  // 让客户盯着一个不动的点看半分钟。有 progress 就把它铺出来：最后一条是当前
+  // 在做的事，前面的划掉表示已完成。后端不发 progress 时（非 A2A 传输）这里
+  // 退回原来的转圈，行为不变。
   if (!routing?.primary_agent) {
+    const steps = message.progress ?? []
     return (
       <article className="turn assistant">
-        <div className="thinking"><span className="pulse" />{t('cw.orchestrating')}</div>
+        {steps.length === 0 ? (
+          <div className="thinking"><span className="pulse" />{t('cw.orchestrating')}</div>
+        ) : (
+          <ol className="progress-steps">
+            {steps.map((p, i) => (
+              <li key={`${p.stage}-${i}`} className={i === steps.length - 1 ? 'active' : 'done'}>
+                {i === steps.length - 1 ? <span className="pulse" /> : <Icon name="check" size={12} />}
+                {p.label}
+              </li>
+            ))}
+          </ol>
+        )}
       </article>
     )
   }
