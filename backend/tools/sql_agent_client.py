@@ -41,6 +41,7 @@ ai-sql-agent 委派客户端。
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 from typing import Any
@@ -50,6 +51,30 @@ import httpx
 from core.evidence import assess, normalize_delegation_result
 
 logger = logging.getLogger(__name__)
+
+
+def _downstream_session_id(user_id: str, session_id: str) -> str:
+    """
+    下游会话标识 = 认证身份 + 本方会话 id 的摘要。
+
+    **为什么不能直接把 conv_id 发过去。** 默认配置下所有查询都以同一个服务身份
+    发出（`SQL_AGENT_USER_ID`），下游的多轮记忆就只按 `session_id` 分隔。
+    而 `conv_id` 是**请求体里客户端自己填的**（`api/main.py` 的 `ChatRequest`）：
+    照原样转发的话，客户 A 把 conv_id 改成客户 B 的那一个，就能让 B 的下游
+    会话记忆注入自己这轮的上下文。这不是"权限没做细"，是一条**跨客户串话**
+    的通道——而且它没有任何症状，两边日志看起来都完全正常。
+
+    绑进 `user_id`（`resolve_user_id` 推导出来的可信身份，不是请求体里那个）
+    之后，两个用户不可能落到同一个下游会话上，也无法指定别人的会话。
+    空 `session_id` 也照样绑：原先它们共用一个字面量 `"helpdesk-oneshot"`，
+    那是同一个问题最严重的形态——**所有**没带 conv_id 的用户共享一段记忆。
+
+    取摘要而不是拼接，是为了不让本方的 user_id 和 conv_id 出现在另一个服务的
+    存储里。代价是下游日志里看不到原始 conv_id，所以本方日志要记住这个映射
+    （`sql_agent.query 完成` 那一行带 session=）。
+    """
+    material = f"{user_id or 'anonymous'}\x00{session_id or 'oneshot'}".encode()
+    return f"hd-{hashlib.sha256(material).hexdigest()[:32]}"
 
 # 实测覆盖：下游最大 40.5s（见模块开头）。契约 §1 的 25s 是给回滚路径 send 定的，
 # 直连 /query 是主路径，套用它会掉掉约四分之一的查询。
@@ -199,8 +224,8 @@ class SQLAgentClient:
             # impersonate 关闭时一律报服务身份：对面 key 若没有 can_impersonate，
             # 传客户自己的 id 会被 403 挡掉，整条链路直接失效。
             "user_id": (user_id or self._service_user_id) if self._impersonate else self._service_user_id,
-            # 会话隔离用客服这边的 conv_id，让对面的多轮记忆按对话分开。
-            "session_id": session_id or "helpdesk-oneshot",
+            # 会话隔离：**绑定到认证身份之后**再发下去，见 _downstream_session_id。
+            "session_id": _downstream_session_id(user_id, session_id),
             "query": question,
         }
 
@@ -254,7 +279,7 @@ class SQLAgentClient:
         from tools.a2a_client import StreamUnsupported
         client = self._a2a_client()
         uid = (user_id or self._service_user_id) if self._impersonate else self._service_user_id
-        sid = session_id or "helpdesk-oneshot"
+        sid = _downstream_session_id(user_id, session_id)
         if await client.streaming_supported():
             try:
                 result = await client.stream(question, uid, sid, on_progress=on_progress)
