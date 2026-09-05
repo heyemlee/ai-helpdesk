@@ -60,6 +60,11 @@ from pydantic import BaseModel, Field
 load_dotenv()
 
 from core.llm_utils import resolve_llm_config  # noqa: E402
+from core.preflight import (  # noqa: E402
+    is_production,
+    outer_tool_timeout_s,
+    run_startup_checks,
+)
 from core.request_context import (  # noqa: E402
     current_request_id,
     new_request_id,
@@ -132,6 +137,11 @@ async def lifespan(app: FastAPI):
     global _skill_manager, _knowledge_base, _recognizer, _sql_agent
 
     print(BANNER, flush=True)
+
+    # 安全与契约的启动断言，排在所有装配之前：配错了就别起来。
+    # 放在 lifespan 里而不是模块顶层，是因为它要的是"这个进程要开始服务了"
+    # 这个时刻——导入 api.main 的场合还包括测试和脚本，那些不该被拦。
+    run_startup_checks()
 
     import redis.asyncio as aioredis
 
@@ -331,7 +341,9 @@ async def lifespan(app: FastAPI):
             cache_ttl=0.0,
             # 和客户端自身超时对齐，留 2s 给连接建立。45s 的由来见
             # sql_agent_client 模块开头：25s 会掉掉约四分之一的查询。
-            timeout_s=float(os.getenv("SQL_AGENT_TIMEOUT_S", "45")) + 2.0,
+            # 算式在 core.preflight 里，与启动断言"外层 > send 预算"共用同一份，
+            # 免得改了这里而断言还在检查另一个数（契约 §1③）。
+            timeout_s=outer_tool_timeout_s(),
             fallback=sql_agent_fallback,
         ))
         logger.info(f"业务数据委派已启用: {_sql_agent.endpoint}")
@@ -467,9 +479,45 @@ _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
 def require_api_key(api_key: str | None = Security(_api_key_header)) -> None:
-    """写操作/管理端点的鉴权依赖。未配置 AI_HELPDESK_API_KEY 时直接放行。"""
+    """
+    写操作/管理端点的鉴权依赖。未配置 AI_HELPDESK_API_KEY 时放行（demo 模式）。
+
+    **生产模式下不放行，返回 503。** 正常情况下这行代码永远不会执行到——
+    `core.preflight.check_security_config()` 会让缺 key 的生产进程根本起不来。
+    留着它是因为 lifespan 不是唯一的启动路径：直接把 `app` 交给一个不跑
+    lifespan 的 ASGI 容器（测试里就是这么用的）会绕过那次校验，而绕过之后
+    原来的 `return` 是**放行**。一个防护的缺席不能被解释成"不需要防护"。
+    """
     if not _API_KEY:
+        if is_production():
+            raise HTTPException(
+                503, "服务端未配置 AI_HELPDESK_API_KEY，生产模式下拒绝服务此端点"
+            )
         return
+    if not api_key or not secrets.compare_digest(api_key, _API_KEY):
+        raise HTTPException(401, "缺少或错误的 X-API-Key")
+
+
+def require_admin_key(api_key: str | None = Security(_api_key_header)) -> None:
+    """
+    **永不放行**的管理鉴权，给能签发身份的端点用。
+
+    `require_api_key` 在未配置 key 时放行是 demo 模式的便利，对大多数端点
+    可以接受：最坏是本地联调环境里有人重载了一次 skills。但 `/auth/token`
+    不一样——它按请求体里的 `user_id` **签发身份**。漏配 key 时放行意味着
+    "配了 AI_HELPDESK_AUTH_SECRET、漏配 AI_HELPDESK_API_KEY"这个组合下，
+    未认证请求可以为任意用户拿到有效令牌，再拿它去读那个用户的记忆上下文
+    ——两个开关分别看都像是打开的，合起来是全开。
+
+    所以这个依赖不看 APP_ENV：没配 key 就没有管理身份可言，一律 503。
+    生产模式漏配根本起不到这里（`core.preflight`），这条是给那个校验被绕过
+    的场合兜底的（不跑 lifespan 的 ASGI 容器、APP_ENV 配错）。
+    """
+    if not _API_KEY:
+        raise HTTPException(
+            503,
+            "服务端未配置 AI_HELPDESK_API_KEY，无法认定管理身份，此端点不可用",
+        )
     if not api_key or not secrets.compare_digest(api_key, _API_KEY):
         raise HTTPException(401, "缺少或错误的 X-API-Key")
 
@@ -486,11 +534,20 @@ class TokenRequest(BaseModel):
     ttl_s: int | None = None
 
 
-@app.post("/auth/token", tags=["Auth"], dependencies=[Depends(require_api_key)])
+@app.post("/auth/token", tags=["Auth"], dependencies=[Depends(require_admin_key)])
 async def issue_user_token(body: TokenRequest):
     """
-    为指定用户签发 HMAC 令牌（生产上这一步由登录系统完成，这里由持有
-    API key 的运维/网关侧代发）。未配置 AI_HELPDESK_AUTH_SECRET 时返回 409。
+    为指定用户签发 HMAC 令牌。未配置 AI_HELPDESK_AUTH_SECRET 时返回 409。
+
+    **鉴权用 `require_admin_key` 而不是 `require_api_key`**：后者在未配置
+    key 时放行，而这个端点按请求体里的 `user_id` 签发身份，放行 = 任何人
+    可以拿到任何人的令牌。见 `require_admin_key` 的说明。
+
+    **这仍然是一个过渡形态。** 它把签发权收敛到"持有管理 key 的运维/网关"，
+    但管理 key 是一把**共享的**钥匙，它证明的是"调用方是我们的基础设施"，
+    不是"这个 user_id 真的登录了"。真正该做这件事的是登录系统：由它认证用户
+    之后再来换令牌。在那之前，这个端点只应该暴露给网关，不要开到公网——
+    部署文档里记了这一条。
     """
     from core.auth import AuthError
     if _user_auth is None or not _user_auth.enabled:
