@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, ApiError, streamChat, type Settings } from '@/api/client'
 import type {
-  ChatResponse, ConversationEntry, StreamEvent, StreamMetaEvent, StreamRoutingEvent,
+  ChatResponse, ConversationEntry, StreamEvent, StreamMetaEvent, StreamProgressEvent,
+  StreamRoutingEvent,
 } from '@/api/types'
 
 export interface ChatMessage {
