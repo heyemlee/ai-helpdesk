@@ -44,6 +44,23 @@ CREATE TABLE IF NOT EXISTS tickets (
 CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets (status, created_at);
 CREATE INDEX IF NOT EXISTS idx_tickets_conv   ON tickets (conv_id);
 
+-- 工单通知的待发送记录（outbox）。与 tickets/ticket_store.py 的 SQLite 版同构，
+-- 说明见那边。`ticket_id` 的唯一约束就是去重：同一个工单只入队一次，
+-- 重试重发的是同一条记录（`id` 同时是发出去的 Idempotency-Key）。
+CREATE TABLE IF NOT EXISTS ticket_notifications (
+    id              TEXT PRIMARY KEY,
+    ticket_id       TEXT NOT NULL UNIQUE,
+    url             TEXT NOT NULL,
+    payload         TEXT NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'pending',
+    attempts        INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at DOUBLE PRECISION NOT NULL,
+    last_error      TEXT NOT NULL DEFAULT '',
+    created_at      DOUBLE PRECISION NOT NULL,
+    updated_at      DOUBLE PRECISION NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_notif_due ON ticket_notifications (status, next_attempt_at);
+
 CREATE TABLE IF NOT EXISTS conversation_log (
     seq         BIGSERIAL PRIMARY KEY,
     conv_id     TEXT NOT NULL,
