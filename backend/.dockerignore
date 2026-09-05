@@ -17,9 +17,21 @@ logs/
 .env.*
 !.env.example
 
+# 运行期数据一律不进镜像。原先只排了 `*.sqlite3`，而本仓库默认用的后缀是
+# **.db**（VECTOR_STORE_DB_PATH / TICKET_DB_PATH / CONVERSATION_LOG_DB_PATH
+# 三个默认值都是 `./data/*.db`）——本地跑过一次之后再 build，工单、对话审计、
+# 知识向量就会被 `COPY . .` 一起烤进镜像发出去。
+#
+# 这里按**文件后缀**排而不是整个 `data/`：`data/demo_docs/` 和
+# `data/eval/baseline.json` 是进版本库的、镜像里要用的东西。
 data/chroma/
-data/**/*.sqlite3
-data/.DS_Store
+**/*.db
+**/*.db-journal
+**/*.db-wal
+**/*.db-shm
+**/*.sqlite3
+**/*.sqlite3-journal
+backups/
 
 config/grafana/
 config/nginx/ssl/

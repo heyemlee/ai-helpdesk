@@ -271,14 +271,52 @@ restore_data() {
     echo
 
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        # 停止服务
-        compose stop
+        # 顺序很重要，原先是错的：先 `compose stop` 停掉**全部**服务，
+        # 再往**已经停掉**的 Postgres 容器里 `docker exec psql`——exec 要求容器
+        # 在跑，所以那一步必然失败。而失败之后脚本照样往下走、照样打印"恢复完成"，
+        # 于是一次恢复演练看起来是成功的，实际上库里一行都没进去。
+        #
+        # 正确的顺序分三段：
+        #   1. 只停会写数据的应用，让数据库继续跑；
+        #   2. Postgres 在**运行中**恢复；Redis 必须**停下来**换 dump.rdb
+        #      （跑着的 Redis 不会去读磁盘上的 rdb，而且退出时会用内存里的数据
+        #      把它覆盖掉——照原样 cp 进去等于什么都没做）；
+        #   3. 最后再把应用拉起来。
+        print_info "1/3 停止应用（数据库保持运行）..."
+        compose stop ai-helpdesk frontend nginx
 
-        # 恢复 Redis 数据
-        docker cp "$backup_dir/dump.rdb" ai-helpdesk-redis:/data/
+        print_info "2/3 恢复 Postgres..."
+        compose up -d postgres
+        # 等它真的能接连接再灌，刚 up 的容器可能还在初始化
+        local ready=0
+        for _ in $(seq 1 30); do
+            if compose exec -T postgres pg_isready -U "${POSTGRES_USER:-aihelpdesk}" \
+                   -d "${POSTGRES_DB:-aihelpdesk}" >/dev/null 2>&1; then
+                ready=1
+                break
+            fi
+            sleep 1
+        done
+        if [ "$ready" -ne 1 ]; then
+            print_error "Postgres 未能就绪，恢复中止（数据未改动）"
+            compose start ai-helpdesk frontend nginx
+            return 1
+        fi
+        if ! compose exec -T postgres psql -U "${POSTGRES_USER:-aihelpdesk}" \
+                 -d "${POSTGRES_DB:-aihelpdesk}" -v ON_ERROR_STOP=1 \
+                 < "$backup_dir/postgres.sql"; then
+            print_error "Postgres 恢复失败，未继续（请检查 $backup_dir/postgres.sql）"
+            return 1
+        fi
 
-        # 恢复 Postgres 数据
-        docker exec -i ai-helpdesk-postgres psql -U "${POSTGRES_USER:-aihelpdesk}" "${POSTGRES_DB:-aihelpdesk}" < "$backup_dir/postgres.sql"
+        print_info "3/3 恢复 Redis..."
+        compose stop redis
+        if ! docker cp "$backup_dir/dump.rdb" ai-helpdesk-redis:/data/dump.rdb; then
+            print_error "Redis dump.rdb 拷入失败"
+            compose start redis
+            return 1
+        fi
+        compose start redis
 
         # 恢复配置
         cp "$backup_dir/.env" "$ENV_FILE"
@@ -286,7 +324,7 @@ restore_data() {
         cp -r "$backup_dir/config" "$BACKEND/config"
 
         # 启动服务
-        compose start
+        compose start ai-helpdesk frontend nginx
 
         print_info "恢复完成"
     else
