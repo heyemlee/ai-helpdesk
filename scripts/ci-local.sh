@@ -2,11 +2,26 @@
 #
 # 在本机跑一遍 CI 的必过门禁。
 #
-# **为什么需要这个脚本。** GitHub Actions 上这个仓库一次都没跑过
-# （2026-09-05 用 API 核过：workflow 已注册且 state=active、仓库级 Actions
-# enabled、提交确实推上去了，但 actions/runs 的 total_count 是 0）。原因在
-# 仓库之外，本仓库改不动。在它修好之前，**门禁的内容修好了却一次没跑过，
-# 等于没有门禁**——所以至少要有一条命令能在本机把同一组检查跑完。
+# **为什么需要这个脚本。** GitHub Actions 上这个仓库**一次都没跑过**。
+# 2026-09-05 用 API 逐条核过，workflow 文件这边没有问题：
+#
+#   gh api repos/heyemlee/ai-helpdesk/actions/permissions
+#     → {"enabled": true, "allowed_actions": "all"}          仓库级 Actions 开着
+#   gh api repos/heyemlee/ai-helpdesk/actions/workflows
+#     → total_count 1，"CI"，path .github/workflows/ci.yml，state "active"
+#        但 updated_at 仍是创建时的 2026-08-21——**文件后来改过（ed6d621 加了
+#        workflow_dispatch），GitHub 却从没重新读过它**
+#   gh api repos/heyemlee/ai-helpdesk/actions/runs   → total_count 0
+#   gh api .../commits/cae9715/check-runs            → total_count 0
+#   提交确实推上去了：origin/main = cae9715，pushed_at 2026-09-04
+#
+# 文件本身也查过：UTF-8 无 BOM、无 CRLF、路径正确、YAML 合法、
+# `on:` 是 push[main,master] + pull_request + workflow_dispatch，没有路径过滤。
+#
+# 也就是说原因在**仓库之外**（账号级 Actions 策略 / 计费 / 账号被限），
+# 本仓库改不动，要用户去 GitHub 上处理。在它修好之前，
+# **门禁的内容修好了却一次没跑过，等于没有门禁**——所以至少要有一条命令
+# 能在本机把同一组检查跑完。
 #
 # 步骤与 .github/workflows/ci.yml 一一对应，改了那边这边也要跟着改。
 # 唯一的差别是 Docker 镜像那两条：默认跳过（需要 Docker 引擎在跑），
