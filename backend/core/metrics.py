@@ -45,10 +45,16 @@ TICKET_NOTIFY_PENDING = Gauge(
     "接收端恢复之后它会自己回到 0（后台补投循环会把积压捡回来）。",
 )
 
+# **不要给它加 user_id 标签。** 原来有，而 user_id 是无界的：每来一个新用户
+# 就多一条时序，永不回收（Prometheus 的时序在 retention 到期前一直占内存和磁盘）。
+# 而且被限流的往往正是刷接口的那一类调用方——它们制造的 user_id 最多。
+#
+# 需要知道"是谁被限流了"就去看日志：那一行带 user_id，而日志有轮转，指标没有。
+# 面板上的表达式 `sum(rate(rate_limit_hits_total[5m]))` 本来就把标签聚掉了，
+# 去掉标签不影响它。
 RATE_LIMIT_HITS = Counter(
     "rate_limit_hits_total",
     "被限流拒绝的请求数",
-    ["user_id"],
 )
 
 
@@ -86,7 +92,13 @@ def record_llm_tokens(agent: str, input_tokens: int, output_tokens: int) -> None
         LLM_TOKENS.labels(agent=agent, direction="output").inc(output_tokens)
 
 
+# 没匹配到路由时用的占位标签值。**不要退回原始 URL**——那是无界的：
+# 任何扫描器打一串不存在的路径就能让时序数量无限增长，而这类流量恰恰最多。
+# 路由模板（`/tickets/{ticket_id}`）是有界的，原始路径不是。
+UNMATCHED_PATH = "<unmatched>"
+
+
 def observe_http(method: str, path: str, status: int, duration_s: float) -> None:
-    """HTTP 中间件出口调用。path 用路由模板（/tickets/{ticket_id}）控制基数。"""
+    """HTTP 中间件出口调用。path 必须是**路由模板**，见 UNMATCHED_PATH。"""
     HTTP_REQUESTS.labels(method=method, path=path, status=str(status)).inc()
     HTTP_DURATION.labels(method=method, path=path).observe(duration_s)
