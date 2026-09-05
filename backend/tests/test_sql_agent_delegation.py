@@ -70,6 +70,16 @@ def _patch_httpx(monkeypatch, payload, status_code=200):
     return fake
 
 
+# 契约 v1.6 §4.6 之后，"一份可信的载荷"必须包含 `steps[]`：
+# `queried_database` 的服务端定义只有一行 `pipeline_result is not None`，
+# SQL 全跑挂了它也是 true，所以"跑成什么样"只能从逐步骤结果读出来。
+# 没有 steps 的载荷按 execution_status=failed 处置（§4.6.7 缺失 = 不可信），
+# 这不是本测试放宽了什么，是这个夹具原先漏掉了线上真的会发的字段
+# （`/query` 的 `step_logs`、A2A data part 的 `steps`，同一个 StepLogResponse）。
+#
+# 这里写 `steps` 而不是 `step_logs`：`_build_order_data_context` 消费的是
+# **工具归一之后**的结果，两条路径的名字在客户端那一层就已经对齐了
+# （名字对齐本身另有用例：TestQueryClient::test_step_logs_are_normalized_to_steps）。
 OK_PAYLOAD = {
     "trace_id": "t-123",
     "route": "database_query",
@@ -78,6 +88,20 @@ OK_PAYLOAD = {
     "selected_databases": ["erp_db", "mes_db"],
     "has_risk": False,
     "degraded": False,
+    "steps": [{
+        "database": "erp_db", "sql": "SELECT ship_date FROM job WHERE job_no = 'SO-2024-8891'",
+        "final_sql": "SELECT ship_date FROM job WHERE job_no = 'SO-2024-8891'",
+        "success": True, "row_count": 1, "truncated": False,
+        "rows": [{"ship_date": "2026-09-15"}], "error": None,
+        "repair_attempts": [], "risk_findings": [],
+    }],
+}
+
+
+# 同一份载荷的 `/query` 形状：逐步骤日志那个数组在这条路上叫 `step_logs`。
+OK_PAYLOAD_QUERY_SHAPE = {
+    **{k: v for k, v in OK_PAYLOAD.items() if k != "steps"},
+    "step_logs": OK_PAYLOAD["steps"],
 }
 
 
@@ -167,6 +191,39 @@ class TestClient:
         assert out["queried_database"] is True
         assert out["selected_databases"] == ["erp_db", "mes_db"]
         assert out["trace_id"] == "t-123"
+
+    async def test_step_logs_are_normalized_to_steps(self, monkeypatch):
+        """
+        `/query` 叫 `step_logs`，A2A 的 data part 叫 `steps`——名字必须在
+        客户端这一层就对齐，之后信任判定才可能是同一套。
+
+        对不齐的后果不是报错，是**静默降级**：`steps` 取不到 → 按缺失处置 →
+        execution_status=failed → 每一次直连查询都不再是出处，而链路看起来
+        完全正常。回滚（契约 §6.2）正好会把流量切到这条路上。
+        """
+        _patch_httpx(monkeypatch, OK_PAYLOAD_QUERY_SHAPE)
+        out = await SQLAgentClient(base_url="http://x:8000").query("q", session_id="s")
+        assert out["steps"] == OK_PAYLOAD_QUERY_SHAPE["step_logs"]
+
+        from core.evidence import assess
+        assert assess(out).execution_status == "success"
+        assert assess(out).usable_as_source is True
+
+    async def test_trust_booleans_are_not_coerced_by_the_client(self, monkeypatch):
+        """
+        客户端**不做** `bool()` 转换，原样带过去。
+
+        原先这里是 `bool(data.get("has_risk", False))`：字符串 "false" 会变成
+        True、字段缺失会变成 False（= 无风险 = 采信）。转换集中到 core.evidence
+        一处之后，这里要守住的是"别又在半路上转一次"。
+        """
+        _patch_httpx(monkeypatch, dict(OK_PAYLOAD_QUERY_SHAPE, has_risk="false"))
+        out = await SQLAgentClient(base_url="http://x:8000").query("q", session_id="s")
+        assert out["has_risk"] == "false", "客户端不该把它变成布尔"
+
+        from core.evidence import assess
+        assert assess(out).has_risk is True, "字符串布尔按不可信处置"
+        assert assess(out).usable_as_source is False
 
     async def test_http_error_propagates(self, monkeypatch):
         """失败必须往上抛，否则 ToolManager 的熔断器永远看不到故障。"""
@@ -297,18 +354,33 @@ class TestContextBuilder:
         _wire(m, monkeypatch, dict(OK_PAYLOAD, answer="   "))
         assert await m._build_order_data_context("q", intent="order_status") == ("", False)
 
-    async def test_risk_flag_becomes_a_caution_line(self, monkeypatch):
+    async def test_risk_flag_is_a_real_gate_not_just_a_caution_line(self, monkeypatch):
+        """
+        `has_risk=true` 必须**挡住出处**，不只是追加一句提示。
+
+        这是审查 P0-3 的 (c)：契约 §9.1 把信任门槛描述成三个布尔的与，
+        而实现里只有 `queried_database` 是闸，`has_risk` / `degraded` 只往
+        上下文里追加一段文本、函数照样返回 True，结果照样进 grounding_sources。
+        后果不是"门槛没做严"，是**带风险的数据被当成可信出处**：答案策略拿它
+        给一个语义对不上的金额背书。数据仍然进上下文（丢掉比现状更糟），
+        但它不能和已核实的金额/日期共享同一个可信标志。
+        """
         m = _load_main(monkeypatch)
         _wire(m, monkeypatch, dict(OK_PAYLOAD, has_risk=True))
         text, used = await m._build_order_data_context("q", intent="order_status")
-        assert used is True
+        assert used is False, "带风险的结果不得进 grounding_sources"
         assert "异常提示" in text
+        assert "未通过可信校验" in text, "第一行就要让 Agent 看出这段不可作依据"
+        assert OK_PAYLOAD["answer"] in text, "数据本身不能丢，丢了比现状更糟"
 
-    async def test_degraded_flag_becomes_a_caution_line(self, monkeypatch):
+    async def test_degraded_flag_is_a_real_gate_not_just_a_caution_line(self, monkeypatch):
+        """`degraded=true` 同理：历史 SQL 重放是完整可用但可能过期的结果。"""
         m = _load_main(monkeypatch)
         _wire(m, monkeypatch, dict(OK_PAYLOAD, degraded=True, degrade_reason="模型不可用"))
-        text, _ = await m._build_order_data_context("q", intent="order_status")
+        text, used = await m._build_order_data_context("q", intent="order_status")
+        assert used is False, "降级结果不得进 grounding_sources"
         assert "降级" in text and "模型不可用" in text
+        assert OK_PAYLOAD["answer"] in text
 
     async def test_disabled_delegation_is_a_noop(self, monkeypatch):
         m = _load_main(monkeypatch)
@@ -335,12 +407,53 @@ class TestCurrencyIsDeclared:
         assert "不要换算" in text
         assert is_evidence is True, "币种说明不能把这块降级成非证据"
 
-    async def test_nothing_is_said_when_not_declared(self, monkeypatch):
-        """未声明时一个字不加——行为与加这个字段之前完全一致。"""
+    async def test_unknown_currency_forbids_guessing_one(self, monkeypatch):
+        """
+        两边都没声明时**不是**"一个字不加"。
+
+        原先的行为是沉默，而沉默正是那次事故的形态：中文回答会自己默认写成
+        「元」。契约 §4.6.5 要求这种情况下原样呈现数字、说明币种未知，
+        并且明确禁止调用方擅自补符号。所以这里必须说话，只是说的是"别猜"。
+        """
         m = _load_main(monkeypatch)
         _wire(m, monkeypatch, dict(OK_PAYLOAD))
+        monkeypatch.setattr(m, "_sql_agent", SQLAgentClient(base_url="http://x:8000"))
         text, _ = await m._build_order_data_context("q", intent="order_status")
-        assert "币种" not in text
+        assert "不要补" in text and "币种" in text
+        assert "元" in text, "要点名「元」这个默认值，泛泛说「不要猜」拦不住它"
+
+    async def test_configured_currency_is_labelled_as_configuration(self, monkeypatch):
+        """
+        全局配置来的币种**必须在句子里暴露来源**。
+
+        `SQL_AGENT_CURRENCY` 是部署的属性不是数据的属性：一个部署里只要有
+        多币种的库，它必然静默给错。在服务端下发 `currency` 之前不能删它
+        （删了就退回默认写「元」那次事故），但也不能让它伪装成查出来的事实。
+        """
+        m = _load_main(monkeypatch)
+        _wire(m, monkeypatch, dict(OK_PAYLOAD))
+        monkeypatch.setattr(
+            m, "_sql_agent", SQLAgentClient(base_url="http://x:8000", currency="USD")
+        )
+        text, _ = await m._build_order_data_context("q", intent="order_status")
+        assert "SQL_AGENT_CURRENCY" in text, "来源要写出来，不能只说「币种是 USD」"
+        assert "不是" in text and "本次查询返回的字段" in text
+
+    async def test_currency_from_the_payload_beats_the_global_config(self, monkeypatch):
+        """
+        服务端一旦按 §4.6.5 下发 `currency`，就以数据为准，不再提配置。
+
+        这条今天就该有：`currency` 上线是服务端单方面的改动，调用方不会收到
+        通知，没有这条用例的话会出现"数据说 EUR、回答里写 USD"而没人发现。
+        """
+        m = _load_main(monkeypatch)
+        _wire(m, monkeypatch, dict(OK_PAYLOAD, currency="EUR"))
+        monkeypatch.setattr(
+            m, "_sql_agent", SQLAgentClient(base_url="http://x:8000", currency="USD")
+        )
+        text, _ = await m._build_order_data_context("q", intent="order_status")
+        assert "EUR" in text and "随数据一同返回" in text
+        assert "SQL_AGENT_CURRENCY" not in text
 
     def test_from_env_picks_the_declaration_up(self, monkeypatch):
         monkeypatch.setenv("SQL_AGENT_URL", "http://x:8000")

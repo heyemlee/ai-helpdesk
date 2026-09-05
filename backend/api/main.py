@@ -59,6 +59,8 @@ from pydantic import BaseModel, Field
 
 load_dotenv()
 
+from core import evidence  # noqa: E402
+from core.evidence import assess  # noqa: E402
 from core.llm_utils import resolve_llm_config  # noqa: E402
 from core.preflight import (  # noqa: E402
     is_production,
@@ -1026,6 +1028,45 @@ async def _build_knowledge_context(
         return "", False
 
 
+def _currency_note(data: dict) -> str:
+    """
+    金额币种的说明句。**币种的来源必须在句子里可见。**
+
+    契约 §4.6.5 把这一条单独立了一节，理由是它已经出过一次业务事故：下游只
+    返回数字不返回币种，中文回答就默认写成「元」，接美国厂的库时报给 builder
+    的金额带了错误的币种。当时的补救是在调用方配一个全局常量
+    `SQL_AGENT_CURRENCY` 顶上——**那是个跨仓库配置在替契约打补丁**：
+    它是**部署**的属性不是**数据**的属性，一个部署里只要有多币种的库，
+    它必然给出错误答案，而且报出去的金额看起来完全正常。
+
+    在服务端下发 `currency` 之前，这里能做的是不让那个配置值伪装成查出来的
+    事实——三种情况说三种话，来源写在句子里：
+
+    1. 数据自己声明了 `currency`（§4.6.5 落地后）→ 按数据说，可以当事实；
+    2. 数据没声明、部署配了全局币种 → 按配置说，但**明写它来自部署配置**，
+       不是本次查询的结果；
+    3. 两者都没有 → 契约要求原样呈现数字并说明币种未知，**不得**擅自补符号。
+    """
+    declared = evidence.declared_currency(data)
+    if declared:
+        return (
+            f"以上金额的币种是 {declared}（本次查询随数据一同返回）。"
+            f"提到金额时按 {declared} 表述，不要换算，也不要写成其它币种。"
+        )
+    configured = _sql_agent.currency if _sql_agent is not None else ""
+    if configured:
+        return (
+            f"以上金额按 {configured} 表述，不要换算，也不要写成其它币种。"
+            f"但请注意：{configured} 来自本部署的配置（SQL_AGENT_CURRENCY），"
+            "**不是**本次查询返回的字段——业务系统目前不返回币种。"
+            "因此不得把币种说成系统核实过的结果；客户对币种有疑问时请转人工确认。"
+        )
+    return (
+        "业务系统不返回币种，本部署也没有声明。提到金额时**只写数字，不要补"
+        "任何币种符号或单位**（不要默认写成「元」），并说明币种需要人工确认。"
+    )
+
+
 async def _build_order_data_context(
     message: str,
     intent=None,
@@ -1048,13 +1089,25 @@ async def _build_order_data_context(
     任何一环不成立都返回空——这是增强项，拿不到数据时链路照常走知识库 + SOP，
     不能因此中断。
 
-    **三种"拿到了响应但不该用"的情况，都要挡在这里：**
+    **"拿到了响应但不该当依据"的情况，都要挡在这里。** 判定不在这个函数里
+    自己写，统一走 `core.evidence.assess()`——`/query` 与 A2A 两条路径共用
+    同一套口径，否则回滚（契约 §6.2）会变成静默的信任口径切换。分四类：
 
-    1. `unavailable` —— 下游挂了或熔断，fallback 给的占位结果；
-    2. `queried_database=False` —— ai-sql-agent 自己判断这问题不需要查库，
-       走了对话路径。那个 answer 是模型说的话，**不是数据**，把它当依据
-       注入等于给一段没有出处的文本盖了"实时数据"的章；
-    3. 空 answer —— 查了但没查出东西。
+    1. `unavailable` —— 下游挂了或熔断，fallback 给的占位结果。返回降级提示；
+    2. `not_applicable` —— ai-sql-agent 自己判断这问题不需要查库，走了对话
+       路径。那个 answer 是模型说的话，**不是数据**，把它当依据注入等于给
+       一段没有出处的文本盖了"实时数据"的章。**连上下文都不进**；
+    3. `failed` —— 说查了库，但一步都没成。**这一类以前看不见**：
+       `queried_database` 的服务端定义只有一行 `pipeline_result is not None`，
+       SQL 全跑挂了它也是 `true`，终态照发 `completed`。于是模型编的话会被
+       当成"业务系统查到的真实数据"讲给客户。现在按 §4.6.1 的判据从
+       `steps[]` 判出来，返回一段明写"没查成"的提示，**不作为出处**；
+    4. `has_risk` / `degraded` / 缺字段 / 字符串布尔 —— 数据**进上下文**
+       （丢掉比现状更糟，§4.6.1），但**不进 grounding_sources**，
+       并带上明确的不确定表述约束。以前这两个标志只追加一句提示、
+       函数照样返回 True，等于带风险的数据和已核实的金额共享同一个可信标志。
+
+    另外，空 answer 直接返回空：查了但没有可讲的内容。
 
     **关于把它放进 grounding_sources（安全相关，别随手改）。** AnswerPolicy 会
     拦截"无依据的价格/时效承诺"，判据是承诺里的数字能不能在本轮 grounding
@@ -1094,9 +1147,35 @@ async def _build_order_data_context(
                 "你说的内容已经过系统核对。",
             ]), False
 
+        # 信任判定（契约 §4.6）。**唯一的一处**——`/query` 和 A2A 两条路径
+        # 走的是同一个 assess()，因为回滚会让流量在两条路之间切换（契约 §6.2），
+        # 判定要是分了叉，回滚就成了静默的信任口径切换。
+        verdict = assess(data)
+
         # 下游自己判断这问题不需要查库（走了对话路径）。不是故障，不提示。
-        if not data.get("queried_database"):
+        # 那段 answer 是模型说的话不是数据，连上下文都不该进。
+        if verdict.execution_status == evidence.NOT_APPLICABLE:
             return "", False
+
+        trace_id = str(data.get("trace_id", "") or "")
+
+        # 查库路径但一步都没成。这里**必须**和"查到了但没有记录"分开：
+        # `queried_database` 两种情况下都是 true（服务端定义只有一行
+        # `pipeline_result is not None`），只看它会把"查挂了"讲成真实数据。
+        if verdict.execution_status == evidence.FAILED:
+            logger.warning(
+                "业务数据查询未成功，不作为出处 trace_id=%s status=%s(%s) 原因=%s",
+                trace_id, verdict.execution_status, verdict.status_source,
+                "；".join(verdict.reasons) or "-",
+            )
+            return "\n".join([
+                "[业务系统查询未成功]",
+                f"本轮查询业务系统的每一个步骤都没有成功执行（trace_id: {trace_id or '未知'}）。",
+                "回答时必须做到两点：",
+                "1. 不要给出任何具体的订单状态、日期、金额、库存数字——这些本轮没有系统依据；",
+                "2. 明确告诉客户这次没能查到系统记录，建议由人工跟进核实，不要让客户以为"
+                "你说的内容已经过系统核对。",
+            ]), False
 
         answer = str(data.get("answer", "")).strip()
         if not answer:
@@ -1108,33 +1187,45 @@ async def _build_order_data_context(
         # 截断阈值调大之前先想清楚：真正该做的是让下游少返点行，不是这边多收点。
         limit = int(os.getenv("SQL_AGENT_MAX_CONTEXT_CHARS", "2000"))
         if len(answer) > limit:
-            answer = answer[:limit] + f"\n…（结果过长已截断，完整结果见 trace_id {data.get('trace_id', '')}）"
+            answer = answer[:limit] + f"\n…（结果过长已截断，完整结果见 trace_id {trace_id}）"
 
         databases = ", ".join(str(d) for d in data.get("selected_databases") or []) or "未标明"
+        # 标题就把可信度写在第一行：可作出处的那段叫「实时数据」，不可作出处的
+        # 那段绝不能也叫这个名字——Agent 读到的第一行决定它怎么措辞。
+        header = "[业务系统实时数据]" if verdict.usable_as_source else "[业务系统数据（未通过可信校验，仅供参考）]"
         parts = [
-            "[业务系统实时数据]",
-            f"来源: ai-sql-agent（命中库: {databases}；trace_id: {data.get('trace_id', '')}）",
+            header,
+            f"来源: ai-sql-agent（命中库: {databases}；trace_id: {trace_id}；"
+            f"执行状态: {verdict.execution_status}）",
             answer,
         ]
-        if data.get("has_risk"):
+        if verdict.has_risk:
             parts.append(
                 "注意: 这条查询结果带有异常提示（空结果 / 基数异常 / 语义不一致），"
-                "回答时要提示客户以正式单据为准，不要把数字说成确定结论。"
+                "SQL 跑通了但答的可能不是问的那件事。**不得**把其中的金额、日期、"
+                "订单状态说成已核实的结论，只能说明系统里查到了这些内容、需要人工核对。"
             )
-        if data.get("degraded"):
+        if verdict.degraded:
             parts.append(
-                f"注意: 数据服务处于降级状态（{data.get('degrade_reason', '')}），"
-                "结果可能来自历史查询重放，建议提示客户核对。"
+                f"注意: 数据服务处于降级状态（{data.get('degrade_reason', '') or '原因未说明'}），"
+                "结果可能来自历史查询重放，可能已经过期。**不得**表述为当前状态，"
+                "必须请客户以正式单据为准。"
             )
-        if _sql_agent.currency:
-            # 下游只返回数字不返回币种，不点明的话中文回答会默认写成「元」——
-            # 接美国厂的库时，报给 builder 的金额就带了错误的币种。
-            parts.append(
-                f"以上金额的币种是 {_sql_agent.currency}。"
-                f"提到金额时按 {_sql_agent.currency} 表述，不要换算，也不要写成其它币种。"
+        parts.extend(f"注意: {c}" for c in verdict.caveats)
+        parts.append(_currency_note(data))
+        parts.append(
+            "以上是业务系统查到的真实数据，回答订单/交期/库存/账款问题时优先依据它。"
+            if verdict.usable_as_source else
+            "以上内容**没有通过可信校验**，不能当作已核实的系统依据。"
+            "涉及具体日期、金额、库存数字时必须明说这一点，并建议人工核实。"
+        )
+        if not verdict.usable_as_source:
+            logger.warning(
+                "业务数据未通过可信校验，不进 grounding_sources trace_id=%s status=%s(%s) 原因=%s",
+                trace_id, verdict.execution_status, verdict.status_source,
+                "；".join(verdict.reasons) or "-",
             )
-        parts.append("以上是业务系统查到的真实数据，回答订单/交期/库存/账款问题时优先依据它。")
-        return "\n".join(parts), True
+        return "\n".join(p for p in parts if p), verdict.usable_as_source
     except Exception as ex:
         logger.warning(f"构建业务数据上下文失败: {ex}")
         return "", False
