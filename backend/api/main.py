@@ -32,6 +32,7 @@ except RuntimeError as _alias_ex:  # pragma: no cover - 只在导入顺序被破
     )
 
 import asyncio
+import ipaddress
 import json
 import logging
 import os
@@ -63,9 +64,11 @@ from core import evidence  # noqa: E402
 from core.evidence import assess  # noqa: E402
 from core.llm_utils import resolve_llm_config  # noqa: E402
 from core.preflight import (  # noqa: E402
+    TOKEN_ISSUER_CIDRS_VAR,
     is_production,
     outer_tool_timeout_s,
     run_startup_checks,
+    token_issuer_networks,
 )
 from core.request_context import (  # noqa: E402
     current_request_id,
@@ -524,6 +527,52 @@ def require_admin_key(api_key: str | None = Security(_api_key_header)) -> None:
         raise HTTPException(401, "缺少或错误的 X-API-Key")
 
 
+# `/auth/token` 的来源白名单，模块级读一次（与 _API_KEY 同一套做法）。
+# 生产模式下它不能为空，否则 core.preflight 会让进程起不来。
+_TOKEN_ISSUER_NETWORKS = token_issuer_networks()
+
+
+def require_token_issuer_source(request: HttpRequest) -> None:
+    """
+    `/auth/token` 的来源约束：只有白名单里的对端能调到。
+
+    **这是一个过渡形态的补丁，不是修复。** 真正该签发令牌的是登录系统——
+    本仓库里不存在那个组件，对接方案写在 `docs/auth-token-integration.md`。
+    在它出现之前，管理 key 只能证明"调用方是我们的基础设施"，证明不了
+    "这个 user_id 真的登录了"，所以再收一道**可达范围**：这个端点只应该
+    被网关调到。
+
+    **判据是直连对端，不是 `X-Forwarded-For`。** XFF 是一个请求头，任何人都
+    能写；把它当来源用，等于把白名单交给调用方自己填。只有直连对端是传输层
+    事实。代价是白名单里要写网关的地址而不是最终客户端的——那正是想要的语义。
+
+    白名单为空 = 不限制（demo 模式）。生产模式下为空进程根本起不来
+    （`core.preflight.check_token_issuer_binding`），所以这里的空只会出现在
+    本地联调，或者 lifespan 被绕过的场合——后者由 `is_production()` 兜住。
+    """
+    if not _TOKEN_ISSUER_NETWORKS:
+        if is_production():
+            raise HTTPException(
+                503,
+                f"服务端未配置 {TOKEN_ISSUER_CIDRS_VAR}，"
+                "生产模式下 /auth/token 不可用",
+            )
+        return
+
+    peer = request.client.host if request.client else ""
+    try:
+        address = ipaddress.ip_address(peer)
+    except ValueError:
+        # 拿不到对端地址（某些 ASGI 容器、Unix socket）时按拒绝处置：
+        # 无法确认来源和确认了不合法，对这个端点是同一件事。
+        logger.warning("/auth/token 无法确定调用方地址（peer=%r），拒绝", peer)
+        raise HTTPException(403, "无法确定调用方来源，此端点仅对网关开放") from None
+
+    if not any(address in network for network in _TOKEN_ISSUER_NETWORKS):
+        logger.warning("/auth/token 被白名单外的来源调用: %s", peer)
+        raise HTTPException(403, "此端点仅对网关开放")
+
+
 def protect_chat(api_key: str | None = Security(_api_key_header)) -> None:
     """/chat 的可选鉴权，由 AI_HELPDESK_PROTECT_CHAT 控制。"""
     if not _PROTECT_CHAT:
@@ -536,7 +585,11 @@ class TokenRequest(BaseModel):
     ttl_s: int | None = None
 
 
-@app.post("/auth/token", tags=["Auth"], dependencies=[Depends(require_admin_key)])
+@app.post(
+    "/auth/token",
+    tags=["Auth"],
+    dependencies=[Depends(require_admin_key), Depends(require_token_issuer_source)],
+)
 async def issue_user_token(body: TokenRequest):
     """
     为指定用户签发 HMAC 令牌。未配置 AI_HELPDESK_AUTH_SECRET 时返回 409。
@@ -548,8 +601,13 @@ async def issue_user_token(body: TokenRequest):
     **这仍然是一个过渡形态。** 它把签发权收敛到"持有管理 key 的运维/网关"，
     但管理 key 是一把**共享的**钥匙，它证明的是"调用方是我们的基础设施"，
     不是"这个 user_id 真的登录了"。真正该做这件事的是登录系统：由它认证用户
-    之后再来换令牌。在那之前，这个端点只应该暴露给网关，不要开到公网——
-    部署文档里记了这一条。
+    之后再来换令牌。**本仓库里不存在那个组件**，对接方案（谁签发、user_id
+    取哪个 claim、令牌生命周期怎么对齐）写在 `docs/auth-token-integration.md`。
+
+    在它出现之前，"只暴露给网关"这条**不再是文档约定**：
+    `require_token_issuer_source` 按 `AI_HELPDESK_TOKEN_ISSUER_CIDRS` 校验直连
+    对端，生产模式下这个变量没配或配成 0.0.0.0/0 进程直接起不来。
+    约定不会在配错的时候报错，断言会。
     """
     from core.auth import AuthError
     if _user_auth is None or not _user_auth.enabled:

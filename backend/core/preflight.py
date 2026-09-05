@@ -13,6 +13,7 @@ fail-open 是同一个错误模式。正确的做法是让进程根本起不来�
 """
 from __future__ import annotations
 
+import ipaddress
 import logging
 import os
 from collections.abc import Mapping
@@ -30,6 +31,15 @@ _TRUE = frozenset({"1", "true", "yes", "on"})
 # 定义在这里是为了让"注册工具时用的值"和"启动断言检查的值"是同一个算式，
 # 两处各写一遍的话，改了一处就等于把断言变成了检查别的东西。
 OUTER_TIMEOUT_MARGIN_S = 2.0
+
+
+# `/auth/token` 允许从哪些来源调用（见 token_issuer_networks）。
+# 空 = 不限制，只在非生产模式下可接受。
+TOKEN_ISSUER_CIDRS_VAR = "AI_HELPDESK_TOKEN_ISSUER_CIDRS"
+
+# 允许一切等于没有约束。写成 0.0.0.0/0 往往是"为了让启动校验闭嘴"，
+# 那比不配还糟：配置文件里看起来是有约束的。
+_WILDCARD_NETWORKS = frozenset({"0.0.0.0/0", "::/0"})
 
 
 class InsecureDeploymentError(RuntimeError):
@@ -88,6 +98,70 @@ def security_config_problems(env: Mapping[str, str] | None = None) -> list[str]:
             "每次调用都是真实 LLM 花费"
         )
     return problems
+
+
+def token_issuer_networks(
+    env: Mapping[str, str] | None = None,
+) -> list[ipaddress.IPv4Network | ipaddress.IPv6Network]:
+    """
+    解析 `/auth/token` 的来源白名单。空列表 = 不限制。
+
+    解析不了的条目**不忽略**，直接抛：一个拼错的 CIDR 静默变成"这条不算数"，
+    等于白名单被悄悄放宽，而配置文件看起来是对的。
+    """
+    raw = _env(env).get(TOKEN_ISSUER_CIDRS_VAR, "").strip()
+    if not raw:
+        return []
+    networks = []
+    for item in (piece.strip() for piece in raw.split(",")):
+        if not item:
+            continue
+        try:
+            networks.append(ipaddress.ip_network(item, strict=False))
+        except ValueError as exc:
+            raise InsecureDeploymentError(
+                f"{TOKEN_ISSUER_CIDRS_VAR} 里的 {item!r} 不是合法的 CIDR：{exc}"
+            ) from exc
+    return networks
+
+
+def check_token_issuer_binding(env: Mapping[str, str] | None = None) -> None:
+    """
+    生产模式下 `/auth/token` 必须绑定到一份来源白名单，否则拒绝启动。
+
+    **为什么这条要写成代码而不是文档约定。** 这个端点按请求体里的 `user_id`
+    签发身份，把签发权收敛到"持有管理 key 的调用方"只是过渡形态：管理 key 是
+    一把**共享**钥匙，它证明的是"调用方是我们的基础设施"，不是"这个用户登录了"。
+    真正该做这件事的是登录系统——本仓库里**不存在**这样一个组件
+    （`grep -riE 'oidc|oauth|saml|sso' backend/` 无命中），对接方案写在
+    `docs/auth-token-integration.md`。
+
+    在那个组件出现之前，唯一还能收紧的是**可达范围**：这个端点只应该被网关
+    调到。写进 README 是一句约定，约定不会在配错的时候报错——所以做成启动断言。
+
+    白名单校验的是**直连对端**（`request.client.host`），不是 `X-Forwarded-For`：
+    XFF 是请求头，任何人都能写。只有直连对端是传输层事实。代价是网关必须在
+    白名单里而不是最终客户端——这正是想要的语义："只有网关能调到"。
+    """
+    if not is_production(env):
+        return
+    networks = token_issuer_networks(env)
+    if not networks:
+        raise InsecureDeploymentError(
+            f"APP_ENV 是生产模式，但 {TOKEN_ISSUER_CIDRS_VAR} 未配置，拒绝启动：\n"
+            "  - /auth/token 会按请求体里的 user_id 签发身份，它只应该被网关调到。\n"
+            "    配上网关所在的网段，例如 "
+            f"{TOKEN_ISSUER_CIDRS_VAR}=10.0.0.0/8,127.0.0.1/32。\n"
+            "  - 这一步是过渡形态。长期该由登录系统签发令牌，"
+            "对接方案见 docs/auth-token-integration.md。"
+        )
+    wildcards = [str(n) for n in networks if str(n) in _WILDCARD_NETWORKS]
+    if wildcards:
+        raise InsecureDeploymentError(
+            f"{TOKEN_ISSUER_CIDRS_VAR} 里有 {', '.join(wildcards)}——允许一切等于"
+            "没有约束，而配置文件看起来是有的。要么配真实网段，要么把这个变量留空"
+            "并把 APP_ENV 改成非生产（那时这条校验不生效）。"
+        )
 
 
 def check_security_config(env: Mapping[str, str] | None = None) -> None:
@@ -164,6 +238,7 @@ def check_timeout_budgets(env: Mapping[str, str] | None = None) -> list[str]:
 def run_startup_checks(env: Mapping[str, str] | None = None) -> None:
     """启动时逐条跑。任何一条硬约束不满足就抛，让进程起不来。"""
     check_security_config(env)
+    check_token_issuer_binding(env)
     for warning in check_timeout_budgets(env):
         logger.warning("启动检查: %s", warning)
     if is_production(env):
