@@ -270,7 +270,7 @@ class A2AClient:
         **三个信任布尔在这里不做 bool() 转换。** 原先这里写的是
         `bool(data.get("has_risk", False))`——那是契约 §9.1 记的那个缺口本身：
         字段缺失被翻译成"无风险"（fail-open），而 `bool("false")` 又是真。
-        校验只在 `core.evidence` 里做一次，两条 transport 共用，见那个模块的说明。
+        校验只在 `core.evidence` 里做一次，三个承载者共用（§4.4.1），见那个模块的说明。
         """
         text, data = "", {}
         for part in artifact.get("parts") or []:
@@ -279,7 +279,7 @@ class A2AClient:
             elif part.get("kind") == "data":
                 data = part.get("data") or {}
         return normalize_delegation_result(
-            data, answer=text, steps_key="steps",
+            data, answer=text,
             trace_id_fallback=str(metadata.get("trace_id") or ""),
         )
 

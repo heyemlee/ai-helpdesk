@@ -112,7 +112,8 @@ jobs:
           repository: heyemlee/a2a-contract
           # 钉在 tag 上，不跟 main（契约附录 B）。升 tag 是一次要过评审的改动：
           # 它可能同时改断言口径和 fixture 内容。
-          ref: v1.6
+          # tag 也写在 tests/test_contract_fixtures.py 的 PINNED_TAG 里，两处要一起改。
+          ref: v1.8
           path: .contract
 
       - uses: actions/setup-python@v5

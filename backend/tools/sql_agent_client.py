@@ -237,12 +237,12 @@ class SQLAgentClient:
         if not isinstance(data, dict):
             raise ValueError(f"ai-sql-agent 返回了非对象响应: {type(data).__name__}")
 
-        # 归一与 A2A 那条路共用同一个函数，信任判定因此只有一份口径。
-        # `/query` 把逐步骤日志叫 `step_logs`，A2A 的 data part 叫 `steps`
-        # ——只有名字不同，元素是同一个 StepLogResponse。名字在这里对齐，
-        # 之后 core.evidence 就看不出调用方走了哪条路（契约 §4.4 的同构承诺
-        # 落到调用方这一侧就是这个意思）。
-        result = normalize_delegation_result(data, steps_key="step_logs")
+        # 归一与 A2A 那两条共用同一个函数，信任判定因此只有一份口径。
+        # 契约 §4.4.1（v1.8）把直连 `/query` 正式纳入保护范围：契约面是
+        # data part 本身，与谁承载无关，三个承载者同一套判据。
+        # 逐步骤日志的两个名字（`step_logs` / `steps`）在归一里一并处理，
+        # 过渡期两个都认、`steps` 优先——见 core.evidence._steps_field。
+        result = normalize_delegation_result(data)
 
         # 对面的 trace_id 落进本方日志，两个服务的链路才能对起来——出了问题
         # 拿这个 id 直接去 ai-sql-agent 的审计库里查那一次调用。
