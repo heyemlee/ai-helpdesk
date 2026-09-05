@@ -1,12 +1,17 @@
 # ai-helpdesk 前端 — 多阶段构建
 # 阶段 1 在镜像内完成 npm build，因此不需要先在本机跑 npm run build。
-FROM node:20-alpine AS build
+# Node 20 已于 2026-04 EOL（不再有安全更新），钉在当时的 Active LTS 上。
+FROM node:24-alpine AS build
 
 WORKDIR /app
 
-# 先只拷依赖清单，命中 Docker 层缓存，改业务代码时不用重装依赖
-COPY package.json package-lock.json* ./
-RUN npm ci || npm install
+# 先只拷依赖清单，命中 Docker 层缓存，改业务代码时不用重装依赖。
+# **不要退回 `npm install`。** 原先是 `npm ci || npm install`：lock 与
+# package.json 对不上时它会静默改用 install，装出一套 lock 里没有的依赖树，
+# 镜像因此不可复现——同一个 commit 今天和下周构建出来的东西可以不一样。
+# 宁可让构建在这里失败：那说明 lock 该更新了，是一次要进提交的改动。
+COPY package.json package-lock.json ./
+RUN npm ci
 
 COPY . .
 RUN npm run build
