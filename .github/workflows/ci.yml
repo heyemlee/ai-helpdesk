@@ -94,6 +94,51 @@ jobs:
       - name: Build (production)
         run: npm run build
 
+  contract:
+    name: A2A contract fixtures (cross-repo)
+    runs-on: ubuntu-latest
+    # 跨仓库契约用例：把 a2a-contract 的 golden fixtures 喂进本仓库的消费路径。
+    # 单独一个 job 而不是并进 backend，是因为它的失败含义不同：backend 挂了是
+    # "本仓库的代码坏了"，这里挂了是"两侧对契约的理解分叉了"。
+    #
+    # 用例清单只有一份（契约仓库的 fixtures/index.json）。**不要把 fixture 拷进
+    # 本仓库**——拷贝就是副本，副本会漂，这份契约已经为此翻过一次车。
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout a2a-contract (pinned tag)
+        uses: actions/checkout@v4
+        with:
+          repository: heyemlee/a2a-contract
+          # 钉在 tag 上，不跟 main（契约附录 B）。升 tag 是一次要过评审的改动：
+          # 它可能同时改断言口径和 fixture 内容。
+          ref: v1.6
+          path: .contract
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          # schema 校验只在测试里用，不进生产依赖
+          pip install jsonschema referencing
+
+      - name: Consumer tests against the contract fixtures
+        working-directory: backend
+        env:
+          ANTHROPIC_API_KEY: test-key
+          A2A_CONTRACT_DIR: ${{ github.workspace }}/.contract
+          # 契约仓库没拉下来时**失败**而不是跳过。一个"没拉到就自动跳过"的
+          # 门禁等于没有门禁，而且它坏掉的时候测试报告是绿的。
+          A2A_CONTRACT_REQUIRED: "1"
+        run: pytest -q tests/test_contract_fixtures.py
+
   images:
     name: Docker images
     runs-on: ubuntu-latest
