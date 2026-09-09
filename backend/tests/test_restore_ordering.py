@@ -35,7 +35,9 @@ _FAKE_DOCKER = """#!/bin/bash
 echo "$@" >> "$CMDLOG"
 # psql 那一步脚本会重定向 stdin，读掉免得管道破裂
 if [[ "$*" == *psql* ]]; then cat > /dev/null; fi
-exit 0
+# `docker inspect … --format` 要能给出卷名，否则脚本会判定"找不到 /data 卷"。
+if [[ "$1" == "inspect" ]]; then echo "fake_redis_volume"; fi
+exit ${FAKE_DOCKER_EXIT:-0}
 """
 
 
@@ -146,6 +148,70 @@ class TestRestoreOrdering:
             input="y\n", capture_output=True, text=True, env=env, timeout=120,
         )
         assert "恢复完成" in proc.stdout
+
+
+class TestRedisIsBackedUpAsAWholeDirectory:
+    """
+    2026-09-08 的恢复演练查出来的三条，逐条锁住。
+
+    这一组存在的理由：那三条**全都不报错**。备份 `docker cp` 成功、脚本打印
+    "备份完成"、恢复 `docker cp` 也成功——只是数据没动。演练之前它们在代码
+    审查里活了两轮没被发现。
+    """
+
+    def test_backup_copies_the_whole_data_dir_not_just_dump_rdb(self):
+        """
+        缺陷一：Redis 跑 `--appendonly yes`，权威数据在 AOF 里。
+        实测 appendonly.aof.1.incr.aof 9.7MB，dump.rdb **89 字节**（空 RDB）。
+        旧写法两个方向都是空操作。
+        """
+        script = SCRIPT.read_text(encoding="utf-8")
+        assert "docker cp ai-helpdesk-redis:/data/. " in script
+        assert "docker cp ai-helpdesk-redis:/data/dump.rdb" not in script
+
+    def test_pg_dump_can_restore_onto_a_non_empty_database(self):
+        """
+        缺陷二：裸 `pg_dump` 产出的 SQL 只有 CREATE 没有 DROP，
+        往非空库灌会在第一张表就 `already exists`。
+        而**真实恢复场景恰恰是库非空**——旧写法只在空库上成立。
+        """
+        script = SCRIPT.read_text(encoding="utf-8")
+        assert "pg_dump --clean --if-exists" in script
+
+    def test_backup_dir_collision_renames_instead_of_merging(self):
+        """
+        缺陷三：目录名只到秒。同秒两次备份不是"覆盖"，是 `docker cp` 把第二份
+        **嵌套**进第一份（dest 存在与否会改变 cp 的语义），恢复时读到陈旧数据。
+        """
+        script = SCRIPT.read_text(encoding="utf-8")
+        assert 'backup_dir="${backup_dir}_$suffix"' in script
+
+    def test_new_format_backup_replaces_the_whole_dir(self, fake_repo):
+        """新格式备份：先用挂卷的临时容器清空，再拷整个目录。"""
+        redis_data = fake_repo["backup"] / "redis-data" / "appendonlydir"
+        redis_data.mkdir(parents=True)
+        (redis_data / "appendonly.aof.manifest").write_text("x")
+        cmds = _run_restore(fake_repo)
+        joined = "\n".join(cmds)
+        # 清空走的是 `docker run --rm -v <卷>:/data`，不是 `docker exec`——
+        # 此刻 redis 已经 stop，exec 要求容器在跑。
+        assert "run --rm -v fake_redis_volume:/data" in joined
+        assert "cp" in joined and "redis-data/." in joined
+
+    def test_legacy_backup_warns_that_redis_will_not_be_restored(self, fake_repo):
+        """
+        旧备份只有 dump.rdb。AOF 模式下 Redis 不读它——恢复不会生效。
+        这种情况**必须明说**，否则用户以为两个存储都恢复了。
+        """
+        env = dict(os.environ)
+        env["PATH"] = f"{fake_repo['bin']}:{env['PATH']}"
+        env["CMDLOG"] = str(fake_repo["cmdlog"])
+        proc = subprocess.run(
+            ["bash", str(fake_repo["backend"] / "docker-deploy.sh"),
+             "restore", str(fake_repo["backup"])],
+            input="y\n", capture_output=True, text=True, env=env, timeout=120,
+        )
+        assert "不会" in proc.stdout and "Redis" in proc.stdout
 
 
 class TestRestoreStopsOnFailure:
