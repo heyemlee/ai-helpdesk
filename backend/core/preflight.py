@@ -41,6 +41,12 @@ TOKEN_ISSUER_CIDRS_VAR = "AI_HELPDESK_TOKEN_ISSUER_CIDRS"
 # 那比不配还糟：配置文件里看起来是有约束的。
 _WILDCARD_NETWORKS = frozenset({"0.0.0.0/0", "::/0"})
 
+# 部署范围。**没有默认值是故意的**：见 check_deployment_scope 的 docstring。
+DEPLOYMENT_SCOPE_VAR = "AI_HELPDESK_DEPLOYMENT_SCOPE"
+SCOPE_SINGLE_TENANT = "internal_single_tenant"
+SCOPE_MULTI_TENANT = "multi_tenant"
+VALID_SCOPES = frozenset({SCOPE_SINGLE_TENANT, SCOPE_MULTI_TENANT})
+
 
 class InsecureDeploymentError(RuntimeError):
     """生产模式下安全配置不完整。**不要 catch 它去继续启动。**"""
@@ -235,10 +241,86 @@ def check_timeout_budgets(env: Mapping[str, str] | None = None) -> list[str]:
     return warnings
 
 
+def deployment_scope(env: Mapping[str, str] | None = None) -> str:
+    """返回声明的部署范围；未声明时返回空串（由 check_deployment_scope 判定）。"""
+    return _env(env).get(DEPLOYMENT_SCOPE_VAR, "").strip().lower()
+
+
+def check_deployment_scope(env: Mapping[str, str] | None = None) -> None:
+    """
+    生产模式下必须**显式声明**这套部署的范围，否则拒绝启动。
+
+    **为什么这条要存在。** 2026-09 定下的第一次上线范围是「已认证 + 同权限
+    内部人员 + 只读 + 有限库表 + 低并发 + 人工可核实」的试点。这个范围让三条
+    原本的硬阻断降级为可接受：`/auth/token` 没接登录系统、下游最小授权没落到
+    真实业务库、行范围/RLS 不启用。
+
+    **但那三条降级只在系统确实跑在这个范围里时才成立。** 而在这条检查出现
+    之前，"这是单租户部署"这件事只写在 README 和 `.env.example` 里——
+    **一个不被代码强制的范围决定不是决定，是期望**。六个月后没人记得那一节，
+    而它失效时不会有任何症状：系统照常工作，只是那三条降级的前提悄悄没了。
+
+    **为什么不给默认值。** 给了默认值，"忘了配"和"想清楚了配成这个"就分不开，
+    而这两件事的风险完全不同。同样的理由已经在别处用过一次：下游的
+    `predicate: "*"` 是**显式声明**"这张表不做行隔离"，与"没配"是两回事。
+
+    两个方向都要拦，这是本条的关键——**它不是一个"警告开关"，是一个双向断言**：
+
+    - 声明单租户，却配了只有多租户才用得上的东西 ⇒ 有人以为这是多租户，拒绝启动；
+    - 声明多租户，却缺了多租户必需的东西 ⇒ 隔离根本不成立，拒绝启动。
+    """
+    if not is_production(env):
+        return
+    env = _env(env)
+    scope = deployment_scope(env)
+
+    if not scope:
+        raise InsecureDeploymentError(
+            f"APP_ENV 是生产模式，但 {DEPLOYMENT_SCOPE_VAR} 未声明，拒绝启动：\n"
+            f"  - {SCOPE_SINGLE_TENANT}：同权限内部人员、只读试点。"
+            f"所有用户看到的数据范围**完全相同**，不做业务数据隔离。\n"
+            f"  - {SCOPE_MULTI_TENANT}：不同用户只能看各自的数据。"
+            f"这个范围要求下游按最终用户重新解析权限（见下）。\n"
+            "  这个变量**故意没有默认值**：漏配和想清楚了配成某个值，风险完全不同。"
+        )
+    if scope not in VALID_SCOPES:
+        raise InsecureDeploymentError(
+            f"{DEPLOYMENT_SCOPE_VAR}={scope!r} 不是合法取值，"
+            f"只能是 {sorted(VALID_SCOPES)} 之一。"
+        )
+
+    impersonate = _flag(env, "SQL_AGENT_IMPERSONATE")
+
+    if scope == SCOPE_SINGLE_TENANT and impersonate:
+        raise InsecureDeploymentError(
+            f"{DEPLOYMENT_SCOPE_VAR}={SCOPE_SINGLE_TENANT} 与 "
+            "SQL_AGENT_IMPERSONATE=true 矛盾，拒绝启动：\n"
+            "  - impersonation 的用途是让下游按最终用户解析权限。"
+            "同权限试点里所有人权限相同，它不解决任何问题；\n"
+            "  - 打开它却声明单租户，说明有人**以为**这套系统在做数据隔离。"
+            "那个误解本身就是风险——它会让人把系统用在范围之外。\n"
+            f"  要做真隔离，把范围改成 {SCOPE_MULTI_TENANT} 并读那一档的要求。"
+        )
+
+    if scope == SCOPE_MULTI_TENANT and not impersonate:
+        raise InsecureDeploymentError(
+            f"{DEPLOYMENT_SCOPE_VAR}={SCOPE_MULTI_TENANT} 但 "
+            "SQL_AGENT_IMPERSONATE 未开启，拒绝启动：\n"
+            "  - 不传最终用户身份时，所有查询都以**服务身份**发出，"
+            "下游拿到的权限对每个用户都一样——多租户隔离根本不成立，"
+            "而链路看起来完全正常。\n"
+            "  - 打开它只是第一步：下游还必须按最终用户重新解析策略并与服务身份"
+            "取交集。本仓库校验不了那一侧，见 docs/sql-agent-identity-requirements.md。"
+        )
+
+    logger.info("启动检查: 部署范围 %s", scope)
+
+
 def run_startup_checks(env: Mapping[str, str] | None = None) -> None:
     """启动时逐条跑。任何一条硬约束不满足就抛，让进程起不来。"""
     check_security_config(env)
     check_token_issuer_binding(env)
+    check_deployment_scope(env)
     for warning in check_timeout_budgets(env):
         logger.warning("启动检查: %s", warning)
     if is_production(env):

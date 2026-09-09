@@ -79,6 +79,15 @@ isolation.** The boundary is written down here because the two halves of "who is
 asking" and "what they are allowed to see" are answered in different places, and
 only the first one is enforced.
 
+**This boundary is now enforced at startup, not just documented.**
+`AI_HELPDESK_DEPLOYMENT_SCOPE` must be declared explicitly in production
+(`internal_single_tenant` | `multi_tenant`) or the process refuses to start —
+there is deliberately no default, because "forgot to set it" and "decided on
+this value" carry different risk. Declaring `internal_single_tenant` while
+`SQL_AGENT_IMPERSONATE=true` is also refused: that combination means somebody
+*believes* this deployment isolates business data, and that belief is the risk.
+See `backend/core/preflight.py::check_deployment_scope`.
+
 **What is isolated.** Conversation memory, episodic memory, user profiles and rate
 limits are keyed by a `user_id` that the server derives from an HMAC-signed token
 (`AI_HELPDESK_AUTH_SECRET`). A client cannot forge it. The session key sent to the
