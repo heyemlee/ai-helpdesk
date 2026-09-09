@@ -131,8 +131,9 @@ cd backend && pytest && ruff check .
 cd frontend && npm test && npm run typecheck
 ```
 
-当前：后端 **461 passed / 2 skipped**，前端 **46 passed**。
-CI 分 3 阶段，其中一阶段带 pgvector service container，跑真实 Postgres 路径而不是 SQLite 兜底。
+当前：后端 **687 passed / 2 skipped / 1 xfailed**，前端 **48 passed**。
+后端这个数字含跨仓库契约用例，它需要按钉住的 tag 检出 a2a-contract；没有它时这些用例跳过，计数降到 612。
+CI 分 4 个 job，其中 backend 带 pgvector service container，跑真实 Postgres 路径而不是 SQLite 兜底；契约用例是单独一个 job。
 
 ## 性能
 
