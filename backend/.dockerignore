@@ -2,15 +2,25 @@
 .gitignore
 .idea
 .venv
-__pycache__
-*.py[cod]
-*.pyo
-.pytest_cache
-.mypy_cache
-.ruff_cache
+
+# 下面这组必须带 `**/`，理由和文件末尾 `**/*.db` 那组完全一样：.dockerignore 的
+# 模式是拿**整条相对路径**去匹配的，而 `*` 不跨 `/`。写成裸 `__pycache__` 只排掉
+# 构建上下文根目录那一个，`app/core/__pycache__` 这类嵌套的一个都排不掉。
+#
+# 实测（2026-09-09，重整目录之后）：生产镜像里带进 11 个 __pycache__、1.7MB 字节码。
+# 这不是重整引入的——重整之前模块目录同样是嵌套一层，一样漏。
+#
+# 后果只是体积和干净度，不影响正确性：Python 按源码的时间戳和大小作废陈旧字节码，
+# 不会执行到过期的 .pyc。但把开发机的构建残留发进生产镜像本身就不该发生。
+**/__pycache__
+**/*.py[cod]
+**/*.pyo
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
 
 .DS_Store
-*.log
+**/*.log
 logs/
 
 .env
