@@ -7,8 +7,8 @@ import json
 import httpx
 import pytest
 
-from tools import a2a_client as mod
-from tools.a2a_client import A2AClient, A2AError, StreamUnsupported, progress_label
+from app.tools import a2a_client as mod
+from app.tools.a2a_client import A2AClient, A2AError, StreamUnsupported, progress_label
 
 
 def _sse(*results):

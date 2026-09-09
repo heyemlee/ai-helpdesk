@@ -1,7 +1,7 @@
 """回复语言判定。策略守卫选安全话术、编排器选脚手架措辞，都用这一份。"""
 import pytest
 
-from core.text_lang import EN, ZH, detect_language
+from app.core.text_lang import EN, ZH, detect_language
 
 
 @pytest.mark.parametrize("text,expected", [

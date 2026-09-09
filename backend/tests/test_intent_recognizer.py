@@ -2,7 +2,7 @@
 import pytest
 from conftest import stub_intent
 
-from core.intent_recognizer import (
+from app.core.intent_recognizer import (
     _ITEM_CODE_RE,
     FINE_GRAINED_INTENT_COUNT,
     FINE_GRAINED_INTENTS,
@@ -20,7 +20,7 @@ def test_exactly_18_fine_grained_intents():
 
 
 def test_every_fine_grained_intent_has_templates():
-    from core.intent_recognizer import _TEMPLATES
+    from app.core.intent_recognizer import _TEMPLATES
 
     missing = [c.value for c in FINE_GRAINED_INTENTS if not _TEMPLATES.get(c)]
     assert not missing, f"缺少 few-shot 模板的意图: {missing}"

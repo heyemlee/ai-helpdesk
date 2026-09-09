@@ -2,8 +2,8 @@
 import pytest
 from pydantic import BaseModel
 
-from core import llm_utils
-from core.llm_utils import structured_create, structured_parse
+from app.core import llm_utils
+from app.core.llm_utils import structured_create, structured_parse
 
 
 class _Payload(BaseModel):

@@ -1,7 +1,7 @@
 """转人工工单存储的行为测试。用 tmp_path 里的 SQLite，无外部依赖。"""
 import pytest
 
-from tickets.ticket_store import TicketStore
+from app.tickets.ticket_store import TicketStore
 
 
 @pytest.fixture

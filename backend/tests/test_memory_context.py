@@ -1,5 +1,5 @@
 """记忆上下文进 Prompt 的形态——重点是跨会话召回内容的使用边界。"""
-from memory.conversation_memory import MemoryContext, Message, MsgRole
+from app.memory.conversation_memory import MemoryContext, Message, MsgRole
 
 
 def _ctx(**kw) -> MemoryContext:

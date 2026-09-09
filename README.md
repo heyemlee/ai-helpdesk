@@ -86,7 +86,7 @@ there is deliberately no default, because "forgot to set it" and "decided on
 this value" carry different risk. Declaring `internal_single_tenant` while
 `SQL_AGENT_IMPERSONATE=true` is also refused: that combination means somebody
 *believes* this deployment isolates business data, and that belief is the risk.
-See `backend/core/preflight.py::check_deployment_scope`.
+See `backend/app/core/preflight.py::check_deployment_scope`.
 
 **What is isolated.** Conversation memory, episodic memory, user profiles and rate
 limits are keyed by a `user_id` that the server derives from an HMAC-signed token
@@ -155,7 +155,7 @@ Once it is up:
 Create `backend/.env` from `backend/.env.example`, fill it in, then:
 
 ```bash
-./dev.sh
+scripts/dev.sh
 ```
 
 That starts the backend and the frontend together. Open http://localhost:5173.
@@ -177,9 +177,12 @@ Full API reference is at http://localhost:8080/docs once the service is running.
 ## Layout
 
 ```text
-backend/         FastAPI service, agent orchestration, KB, memory, tickets, monitoring
-frontend/        React admin console
-backend/skills/  Per-agent SOPs, hot-reloadable
+backend/          FastAPI service; the Python package is backend/app/
+backend/skills/   Per-agent SOPs, hot-reloaded at runtime
+frontend/         React admin console
+deploy/           Nginx / Prometheus / Grafana / Loki / Tempo / OTel config, mounted read-only by docker-compose
+scripts/          dev.sh (run both halves locally), docker-deploy.sh (compose lifecycle + backup/restore), ci-local.sh
+docs/             Architecture, code guide, integration notes, ops records
 ```
 
 Redis holds short-lived state — rate limits, recent conversation. PostgreSQL +
@@ -208,7 +211,7 @@ cd backend && ./.venv/bin/python scripts/load_test.py --unique-messages --reques
 
 **`--unique-messages` is not optional.** The message pool only holds 10 entries;
 without the flag the script cycles through them, and from request 11 onward the
-in-process intent cache in `core/intent_recognizer.py` hits every time. Those
+in-process intent cache in `app/core/intent_recognizer.py` hits every time. Those
 requests skip the intent LLM call entirely and p95 comes out roughly 11% below a
 genuine first-time ticket. The script warns when the flag is missing and records a
 `mode` field in the report.

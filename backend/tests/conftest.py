@@ -9,17 +9,10 @@ import httpx2 as _httpx2
 
 _httpx2.alias_httpx()
 
-import pathlib  # noqa: E402
-import sys  # noqa: E402
-
 import pytest  # noqa: E402
 
-_ROOT = str(pathlib.Path(__file__).parent.parent.resolve())
-if _ROOT not in sys.path:
-    sys.path.insert(0, _ROOT)
-
-from agents.agent_orchestrator import AgentOrchestrator, Request  # noqa: E402
-from core.intent_recognizer import IntentCategory, IntentRecognizer  # noqa: E402
+from app.agents.agent_orchestrator import AgentOrchestrator, Request  # noqa: E402
+from app.core.intent_recognizer import IntentCategory, IntentRecognizer  # noqa: E402
 
 
 @pytest.fixture

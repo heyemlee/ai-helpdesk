@@ -1,0 +1,268 @@
+# 代码导读
+
+这份文档只给**位置和取舍理由**，不内嵌代码片段。
+
+早期版本贴了 28KB 的代码进来，结果是每次改实现文档就腐烂一次，读者拿文档对照
+真实代码只会发现处处对不上——那比没有文档更糟。下面每条都指向文件和符号名，
+用 IDE 跳过去看的永远是当前实现。
+
+## 1. 意图识别 · `backend/app/core/intent_recognizer.py`
+
+| 看什么 | 符号 |
+|---|---|
+| 18 个细粒度意图 | `IntentCategory`、`FINE_GRAINED_INTENTS` |
+| 零延迟规则通道 | `IntentRecognizer._fast_path`、`_FAST_PATH_RULES` |
+| 三路加权投票 | `IntentRecognizer._vote`、`_VOTE_WEIGHTS` |
+| Embedding 一路 | `_embedding_recognize`、`_embed_text`、`_local_embedding` |
+| 实体提取 | `_extract_entities`、`_ITEM_CODE_RE` |
+
+**为什么快通道要求"锚点不冲突"**：`_fast_path` 在命中多个不同意图的锚点时会
+主动放弃，交给完整融合。"门板有划痕而且还少发了一块"这类复合诉求，规则没有能力
+判断哪个是主诉求，硬判会错得很自信。
+
+**为什么 Embedding 不能用 base_url 是否为空来开关**：早期版本这么写，配了
+Anthropic 协议网关就等于永久关掉 Embedding，"三路融合"实际只剩两路。现在这一路
+始终参与投票，配了 OpenAI 兼容端点走远端向量，没配就退化为本地字符 n-gram
+向量——换供应商是改环境变量的事，链路在任何配置下都成立。
+
+**为什么错误码正则要收紧**：`[A-Z][A-Z0-9_-]{2,16}` 会把任意大写单词当错误码，
+"I NEED HELP" 命中 NEED / HELP 之后给技术域加分，直接导致误路由。
+
+## 2. 答案策略守卫 · `backend/app/core/answer_policy.py`
+
+| 看什么 | 符号 |
+|---|---|
+| 四条判定 | `AnswerPolicy._check_sentence` |
+| 出处比对 | `AnswerPolicy._is_grounded` |
+| 流式版本 | `PolicyStreamGuard` |
+
+**为什么要四条同时成立**（金额或时效 + 承诺动词 + 无对冲词 + 无出处）：
+少任何一条都会误伤。只看"有数字"会把"订单号 12345"当承诺；不看对冲词会把
+SOP 要求的"通常一周左右，以工厂排产为准"也拦下来。
+
+**为什么出处比对不做宽松匹配**：`_is_grounded` 要求数字和单位在出处里**连在一起**
+出现。知识库写"补件 7 个工作日发出"时，模型说"4 个工作日就能送到"必须判为
+无依据——数字跨条目张冠李戴，正是这类承诺出事的主要方式。
+
+**为什么是纯规则**：守卫在每次回复后同步执行。用 LLM 判断会让每次回复多一次
+往返，把流式的首字延迟也拖垮。
+
+## 3. Agent 编排 · `backend/app/agents/agent_orchestrator.py`
+
+| 看什么 | 符号 |
+|---|---|
+| 领域打分 | `AgentOrchestrator._domain_scores` |
+| 主辅决策 | `_route_decision`、`RoutingDecision` |
+| 转人工判定 | `_handoff_signals`、`_handoff_result` |
+| 兜底降级 | `_execute` |
+| 性能路由 | `_best_agent` |
+| 流式 | `run_stream`、`BaseAgent.stream` |
+
+**为什么领域分要截断到 [0,1]**：辅助 Agent 的门槛之一是"达到主 Agent 分数的
+一定比例"。不截断的话主 Agent 分数可以无限累加，跨域工单里的第二个域永远够不到
+门槛，多 Agent 协作就成了永不执行的死代码。
+
+**为什么 Agent 自评不问模型**："你有多确信"是不可校准的自述。`_self_confidence`
+改用可观测信号折算：触发了几处策略拦截、有没有明说处理不了。
+
+**为什么转人工由编排器直接产出文案**：转人工是确定动作，不需要再花一次模型调用
+去生成一段"我帮您转人工"。`AgentType.HANDOFF` 因此不在 Agent 池里。早期版本把
+它当占位放进路由表，结果 `primary_agent=ESCALATION` 但池里没有实例，静默降级到
+GENERAL，响应里 `agent_type` 和 `primary_agent` 自相矛盾。
+
+**为什么同分要轮询**：`_best_agent` 在分数打平时轮询而不是固定取第一个。冷启动
+阶段所有实例分数都是 1.0，固定取第一个会让流量永远压在 0 号实例，其他实例的
+统计永远是空的，Monitor 的反馈也就永远不产生任何路由差异。
+
+**为什么流式失败不重跑**：`run_stream` 里 Agent 流式失败后直接转人工，不像非流式
+那样降级到 General 重试——已经吐出去的半截回答收不回来，重跑会让用户看到两段
+互相矛盾的内容。
+
+## 4. 工具治理 · `backend/app/tools/tool_manager.py`
+
+| 看什么 | 符号 |
+|---|---|
+| 调用生命周期 | `ToolManager.call` |
+| 检索优化链路 | `search_with_rewrite`、`rewrite_query`、`_rerank` |
+| 熔断 | `CircuitBreaker` |
+| 降级 | `_fallback_result` |
+
+**为什么 `_rerank` 返回二元组**：结果数不足 `top_k` 时它原样返回，此时不能标记
+`reranked=True`。早期版本外层无条件标记，这个字段一直在说谎。
+
+## 5. 三级记忆 · `backend/app/memory/conversation_memory.py`
+
+| 看什么 | 符号 |
+|---|---|
+| 写入与压缩 | `add_message`、`_compress` |
+| 情景记忆检索 | `_search_episodic` |
+| 用户画像 | `update_profile`、`_get_profile` |
+
+**为什么画像是每用户单条覆盖写**：早期版本按会话写多条，读取时取第一条，而当时的
+向量库不保证返回顺序——docstring 写着"取最新一条"，代码做不到，可能返回半年前的画像。
+现在向量存储换成 pgvector，画像按 user_id 主键 upsert，语义和实现一致。
+
+**为什么同步向量调用要包线程池**：向量库客户端是同步实现，直接 await 不了。
+不包的话一次检索会阻塞整个事件循环，并发请求全部排队。见 `asyncio.to_thread` 的调用点。
+
+## 6. 评测 · `backend/app/evaluation/evaluator.py`
+
+| 看什么 | 符号 |
+|---|---|
+| 四维打分 | `LLMJudge.judge`、`QualityScores` |
+| 意图指标 | `IntentEvaluator.evaluate` |
+| 回归检测 | `EndToEndEvaluator._detect_regressions` |
+| 基线管理 | `_load_baseline`、`promote_baseline` |
+
+**为什么基线不能自动更新**：早期版本每跑完一次就把报告写回基线文件，且优先和
+本进程上一次运行比较。结果是"相比基线退化"永远为空——你每次都在和刚刚的自己比。
+
+## 7. API 层 · `backend/app/api/main.py`
+
+| 看什么 | 符号 |
+|---|---|
+| 共用准备阶段 | `_prepare_request` |
+| 流式端点 | `chat_stream`、`_sse` |
+| 鉴权 | `require_api_key`、`protect_chat` |
+| 知识门控 | `_should_use_knowledge` |
+| 前端挂载 | `_mount_frontend` |
+
+**为什么流式和非流式共用 `_prepare_request`**：两条链路一旦各自构造上下文就会
+漂移，最终表现为"同一个问题流式和非流式给出不同答案"。
+
+**为什么静态资源挂载写在文件末尾**：Starlette 按注册顺序匹配，挂在 `/` 的
+`StaticFiles` 会吃掉所有未匹配路径。提前挂载会遮蔽 `/chat` 等接口。
+
+## 8. Skills · `backend/app/core/skill_loader.py`
+
+| 看什么 | 符号 |
+|---|---|
+| 发现与解析 | `SkillManager._discover_files`、`_split_front_matter` |
+| 匹配注入 | `Skill.matches`、`SkillManager.prompt_for` |
+| 热加载 | `SkillManager.reload` ← `POST /skills/reload` |
+
+front matter 刻意不用 PyYAML 解析——为一个只有五个字段的轻量配置格式增加运行时
+依赖不划算。
+
+## 9. 身份与限流 · `backend/app/core/auth.py`
+
+| 看什么 | 符号 |
+|---|---|
+| 令牌签发与校验 | `TokenAuth.issue`、`TokenAuth.verify`、`_sign` |
+| 每用户限流 | `RateLimiter` |
+
+**为什么 user_id 不能信任请求体**：系统会把用户的历史摘要和长期画像注入上下文。
+如果 user_id 由客户端指定，传 `user_id=alice` 就能读到别人的记忆——这是记忆能力
+天然引入的越权读取面，必须在入口堵死。
+
+**为什么不符即 401 而不是静默用令牌覆盖**：静默覆盖会让一次冒用尝试变成一次正常
+请求，日志里什么都看不到。报错才能把攻击意图暴露出来。
+
+**为什么用 `hmac.compare_digest`**：`==` 比较字符串会按字节短路，泄露"前几位对了"
+这个信息，构成时序侧信道。
+
+## 10. 多实例共享状态 · `backend/app/core/shared_state.py`
+
+| 看什么 | 符号 |
+|---|---|
+| 共享读写与降级 | `SharedState`、`_degrade` |
+| 分布式熔断 | `DistributedCircuitBreaker` |
+
+**哪些状态必须共享，哪些刻意不共享**：熔断开合、路由惩罚、限流计数属于正确性
+状态——实例 A 熔断某工具后实例 B 也该拒绝，这才是"保护下游"；限流按实例各算一份
+等于额度被放大 N 倍。而意图缓存和工具 TTL 缓存属于性能优化，各存一份只影响命中率
+不影响正确性，不值得为它们付出每次读缓存一趟 Redis 往返。
+
+**为什么 Redis 不可用时降级而不是抛错**：可观测性和限流的降级损失，远小于因为
+Redis 抖动导致整个服务不可用。
+
+## 11. 存储层 · `backend/storage/`
+
+| 看什么 | 符号 |
+|---|---|
+| 连接与建表 | `pg.py` |
+| 双后端向量存储 | `vector_store.py` 的 `PgStore` / `SqliteStore` |
+| 余弦检索 | `PgStore.kb_search`（`<=>` 运算符） |
+| 审计留档 | `conversation_log.py` |
+| 向量化 | `backend/app/core/embedder.py` |
+
+**为什么维度不一致要 fail fast**：向量列维度建表时就固定了，而维度由当前 Embedder
+决定（远端 1536 维、本地降级 256 维）。换了嵌入后端却不改表，数据库不会报错，
+但检索结果完全无意义——这是最难排查的一类故障，应该在启动时就炸掉。
+
+**为什么保留 SQLite 后端**：clone 下来不起任何容器就能跑通全链路。两个后端跑同一组
+合同测试，保证行为一致；PG 合同测试在 CI 里通过 service container 始终执行。
+
+**审计日志和记忆为什么是两个东西**：记忆面向模型，为下一轮组装上下文，允许压缩、
+摘要、遗忘（24h TTL）；审计面向人和合规，原文 append-only，保留期由运维显式
+`purge_before` 决定，服务不悄悄删数据。
+
+## 12. 工单 · `backend/app/tickets/ticket_store.py`
+
+| 看什么 | 符号 |
+|---|---|
+| 四态状态机 | `TicketStatus`、`TicketStore.transition` |
+| 建单与通知 | `create`、webhook 触发 |
+| 查询流转 | `POST /chat` 转人工路径、`GET /tickets`、`PATCH /tickets/{id}` |
+
+**为什么转人工必须落库**：早期版本转人工只打一条 warning 日志，业务上等于把用户
+丢在半路。现在建单带会话 ID，人工接手时能回查完整对话审计。
+
+## 13. 可观测性 · `backend/app/core/telemetry.py`、`backend/app/core/metrics.py`
+
+| 看什么 | 符号 |
+|---|---|
+| 自动埋点 | `telemetry.py` 对 FastAPI / httpx / redis / asyncpg 的 instrument |
+| 业务 span | 意图识别、RAG 检索、Agent 执行、记忆读写四处 |
+| 指标 | `metrics.py`：QPS、p95、LLM token 计量（含流式）、限流命中 |
+| 日志关联 | `request_context.py` 注入 request_id / trace_id |
+
+**为什么日志要带 trace_id**：只有指标时，你知道 p95 变慢了但不知道慢在哪一段。
+日志里带上 trace_id 之后，Grafana 里从一条慢请求日志能直接跳到 Tempo 看完整调用链，
+看清意图识别、检索、生成三段各花了多少时间。
+
+**为什么流式也要计 token**：流式响应的 usage 在最后一个事件里，早期版本只在非流式
+路径计量，导致成本看板系统性低估。
+
+## 14. LLM 调用层 · `backend/app/core/llm_utils.py`、`backend/app/core/openai_compat.py`
+
+| 看什么 | 符号 |
+|---|---|
+| 结构化输出统一入口 | `structured_parse`（带 schema）、`structured_create`（自由文本） |
+| effort 统一下发 | `_with_effort`、`STRUCTURED_EFFORT` |
+| 各处的返回形状 | `LLMIntentPayload`、`UserProfilePayload`、`QueryRewritePayload`、`RerankPayload`、`JudgePayload` |
+| OpenAI 侧等价实现 | `openai_compat._Messages.parse` |
+| 缓存前缀边界 | `BaseAgent._system_blocks` |
+
+**为什么不再手工从正文里抠 JSON**：原来五处都是
+`raw.find("{") … json.loads(raw[s:e])`。它有三种失败方式——模型加了前言、
+JSON 被 markdown 围栏包住、字段名或类型漂了——而三种的表现是同一个：
+调用点 except 里的一次静默降级。换成结构化输出之后 schema 在服务端强制，
+这三类失败不再成立，剩下的解析异常都是真异常。
+
+**为什么删掉了 temperature 的探测降级**：SDK 1.x 把 `temperature/top_p/top_k`
+从 `messages.*` 的签名里移除了，再传是 **TypeError** 而不是 400。原来那套探测
+只认 400 加关键词，TypeError 会被调用点的 `except Exception` 吃掉后照样静默降级
+——同一个坑换了个形状。所以不做兼容，一处都不传，确定性交给 schema。
+
+**为什么 effort 定在 low**：意图分类、查询改写、重排、判分都是判别式任务。
+留着默认的高 effort 不只是贵——推理块会先吃掉 `max_tokens`，正文没产出就又是
+一次空正文降级，正是 `STRUCTURED_MAX_TOKENS` 那段注释描述的事故。
+
+**为什么缓存标在 system 而不是用顶层 `cache_control`**：缓存是前缀匹配，
+顺序 tools → system → messages。顶层自动缓存标的是最后一个可缓存块，
+在这里就是每次都不同的 messages 尾部——那样等于每次写一份再也命中不了的新缓存，
+还要按 1.25 倍写入价付钱。标在 system 上，边界正好落在"每次相同"与"每次不同"的交界。
+
+**为什么 Anthropic 独有的旋钮在兼容层被丢掉而不是硬映射**：
+`output_config`（effort）/ `cache_control` 在 OpenAI 侧要么没有对应物、要么只有
+推理模型才认（`reasoning_effort` 传给非推理模型直接 400）。硬映射会把"省点钱"
+换成"整条链路挂掉"；丢掉只影响成本，不影响产出形状。
+
+## 测试在哪
+
+`backend/tests/` 下 461 个测试，全部不发真实网络请求（PG 合同测试在 CI 的 pgvector
+service container 上执行，本地无 `TEST_POSTGRES_DSN` 时跳过）。重点覆盖那些"看起来在工作
+但实际没有"的路径：多实例轮询与 Monitor 惩罚是否真的改变路由选择、跨域工单能否
+提名辅助 Agent、流式下策略守卫是否漏拦、回归检测是否真的在对比基线、
+伪造 user_id 能否读到他人记忆、两个存储后端行为是否一致。

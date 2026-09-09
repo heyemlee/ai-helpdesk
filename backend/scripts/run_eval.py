@@ -47,21 +47,21 @@ try:
 except ImportError:
     pass
 
-from agents.agent_orchestrator import AgentOrchestrator  # noqa: E402
-from core.answer_policy import AnswerPolicy  # noqa: E402
-from core.embedder import Embedder  # noqa: E402
-from core.intent_recognizer import IntentRecognizer  # noqa: E402
-from core.llm_utils import resolve_llm_config  # noqa: E402
-from core.reranker import Reranker  # noqa: E402
-from core.skill_loader import SkillManager  # noqa: E402
-from evaluation.evaluator import (  # noqa: E402
+from app.agents.agent_orchestrator import AgentOrchestrator  # noqa: E402
+from app.core.answer_policy import AnswerPolicy  # noqa: E402
+from app.core.embedder import Embedder  # noqa: E402
+from app.core.intent_recognizer import IntentRecognizer  # noqa: E402
+from app.core.llm_utils import resolve_llm_config  # noqa: E402
+from app.core.reranker import Reranker  # noqa: E402
+from app.core.skill_loader import SkillManager  # noqa: E402
+from app.evaluation.evaluator import (  # noqa: E402
     DEFAULT_DIALOG_CASES,
     DEFAULT_INTENT_CASES,
     EndToEndEvaluator,
 )
-from storage.vector_store import LocalStore  # noqa: E402
-from tools.knowledge_base import KnowledgeBase, should_use_knowledge  # noqa: E402
-from tools.tool_manager import Tool, ToolManager  # noqa: E402
+from app.storage.vector_store import LocalStore  # noqa: E402
+from app.tools.knowledge_base import KnowledgeBase, should_use_knowledge  # noqa: E402
+from app.tools.tool_manager import Tool, ToolManager  # noqa: E402
 
 BASELINE = _ROOT / "data" / "eval" / "baseline.json"
 

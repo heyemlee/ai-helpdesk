@@ -45,9 +45,9 @@
 
 | 位置 | 强制什么 |
 | --- | --- |
-| `core/preflight.py::check_token_issuer_binding` | 生产模式下 `AI_HELPDESK_TOKEN_ISSUER_CIDRS` 必须配，且**不能是 `0.0.0.0/0`**——允许一切等于没有约束，而配置文件看起来是有的。不满足**拒绝启动** |
-| `core/preflight.py::token_issuer_networks` | 拼错的 CIDR **直接抛**，不忽略。忽略等于白名单被悄悄放宽 |
-| `api/main.py::require_token_issuer_source` | 每次请求校验**直连对端**。拿不到对端地址时**拒绝**——"无法确认来源"和"确认了不合法"，对一个签发身份的端点是同一件事 |
+| `app/core/preflight.py::check_token_issuer_binding` | 生产模式下 `AI_HELPDESK_TOKEN_ISSUER_CIDRS` 必须配，且**不能是 `0.0.0.0/0`**——允许一切等于没有约束，而配置文件看起来是有的。不满足**拒绝启动** |
+| `app/core/preflight.py::token_issuer_networks` | 拼错的 CIDR **直接抛**，不忽略。忽略等于白名单被悄悄放宽 |
+| `app/api/main.py::require_token_issuer_source` | 每次请求校验**直连对端**。拿不到对端地址时**拒绝**——"无法确认来源"和"确认了不合法"，对一个签发身份的端点是同一件事 |
 
 **为什么判直连对端而不是 `X-Forwarded-For`：** XFF 是一个请求头，任何人都能写。
 拿它当来源判据，等于把白名单交给调用方自己填。只有直连对端是传输层事实。
@@ -96,10 +96,10 @@ AI_HELPDESK_TOKEN_ISSUER_CIDRS=10.42.0.0/16,127.0.0.1/32
 - **不要用 `email` / `preferred_username`。** 它们会变，而且可以被回收——
   一个离职员工的邮箱被重新分配给新人，新人就继承了旧记忆和旧画像。
 - 需要租户维度时，另取一个 claim（见
-  `docs/sql-agent-identity-requirements.md` 第 4 条：下游要做行范围，
+  `docs/integrations/sql-agent-identity-requirements.md` 第 4 条：下游要做行范围，
   可能需要租户号，那时这个 claim 要一并定下来）。
 
-**约束一条：`user_id` 里不能有 `.`**（`core/auth.py::issue` 已经在拒绝了）——
+**约束一条：`user_id` 里不能有 `.`**（`app/core/auth.py::issue` 已经在拒绝了）——
 现在的令牌是 `user_id.expires_at.signature` 三段式，用 `.` 分隔。
 换成 JWT 之后这条约束消失，但**换的那一刻要一起改**，不然是一个静默的解析歧义。
 

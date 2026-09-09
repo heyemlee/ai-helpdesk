@@ -3,7 +3,7 @@ import inspect
 
 import pytest
 
-from monitor.performance_monitor import PerformanceMonitor, Severity
+from app.monitor.performance_monitor import PerformanceMonitor, Severity
 
 
 def _monitor() -> PerformanceMonitor:
@@ -120,7 +120,7 @@ def test_latency_buckets_cover_real_llm_latencies():
     默认桶最大 10，而这个指标的单位是毫秒、真实值 6000~22000——每一条真实延迟
     都会落进 +Inf，histogram_quantile 算出来是 +Inf。面板上看着有线，其实没数据。
     """
-    from core.metrics import AGENT_LATENCY_MS
+    from app.core.metrics import AGENT_LATENCY_MS
 
     edges = [b for b in AGENT_LATENCY_MS._upper_bounds if b != float("inf")]
     assert max(edges) >= 45000, "上界要覆盖到 LLM_TIMEOUT_S 量级"
@@ -133,7 +133,7 @@ def test_monitor_does_not_resample_the_rolling_average():
     原来 Monitor 每 10s observe 一次 stats.avg_ms：同一个请求被重复计入几十次，
     慢请求之后的快请求根本不会单独出现。延迟必须在请求结束时逐次记。
     """
-    from monitor.performance_monitor import PerformanceMonitor
+    from app.monitor.performance_monitor import PerformanceMonitor
 
     src = inspect.getsource(PerformanceMonitor._collect)
     assert "agent_latency_ms" not in src, "Monitor 不该再自己观测延迟"
@@ -141,8 +141,8 @@ def test_monitor_does_not_resample_the_rolling_average():
 
 def test_each_request_is_recorded_once(orchestrator, monkeypatch):
     """_record 把本地统计和 Prometheus 观测收在一处，避免两边漂移。"""
-    from agents import agent_orchestrator as ao
-    from agents.agent_orchestrator import AgentType
+    from app.agents import agent_orchestrator as ao
+    from app.agents.agent_orchestrator import AgentType
 
     seen: list[tuple[str, float]] = []
     monkeypatch.setattr(ao, "record_agent_latency", lambda a, ms: seen.append((a, ms)))

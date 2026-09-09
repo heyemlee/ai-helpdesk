@@ -1,7 +1,7 @@
 """答案策略守卫：拦截无依据的价格承诺和时效承诺。"""
 import pytest
 
-from core.answer_policy import AnswerPolicy
+from app.core.answer_policy import AnswerPolicy
 
 KB = (
     "[知识库检索结果]\n"
@@ -160,7 +160,7 @@ def test_clean_answer_is_untouched(policy):
 
 def test_stream_guard_also_drops_mojibake(policy):
     """流式和非流式共用 enforce，所以流式链路必须同样干净。"""
-    from core.answer_policy import PolicyStreamGuard
+    from app.core.answer_policy import PolicyStreamGuard
 
     guard = PolicyStreamGuard(policy, sources=[])
     out = guard.feed("好的���，") + guard.feed("我这就帮你查。") + guard.flush()
@@ -240,7 +240,7 @@ def test_english_paragraph_is_checked_sentence_by_sentence(policy):
 
 def test_decimals_and_abbreviations_do_not_split_sentences():
     """3.5 / $12,800.00 / approx. 里的句号不是句末——切错会把承诺动词和金额拆散。"""
-    from core.answer_policy import split_sentences
+    from app.core.answer_policy import split_sentences
 
     text = "It will take 3.5 business days. Cost is approx. $12,800.00 total. Thanks."
     sentences, tail = split_sentences(text, final=True)
@@ -252,7 +252,7 @@ def test_decimals_and_abbreviations_do_not_split_sentences():
 
 def test_stream_and_batch_agree_on_english(policy):
     """流式逐句、非流式整段，两条路对同一段英文必须给出同一个结果。"""
-    from core.answer_policy import PolicyStreamGuard
+    from app.core.answer_policy import PolicyStreamGuard
 
     text = "Thanks for waiting. The total is $980. We will ship it next Tuesday."
     batch = policy.enforce(text, sources=[]).text
@@ -271,7 +271,7 @@ def test_a_trailing_period_is_not_flushed_early():
     流式里结尾的 '.' 后面还没有空白，可能是没写完的小数（"3." → "3.5"）。
     必须留在缓冲区等下一片，不能当句末抢先发出去。
     """
-    from core.answer_policy import PolicyStreamGuard
+    from app.core.answer_policy import PolicyStreamGuard
 
     # 刻意选一句不构成承诺的（毫米不是时效），这里测的是缓冲边界不是拦截
     guard = PolicyStreamGuard(AnswerPolicy(enabled=True), sources=[])

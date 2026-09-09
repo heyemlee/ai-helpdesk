@@ -28,7 +28,7 @@
 否则进程起不来——**故意不给默认值**，因为"漏配了"和"想清楚了配成这个"风险完全不同。
 声明单租户却同时打开 `SQL_AGENT_IMPERSONATE` 也会被拒：那个组合说明有人**以为**
 这套部署在隔离业务数据，而那个误解本身就是风险。
-实现见 `backend/core/preflight.py::check_deployment_scope`。
+实现见 `backend/app/core/preflight.py::check_deployment_scope`。
 
 **隔离到位的部分。** 对话记忆、情景记忆、用户画像和限流都按 `user_id` 分隔，
 这个 id 由服务端从 HMAC 签名令牌推导（`AI_HELPDESK_AUTH_SECRET`），客户端伪造不了。
@@ -92,7 +92,7 @@ docker compose up -d --build
 先按 `backend/.env.example` 创建并填写 `backend/.env`，再执行：
 
 ```bash
-./dev.sh
+scripts/dev.sh
 ```
 
 这会同时启动后端和前端。浏览器打开 http://localhost:5173 即可。
@@ -114,9 +114,12 @@ docker compose up -d --build
 ## 核心组件
 
 ```text
-backend/         FastAPI 服务、Agent 编排、知识库、记忆、工单与监控
-frontend/        React 管理控制台
-backend/skills/  不同客服 Agent 使用的服务规范（SOP）
+backend/          FastAPI 服务，Python 包在 backend/app/ 下
+backend/skills/   不同客服 Agent 使用的服务规范（SOP），运行时热加载
+frontend/         React 管理控制台
+deploy/           Nginx / Prometheus / Grafana / Loki / Tempo / OTel 配置，由 docker-compose 只读挂载
+scripts/          dev.sh（本地同时起前后端）、docker-deploy.sh（compose 生命周期与备份恢复）、ci-local.sh
+docs/             架构图、代码导读、对接文档、运维记录
 ```
 
 系统使用 Redis 保存短期状态，如限流和近期对话；使用 PostgreSQL + pgvector 保存知识库、工单、审计记录和长期记忆。没有配置 Postgres 时，后端可退回 SQLite，方便本地体验。
@@ -140,7 +143,7 @@ cd backend && ./.venv/bin/python scripts/load_test.py --unique-messages --reques
 ```
 
 **`--unique-messages` 不是可选项**：消息池只有 10 条，不加这个开关时脚本循环发送，
-第 11 个请求起 `core/intent_recognizer.py` 的进程内意图缓存全命中，
+第 11 个请求起 `app/core/intent_recognizer.py` 的进程内意图缓存全命中，
 后续请求直接跳过意图识别的 LLM 调用，p95 会比真实首次工单低约 11%。
 缺开关时脚本会打印警告，报告里也会记 `mode` 字段。
 

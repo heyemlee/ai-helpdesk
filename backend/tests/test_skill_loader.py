@@ -4,7 +4,7 @@ import pathlib
 
 import pytest
 
-from core.skill_loader import SkillManager
+from app.core.skill_loader import SkillManager
 
 # ── 英文提问同样要拿到 SOP ────────────────────────────────────────────────────
 #

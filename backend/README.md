@@ -36,40 +36,59 @@ ai-helpdesk 是一个企业级智能客服系统，核心链路为：
 
 ```text
 ai-helpdesk/                             # 仓库根
-├── docker-compose.yml                   # 全栈编排：backend / frontend / Redis / Postgres(pgvector) / Prometheus / Nginx
-├── .env.example                         # compose 变量替换的模板（只有 REDIS_PASSWORD）
+├── docker-compose.yml                   # 全栈编排：backend / frontend / Redis / Postgres(pgvector) / 观测栈 / Nginx
+├── .env.example                         # compose 变量替换的模板（REDIS_PASSWORD、AI_HELPDESK_PORT）
 ├── .env                                 # 由上一行复制而来，不入库
-├── dev.sh                               # 本地开发：一条命令同时起 uvicorn 和 vite
-├── .github/workflows/ci.yml             # 后端 pytest + ruff，前端 vitest + tsc，两个镜像构建
+├── .github/workflows/ci.yml             # 后端 pytest + ruff，前端 vitest + tsc，契约用例，两个镜像构建
 │
 ├── backend/                             # 本文档描述的部分
-│   ├── api/main.py                      # FastAPI 入口，/chat /search /knowledge /monitor /eval
-│   ├── core/intent_recognizer.py        # 18 类意图：规则快通道 + 三路融合
-│   ├── core/answer_policy.py            # 出站策略守卫：拦截无依据的价格/时效承诺
-│   ├── core/skill_loader.py             # Markdown SOP 热加载，按 agent 类型注入
-│   ├── core/llm_utils.py                # LLM 调用封装
-│   ├── agents/agent_orchestrator.py     # 三专家 + 兜底的领域分路由、主辅协作、转人工
-│   ├── memory/conversation_memory.py    # Redis + Postgres(pgvector) 记忆管理
-│   ├── tools/tool_manager.py              # 工具调用、查询改写、重排、熔断、缓存、降级
-│   ├── tools/knowledge_base.py            # Postgres(pgvector) RAG 知识库
-│   ├── monitor/performance_monitor.py   # Agent/工具在线监控
-│   ├── evaluation/evaluator.py          # 四维 LLM-as-Judge + 相对存档基线的回归检测
-│   ├── skills/                          # 四份 SOP，与四个 Agent 一一对应
+│   ├── app/                             # Python 包：服务本体（uvicorn app.api.main:app）
+│   │   ├── api/main.py                  # FastAPI 入口，/chat /search /knowledge /monitor /eval
+│   │   ├── core/intent_recognizer.py    # 18 类意图：规则快通道 + 三路融合
+│   │   ├── core/answer_policy.py        # 出站策略守卫：拦截无依据的价格/时效承诺
+│   │   ├── core/skill_loader.py         # Markdown SOP 热加载，按 agent 类型注入
+│   │   ├── core/llm_utils.py            # LLM 调用封装
+│   │   ├── agents/agent_orchestrator.py # 三专家 + 兜底的领域分路由、主辅协作、转人工
+│   │   ├── memory/conversation_memory.py  # Redis + Postgres(pgvector) 记忆管理
+│   │   ├── tools/tool_manager.py        # 工具调用、查询改写、重排、熔断、缓存、降级
+│   │   ├── tools/knowledge_base.py      # Postgres(pgvector) RAG 知识库
+│   │   ├── storage/                     # pgvector / SQLite 存储实现、对话审计日志
+│   │   ├── tickets/                     # 工单存储与转人工通知
+│   │   ├── monitor/performance_monitor.py # Agent/工具在线监控
+│   │   └── evaluation/evaluator.py      # 四维 LLM-as-Judge + 相对存档基线的回归检测
+│   ├── skills/                          # 四份 SOP，与四个 Agent 一一对应（运行时热加载的数据，不是代码）
 │   ├── tests/                           # pytest 用例（不依赖网络和外部服务）
-│   ├── config/                          # nginx.conf + prometheus.yml
+│   ├── scripts/                         # 检索评测、端到端评测、压测（用后端 venv 跑）
 │   ├── data/demo_docs/                  # 演示知识库文档
 │   ├── data/eval/baseline.json          # 评测存档基线，只在 /eval/promote 时更新
-│   ├── docker-deploy.sh                 # 部署封装脚本：compose 生命周期 + Redis/Chroma 备份恢复
 │   ├── Dockerfile
 │   ├── requirements.txt
 │   └── .env                             # 由 .env.example 复制而来
 │
-└── frontend/                            # React 18 + TypeScript 控制台
-    ├── src/components/RoutingInspector.tsx  # 把每一轮的路由决策过程摊开显示
-    ├── src/api/                         # client / hooks / types
-    ├── src/hooks/useChatStream.ts       # 按句流式接收
-    ├── Dockerfile
-    └── package.json
+├── frontend/                            # React 18 + TypeScript 控制台
+│   ├── src/components/RoutingInspector.tsx  # 把每一轮的路由决策过程摊开显示
+│   ├── src/api/                         # client / hooks / types
+│   ├── src/hooks/useChatStream.ts       # 按句流式接收
+│   ├── Dockerfile
+│   └── package.json
+│
+├── deploy/                              # 基础设施配置，由 compose 只读挂载；应用代码不读它
+│   ├── nginx/nginx.conf
+│   ├── prometheus/                      # prometheus.yml + alerts/
+│   ├── grafana/                         # provisioning/ + dashboards/
+│   └── loki/ tempo/ otel/ promtail/
+│
+├── scripts/                             # 仓库级脚本，从任何目录执行都成立
+│   ├── dev.sh                           # 本地开发：一条命令同时起 uvicorn 和 vite
+│   ├── docker-deploy.sh                 # 部署封装：compose 生命周期 + Redis/Postgres 备份恢复
+│   └── ci-local.sh                      # 在本机跑一遍 CI 的全部门禁
+│
+└── docs/
+    ├── architecture.md                  # Mermaid 架构图
+    ├── code-guide.md                    # 代码导读：每个关键取舍在哪个文件、为什么
+    ├── auth-token-integration.md
+    ├── integrations/                    # 交给兄弟仓库（a2a-contract、ai-sql-agent）的需求与反馈
+    └── ops/                             # 上线检查单、恢复演练记录
 ```
 
 ### 命令在哪个目录执行
@@ -79,13 +98,13 @@ ai-helpdesk/                             # 仓库根
 | 命令 | 执行位置 | 例子 |
 |------|----------|------|
 | `docker compose *` | **仓库根** | `docker compose up -d --build` |
-| `./dev.sh` | **仓库根** | 同时起前后端 |
-| `pytest` / `ruff` / `python api/main.py` | `backend/` | `cd backend && pytest` |
+| `scripts/dev.sh` | **仓库根** | 同时起前后端 |
+| `pytest` / `ruff` / `python -m app.api.main` | `backend/` | `cd backend && pytest` |
 | `npm *` | `frontend/` | `cd frontend && npm run dev` |
 
 后文出现 `docker compose` 时若未特别说明，一律指在仓库根执行。
 
-`backend/docker-deploy.sh` 是例外：它从脚本自身位置推导仓库根，**在任何目录执行都成立**。
+`scripts/docker-deploy.sh` 是例外：它从脚本自身位置推导仓库根，**在任何目录执行都成立**。
 内部所有 compose 调用都显式带 `-f <仓库根>/docker-compose.yml -p ai-helpdesk`，
 不依赖工作目录，也不受仓库目录改名影响。
 
@@ -105,19 +124,19 @@ pip install -r requirements.txt && pytest
 
 | 能力 | 实现位置 | 验证方式 |
 |------|----------|----------|
-| 18 类细粒度意图 | `core/intent_recognizer.py` `FINE_GRAINED_INTENTS` | `tests/test_intent_recognizer.py::test_exactly_18_fine_grained_intents` |
+| 18 类细粒度意图 | `app/core/intent_recognizer.py` `FINE_GRAINED_INTENTS` | `tests/test_intent_recognizer.py::test_exactly_18_fine_grained_intents` |
 | 三路融合（规则 / Embedding / LLM） | `IntentRecognizer._vote`，权重 `_VOTE_WEIGHTS` | 响应里的 `intent_source_scores` 三项都非空 |
 | 换供应商后 Embedding 一路不失效 | `_embed_text` 远端优先、本地 n-gram 兜底 | `test_embedding_signal_stays_enabled_with_third_party_base_url` |
 | 零延迟规则通道 | `IntentRecognizer._fast_path`，锚点表 `_FAST_PATH_RULES` | `test_fast_path_makes_zero_network_calls`；响应里 `intent_strategy=fast_path` |
-| 快通道联动省掉查询改写和重排 | `api/main.py::_build_knowledge_context(fast_path=True)` | 对比两条通道的 `latency_ms` |
+| 快通道联动省掉查询改写和重排 | `app/api/main.py::_build_knowledge_context(fast_path=True)` | 对比两条通道的 `latency_ms` |
 | 三个专家 Agent + 领域分路由 | `AgentOrchestrator._domain_scores` / `_route_decision` | `test_domain_score_picks_primary_agent` |
 | 跨域工单提名主 + 辅 Agent | `RoutingDecision.supporting_agents`、`run_parallel` | `test_cross_domain_promotes_supporting_agent` |
 | 低置信度澄清 | `AgentOrchestrator._needs_clarification` | `test_low_confidence_other_intent_asks_for_clarification` |
 | 置信度转人工 | `_handoff_signals`，三路各自对齐阈值 | `test_low_intent_confidence_triggers_handoff` |
 | 专家失败降级到通用 Agent | `AgentOrchestrator._execute` | `test_specialist_failure_falls_back_to_general` |
-| 按 Agent 类型注入的热加载 SOP | `core/skill_loader.py` + `skills/*/SKILL.md` | `POST /skills/reload` 后 `GET /skills` |
-| 拦截无依据的价格/时效承诺 | `core/answer_policy.py` | `tests/test_answer_policy.py`；响应里的 `policy_violations` |
-| 四维 LLM-as-Judge | `evaluation/evaluator.py::LLMJudge` | `test_judge_prompt_names_all_four_dimensions` |
+| 按 Agent 类型注入的热加载 SOP | `app/core/skill_loader.py` + `skills/*/SKILL.md` | `POST /skills/reload` 后 `GET /skills` |
+| 拦截无依据的价格/时效承诺 | `app/core/answer_policy.py` | `tests/test_answer_policy.py`；响应里的 `policy_violations` |
+| 四维 LLM-as-Judge | `app/evaluation/evaluator.py::LLMJudge` | `test_judge_prompt_names_all_four_dimensions` |
 | 相对存档基线的回归检测 | `EndToEndEvaluator._detect_regressions`，基线需显式提升 | `test_baseline_is_not_overwritten_on_every_run` |
 
 ## 2. 环境准备
@@ -177,7 +196,7 @@ OPENAI_MODEL=gpt-5.6-luna
 模型名以网关支持的清单为准（`GET $OPENAI_BASE_URL/models` 可查）。
 
 业务代码只写了一套 Anthropic 形状的调用（`client.messages.create/stream`），
-OpenAI 那条路由 `core/openai_compat.py` 翻译成 `/chat/completions`，system 位置、
+OpenAI 那条路由 `app/core/openai_compat.py` 翻译成 `/chat/completions`，system 位置、
 `max_tokens`、`stop_reason`、`usage` 计量和流式增量逐项对齐。所以换供应商是改
 一行环境变量的事，五处调用点（编排器 / 意图识别 / 工具管理 / 记忆 / 评测）
 一行都不用动，两条链路也不会因为改一处漏一处而产生行为差异。
@@ -193,7 +212,7 @@ CHROMA_PORT=8001
 #### 上线前必须过的安全配置（生产模式会强制校验）
 
 把 `APP_ENV` 设成 `production` 之后，下面三项**缺任何一项进程都拒绝启动**
-（`core/preflight.py`，用例在 `tests/test_preflight.py`）：
+（`app/core/preflight.py`，用例在 `tests/test_preflight.py`）：
 
 | 变量 | 漏配的后果 |
 |------|------------|
@@ -231,7 +250,7 @@ CHROMA_PORT=8001
 
 隔离到位的是**记忆**：对话记忆、情景记忆、画像、限流都按服务端推导的可信
 `user_id` 分隔；发给下游的会话标识也由这个身份派生
-（`tools/sql_agent_client.py` 的 `_downstream_session_id`），
+（`app/tools/sql_agent_client.py` 的 `_downstream_session_id`），
 所以一个客户无法指定另一个客户的下游会话。
 
 **没有隔离的是业务数据。** 订单/生产/库存/账款的答案来自 `ai-sql-agent`，
@@ -267,7 +286,7 @@ ai-helpdesk 常用两种 Docker 启动方式：`docker compose up` 全栈部署�
 
 - 想完整体验 HTTP API、Swagger、Nginx、Prometheus：用 **Docker Compose 全栈部署**。
 - 想调试源码或 CLI，并且希望本地改代码后快速重跑：用 **Docker run 开发模式**。
-- 如果只是跑 CLI，最省心的方式是 `docker compose run --rm ai-helpdesk python api/main.py --cli`，它会自动使用 Compose 网络。
+- 如果只是跑 CLI，最省心的方式是 `docker compose run --rm ai-helpdesk python -m app.api.main --cli`，它会自动使用 Compose 网络。
 
 ## 2.5 前端和后端一起启动
 
@@ -301,7 +320,7 @@ docker compose up -d --build   # 在仓库根执行
 仓库根目录的 `dev.sh` 会同时拉起 uvicorn 和 vite，Ctrl-C 一起收掉：
 
 ```bash
-./dev.sh
+scripts/dev.sh
 ```
 
 打开 http://localhost:5173 即可，Vite 的 proxy 会把 `/api` 转发到 `:8000`。
@@ -314,7 +333,7 @@ FastAPI 启动时会自动挂载前端构建产物，一个进程同时提供页
 
 ```bash
 cd frontend && npm run build
-cd ../backend && python -m uvicorn api.main:app --port 8000
+cd ../backend && python -m uvicorn app.api.main:app --port 8000
 ```
 
 然后 http://localhost:8000 既是页面也是 API。查找顺序：
@@ -424,7 +443,7 @@ docker run -it --rm \
   -v "$(pwd):/workspace" \
   -w /workspace \
   ai-helpdesk \
-  python api/main.py --cli
+  python -m app.api.main --cli
 ```
 
 ## 5. Swagger 和接口总览
@@ -814,7 +833,7 @@ curl -X POST http://localhost:8000/chat \
 
 ## 7. 知识库使用
 
-ai-helpdesk 的知识库由 `tools/knowledge_base.py` 管理，底层使用 Postgres(pgvector) collection：
+ai-helpdesk 的知识库由 `app/tools/knowledge_base.py` 管理，底层使用 Postgres(pgvector) collection：
 
 ```text
 knowledge_base
@@ -926,9 +945,9 @@ ai-helpdesk 使用了三个 Postgres(pgvector) collection：
 
 | Collection | 模块 | 作用 |
 |------------|------|------|
-| `knowledge_base` | `tools/knowledge_base.py` | RAG 知识库文档片段 |
-| `episodic` | `memory/conversation_memory.py` | 压缩后的历史对话摘要 |
-| `user_profile` | `memory/conversation_memory.py` | 用户画像，包含偏好和关键实体 |
+| `knowledge_base` | `app/tools/knowledge_base.py` | RAG 知识库文档片段 |
+| `episodic` | `app/memory/conversation_memory.py` | 压缩后的历史对话摘要 |
+| `user_profile` | `app/memory/conversation_memory.py` | 用户画像，包含偏好和关键实体 |
 
 数据写入时机：
 
@@ -1247,7 +1266,7 @@ TTL wm:user_001:session_001
 
 ## 11. 查看工作记忆压缩内容
 
-工作记忆压缩发生在 `memory/conversation_memory.py` 中。默认配置：
+工作记忆压缩发生在 `app/memory/conversation_memory.py` 中。默认配置：
 
 ```text
 WORKING_MAX = 20

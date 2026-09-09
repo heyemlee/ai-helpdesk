@@ -1,7 +1,7 @@
 """/chat/stream 准备阶段的进度泵：progress 在 meta 之前、静默满时发心跳。"""
 import asyncio
 
-from api.main import _pump_until_done
+from app.api.main import _pump_until_done
 
 
 async def _collect(gen):

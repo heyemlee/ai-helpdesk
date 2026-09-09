@@ -2,9 +2,9 @@
 
 from conftest import make_request
 
-from agents.agent_orchestrator import AgentOrchestrator, AgentType
-from core.answer_policy import AnswerPolicy, PolicyStreamGuard
-from core.intent_recognizer import IntentCategory
+from app.agents.agent_orchestrator import AgentOrchestrator, AgentType
+from app.core.answer_policy import AnswerPolicy, PolicyStreamGuard
+from app.core.intent_recognizer import IntentCategory
 
 KB = "标准交期以工厂排产为准。补件确认后 7 个工作日内从工厂发出。"
 

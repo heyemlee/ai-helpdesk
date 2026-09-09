@@ -3,7 +3,7 @@ import time
 
 import pytest
 
-from core.auth import AuthError, RateLimiter, UserTokenAuth
+from app.core.auth import AuthError, RateLimiter, UserTokenAuth
 
 # ── UserTokenAuth ─────────────────────────────────────────────────────────────
 

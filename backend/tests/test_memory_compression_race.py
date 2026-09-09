@@ -13,7 +13,7 @@ import asyncio
 
 import pytest
 
-from memory.conversation_memory import MemoryManager, MsgRole
+from app.memory.conversation_memory import MemoryManager, MsgRole
 
 
 class FakeRedis:
@@ -105,7 +105,7 @@ def _install_summariser(manager, on_call=None, text="摘要：客户在问交期
             await on_call()
         return type("R", (), {"content": [type("B", (), {"type": "text", "text": text})()]})()
 
-    import memory.conversation_memory as mod
+    import app.memory.conversation_memory as mod
     mod.structured_create = _fake
     manager._store_episodic = _episodic_recorder(manager)
 
@@ -221,7 +221,7 @@ class TestConcurrentCompressionsDoNotClobberEachOther:
         async def _boom(*args, **kwargs):
             raise RuntimeError("模型挂了")
 
-        import memory.conversation_memory as mod
+        import app.memory.conversation_memory as mod
         mod.structured_create = _boom
         manager._store_episodic = _episodic_recorder(manager)
 

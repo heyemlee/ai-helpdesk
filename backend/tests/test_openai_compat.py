@@ -9,9 +9,9 @@ import httpx
 import pytest
 from openai import BadRequestError
 
-from core import openai_compat
-from core.llm_utils import create_llm_client, extract_structured_text, resolve_llm_config
-from core.openai_compat import AsyncOpenAICompat, _Messages
+from app.core import openai_compat
+from app.core.llm_utils import create_llm_client, extract_structured_text, resolve_llm_config
+from app.core.openai_compat import AsyncOpenAICompat, _Messages
 
 
 class _FakeMessage:

@@ -1,13 +1,18 @@
-# ── Python ───────────────────────────────────────────────────────────────────
+# 仓库唯一的一份 .gitignore。backend/ 和 frontend/ 不再各放一份——
+# 三处规则互相重叠又各有陈旧条目，看一个地方就够。
+
+# ── Python（backend/）─────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
+*.egg-info/
 .venv/
 .venv.*/
 venv/
 .pytest_cache/
 .ruff_cache/
+.mypy_cache/
 
-# ── Node ─────────────────────────────────────────────────────────────────────
+# ── Node（frontend/）──────────────────────────────────────────────────────────
 node_modules/
 dist/
 *.tsbuildinfo
@@ -19,23 +24,41 @@ dist/
 .env.local
 .env.bak*
 .env.*.bak
-
-# docker-deploy.sh backup 的产物：Redis dump、Chroma 向量库、config 副本。
-# 其中含真实对话数据，且每次备份约 2MB。
-backups/
 *.pem
+# Nginx 证书目录（scripts/docker-deploy.sh install 会创建）
+deploy/nginx/ssl/
 
 # ── 运行时数据 ────────────────────────────────────────────────────────────────
-# 向量库和日志是本地状态，不进版本库
-backend/data/chroma/
+# backend/data/ 下只有演示知识库和评测基线进版本库。
+# baseline.json 是回归检测的对比基准，不进版本控制就没法判断某次发布
+# 相对"上一个被认可的版本"退化了多少。SQLite 库文件和日志是本地状态。
+backend/data/*
+!backend/data/demo_docs/
+!backend/data/eval/
+backend/data/eval/*
+!backend/data/eval/baseline.json
 backend/logs/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite3
+
+# scripts/docker-deploy.sh backup 的产物：Redis AOF、Postgres dump、.env 副本。
+# 其中含真实对话数据和密钥，每次备份约 2MB。
+backups/
 
 # ── 私有资料 ─────────────────────────────────────────────────────────────────
 # 本地草稿与工作笔记，不进版本库
 doc/
 private/
 
-# ── IDE / 系统 ───────────────────────────────────────────────────────────────
+# ── 编辑器与系统 ──────────────────────────────────────────────────────────────
 .idea/
 .vscode/
+*.swp
+*.swo
+*~
+*.bak
 .DS_Store
+Thumbs.db
