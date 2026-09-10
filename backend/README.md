@@ -204,14 +204,13 @@ OpenAI 那条路由 `app/core/openai_compat.py` 翻译成 `/chat/completions`，
 Docker Compose 场景下，Redis 和 Postgres(pgvector) 的连接由 `docker-compose.yml` 覆盖为容器内地址。通常不需要手动改：
 
 ```env
-REDIS_PASSWORD=aihelpdesk123
-CHROMA_HOST=localhost
-CHROMA_PORT=8001
+REDIS_URL=redis://localhost:6379/0
+# POSTGRES_DSN=postgresql://aihelpdesk:aihelpdesk123@127.0.0.1:5433/aihelpdesk   # 不配则回退 SQLite
 ```
 
 #### 上线前必须过的安全配置（生产模式会强制校验）
 
-把 `APP_ENV` 设成 `production` 之后，下面三项**缺任何一项进程都拒绝启动**
+把 `APP_ENV` 设成 `production` 之后，下面五项**缺任何一项进程都拒绝启动**
 （`app/core/preflight.py`，用例在 `tests/test_preflight.py`）：
 
 | 变量 | 漏配的后果 |
@@ -219,6 +218,8 @@ CHROMA_PORT=8001
 | `AI_HELPDESK_API_KEY` | 写操作/管理端点无鉴权。**更严重的是 `/auth/token`**：它的鉴权依赖就是这把 key，而请求体里的 `user_id` 由调用方指定——漏配时未认证请求可以为**任意用户**签发有效令牌，再拿它去读那个用户的记忆上下文 |
 | `AI_HELPDESK_AUTH_SECRET` | `/chat` 的 `user_id` 取自请求体，改一个 id 就能读到别人的记忆 |
 | `AI_HELPDESK_PROTECT_CHAT` | `/chat` 不鉴权，而它每次都真实调用 LLM |
+| `AI_HELPDESK_TOKEN_ISSUER_CIDRS` | `/auth/token` 对任何直连对端开放。必须填网关网段（校验的是直连对端，不是 `X-Forwarded-For`）；`0.0.0.0/0` 这类通配同样拒绝启动 |
+| `AI_HELPDESK_DEPLOYMENT_SCOPE` | 没人声明过这套部署是 `internal_single_tenant` 还是 `multi_tenant`。故意不给默认值；声明单租户却开着 `SQL_AGENT_IMPERSONATE=true` 也会被拒 |
 
 为什么做成启动失败而不是运行时兜底：从前的写法是"未配置就放行"，
 它把**运维漏配一个环境变量**翻译成了**这个端点不需要鉴权**。
