@@ -65,11 +65,11 @@ Skill 是注入 prompt 的**软约束**，模型可能违反。真正的硬约�
 修改 Skill 文件后，不需要重启服务，调用：
 
 ```bash
-curl -X POST http://localhost:8000/skills/reload
+curl -X POST http://localhost:8080/skills/reload
 ```
 
 查看加载结果和解析错误：
 
 ```bash
-curl http://localhost:8000/skills
+curl http://localhost:8080/skills
 ```

@@ -176,7 +176,7 @@ front matter 刻意不用 PyYAML 解析——为一个只有五个字段的轻�
 **为什么 Redis 不可用时降级而不是抛错**：可观测性和限流的降级损失，远小于因为
 Redis 抖动导致整个服务不可用。
 
-## 11. 存储层 · `backend/storage/`
+## 11. 存储层 · `backend/app/storage/`
 
 | 看什么 | 符号 |
 |---|---|

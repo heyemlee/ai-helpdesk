@@ -154,7 +154,7 @@ pip install -r requirements.txt && pytest
 | 文件 | 作用 | 谁在读 |
 |------|------|--------|
 | `<仓库根>/.env` | `docker-compose.yml` 里 `${VAR}` 的替换值 | Docker Compose 自己 |
-| `backend/.env` | 应用运行时配置（API Key、模型、Chroma 地址等） | 容器内的应用，经 `env_file` 注入 |
+| `backend/.env` | 应用运行时配置（API Key、模型、Postgres DSN 等） | 容器内的应用，经 `env_file` 注入 |
 
 Compose 做变量替换时**只读 compose 文件同目录的 `.env`**，也就是仓库根那份。
 把 `REDIS_PASSWORD` 写进 `backend/.env` 不会影响 Redis 容器的启动密码——
@@ -290,7 +290,7 @@ ai-helpdesk 常用两种 Docker 启动方式：`docker compose up` 全栈部署�
 
 ## 2.5 前端和后端一起启动
 
-前端（Vue 3 + Vite）和后端（FastAPI）可以一起跑，三种方式按场景选：
+前端（React 18 + Vite）和后端（FastAPI）可以一起跑，三种方式按场景选：
 
 ### 方式 A：一条 compose 起全栈（推荐用于演示）
 
@@ -304,8 +304,9 @@ docker compose up -d --build   # 在仓库根执行
 | 地址 | 内容 |
 |------|------|
 | http://localhost:5174 | 前端控制台 |
-| http://localhost:8000 | 后端 API（Swagger 在 /docs） |
+| http://localhost:8080 | 后端 API（Swagger 在 /docs；宿主机端口由 `.env` 的 `AI_HELPDESK_PORT` 决定，默认 8080） |
 | http://localhost:80 | Nginx 反代的后端 API |
+| http://localhost:3000 | Grafana（指标、日志、链路） |
 | http://localhost:9090 | Prometheus |
 
 前端容器里的 Nginx 把 `/api/` 反代到 `ai-helpdesk:8000`，走 Docker 内网，
@@ -323,7 +324,7 @@ docker compose up -d --build   # 在仓库根执行
 scripts/dev.sh
 ```
 
-打开 http://localhost:5173 即可，Vite 的 proxy 会把 `/api` 转发到 `:8000`。
+打开 http://localhost:5173 即可，Vite 的 proxy 会把 `/api` 转发到后端端口（`backend/.env` 的 `API_PORT`，按 `.env.example` 默认是 8080）。
 脚本会先检查解释器是否装齐依赖，没装齐会直接打印修复命令。
 Redis 和 Postgres(pgvector) 仍需单独起：`docker compose up -d redis postgres`。
 
@@ -333,10 +334,10 @@ FastAPI 启动时会自动挂载前端构建产物，一个进程同时提供页
 
 ```bash
 cd frontend && npm run build
-cd ../backend && python -m uvicorn app.api.main:app --port 8000
+cd ../backend && python -m uvicorn app.api.main:app --port 8080
 ```
 
-然后 http://localhost:8000 既是页面也是 API。查找顺序：
+然后 http://localhost:8080 既是页面也是 API。查找顺序：
 `AI_HELPDESK_FRONTEND_DIST` 环境变量 → `backend/static/` → `../frontend/dist/`。
 三个都找不到就只提供 API，不影响纯后端部署。
 
@@ -378,13 +379,13 @@ docker compose logs -f ai-helpdesk
 健康检查：
 
 ```bash
-curl http://localhost:8000/health
+curl http://localhost:8080/health
 ```
 
 Swagger 文档：
 
 ```text
-http://localhost:8000/docs
+http://localhost:8080/docs
 ```
 
 也可以通过 Nginx 访问：
@@ -414,15 +415,13 @@ docker compose build --no-cache ai-helpdesk
 ```bash
 docker run -it --rm \
   --network ai-helpdesk_ai-helpdesk-network \
-  -p 8000:8000 \
+  -p 8080:8000 \
   -e LLM_PROVIDER="anthropic" \
   -e ANTHROPIC_BASE_URL="https://your-gateway.example.com" \
   -e ANTHROPIC_API_KEY="your_key" \
   -e ANTHROPIC_MODEL="claude-sonnet-5" \
   -e REDIS_URL="redis://:aihelpdesk123@redis:6379/0" \
-  -e CHROMA_HOST="postgres" \
-  -e CHROMA_PORT="8000" \
-  -e CHROMA_PERSIST_DIRECTORY="/workspace/data/chroma" \
+  -e POSTGRES_DSN="postgresql://aihelpdesk:aihelpdesk123@postgres:5432/aihelpdesk" \
   -v "$(pwd):/workspace" \
   -w /workspace \
   ai-helpdesk
@@ -438,8 +437,7 @@ docker run -it --rm \
   -e ANTHROPIC_API_KEY="your_key" \
   -e ANTHROPIC_MODEL="claude-sonnet-5" \
   -e REDIS_URL="redis://:aihelpdesk123@redis:6379/0" \
-  -e CHROMA_HOST="postgres" \
-  -e CHROMA_PORT="8000" \
+  -e POSTGRES_DSN="postgresql://aihelpdesk:aihelpdesk123@postgres:5432/aihelpdesk" \
   -v "$(pwd):/workspace" \
   -w /workspace \
   ai-helpdesk \
@@ -450,10 +448,12 @@ docker run -it --rm \
 
 ai-helpdesk 基于 FastAPI 构建，启动 HTTP 服务后可以直接在浏览器访问 Swagger UI 调用接口。
 
-本地 Swagger 地址：
+本地 Swagger 地址（下文示例统一用 8080：`backend/.env.example` 的 `API_PORT` 和
+compose 的 `AI_HELPDESK_PORT` 默认都是 8080，8000 留给同机的 ai-sql-agent；
+自己改了端口就相应替换）：
 
 ```text
-http://localhost:8000/docs
+http://localhost:8080/docs
 ```
 
 如果使用 Nginx 反向代理：
@@ -532,13 +532,13 @@ enabled: true
 查看加载结果：
 
 ```bash
-curl http://localhost:8000/skills
+curl http://localhost:8080/skills
 ```
 
 修改 Skill 文件后热加载：
 
 ```bash
-curl -X POST http://localhost:8000/skills/reload
+curl -X POST http://localhost:8080/skills/reload
 ```
 
 ### 5.3 `/health`
@@ -546,7 +546,7 @@ curl -X POST http://localhost:8000/skills/reload
 用途：确认服务是否初始化完成。
 
 ```bash
-curl http://localhost:8000/health
+curl http://localhost:8080/health
 ```
 
 响应示例：
@@ -627,7 +627,7 @@ Query 参数：
 示例：
 
 ```bash
-curl -X POST http://localhost:8000/search \
+curl -X POST http://localhost:8080/search \
   -H "Content-Type: application/json" \
   -d '{"query": "补件多久能到", "top_k": 3}'
 ```
@@ -664,7 +664,7 @@ curl -X POST http://localhost:8000/search \
 示例：
 
 ```bash
-curl -X POST http://localhost:8000/knowledge/upload \
+curl -X POST http://localhost:8080/knowledge/upload \
   -F "file=@data/demo_docs/sample_knowledge.json"
 ```
 
@@ -673,7 +673,7 @@ curl -X POST http://localhost:8000/knowledge/upload \
 用途：查看知识库片段数量。
 
 ```bash
-curl http://localhost:8000/knowledge/stats
+curl http://localhost:8080/knowledge/stats
 ```
 
 ### 5.9 `/monitor`
@@ -681,7 +681,7 @@ curl http://localhost:8000/knowledge/stats
 用途：查看 Agent 和工具在线指标。
 
 ```bash
-curl http://localhost:8000/monitor
+curl http://localhost:8080/monitor
 ```
 
 返回内容包括：
@@ -698,7 +698,7 @@ curl http://localhost:8000/monitor
 用途：运行内置评测。
 
 ```bash
-curl -X POST http://localhost:8000/eval/run
+curl -X POST http://localhost:8080/eval/run
 ```
 
 返回内容包括：
@@ -720,7 +720,7 @@ curl -X POST http://localhost:8000/eval/run
 请求：
 
 ```bash
-curl -X POST http://localhost:8000/chat \
+curl -X POST http://localhost:8080/chat \
   -H "Content-Type: application/json" \
   -d '{
     "message": "我的订单什么时候到？",
@@ -778,7 +778,7 @@ curl -X POST http://localhost:8000/chat \
 多轮对话只需要保持同一个 `user_id` 和 `conv_id`。
 
 ```bash
-curl -X POST http://localhost:8000/chat \
+curl -X POST http://localhost:8080/chat \
   -H "Content-Type: application/json" \
   -d '{
     "message": "订单号是 A123456",
@@ -792,7 +792,7 @@ curl -X POST http://localhost:8000/chat \
 ### 6.3 产品与安装问题示例
 
 ```bash
-curl -X POST http://localhost:8000/chat \
+curl -X POST http://localhost:8080/chat \
   -H "Content-Type: application/json" \
   -d '{
     "message": "柜门关不严，铰链怎么调？",
@@ -806,7 +806,7 @@ curl -X POST http://localhost:8000/chat \
 ### 6.4 报价与账款问题示例
 
 ```bash
-curl -X POST http://localhost:8000/chat \
+curl -X POST http://localhost:8080/chat \
   -H "Content-Type: application/json" \
   -d '{
     "message": "定金付了怎么还显示未付？账单也对不上",
@@ -820,7 +820,7 @@ curl -X POST http://localhost:8000/chat \
 ### 6.5 复合问题示例
 
 ```bash
-curl -X POST http://localhost:8000/chat \
+curl -X POST http://localhost:8080/chat \
   -H "Content-Type: application/json" \
   -d '{
     "message": "门板有划痕，而且尾款还多收了",
@@ -844,7 +844,7 @@ knowledge_base
 ### 7.1 查看知识库统计
 
 ```bash
-curl http://localhost:8000/knowledge/stats
+curl http://localhost:8080/knowledge/stats
 ```
 
 响应示例：
@@ -858,7 +858,7 @@ curl http://localhost:8000/knowledge/stats
 ### 7.2 批量导入文档
 
 ```bash
-curl -X POST http://localhost:8000/knowledge/add \
+curl -X POST http://localhost:8080/knowledge/add \
   -H "Content-Type: application/json" \
   -d '{
     "documents": [
@@ -881,14 +881,14 @@ curl -X POST http://localhost:8000/knowledge/add \
 上传 Markdown：
 
 ```bash
-curl -X POST http://localhost:8000/knowledge/upload \
+curl -X POST http://localhost:8080/knowledge/upload \
   -F "file=@data/demo_docs/troubleshooting.md"
 ```
 
 上传 JSON：
 
 ```bash
-curl -X POST http://localhost:8000/knowledge/upload \
+curl -X POST http://localhost:8080/knowledge/upload \
   -F "file=@data/demo_docs/sample_knowledge.json"
 ```
 
@@ -906,7 +906,7 @@ JSON 格式必须是数组：
 ### 7.4 检索知识库
 
 ```bash
-curl -X POST http://localhost:8000/search \
+curl -X POST http://localhost:8080/search \
   -H "Content-Type: application/json" \
   -d '{"query": "补件需要多久发出", "top_k": 3}'
 ```
@@ -974,7 +974,7 @@ http://localhost:8001
 容器内部端口是：
 
 ```text
-http://localhost:8000
+http://localhost:8080
 ```
 
 ### 9.1 查看 Postgres(pgvector) 是否存活
@@ -988,7 +988,7 @@ curl http://localhost:8001/api/v1/heartbeat
 容器内执行：
 
 ```bash
-docker exec -it ai-helpdesk-postgres curl http://localhost:8000/api/v1/heartbeat
+docker exec -it ai-helpdesk-postgres curl http://localhost:8080/api/v1/heartbeat
 ```
 
 ### 9.2 查看所有 collection
@@ -1094,7 +1094,7 @@ PY
 先多调用几次 `/chat`，让系统异步生成用户画像：
 
 ```bash
-curl -X POST http://localhost:8000/chat \
+curl -X POST http://localhost:8080/chat \
   -H "Content-Type: application/json" \
   -d '{"message": "我经常咨询交期和补件问题，回答请简洁一点", "user_id": "profile_user", "conv_id": "profile_session"}'
 ```
@@ -1133,7 +1133,7 @@ PY
 
 ```bash
 for i in $(seq 1 16); do
-  curl -s -X POST http://localhost:8000/chat \
+  curl -s -X POST http://localhost:8080/chat \
     -H "Content-Type: application/json" \
     -d "{\"message\": \"这是第 $i 条测试消息，我想咨询交期和补件问题\", \"user_id\": \"episodic_user\", \"conv_id\": \"episodic_session\"}" > /dev/null
 done
@@ -1184,8 +1184,8 @@ docker volume inspect ai-helpdesk_postgres-data
 
 ```bash
 docker exec -it ai-helpdesk-postgres sh
-ls -lah /chroma/chroma
-find /chroma/chroma -maxdepth 2 -type f | head
+ls -lah /var/lib/postgresql/data
+find /var/lib/postgresql/data -maxdepth 2 -type f | head
 ```
 
 注意：不建议直接修改这些底层文件。查看和管理数据应优先使用 Postgres(pgvector) API 或 Python 客户端。
@@ -1439,7 +1439,7 @@ PY
 查看监控摘要：
 
 ```bash
-curl http://localhost:8000/monitor
+curl http://localhost:8080/monitor
 ```
 
 响应包含：
@@ -1490,7 +1490,7 @@ http://localhost:9090
 ## 13. 运行端到端评测
 
 ```bash
-curl -X POST http://localhost:8000/eval/run
+curl -X POST http://localhost:8080/eval/run
 ```
 
 评测内容：
@@ -1612,20 +1612,20 @@ docker exec -it ai-helpdesk-redis redis-cli -a aihelpdesk123 ping
 先确认知识库中有数据：
 
 ```bash
-curl http://localhost:8000/knowledge/stats
+curl http://localhost:8080/knowledge/stats
 ```
 
 如果是 0，可以重新导入演示文档：
 
 ```bash
-curl -X POST http://localhost:8000/knowledge/upload \
+curl -X POST http://localhost:8080/knowledge/upload \
   -F "file=@data/demo_docs/sample_knowledge.json"
 ```
 
 再测试：
 
 ```bash
-curl -X POST http://localhost:8000/search \
+curl -X POST http://localhost:8080/search \
   -H "Content-Type: application/json" \
   -d '{"query": "API如何接入", "top_k": 3}'
 ```
@@ -1658,31 +1658,31 @@ MemoryManager.COMPRESS_AT = 15
 docker compose up -d --build
 
 # 2. 健康检查
-curl http://localhost:8000/health
+curl http://localhost:8080/health
 
 # 3. 主对话
-curl -X POST http://localhost:8000/chat \
+curl -X POST http://localhost:8080/chat \
   -H "Content-Type: application/json" \
   -d '{"message": "你好，我想了解保修范围", "user_id": "demo_user", "conv_id": "demo_conv"}'
 
 # 4. 知识库统计
-curl http://localhost:8000/knowledge/stats
+curl http://localhost:8080/knowledge/stats
 
 # 5. 导入演示知识库
-curl -X POST http://localhost:8000/knowledge/upload \
+curl -X POST http://localhost:8080/knowledge/upload \
   -F "file=@data/demo_docs/sample_knowledge.json"
 
 # 6. 检索
-curl -X POST http://localhost:8000/search \
+curl -X POST http://localhost:8080/search \
   -H "Content-Type: application/json" \
   -d '{"query": "ai-helpdesk如何接入API", "top_k": 3}'
 
 # 7. 监控
-curl http://localhost:8000/monitor
+curl http://localhost:8080/monitor
 
 # 8. Skills
-curl http://localhost:8000/skills
+curl http://localhost:8080/skills
 
 # 9. 评测
-curl -X POST http://localhost:8000/eval/run
+curl -X POST http://localhost:8080/eval/run
 ```
