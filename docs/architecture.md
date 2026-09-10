@@ -144,7 +144,7 @@ flowchart LR
 flowchart TD
     subgraph compose[docker compose up]
         FE[ai-helpdesk-frontend<br/>:5174]
-        APP[ai-helpdesk-app<br/>:8000]
+        APP[ai-helpdesk-app<br/>:8080→8000]
         NG[ai-helpdesk-nginx<br/>:80]
         R[redis]
         PG[postgres<br/>pgvector 扩展]
