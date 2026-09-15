@@ -43,7 +43,7 @@ REQUIRED = os.getenv("A2A_CONTRACT_REQUIRED", "").strip().lower() in _TRUE
 
 # 契约仓库钉在 tag 上，不跟 main（附录 B）。CI 里 checkout 哪个 tag 见
 # .github/workflows/ci.yml 的 contract job；改 tag 是一次要过评审的改动。
-PINNED_TAG = "v1.11"
+PINNED_TAG = "v1.12"
 
 
 def _contract_dir() -> pathlib.Path | None:
@@ -80,7 +80,8 @@ def _load(rel: str) -> dict:
     return json.loads((CONTRACT / rel).read_text(encoding="utf-8"))
 
 
-CASES = _load("fixtures/index.json")["cases"] if CONTRACT else []
+CONTRACT_INDEX = _load("fixtures/index.json") if CONTRACT else {}
+CASES = CONTRACT_INDEX.get("cases", [])
 DATA_PART_CASES = [c for c in CASES if c["file"].startswith("data-part/")]
 PROGRESS_CASES = [c for c in CASES if c["file"].startswith("progress-event/")]
 
@@ -187,6 +188,22 @@ def _consume_all_bearers(data_part: dict) -> list:
 
 VALID_DATA_PARTS = [c for c in DATA_PART_CASES if c["expect"] == "valid"]
 INVALID_DATA_PARTS = [c for c in DATA_PART_CASES if c["expect"] == "invalid"]
+
+
+def test_contract_version_is_the_one_we_pinned():
+    """
+    拉到的契约必须就是 `PINNED_TAG` 那一版。
+
+    **这条断言是 v1.12 补的，此前一直缺。** `PINNED_TAG` 之前只出现在报错文案里，
+    没有任何机器在比对——契约仓库升了版本而这边没跟，本文件照样全绿，
+    跑的却是另一组用例。对面仓库（ai-sql-agent）一直有这条断言，而且正是它在
+    v1.10 抓出了 `contract_version` 停在 v1.9 的漂移。同一个洞在这边一直开着，
+    只是没人踩到。
+    """
+    assert CONTRACT_INDEX["contract_version"] == PINNED_TAG, (
+        f"契约仓库是 {CONTRACT_INDEX['contract_version']}，这边钉的是 {PINNED_TAG}。"
+        "两侧不再跑同一组用例——要么改 PINNED_TAG，要么 checkout 对的 tag。"
+    )
 
 
 @pytest.mark.parametrize("case", VALID_DATA_PARTS, ids=_ids(VALID_DATA_PARTS))
@@ -300,28 +317,37 @@ def test_partial_success_keeps_the_half_that_worked():
     assert verdict.caveats
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="服务端尚未下发 execution_status（契约 §4.6.1 标 🔨）。"
-           "今天这个判定是调用方按 §4.6.1 的判据自己 reduce steps[] 得出的，"
-           "§4.6.2 提醒过自己 reduce 的口径会漂。服务端上线后摘掉这个 xfail——"
-           "**那才是 P0-5 这条缺口关闭的证据**，不要为了变绿去改断言。",
-)
-def test_failed_step_verdict_comes_from_the_server_not_from_our_own_reduce():
+def test_payload_without_execution_status_is_rejected_and_falls_back_safely():
     """
-    dp-trust-01 的业务判定必须由**服务端下发的字段**决定。
+    dp-trust-01：**契约 v1.12 起这条用例的性质变了，xfail 摘掉了。**
 
-    这条用例盯的不是"结论对不对"——结论今天已经对了（见
-    `test_trust_verdict_matches_the_manifest`，它是绿的、不许放宽）。
-    盯的是**结论从哪来**：`status_source == "derived"` 意味着调用方在替
-    服务端定义"查询算不算成功"，而服务端那边 `queried_database` 的定义只有
-    一行 `pipeline_result is not None`，两边的口径迟早会分开。
+    原来它是 `xfail(strict=True)` 断 `status_source == "contract"`，理由写着
+    "服务端上线后摘掉这个 xfail 就是缺口关闭的证据"。**那个设计是错的**，
+    契约 v1.9 已经点名：这条断言的输入是一份**冻结的 fixture**，里面永远不会
+    有 `execution_status`，所以 xfail 永远不 XPASS，"摘掉它"的条件永远不成立。
+    进度标记不该挂在冻结载荷上。
+
+    v1.12 把 `execution_status` 提级为 `required`，缺口的关闭证据变成了
+    **契约仓库自己的一个动作**（`required` 里有没有这个字段），不依赖任何一侧的
+    测试标记。这份载荷则因此不再合法，在清单里已由 C 组改判到 B 组。
+
+    所以现在断的是**防御行为**：schema 必须拒它、理由就是缺这个字段，
+    而调用方仍要能从 `steps[]` 推出"查挂了"（`derived`）并**当作不可信**——
+    不是崩掉，也不是静默采信。
     """
-    verdict = _consume_all_bearers(
-        _load("fixtures/data-part/trust-negative/01-failed-step.json")
-    )[0]
-    assert verdict.execution_status == "failed"
-    assert verdict.status_source == "contract"
+    payload = _load("fixtures/data-part/trust-negative/01-failed-step.json")
+    reasons = [
+        e.message
+        for e in _validator_for("schema/artifact-data-part.schema.json").iter_errors(payload)
+    ]
+    assert reasons, "v1.12 起缺 execution_status 的载荷不再合法（契约 §4.6.1 / §4.6.7）"
+    assert any("execution_status" in m for m in reasons), (
+        f"拒绝理由里没有 execution_status，实际是：{reasons}"
+    )
+    for verdict in _consume_all_bearers(payload):
+        assert verdict.execution_status == "failed"
+        assert verdict.status_source == "derived"
+        assert verdict.usable_as_source is False
 
 
 # ── D 组：database 标识符 ────────────────────────────────────────────────────
