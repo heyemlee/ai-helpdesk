@@ -1,0 +1,4 @@
+# Archify bundles its viewer; review the JSON sources instead of generated output.
+docs/diagrams/architecture*.html linguist-generated=true
+# Preserve canonical SVG export bytes, including renderer-owned CSS whitespace.
+docs/diagrams/architecture*.svg linguist-generated=true whitespace=-blank-at-eol

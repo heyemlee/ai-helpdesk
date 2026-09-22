@@ -1,159 +1,171 @@
+<div align="center">
+
 # AI Helpdesk
+
+**多 Agent 智能客服与工单编排系统**
+
+识别问题 · 检索证据 · 专家协作 · 人工接手
 
 [English](README.md) · **简体中文**
 
-一个面向企业场景的智能客服系统。它能识别用户问题、检索知识库、分配给合适的客服 Agent，并在答案不够可靠时自动转人工。
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)
+![React](https://img.shields.io/badge/React-18-149ECA?style=flat-square&logo=react&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-4169E1?style=flat-square&logo=postgresql&logoColor=white)
 
-后端使用 FastAPI，前端是 React + TypeScript 控制台；内置工单、知识库、监控、追踪和回归评测能力。
+[核心能力](#核心能力) · [系统架构](#系统架构) · [技术栈](#技术栈) · [快速开始](#快速开始) · [工程验证](#工程验证)
 
-## 项目介绍
+</div>
 
-这是一个面向生产环境设计的多 Agent 智能客服与工单编排系统。它把一条客服请求拆成“识别问题、补充上下文、检索知识、专家协作、安全校验、人工接手、质量回归”七个可独立治理的环节，并提供可视化控制台与完整的可观测性能力。
+AI Helpdesk 将一条客服请求串成可追踪的处理链路：识别意图、读取记忆、检索知识、选择专家、校验答案，并在置信度不足时创建人工工单。React 控制台提供流式对话、路由检查、知识库管理、监控和评测入口。
 
-- **高可靠意图识别与低延迟路径**：将客服请求细分为 19 类意图（18 个具名类别加一个 `other` 兜底），融合 LLM（70%）、向量（20%）和规则（10%）三路信号，输出意图、置信度、来源分数、紧急度及订单号、金额、物料编号等结构化实体。针对 9 类高频确定性问题，内置 128 个中英文高精度锚点短语；命中后无需网络调用，并将单次工单的 LLM 往返从 4 次降至 1 次。
-- **按需触发的混合检索 RAG**：仅在业务类意图下检索知识库。检索为双路并行——pgvector 余弦向量负责语义相近，tsvector 关键词（中文按字符二元组建索引，不依赖外部分词扩展）负责字面命中，再用 RRF 按名次融合。这一路补的正是稠密向量的系统性盲区：领域专名和订单号这类精确串。在内置语料的检索评测上，hit@3 从纯向量的 6/8 提升到 8/8（`scripts/eval_retrieval.py` 可复现）。融合发生在存储层、不花 LLM 调用，因此规则快通道也能享受到，零网络往返的承诺不受影响。完整链路在此之上再做查询改写 3 子查询并行召回、内容哈希去重、重排取 top-3；重排优先走 cross-encoder，未配置时回落 LLM。未配置 Postgres 时可回退 SQLite（稀疏侧为纯 Python BM25），便于零依赖本地开发。知识导入使用内容哈希去重，重复上传不会生成重复文档。
-- **有反馈的检索回路**：重排之后不直接交付，先判定证据是否足以回答问题，不足则围绕缺口补检一轮（硬性上限一轮，仍不足则交给置信度闸门转人工）。充分性判定与 LLM 重排合并在同一次调用里返回，额外 LLM 往返数为零。
-- **多 Agent 编排与人工兜底**：编排产品与安装、报价与账款、订单履约 3 个专家 Agent 和 1 个通用兜底 Agent。路由会综合意图、34 个领域锚点与 33 个弱关键词，以及实体信息选择主 Agent；跨领域问题满足阈值时由辅助 Agent 并行参与。意图不清先追问，任一置信度信号偏低则创建工单转人工。
-- **把回答安全做成硬约束**：出站答案经过零 LLM 的规则守卫逐句检查。对没有知识库或 SOP 依据的价格、时效承诺进行拦截并改写为保守表述，同时记录结构化违规信息；流式 SSE 输出也使用同一套句级校验，避免流式与非流式结果标准不一致。
-- **按用户隔离的身份与记忆（单租户，边界见下节）**：通过 HMAC 签名令牌在服务端推导用户身份，避免客户端伪造 `user_id` 读取他人记忆；Redis 提供按用户限流和 24 小时工作记忆，pgvector 保存情景记忆与用户画像，工单和对话审计日志可持久化回查；工单 webhook 通知走 outbox 投递——先落记录再发送，带状态校验、重试与升级，Slack / 企业微信的 URL 过期不再静默失败。这一层隔离的是**记忆**，**不是业务数据**——把本系统接到多个客户的数据前请先读[安全边界：本系统是单租户](#安全边界本系统是单租户)。
-- **完整工程化闭环**：Monitor 每 10 秒根据 Agent 成功率和延迟调整路由惩罚，并通过 Redis 在多实例间共享；LLM-as-Judge 从相关性、准确性、完整性、帮助性四个维度回放评测，并基于人工提升的基线识别回归。项目包含 687 个后端测试、48 个前端测试、11 服务 Docker Compose 环境，以及 Prometheus、Grafana、Tempo、Loki 和 OpenTelemetry 组成的指标、日志、链路追踪体系。
+内置业务知识与 SOP 以橱柜定制、安装、报价和订单履约为例，可通过知识库与 `backend/skills/` 替换业务内容。
 
-## 安全边界：本系统是单租户
+## 项目预览
 
-**本系统按单租户部署，不要对外表述为多租户隔离。** 之所以要把边界单独写下来：
-"提问的是谁"和"这个人能看到什么"是在两个地方回答的，而只有前一个真正落实了。
+<!-- 截图准备好后：保存为 docs/images/main-interface.png，并将下方 src 替换为该路径。中英文 README 共用这一张图。 -->
+<p align="center">
+  <img src="docs/images/screenshot-placeholder.svg" alt="项目主界面截图占位区" width="100%" />
+</p>
+<p align="center"><sub>主界面截图预留位 · 建议展示对话区与路由检查面板</sub></p>
 
-**这条边界现在由启动断言强制，不再只是文档。** 生产模式下必须显式声明
-`AI_HELPDESK_DEPLOYMENT_SCOPE`（`internal_single_tenant` | `multi_tenant`），
-否则进程起不来——**故意不给默认值**，因为"漏配了"和"想清楚了配成这个"风险完全不同。
-声明单租户却同时打开 `SQL_AGENT_IMPERSONATE` 也会被拒：那个组合说明有人**以为**
-这套部署在隔离业务数据，而那个误解本身就是风险。
-实现见 `backend/app/core/preflight.py::check_deployment_scope`。
+## 核心能力
 
-**隔离到位的部分。** 对话记忆、情景记忆、用户画像和限流都按 `user_id` 分隔，
-这个 id 由服务端从 HMAC 签名令牌推导（`AI_HELPDESK_AUTH_SECRET`），客户端伪造不了。
-发给下游数据服务的会话标识也由这个可信身份派生，所以一个客户无法指定另一个客户的
-下游会话。
+| 能力 | 实现方式与工程价值 |
+| --- | --- |
+| **可解释的意图识别** | 19 类意图，融合 LLM、Embedding、规则三路信号（70% / 20% / 10%），输出置信度、实体和各路分数。规则锚点命中时跳过意图模型调用，减少高频问题的等待。 |
+| **带反馈的混合检索** | pgvector 语义召回 + tsvector 关键词召回，RRF 按排名融合；完整链路再做查询改写、并行召回、去重和重排。证据不足时最多补检一轮，限制额外开销。 |
+| **专家协作与降级** | 产品与安装、报价与账款、订单履约 3 个专家，加 1 个通用 Agent。按意图、实体和领域分路由；跨域问题可并行协作，失败有兜底，低置信度转人工。 |
+| **流式回答守卫** | 对无知识库或 SOP 依据的价格、时效承诺做规则校验与改写；SSE 按句释放内容，使流式与普通回复共用同一套策略。 |
+| **记忆与工单闭环** | Redis 保存短期会话，PostgreSQL 保存长期记忆、画像、工单和审计；HMAC 令牌推导用户身份，通知通过 Outbox 记录投递状态与重试。 |
+| **运行反馈与质量回归** | Monitor 根据成功率和延迟调整实例路由权重；LLM-as-Judge 按四个维度评测，显式提升基线后才改变回归参照。 |
 
-**没有隔离的部分：业务数据。** 订单、生产、库存、账款的答案来自另一个服务
-（`ai-sql-agent`），本系统是委派过去查的。默认情况下**所有查询都以同一个服务身份发出**
-（`SQL_AGENT_USER_ID`），因此能查到什么由**那把 key 的角色策略**决定，
-**不由提问的客户决定**。打开 `SQL_AGENT_IMPERSONATE` 会把真实客户 id 传下去，
-但下游的 impersonation 只换 `user_id`、保留服务密钥的角色与策略，
-**不会为最终用户重新解析权限**——用两个客户身份实测过：同一把 key，可见数据相同。
+### 值得深入看的设计
 
-**由此得出的三条部署纪律：**
+- **两条执行路径**：规则快通道跳过意图 LLM 调用以及检索改写、重排；完整链路按需增加推理步骤。这里的“快”指减少调用，最终回答仍可能调用模型。[意图识别](backend/app/core/intent_recognizer.py)
+- **召回与排序分工**：中文关键词使用字符二元组；RRF 融合不调用 LLM。重排优先使用配置的 cross-encoder，否则回退 LLM；充分性判断复用 LLM 重排结果。SQLite 模式提供 Python BM25 稀疏检索。[知识检索](backend/app/tools/knowledge_base.py) · [重排](backend/app/core/reranker.py)
+- **业务规则可维护**：按 Agent 注入独立 `SKILL.md`，支持热加载；模型生成之后仍经过确定性的答案守卫。意图、路由、Agent 置信度分别设门槛。[编排器](backend/app/agents/agent_orchestrator.py) · [回答策略](backend/app/core/answer_policy.py) · [SOP](backend/skills/README.md)
+- **下游故障有边界**：订单、库存、回款等实时数据可委派给独立的 `ai-sql-agent`，工具层统一管理超时与熔断；查询结果与知识检索共同进入回答上下文。[业务查询](backend/app/tools/sql_agent_client.py) · [工具治理](backend/app/tools/tool_manager.py)
 
-- 下游那把 key 的策略要按**能接触到本客服系统的最不受信任的访客**来配。
-  那把 key 能读到的东西，任何一个客户都有可能被告知。
-- 不要把一个实例放在多个客户的数据前面并称之为隔离。真正的按客户隔离需要
-  取服务权限与最终用户权限的**交集**，并且把租户/行范围下沉到数据库本身。
-  这两件事本系统都没有做。
-- `POST /auth/token` 会签发身份，它由共享的管理 key（`AI_HELPDESK_API_KEY`）把关；
-  那把 key 证明的是"调用方是我们的基础设施"，不是"这个用户登录了"。
-  生产模式下它还被绑定到来源白名单（`AI_HELPDESK_TOKEN_ISSUER_CIDRS`，校验的是
-  直连对端而不是 `X-Forwarded-For`），只有网关能调到；`0.0.0.0/0` 这类通配会被拒。
-  长期该由登录系统来签发这些令牌，对接需要什么写在 `docs/auth-token-integration.md`。
+## 系统架构
 
-生产模式（`APP_ENV=production`）下，`AI_HELPDESK_API_KEY`、`AI_HELPDESK_AUTH_SECRET`、
-`AI_HELPDESK_PROTECT_CHAT` 缺任何一项进程都会拒绝启动——从前缺一项的含义是
-"这个端点不需要鉴权"。同一套启动前置校验还要求 `AI_HELPDESK_TOKEN_ISSUER_CIDRS`
-和上文的 `AI_HELPDESK_DEPLOYMENT_SCOPE`；五个必配项都由 `backend/app/core/preflight.py` 强制。
+![AI Helpdesk 系统架构，由 Archify 生成](docs/diagrams/architecture.svg)
 
-## 一次请求如何流转
+[交互架构图 HTML](docs/diagrams/architecture.html) · [可编辑 JSON](docs/diagrams/architecture.archify.json) · [详细架构](docs/architecture.md)
 
-![AI Helpdesk 完整请求链路](docs/diagrams/request-flow.zh-CN.svg)
+图由 [Archify](https://github.com/tt-a1i/archify) 生成。GitHub 直接展示静态 SVG；下载 HTML 后用浏览器打开，可缩放、查看节点、切换主题和导出。图中的接入、检索、编排与守卫是同一个 FastAPI 服务内的逻辑模块。
 
-## 技术架构
+一条请求的主要路径：
 
-![AI Helpdesk 技术架构](docs/diagrams/tech-stack.zh-CN.svg)
+```text
+身份校验 → 读取记忆 → 意图识别 → 按需检索 / 业务查询
+        → 专家路由与执行 → 答案守卫 → 置信度闸门
+        → 返回答案或转人工 → 记忆与审计落库
+```
+
+## 技术栈
+
+| 层次 | 技术 | 在项目中的职责 |
+| --- | --- | --- |
+| 前端 | React 18 · TypeScript 5 · Vite 6 | 控制台、组件与类型约束、开发代理和构建 |
+| 界面与数据 | Tailwind CSS 4 · TanStack Query 5 · react-markdown | 样式、服务端状态缓存、Markdown 回复；`fetch + ReadableStream` 消费 POST SSE |
+| API 与编排 | Python 3.12 · FastAPI · Pydantic 2 · asyncio | 请求校验、异步 I/O、自定义 Agent 路由与并行执行 |
+| 模型接入 | Anthropic SDK · OpenAI SDK · HTTPX | 兼容两种模型协议；`LLM_PROVIDER` 切换；Embedding 与 Rerank 端点可独立配置 |
+| 持久化与检索 | PostgreSQL 16 · pgvector · tsvector · asyncpg | 业务持久化、向量与关键词检索；本地持久化可回退 SQLite |
+| 短期状态 | Redis 7 | 工作记忆、按用户限流、跨实例熔断与路由惩罚共享 |
+| 可观测性 | OpenTelemetry · Prometheus · Grafana · Tempo · Loki | 指标、日志与链路追踪；当前日志采集器为 Promtail |
+| 交付与测试 | Docker Compose · Nginx · GitHub Actions · pytest · Ruff · Vitest · Testing Library | 11 服务编排、反向代理、后端/前端/契约/镜像四类 CI 检查 |
+
+依赖版本以 [后端依赖](backend/requirements.txt)、[前端依赖](frontend/package.json) 与 [Compose](docker-compose.yml) 为准。
 
 ## 快速开始
 
-### 用 Docker 运行完整系统
+### Docker 本地体验
 
-准备 Docker 和 Docker Compose，然后在项目根目录执行：
+需要 Docker 与 Docker Compose。在仓库根目录执行：
 
 ```bash
+git clone https://github.com/heyemlee/ai-helpdesk.git
+cd ai-helpdesk
 cp .env.example .env
 cp backend/.env.example backend/.env
-# 编辑 backend/.env，填入 ANTHROPIC_API_KEY
+```
+
+编辑 `backend/.env`：填写 `ANTHROPIC_API_KEY`，并将 **`APP_ENV` 改为 `development`**，用于本机体验。也可选择 `LLM_PROVIDER=openai`，再配置 `OPENAI_API_KEY`、`OPENAI_MODEL` 及需要的 `OPENAI_BASE_URL`。默认示例为生产模式，只填模型密钥无法通过启动校验。
+
+```bash
 docker compose up -d --build
 ```
 
-启动后可访问：
-
 | 地址 | 用途 |
 | --- | --- |
-| http://localhost:5174 | 客服控制台 |
-| http://localhost:8080/docs | API 文档 |
-| http://localhost:3000 | Grafana 监控、日志与链路追踪 |
-| http://localhost:9090 | Prometheus 指标 |
+| [localhost:5174](http://localhost:5174) | 客服控制台 |
+| [localhost:8080/docs](http://localhost:8080/docs) | OpenAPI / Swagger |
+| [localhost:3000](http://localhost:3000) | Grafana，凭据见根目录 `.env` |
+| [localhost:9090](http://localhost:9090) | Prometheus |
 
-### 本地开发
+<details>
+<summary>本地开发：Python + Node.js</summary>
 
-先按 `backend/.env.example` 创建并填写 `backend/.env`，再执行：
+使用 Python 3.12、Node.js 24 和 Redis。完成上面的环境文件配置后，在仓库根目录执行：
+
+```bash
+python3 -m venv backend/.venv
+backend/.venv/bin/pip install -r backend/requirements.txt
+(cd frontend && npm ci)
+docker compose up -d redis
+```
+
+将 `backend/.env` 的 `REDIS_URL` 设为 `redis://:<根目录 REDIS_PASSWORD>@127.0.0.1:6379/0`；密码中的特殊字符需 URL 编码。未设置 `POSTGRES_DSN` 时使用 SQLite 持久化，**Redis 仍需运行**。本地评测可设置 `EVAL_BASELINE_PATH=./data/eval/baseline.json`。
 
 ```bash
 scripts/dev.sh
 ```
 
-这会同时启动后端和前端。浏览器打开 http://localhost:5173 即可。
+访问 [localhost:5173](http://localhost:5173)。后端默认端口为 `8000`，可通过 `API_PORT` 调整，前端代理随之更新。
 
-## 常用能力入口
+</details>
 
-| 需求 | 入口 |
-| --- | --- |
-| 与客服对话 | 控制台，或 `POST /chat` |
-| 流式对话 | `POST /chat/stream` |
-| 查看知识库 | 控制台，或 `GET /knowledge/stats` |
-| 导入知识 | `POST /knowledge/add`、`POST /knowledge/upload` |
-| 查看人工工单 | `GET /tickets` |
-| 查看服务状态 | `GET /health`、`GET /monitor` |
-| 运行评测 | `POST /eval/run` |
+## 工程验证
 
-完整接口说明可在启动后打开 http://localhost:8080/docs 查看。
+在仓库根目录执行（后端虚拟环境已安装依赖，另需安装 `ruff`）：
 
-## 核心组件
+```bash
+(cd backend && .venv/bin/python -m pytest && .venv/bin/ruff check .)
+(cd frontend && npm test && npm run typecheck && npm run build)
+```
+
+[CI](.github/workflows/ci.yml) 分别验证后端、前端、跨仓库 A2A 契约和 Docker 镜像。后端 CI 使用真实 pgvector 服务；契约任务拉取固定版本的 `a2a-contract` fixtures。测试数量随代码变化，以实际运行结果为准。
+
+<details>
+<summary>检索评测与压测</summary>
+
+```bash
+(cd backend && .venv/bin/python scripts/eval_retrieval.py)
+(cd backend && .venv/bin/python scripts/load_test.py --unique-messages --requests 100 --concurrency 10)
+```
+
+检索脚本对比 dense / lexical / hybrid 的 MRR 与 hit@3；内置 8 条用例适合做小规模回归对照。压测保留 `--unique-messages`，避免重复问题命中意图缓存导致延迟偏低。LLM-as-Judge 可通过控制台或 `POST /eval/run` 运行，使用 `POST /eval/promote` 显式更新基线。
+
+</details>
+
+## 部署边界
+
+当前定位为**单租户系统**：用户身份与记忆可隔离，下游业务数据权限仍取决于共享服务密钥，尚未实现按客户的行级权限隔离。`SQL_AGENT_IMPERSONATE` 或声明 `multi_tenant` 都不等于具备多租户授权能力。
+
+生产环境需配置管理密钥、用户签名密钥、对话鉴权、令牌签发来源白名单和部署范围；缺项会被启动校验拒绝。本机体验配置不可直接用于公网部署。详细约束见[部署与安全边界](docs/deployment-boundaries.zh-CN.md)及[登录集成说明](docs/auth-token-integration.md)。
+
+项目具备评测、观测与部署工具，尚不以真实生产流量证明容量或 SLA。
+
+## 代码与文档
 
 ```text
-backend/          FastAPI 服务，Python 包在 backend/app/ 下
-backend/skills/   不同客服 Agent 使用的服务规范（SOP），运行时热加载
-frontend/         React 管理控制台
-deploy/           Nginx / Prometheus / Grafana / Loki / Tempo / OTel 配置，由 docker-compose 只读挂载
-scripts/          dev.sh（本地同时起前后端）、docker-deploy.sh（compose 生命周期与备份恢复）、ci-local.sh
-docs/             架构图、代码导读、登录系统对接说明、集成文档、运维记录（恢复演练、上线检查单）
+backend/app/      API、意图识别、Agent、检索、记忆、工单与评测
+backend/skills/   按 Agent 分隔、可热加载的业务 SOP
+frontend/src/    对话、知识库、监控、评测与路由检查控制台
+deploy/          Nginx 与指标、日志、追踪配置
+scripts/         开发启动、部署、备份恢复与本地 CI
+docs/            架构、代码导览、身份集成与运维记录
 ```
 
-系统使用 Redis 保存短期状态，如限流和近期对话；使用 PostgreSQL + pgvector 保存知识库、工单、审计记录和长期记忆。没有配置 Postgres 时，后端可退回 SQLite，方便本地体验。
-
-## 测试
-
-```bash
-cd backend && pytest && ruff check .
-cd frontend && npm test && npm run typecheck
-```
-
-当前：后端 **687 passed / 2 skipped / 1 xfailed**，前端 **48 passed**。
-后端这个数字含跨仓库契约用例，它需要按钉住的 tag 检出 a2a-contract；没有它时这些用例跳过，计数降到 612。
-CI 分 4 个 job，其中 backend 带 pgvector service container，跑真实 Postgres 路径而不是 SQLite 兜底；契约用例是单独一个 job。
-
-## 性能
-
-压测脚本 `backend/scripts/load_test.py`，运行后输出含 p50 / p95 / RPS 的 JSON 报告。
-
-```bash
-cd backend && ./.venv/bin/python scripts/load_test.py --unique-messages --requests 100 --concurrency 10
-```
-
-**`--unique-messages` 不是可选项**：消息池只有 10 条，不加这个开关时脚本循环发送，
-第 11 个请求起 `app/core/intent_recognizer.py` 的进程内意图缓存全命中，
-后续请求直接跳过意图识别的 LLM 调用，p95 会比真实首次工单低约 11%。
-缺开关时脚本会打印警告，报告里也会记 `mode` 字段。
-
-以上都是单实例冷路径实测值。没有做过容量规划，也没有真实线上流量验证——
-这是按生产标准做的工程，不是经过生产验证的系统。
-
-## 技术栈
-
-FastAPI · React · TypeScript · PostgreSQL + pgvector · Redis · Anthropic 兼容 API · OpenTelemetry · Prometheus · Grafana · Docker Compose
+[架构详解](docs/architecture.md) · [代码导览](docs/code-guide.md) · [后端说明](backend/README.md) · [前端说明](frontend/README.md) · [架构图维护](docs/diagrams/README.md)

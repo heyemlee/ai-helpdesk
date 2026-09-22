@@ -1,238 +1,171 @@
+<div align="center">
+
 # AI Helpdesk
+
+**Multi-agent customer support & ticket orchestration**
+
+Understand intent · Retrieve evidence · Coordinate specialists · Hand off to humans
 
 **English** · [简体中文](README.zh-CN.md)
 
-A multi-agent customer support and ticket orchestration system. It classifies the
-incoming question, retrieves supporting knowledge, routes to the right specialist
-agent, and hands off to a human whenever the answer is not trustworthy enough.
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)
+![React](https://img.shields.io/badge/React-18-149ECA?style=flat-square&logo=react&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-4169E1?style=flat-square&logo=postgresql&logoColor=white)
 
-FastAPI backend, React + TypeScript console. Tickets, knowledge base, monitoring,
-tracing and regression evaluation are part of the system, not bolted on afterwards.
+[Capabilities](#capabilities) · [Architecture](#architecture) · [Tech stack](#tech-stack) · [Quick start](#quick-start) · [Validation](#validation)
 
-## What it is
+</div>
 
-One support request is split into seven independently governed stages — classify,
-enrich with context, retrieve knowledge, collaborate across specialists, enforce
-safety, escalate to a human, and regress on quality — each one observable and each
-one able to degrade on its own.
+AI Helpdesk turns a support question into a traceable workflow: classify intent, load memory, retrieve evidence, route to specialists, check the answer, and create a human ticket when confidence is too low. A React console brings together streaming chat, routing inspection, knowledge management, monitoring and evaluation.
 
-- **Fine-grained intent recognition with a zero-latency path.** Requests are split
-  into 19 intents (18 named classes plus an `other` bucket), fused from three signals: LLM (70%), embeddings (20%) and rules
-  (10%). The recognizer emits an intent, a confidence, per-source scores, an urgency
-  level, and structured entities such as order numbers, amounts and part numbers.
-  For 9 high-frequency deterministic classes, 128 high-precision anchor phrases
-  (Chinese and English) short-circuit the whole thing: on a hit there is no network call at all, and the
-  LLM round trips for one ticket drop from four to one.
-- **Hybrid retrieval, gated by intent.** The knowledge base is only queried for
-  business intents. Retrieval runs two ways in parallel — pgvector cosine similarity
-  for semantic neighbours, and a tsvector keyword index for literal hits (Chinese is
-  indexed as character bigrams, so no external tokenizer extension is required) —
-  then fuses the two by rank with RRF. The lexical side covers exactly what dense
-  vectors are systematically blind to: domain proper nouns and exact strings like
-  order numbers. On the built-in corpus, hit@3 goes from 6/8 with vectors alone to
-  8/8 (reproducible via `scripts/eval_retrieval.py`). Fusion happens in the storage
-  layer and costs no LLM call, so the rule fast path benefits from it too and the
-  zero-round-trip promise still holds. On top of that the full path rewrites the
-  query into 3 parallel subqueries, deduplicates by content hash, and reranks to the
-  top 3 — cross-encoder when configured, LLM otherwise. Without Postgres it falls
-  back to SQLite with a pure-Python BM25 sparse side, which keeps local development
-  dependency-free. Ingestion deduplicates by content hash, so re-uploading a
-  document does not create a duplicate.
-- **A retrieval loop with feedback.** Reranked passages are not handed straight to
-  the agent. The system first decides whether the evidence actually answers the
-  question; if it does not, it runs one more retrieval round aimed at the gap (hard
-  cap of one — still insufficient, and the confidence gate escalates to a human).
-  The sufficiency verdict comes back in the same call as the LLM rerank, so the
-  extra LLM round trips are zero.
-- **Multi-agent orchestration with a human backstop.** Three specialists — product
-  and installation, quoting and billing, order fulfillment — plus a general showroom
-  agent as fallback. Routing picks the primary agent from the intent, 34 domain anchors plus 33
-  weaker keywords, and the extracted entities; cross-domain questions that clear the
-  threshold get a supporting agent working in parallel. Unclear intent triggers a
-  follow-up question, and any weak confidence signal opens a ticket and escalates.
-- **Answer safety as a hard constraint, not a prompt.** Outbound answers pass
-  through a zero-LLM rule guard, sentence by sentence. Price and turnaround
-  commitments with no basis in the retrieved knowledge or the injected SOP are
-  blocked and rewritten into something conservative, with the violation recorded in
-  structured form. The streaming SSE path runs the same sentence-level check, so
-  streaming and non-streaming answers cannot diverge on what they are allowed to say.
-- **Per-user identity and memory (single tenant — see the boundary below).** User
-  identity is derived server-side from an HMAC-signed token, so a client cannot forge
-  a `user_id` and read someone else's memory. Redis holds per-user rate limits and
-  24-hour working memory; pgvector holds episodic memory and user profiles; tickets
-  and conversation audit logs are persisted and replayable. Ticket webhook
-  notifications go through an outbox: the record is written first, then delivered
-  with status checks, retries and escalation, so an expired Slack or WeCom URL no
-  longer fails silently. This isolates *memory*
-  between users. It does **not** isolate *business data* — read
-  [Security boundary](#security-boundary-single-tenant-by-design) before pointing this
-  at more than one customer's data.
-- **A closed engineering loop.** Monitor adjusts the routing penalty every 10
-  seconds from agent success rate and latency, shared across instances through
-  Redis. LLM-as-Judge replays evaluations on four dimensions — relevance, accuracy,
-  completeness, helpfulness — and detects regressions against a baseline that is
-  only updated on an explicit promote. 687 backend tests, 48 frontend tests, an
-  11-service Docker Compose environment, and metrics, logs and traces via
-  Prometheus, Grafana, Tempo, Loki and OpenTelemetry.
+The bundled knowledge and SOPs cover cabinet customization, installation, pricing and order fulfillment. Adapt the domain through the knowledge base and `backend/skills/`.
 
-## Security boundary: single tenant by design
+## Preview
 
-**This system is a single-tenant deployment. Do not describe it as multi-tenant
-isolation.** The boundary is written down here because the two halves of "who is
-asking" and "what they are allowed to see" are answered in different places, and
-only the first one is enforced.
+<!-- Add your screenshot as docs/images/main-interface.png, then replace the src below. Both READMEs share this image. -->
+<p align="center">
+  <img src="docs/images/screenshot-placeholder.svg" alt="Placeholder for the main application screenshot" width="100%" />
+</p>
+<p align="center"><sub>Main interface screenshot · Show the conversation and routing inspector</sub></p>
 
-**This boundary is now enforced at startup, not just documented.**
-`AI_HELPDESK_DEPLOYMENT_SCOPE` must be declared explicitly in production
-(`internal_single_tenant` | `multi_tenant`) or the process refuses to start —
-there is deliberately no default, because "forgot to set it" and "decided on
-this value" carry different risk. Declaring `internal_single_tenant` while
-`SQL_AGENT_IMPERSONATE=true` is also refused: that combination means somebody
-*believes* this deployment isolates business data, and that belief is the risk.
-See `backend/app/core/preflight.py::check_deployment_scope`.
+## Capabilities
 
-**What is isolated.** Conversation memory, episodic memory, user profiles and rate
-limits are keyed by a `user_id` that the server derives from an HMAC-signed token
-(`AI_HELPDESK_AUTH_SECRET`). A client cannot forge it. The session key sent to the
-downstream data service is derived from that same trusted identity, so one customer
-cannot address another customer's downstream conversation.
+| Capability | Implementation & purpose |
+| --- | --- |
+| **Explainable intent recognition** | 19 intents; LLM, embedding and rule signals weighted 70% / 20% / 10%. Returns confidence, entities and per-source scores. Deterministic anchors skip the intent model call for common questions. |
+| **Hybrid retrieval with feedback** | pgvector semantic search + tsvector lexical search, fused with RRF. The full path adds query rewriting, parallel retrieval, deduplication and reranking; insufficient evidence can trigger one additional retrieval round. |
+| **Specialist collaboration** | Three specialists for product/installation, pricing/billing and order fulfillment, plus a generalist. Intent, entities and domain scores drive routing; cross-domain requests can run in parallel, with fallback and confidence-based human handoff. |
+| **Guarded streaming answers** | A rule guard rewrites unsupported price and turnaround commitments against retrieved knowledge and SOPs. SSE releases complete checked sentences, using the same policy as ordinary replies. |
+| **Memory & ticket continuity** | Redis stores working memory; PostgreSQL stores long-term memory, profiles, tickets and audit records. HMAC tokens establish user identity; an outbox tracks notification delivery and retries. |
+| **Operational & quality feedback** | The monitor adjusts instance routing penalties from success rate and latency. A four-dimension LLM judge detects regressions against a baseline that changes only on explicit promotion. |
 
-**What is not isolated: business data.** Order, production, stock and payment
-answers come from a separate service (`ai-sql-agent`) that this system delegates to.
-By default every query is sent under **one shared service identity**
-(`SQL_AGENT_USER_ID`), so what comes back is whatever that key's role policy allows —
-**decided by the key, not by the customer asking**. Turning on `SQL_AGENT_IMPERSONATE`
-forwards the real customer id, but downstream impersonation only swaps the `user_id`;
-it keeps the service key's roles and policies and does not re-resolve permissions for
-the end user. Verified with two customer identities: same key, same visible data.
+### Engineering details
 
-**What follows from that.**
-
-- Scope the downstream key's policy to *the least-trusted visitor who can reach this
-  helpdesk*. Anything that key can read, any customer can potentially be told.
-- Do not deploy one instance in front of several customers' data and call it
-  isolation. Real per-customer separation needs the intersection of the service
-  permission and the end-user permission, with the tenant/row scope pushed down into
-  the database itself. That is not implemented here.
-- `POST /auth/token` mints identities and is gated by the shared admin key
-  (`AI_HELPDESK_API_KEY`), which proves "the caller is our infrastructure", not "this
-  user logged in". In production it is additionally bound to a source allowlist
-  (`AI_HELPDESK_TOKEN_ISSUER_CIDRS`, checked against the direct peer, not
-  `X-Forwarded-For`), so only your gateway can reach it; wildcards like `0.0.0.0/0`
-  are rejected. The long-term fix is for a real login system to issue these tokens —
-  what that integration needs is written down in `docs/auth-token-integration.md`.
-
-In production mode (`APP_ENV=production`) the process refuses to start unless
-`AI_HELPDESK_API_KEY`, `AI_HELPDESK_AUTH_SECRET` and `AI_HELPDESK_PROTECT_CHAT` are
-all set — a missing one used to mean "this endpoint needs no auth". The same
-preflight also requires `AI_HELPDESK_TOKEN_ISSUER_CIDRS` and
-`AI_HELPDESK_DEPLOYMENT_SCOPE` (see above); all five required variables are enforced in
-`backend/app/core/preflight.py`.
-
-## How one request flows
-
-![AI Helpdesk request lifecycle](docs/diagrams/request-flow.svg)
+- **Two execution paths.** The rule fast path skips intent LLM calls, query rewriting and reranking. The full path adds reasoning where needed. Final answers can still require a model call. [Intent recognizer](backend/app/core/intent_recognizer.py)
+- **Separate recall from ranking.** Chinese lexical search uses character bigrams; RRF fusion requires no LLM. Reranking uses a configured cross-encoder or falls back to an LLM, with evidence sufficiency included in the LLM result. SQLite mode supplies a Python BM25 sparse index. [Retrieval](backend/app/tools/knowledge_base.py) · [Reranker](backend/app/core/reranker.py)
+- **Maintainable business policies.** Each agent receives scoped, hot-reloadable `SKILL.md` SOPs. Deterministic guards check generated answers, while intent, routing and agent confidence have separate handoff thresholds. [Orchestrator](backend/app/agents/agent_orchestrator.py) · [Answer policy](backend/app/core/answer_policy.py) · [SOPs](backend/skills/README.md)
+- **Bounded external dependencies.** Live order, stock and payment questions can be delegated to a separate `ai-sql-agent`. The tool layer manages timeouts and circuit breakers; business results join retrieved knowledge in the answer context. [Business queries](backend/app/tools/sql_agent_client.py) · [Tool manager](backend/app/tools/tool_manager.py)
 
 ## Architecture
 
-![AI Helpdesk technical architecture](docs/diagrams/tech-stack.svg)
+![AI Helpdesk architecture, generated with Archify](docs/diagrams/architecture.en.svg)
+
+[Interactive HTML](docs/diagrams/architecture.en.html) · [Editable JSON](docs/diagrams/architecture.en.archify.json) · [Architecture guide](docs/architecture.md)
+
+Generated with [Archify](https://github.com/tt-a1i/archify). GitHub displays the static SVG; download and open the HTML in a browser for zoom, node inspection, themes and export. Gateway, retrieval, orchestration and guards are logical modules within one FastAPI service.
+
+The primary request path:
+
+```text
+Identity → Memory → Intent → Optional retrieval / business query
+         → Specialist routing & execution → Answer policy → Confidence gate
+         → Reply or human handoff → Memory & audit persistence
+```
+
+## Tech stack
+
+| Layer | Technology | Role |
+| --- | --- | --- |
+| Frontend | React 18 · TypeScript 5 · Vite 6 | Console, typed components, development proxy and builds |
+| UI & data | Tailwind CSS 4 · TanStack Query 5 · react-markdown | Styling, server-state caching, Markdown replies; `fetch + ReadableStream` for POST SSE |
+| API & orchestration | Python 3.12 · FastAPI · Pydantic 2 · asyncio | Request validation, async I/O, custom agent routing and parallel execution |
+| Model integration | Anthropic SDK · OpenAI SDK · HTTPX | Two model protocols selected by `LLM_PROVIDER`; separately configurable embedding and rerank endpoints |
+| Persistence & retrieval | PostgreSQL 16 · pgvector · tsvector · asyncpg | Durable state, vector and lexical search; SQLite persistence fallback for local development |
+| Short-lived state | Redis 7 | Working memory, per-user rate limits, shared circuit-breaker state and routing penalties |
+| Observability | OpenTelemetry · Prometheus · Grafana · Tempo · Loki | Metrics, logs and traces; the current log collector is Promtail |
+| Delivery & testing | Docker Compose · Nginx · GitHub Actions · pytest · Ruff · Vitest · Testing Library | 11-service stack, reverse proxy, backend/frontend/contract/image CI checks |
+
+Exact dependencies live in [requirements.txt](backend/requirements.txt), [package.json](frontend/package.json) and [Compose](docker-compose.yml).
 
 ## Quick start
 
-### Run the whole stack with Docker
+### Local Docker demo
 
-With Docker and Docker Compose installed, from the project root:
+Requires Docker and Docker Compose. From your shell:
 
 ```bash
+git clone https://github.com/heyemlee/ai-helpdesk.git
+cd ai-helpdesk
 cp .env.example .env
 cp backend/.env.example backend/.env
-# edit backend/.env and fill in ANTHROPIC_API_KEY
+```
+
+Edit `backend/.env`: fill in `ANTHROPIC_API_KEY` and set **`APP_ENV=development`** for the local demo. Alternatively, use `LLM_PROVIDER=openai` with `OPENAI_API_KEY`, `OPENAI_MODEL` and, if needed, `OPENAI_BASE_URL`. The example defaults to production mode; a model key alone will not pass startup validation.
+
+```bash
 docker compose up -d --build
 ```
 
-Once it is up:
-
-| URL | What it is |
+| Address | Service |
 | --- | --- |
-| http://localhost:5174 | Support console |
-| http://localhost:8080/docs | API docs |
-| http://localhost:3000 | Grafana — metrics, logs and traces |
-| http://localhost:9090 | Prometheus metrics |
+| [localhost:5174](http://localhost:5174) | Support console |
+| [localhost:8080/docs](http://localhost:8080/docs) | OpenAPI / Swagger |
+| [localhost:3000](http://localhost:3000) | Grafana; credentials are in the root `.env` |
+| [localhost:9090](http://localhost:9090) | Prometheus |
 
-### Local development
+<details>
+<summary>Local development: Python + Node.js</summary>
 
-Create `backend/.env` from `backend/.env.example`, fill it in, then:
+Use Python 3.12, Node.js 24 and Redis. After preparing the environment files above, run from the repository root:
+
+```bash
+python3 -m venv backend/.venv
+backend/.venv/bin/pip install -r backend/requirements.txt
+(cd frontend && npm ci)
+docker compose up -d redis
+```
+
+Set `REDIS_URL` in `backend/.env` to `redis://:<root REDIS_PASSWORD>@127.0.0.1:6379/0`, URL-encoding special characters in the password. With `POSTGRES_DSN` unset, persistence falls back to SQLite; **Redis is still required**. For local evaluations, set `EVAL_BASELINE_PATH=./data/eval/baseline.json`.
 
 ```bash
 scripts/dev.sh
 ```
 
-That starts the backend and the frontend together. Open http://localhost:5173.
+Open [localhost:5173](http://localhost:5173). The backend defaults to port `8000`; `API_PORT` changes it and the frontend proxy follows.
 
-## Where things live
+</details>
 
-| Task | Entry point |
-| --- | --- |
-| Talk to support | The console, or `POST /chat` |
-| Streaming conversation | `POST /chat/stream` |
-| Inspect the knowledge base | The console, or `GET /knowledge/stats` |
-| Ingest knowledge | `POST /knowledge/add`, `POST /knowledge/upload` |
-| List human tickets | `GET /tickets` |
-| Service health | `GET /health`, `GET /monitor` |
-| Run an evaluation | `POST /eval/run` |
+## Validation
 
-Full API reference is at http://localhost:8080/docs once the service is running.
+From the repository root, with backend dependencies installed in the virtual environment and `ruff` installed separately:
 
-## Layout
+```bash
+(cd backend && .venv/bin/python -m pytest && .venv/bin/ruff check .)
+(cd frontend && npm test && npm run typecheck && npm run build)
+```
+
+[CI](.github/workflows/ci.yml) checks the backend, frontend, cross-repository A2A contract and Docker images independently. Backend CI exercises a real pgvector service; the contract job fetches version-pinned `a2a-contract` fixtures. Use actual test results for current counts.
+
+<details>
+<summary>Retrieval evaluation & load testing</summary>
+
+```bash
+(cd backend && .venv/bin/python scripts/eval_retrieval.py)
+(cd backend && .venv/bin/python scripts/load_test.py --unique-messages --requests 100 --concurrency 10)
+```
+
+The retrieval script compares dense / lexical / hybrid MRR and hit@3 on eight bundled cases, a small regression set. Keep `--unique-messages` during load testing to avoid lower latency from intent-cache hits on repeated questions. Run LLM-as-Judge through the console or `POST /eval/run`; explicitly promote the baseline through `POST /eval/promote`.
+
+</details>
+
+## Deployment boundary
+
+This is a **single-tenant system**. User identities and memory can be isolated; downstream business-data access is still governed by a shared service key. Per-customer row-level authorization is not implemented. Neither `SQL_AGENT_IMPERSONATE` nor declaring `multi_tenant` creates that authorization boundary.
+
+Production requires an admin key, a user-signing secret, protected chat, a token-issuer source allowlist and an explicit deployment scope. Missing settings fail startup. Local demo settings are not suitable for public deployment. See [deployment boundaries](docs/deployment-boundaries.md) and [login integration](docs/auth-token-integration.md).
+
+Evaluation, observability and deployment tooling are included; capacity and SLAs have not been established against real production traffic.
+
+## Code & documentation
 
 ```text
-backend/          FastAPI service; the Python package is backend/app/
-backend/skills/   Per-agent SOPs, hot-reloaded at runtime
-frontend/         React admin console
-deploy/           Nginx / Prometheus / Grafana / Loki / Tempo / OTel config, mounted read-only by docker-compose
-scripts/          dev.sh (run both halves locally), docker-deploy.sh (compose lifecycle + backup/restore), ci-local.sh
-docs/             Architecture, code guide, auth-token integration, integration notes, ops records (restore drill, pilot readiness)
+backend/app/      API, intent, agents, retrieval, memory, tickets and evaluation
+backend/skills/   Scoped, hot-reloadable business SOPs
+frontend/src/    Chat, knowledge, monitoring, evaluation and routing console
+deploy/          Nginx, metrics, logging and tracing configuration
+scripts/         Development, deployment, backup/restore and local CI
+docs/            Architecture, code guide, identity integration and ops records
 ```
 
-Redis holds short-lived state — rate limits, recent conversation. PostgreSQL +
-pgvector holds the knowledge base, tickets, audit records and long-term memory.
-Without Postgres configured the backend falls back to SQLite, which is enough to
-try the system locally.
-
-## Tests
-
-```bash
-cd backend && pytest && ruff check .
-cd frontend && npm test && npm run typecheck
-```
-
-Currently **687 passed / 2 skipped / 1 xfailed** on the backend and **48 passed**
-on the frontend. The backend figure includes the cross-repo contract cases, which
-need a checkout of a2a-contract at the pinned tag; without it they skip and the
-count drops to 612. CI runs 4 jobs; the backend one brings up a pgvector service
-container so the Postgres path is exercised for real rather than falling back to
-SQLite, and a separate job replays the contract fixtures.
-
-## Performance
-
-`backend/scripts/load_test.py` writes a JSON report with p50 / p95 / RPS.
-
-```bash
-cd backend && ./.venv/bin/python scripts/load_test.py --unique-messages --requests 100 --concurrency 10
-```
-
-**`--unique-messages` is not optional.** The message pool only holds 10 entries;
-without the flag the script cycles through them, and from request 11 onward the
-in-process intent cache in `app/core/intent_recognizer.py` hits every time. Those
-requests skip the intent LLM call entirely and p95 comes out roughly 11% below a
-genuine first-time ticket. The script warns when the flag is missing and records a
-`mode` field in the report.
-
-These are single-instance cold-path numbers. No capacity planning has been done and
-nothing here has been validated against real production traffic — this is
-engineering built to production standards, not a production-proven system.
-
-## Stack
-
-FastAPI · React · TypeScript · PostgreSQL + pgvector · Redis · Anthropic-compatible
-API · OpenTelemetry · Prometheus · Grafana · Docker Compose
+[Architecture](docs/architecture.md) · [Code guide](docs/code-guide.md) · [Backend](backend/README.md) · [Frontend](frontend/README.md) · [Diagram maintenance](docs/diagrams/README.md)
