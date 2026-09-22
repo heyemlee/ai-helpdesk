@@ -78,3 +78,13 @@ docker compose up -d --build
 
 想连同 Redis / Postgres / 观测栈 / 后端一起起，用仓库根的 `docker-compose.yml`
 里已经并入的 `frontend` 服务，详见后端 README 的「前端和后端一起启动」一节。
+
+## 界面样式
+
+`src/console.css` 保留为原型同步的基础组件层；产品界面的配色、布局、响应式样式
+统一放在 `src/workspace.css`，由 `index.css` 在基础层之后引入。修改应用设计时请编辑
+`workspace.css`，避免被 `predev` / `prebuild` 的原型同步覆盖。
+
+桌面使用侧栏导航，手机使用底部导航；连接配置在设置弹窗保存后生效。路由检查器
+默认收起，窄屏打开时使用原生模态对话框，支持焦点约束与 Esc 关闭。对话示例先填入
+草稿，确认发送后才发起请求；切换页面保留草稿，新建对话清除草稿。

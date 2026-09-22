@@ -20,6 +20,7 @@
    （见 OpenDesign 项目 NOTES.md「视觉源」一节），随原型一起做过像素级对比度验收。
    放在 tailwind 之后，preflight 里冲突的基础样式由它覆盖。 */
 @import "./console.css";
+@import "./workspace.css";
 
 /* react-markdown 的输出挂在 .prose-chat 上，这里把它接到 .turn.assistant .body
    已经定义好的排版规则上，避免同一套 Markdown 样式写两遍。 */

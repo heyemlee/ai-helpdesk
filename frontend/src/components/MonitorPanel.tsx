@@ -45,14 +45,14 @@ export function MonitorPanel({ base }: { base: string }) {
   return (
     <div className="page scroll">
       <div className="page-inner">
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+        <div className="page-heading">
           <div style={{ flex: 1, minWidth: 0 }}>
             <h2 className="page-title">{t('mon.pageTitle')}</h2>
             <p className="page-lede">
               {t('mon.lede')}
             </p>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          <div className="page-heading-actions">
             {!error && dataUpdatedAt > 0 && (
               <span className="topbar-sub mono">
                 {t('mon.updated')} {new Date(dataUpdatedAt).toTimeString().slice(0, 8)}
@@ -109,7 +109,7 @@ export function MonitorPanel({ base }: { base: string }) {
           </dl>
         )}
 
-        {Object.keys(grouped).length > 0 && (
+        {Object.keys(data?.agent_stats ?? {}).length > 0 && (
           <Card
             title={t('mon.agents')}
             badge={data?.routing && <Chip>{t('mon.replicas', { n: data.routing.replicas_per_type })}</Chip>}
@@ -123,6 +123,7 @@ export function MonitorPanel({ base }: { base: string }) {
             <p className="note neutral" style={{ marginBottom: 14 }}>
               {t('mon.agents.hint')}
             </p>
+            {Object.keys(grouped).length === 0 && <Empty>{t('mon.noDegraded')}</Empty>}
             <div className="dl" style={{ gap: 18 }}>
               {Object.entries(grouped).map(([type, rows]) => {
                 const head = rows[0]?.[1]

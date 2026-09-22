@@ -6,7 +6,12 @@ import { useT } from '@/i18n'
 
 /** 内置示例问题，覆盖规则快通道、跨域主辅协作、答案策略拦截三条典型链路。 */
 /* 建议问句跟着界面语言走：夹具的匹配在演示原型里，真实后端不依赖问句语种。 */
-const SAMPLE_KEYS = ['cw.sample.1', 'cw.sample.2', 'cw.sample.3', 'cw.sample.4'] as const
+const SAMPLES = [
+  { question: 'cw.sample.1', title: 'cw.category.1', icon: 'pulse' },
+  { question: 'cw.sample.2', title: 'cw.category.2', icon: 'shield' },
+  { question: 'cw.sample.3', title: 'cw.category.3', icon: 'checklist' },
+  { question: 'cw.sample.4', title: 'cw.category.4', icon: 'book' },
+] as const
 
 export function ChatPanel({ messages, busy, onSend, onInspect, explain, restoring }: {
   messages: ChatMessage[]
@@ -21,10 +26,12 @@ export function ChatPanel({ messages, busy, onSend, onInspect, explain, restorin
   const [draft, setDraft] = useState('')
   const listRef = useRef<HTMLDivElement>(null)
   const areaRef = useRef<HTMLTextAreaElement>(null)
+  const followLatest = useRef(true)
+  const [awayFromBottom, setAwayFromBottom] = useState(false)
 
-  // 新增量到达时贴底滚动；讲解模式事后开启会在已有轮次下方展开新内容，同样要贴底
+  // Follow streaming output only while the reader remains near the latest reply.
   useEffect(() => {
-    listRef.current?.scrollTo({ top: listRef.current.scrollHeight })
+    if (followLatest.current) listRef.current?.scrollTo({ top: messages.length ? listRef.current.scrollHeight : 0 })
   }, [messages, explain])
 
   const grow = () => {
@@ -38,7 +45,9 @@ export function ChatPanel({ messages, busy, onSend, onInspect, explain, restorin
 
   const submit = () => {
     const text = draft.trim()
-    if (!text || busy) return
+    if (!text || busy || restoring) return
+    followLatest.current = true
+    setAwayFromBottom(false)
     onSend(text)
     setDraft('')
     requestAnimationFrame(grow)
@@ -46,7 +55,12 @@ export function ChatPanel({ messages, busy, onSend, onInspect, explain, restorin
 
   return (
     <>
-      <div className="thread scroll" ref={listRef}>
+      <div className="thread scroll" ref={listRef} onScroll={() => {
+        const el = listRef.current!
+        const away = el.scrollHeight - el.scrollTop - el.clientHeight > 100
+        followLatest.current = !away
+        setAwayFromBottom(away)
+      }}>
         {messages.length === 0 && restoring ? (
           // 拉历史的那一两秒别闪一下空态——空态会被读成「这是个新会话」
           <div className="thread-inner">
@@ -54,12 +68,20 @@ export function ChatPanel({ messages, busy, onSend, onInspect, explain, restorin
           </div>
         ) : messages.length === 0 ? (
           <div className="thread-empty">
+            <span className="eyebrow">{t('cw.eyebrow')}</span>
             <h2>{t('cw.empty.title')}</h2>
             <p>{t('cw.empty.body')}</p>
-            <div className="suggestions">
-              {SAMPLE_KEYS.map((k) => (
-                <button key={k} className="suggestion" onClick={() => onSend(t(k))}>{t(k)}</button>
-              ))}
+            <div className="starter-section">
+              <p className="starter-label">{t('cw.examples')}</p>
+              <div className="starter-grid">
+                {SAMPLES.map((sample) => (
+                  <button key={sample.question} className="starter-card" disabled={busy || restoring}
+                    onClick={() => { setDraft(t(sample.question)); areaRef.current?.focus(); requestAnimationFrame(grow) }}>
+                    <span className="starter-card-head"><Icon name={sample.icon} /><strong>{t(sample.title)}</strong><Icon name="arrow" size={16} /></span>
+                    <span>{t(sample.question)}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         ) : (
@@ -77,10 +99,15 @@ export function ChatPanel({ messages, busy, onSend, onInspect, explain, restorin
       </div>
 
       <div className="composer-wrap">
+        {awayFromBottom && messages.length > 0 && <button className="btn btn-secondary latest-message" onClick={() => {
+          followLatest.current = true
+          setAwayFromBottom(false)
+          listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' })
+        }}>{t('cw.latest')} ↓</button>}
         <form className="composer" onSubmit={(e) => { e.preventDefault(); submit() }}>
           <label className="sr-only" htmlFor="draft">{t('cw.composeLabel')}</label>
           <textarea
-            id="draft" ref={areaRef} rows={1} value={draft}
+            id="draft" ref={areaRef} rows={1} value={draft} disabled={restoring}
             placeholder={t('cw.placeholder')}
             onChange={(e) => { setDraft(e.target.value); grow() }}
             onKeyDown={(e) => {
@@ -93,13 +120,14 @@ export function ChatPanel({ messages, busy, onSend, onInspect, explain, restorin
             }}
           />
           <div className="composer-bar">
-            <button className="send" type="submit" disabled={busy || !draft.trim()} aria-label={t('cw.send')}>
+            <span className="composer-caption"><Icon name="spark" size={14} />{t('cw.ready')}</span><span className="composer-keyboard">{t('cw.keyboard')}</span>
+            <button className="send" type="submit" disabled={busy || restoring || !draft.trim()} aria-label={t('cw.send')}>
               <Icon name="send" size={18} />
             </button>
           </div>
         </form>
         <p className="composer-hint">
-          {t('cw.hint')}
+          <Icon name="shield" size={12} />{t('cw.hint')}
         </p>
       </div>
     </>

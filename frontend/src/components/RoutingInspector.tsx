@@ -1,3 +1,4 @@
+import { Icon } from './Icon'
 import { Chip, Empty, KV, MeterRow, SectionLabel } from './ui'
 import { agentLabel, confidenceTone, ms, num } from '@/lib/format'
 import { useT } from '@/i18n'
@@ -22,7 +23,7 @@ export function RoutingInspector({ message, thresholds }: {
     return <Empty>{t('in.restored')}</Empty>
   }
   if (!message || (!message.routing && !message.result)) {
-    return <Empty>{t('in.empty')}</Empty>
+    return <div className="inspector-empty"><div className="welcome-mark"><Icon name="panel" size={24} /></div><h3>{t('in.empty.title')}</h3><p>{t('in.empty')}</p><ol><li>{t('in.intent')}</li><li>{t('in.primary')}</li><li>{t('in.disp')}</li></ol></div>
   }
 
   const { meta, routing, result } = message
