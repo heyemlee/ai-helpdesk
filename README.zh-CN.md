@@ -2,87 +2,79 @@
 
 # AI Helpdesk
 
-**多 Agent 智能客服与工单编排系统**
+**用业务知识回答客户问题，让每次分流与转人工都有据可查。**
 
-识别问题 · 检索证据 · 专家协作 · 人工接手
+多 Agent 智能客服服务，支持混合检索、专家协作、会话记忆与流式回答校验，配套对话、知识库、监控和评测控制台。
+
+[![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)](backend/requirements.txt)
+[![FastAPI](https://img.shields.io/badge/API-FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white)](backend/app/api/main.py)
+[![React](https://img.shields.io/badge/React-TypeScript-149ECA?style=flat-square&logo=react&logoColor=white)](frontend/package.json)
+[![CI](https://img.shields.io/badge/CI-GitHub_Actions-2088FF?style=flat-square&logo=githubactions&logoColor=white)](https://github.com/heyemlee/ai-helpdesk/actions/workflows/ci.yml)
 
 [English](README.md) · **简体中文**
 
-![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)
-![React](https://img.shields.io/badge/React-18-149ECA?style=flat-square&logo=react&logoColor=white)
-![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-4169E1?style=flat-square&logo=postgresql&logoColor=white)
-
-[核心能力](#核心能力) · [系统架构](#系统架构) · [技术栈](#技术栈) · [快速开始](#快速开始) · [工程验证](#工程验证)
+[快速开始](#快速开始) · [系统架构](#系统架构) · [技术栈](#技术栈) · [关键设计](#关键设计) · [评测](#评测与当前边界)
 
 </div>
 
-AI Helpdesk 将一条客服请求串成可追踪的处理链路：识别意图、读取记忆、检索知识、选择专家、校验答案，并在置信度不足时创建人工工单。React 控制台提供流式对话、路由检查、知识库管理、监控和评测入口。
-
-内置业务知识与 SOP 以橱柜定制、安装、报价和订单履约为例，可通过知识库与 `backend/skills/` 替换业务内容。
-
 ## 项目预览
 
-<!-- 截图准备好后：保存为 docs/images/main-interface.png，并将下方 src 替换为该路径。中英文 README 共用这一张图。 -->
+<!-- 截图准备好后：保存为 docs/images/main-interface.png，并在中英文 README 中替换下方 src。 -->
 <p align="center">
-  <img src="docs/images/screenshot-placeholder.svg" alt="项目主界面截图占位区" width="100%" />
+  <img src="docs/images/screenshot-placeholder.svg" alt="客服主界面与路由检查面板的截图预留位置" width="960" />
 </p>
-<p align="center"><sub>主界面截图预留位 · 建议展示对话区与路由检查面板</sub></p>
 
-## 核心能力
+> 例如：**“柜门关不严，该怎么处理？”** → 识别安装问题 → 检索排障知识与专家 SOP → 校验回答 → 返回处理建议，或创建人工工单。
 
-| 能力 | 实现方式与工程价值 |
-| --- | --- |
-| **可解释的意图识别** | 19 类意图，融合 LLM、Embedding、规则三路信号（70% / 20% / 10%），输出置信度、实体和各路分数。规则锚点命中时跳过意图模型调用，减少高频问题的等待。 |
-| **带反馈的混合检索** | pgvector 语义召回 + tsvector 关键词召回，RRF 按排名融合；完整链路再做查询改写、并行召回、去重和重排。证据不足时最多补检一轮，限制额外开销。 |
-| **专家协作与降级** | 产品与安装、报价与账款、订单履约 3 个专家，加 1 个通用 Agent。按意图、实体和领域分路由；跨域问题可并行协作，失败有兜底，低置信度转人工。 |
-| **流式回答守卫** | 对无知识库或 SOP 依据的价格、时效承诺做规则校验与改写；SSE 按句释放内容，使流式与普通回复共用同一套策略。 |
-| **记忆与工单闭环** | Redis 保存短期会话，PostgreSQL 保存长期记忆、画像、工单和审计；HMAC 令牌推导用户身份，通知通过 Outbox 记录投递状态与重试。 |
-| **运行反馈与质量回归** | Monitor 根据成功率和延迟调整实例路由权重；LLM-as-Judge 按四个维度评测，显式提升基线后才改变回归参照。 |
+- **连续追问**：结合近期对话、历史摘要和用户画像理解上下文；问题不清楚时先澄清。
+- **专家协作**：分流到产品与安装、报价与账款、订单履约专家；跨域问题可协作处理，通用 Agent 负责兜底。
+- **受控回答**：逐句检查没有依据的价格与时效承诺；意图、路由、Agent 输出分别设置置信度门槛。
+- **过程可查**：控制台展示路由依据、知识使用情况、策略违规与转人工状态；请求关联审计、工单和追踪信息。
 
-### 值得深入看的设计
-
-- **两条执行路径**：规则快通道跳过意图 LLM 调用以及检索改写、重排；完整链路按需增加推理步骤。这里的“快”指减少调用，最终回答仍可能调用模型。[意图识别](backend/app/core/intent_recognizer.py)
-- **召回与排序分工**：中文关键词使用字符二元组；RRF 融合不调用 LLM。重排优先使用配置的 cross-encoder，否则回退 LLM；充分性判断复用 LLM 重排结果。SQLite 模式提供 Python BM25 稀疏检索。[知识检索](backend/app/tools/knowledge_base.py) · [重排](backend/app/core/reranker.py)
-- **业务规则可维护**：按 Agent 注入独立 `SKILL.md`，支持热加载；模型生成之后仍经过确定性的答案守卫。意图、路由、Agent 置信度分别设门槛。[编排器](backend/app/agents/agent_orchestrator.py) · [回答策略](backend/app/core/answer_policy.py) · [SOP](backend/skills/README.md)
-- **下游故障有边界**：订单、库存、回款等实时数据可委派给独立的 `ai-sql-agent`，工具层统一管理超时与熔断；查询结果与知识检索共同进入回答上下文。[业务查询](backend/app/tools/sql_agent_client.py) · [工具治理](backend/app/tools/tool_manager.py)
+内置业务场景为橱柜定制与履约。知识库和 SOP 可替换业务内容；如果更换意图分类或专家职责，还需同步调整识别与路由逻辑。
 
 ## 系统架构
 
-![AI Helpdesk 系统架构，由 Archify 生成](docs/diagrams/architecture.svg)
+![AI Helpdesk 系统架构](docs/diagrams/architecture.svg)
 
-[交互架构图 HTML](docs/diagrams/architecture.html) · [可编辑 JSON](docs/diagrams/architecture.archify.json) · [详细架构](docs/architecture.md)
+使用 [Archify](https://github.com/tt-a1i/archify) 生成 · [交互版 HTML](docs/diagrams/architecture.html)（下载后用浏览器打开）· [可编辑 JSON](docs/diagrams/architecture.archify.json)
 
-图由 [Archify](https://github.com/tt-a1i/archify) 生成。GitHub 直接展示静态 SVG；下载 HTML 后用浏览器打开，可缩放、查看节点、切换主题和导出。图中的接入、检索、编排与守卫是同一个 FastAPI 服务内的逻辑模块。
+图中展示同一个 FastAPI 服务内的逻辑模块。PostgreSQL + pgvector 保存知识、长期记忆、画像、工单与审计，Redis 保存工作记忆和共享运行状态。本地持久化可回退 SQLite，Redis 仍需运行。
 
-一条请求的主要路径：
-
-```text
-身份校验 → 读取记忆 → 意图识别 → 按需检索 / 业务查询
-        → 专家路由与执行 → 答案守卫 → 置信度闸门
-        → 返回答案或转人工 → 记忆与审计落库
-```
+一次请求经过 **身份校验 → 读取记忆 → 意图识别 → 检索 / 按需查数 → 专家执行 → 回答守卫 → 置信度闸门 → 回复或转人工**。规则锚点命中时跳过意图模型调用及检索改写、重排；复杂问题走完整检索链路，实时订单、库存和回款数据可由独立的 [ai-sql-agent](https://github.com/heyemlee/ai-sql-agent) 服务提供。
 
 ## 技术栈
 
-| 层次 | 技术 | 在项目中的职责 |
+| 层次 | 技术 | 在项目中的作用 |
 | --- | --- | --- |
-| 前端 | React 18 · TypeScript 5 · Vite 6 | 控制台、组件与类型约束、开发代理和构建 |
-| 界面与数据 | Tailwind CSS 4 · TanStack Query 5 · react-markdown | 样式、服务端状态缓存、Markdown 回复；`fetch + ReadableStream` 消费 POST SSE |
-| API 与编排 | Python 3.12 · FastAPI · Pydantic 2 · asyncio | 请求校验、异步 I/O、自定义 Agent 路由与并行执行 |
-| 模型接入 | Anthropic SDK · OpenAI SDK · HTTPX | 兼容两种模型协议；`LLM_PROVIDER` 切换；Embedding 与 Rerank 端点可独立配置 |
-| 持久化与检索 | PostgreSQL 16 · pgvector · tsvector · asyncpg | 业务持久化、向量与关键词检索；本地持久化可回退 SQLite |
-| 短期状态 | Redis 7 | 工作记忆、按用户限流、跨实例熔断与路由惩罚共享 |
-| 可观测性 | OpenTelemetry · Prometheus · Grafana · Tempo · Loki | 指标、日志与链路追踪；当前日志采集器为 Promtail |
-| 交付与测试 | Docker Compose · Nginx · GitHub Actions · pytest · Ruff · Vitest · Testing Library | 11 服务编排、反向代理、后端/前端/契约/镜像四类 CI 检查 |
+| 运行时与 API | Python 3.12 · FastAPI · Uvicorn · Pydantic 2 | 类型化请求响应、异步接口、启动配置校验 |
+| Web Console | React 18 · TypeScript 5 · Vite 6 · Tailwind CSS 4 · TanStack Query 5 | 对话、路由检查、知识库、监控与评测，支持 Markdown 回复 |
+| 模型接入 | Anthropic SDK · OpenAI SDK · HTTPX | 可配置服务商，支撑意图、改写、重排、生成与评判 |
+| 知识检索 | pgvector · tsvector · Python BM25 · RRF | 语义与关键词召回、排名融合；可选 cross-encoder 精排，回退 LLM 重排 |
+| 记忆与存储 | Redis 7 · PostgreSQL 16 · asyncpg · SQLite | 短期状态、长期记忆、画像、工单与审计；本地持久化兜底 |
+| 编排与集成 | 自定义 asyncio 编排 · HTTP 工具 · HMAC 令牌 · SSE | 专家协作、下游超时与熔断、用户身份、进度与回答流 |
+| 可观测性 | OpenTelemetry · Prometheus · Grafana · Tempo · Loki | 关联指标、日志与追踪；Compose 当前通过 Promtail 采集日志 |
+| 工程与交付 | pytest · Ruff · Vitest · Testing Library · GitHub Actions · Docker Compose · Nginx | 后端、前端、契约与镜像检查，11 服务部署编排 |
 
-依赖版本以 [后端依赖](backend/requirements.txt)、[前端依赖](frontend/package.json) 与 [Compose](docker-compose.yml) 为准。
+锁定版本见 [requirements.txt](backend/requirements.txt)、[package-lock.json](frontend/package-lock.json) 与 [Compose](docker-compose.yml)。真实对话需要接入模型；Embedding 和 Rerank 独立配置，未配置远端 Embedding 时使用本地字符 n-gram 向量。
+
+## 关键设计
+
+| 工程问题 | 实现方式 | 源码入口 |
+| --- | --- | --- |
+| 简单问题也走完整推理，增加等待和成本 | 19 类意图融合 LLM / 向量 / 规则信号（70% / 20% / 10%）；确定性锚点命中后跳过意图推理及检索改写、重排 | [意图识别](backend/app/core/intent_recognizer.py) · [请求准备](backend/app/api/main.py) |
+| 语义相近，却漏掉精确业务词 | 稠密与关键词双路并行召回；用 RRF 融合**名次**，避免直接相加量纲不同的相似度和 BM25 分数；中文按字符二元组索引，切片按内容哈希去重 | [知识检索](backend/app/tools/knowledge_base.py) · [关键词索引](backend/app/core/lexical.py) |
+| 找到了相关片段，但仍答不了问题 | 改写为三个子查询，合并候选并重排；复用 LLM 重排的充分性判断或分数阈值，围绕缺口最多补检**一轮** | [检索回路](backend/app/tools/tool_manager.py) · [重排](backend/app/core/reranker.py) |
+| 问题跨领域，或某个专家实例状态变差 | 综合意图、实体和领域词打分，达标专家并行执行；失败时兜底，Monitor 惩罚分影响同类实例的流量分配 | [编排器](backend/app/agents/agent_orchestrator.py) · [运行反馈](backend/app/monitor/performance_monitor.py) |
+| 只靠 Prompt，仍可能承诺没有依据的价格和交期 | 按领域注入可热加载 SOP；生成后依据证据检查价格/时效、改写无依据承诺并记录违规。SSE 缓冲完整句子后经过同一守卫 | [回答策略](backend/app/core/answer_policy.py) · [SOP 加载](backend/app/core/skill_loader.py) |
+| 已说“转人工”，但工单或通知没有跟上 | 持久化人工工单；通知发送前先写 Outbox，检查 HTTP 状态，记录重试与最终失败 | [工单](backend/app/tickets/ticket_store.py) · [通知投递](backend/app/tickets/notifier.py) |
+| 修改模型或策略后，质量变化难定位 | 返回结构化路由与策略信息，用请求标识关联审计和遥测；带知识上下文的评测结果与显式提升的基线对照 | [API](backend/app/api/main.py) · [评测器](backend/app/evaluation/evaluator.py) |
+
+当前转人工门槛为 **意图置信度 < 0.45、路由分 < 0.35，或 Agent 置信度 < 0.70**。这些是启发式信号，不是经过校准的正确率。回答守卫主要约束价格与时效承诺，不能验证全部事实。
 
 ## 快速开始
 
-### Docker 本地体验
-
-需要 Docker 与 Docker Compose。在仓库根目录执行：
+需要 **Docker、Docker Compose 和模型凭证**。在全新目录中运行：
 
 ```bash
 git clone https://github.com/heyemlee/ai-helpdesk.git
@@ -91,18 +83,48 @@ cp .env.example .env
 cp backend/.env.example backend/.env
 ```
 
-编辑 `backend/.env`：填写 `ANTHROPIC_API_KEY`，并将 **`APP_ENV` 改为 `development`**，用于本机体验。也可选择 `LLM_PROVIDER=openai`，再配置 `OPENAI_API_KEY`、`OPENAI_MODEL` 及需要的 `OPENAI_BASE_URL`。默认示例为生产模式，只填模型密钥无法通过启动校验。
+编辑 `backend/.env`，配置本机演示环境；已有环境文件时直接编辑，避免覆盖：
+
+```dotenv
+APP_ENV=development
+LLM_PROVIDER=anthropic
+ANTHROPIC_API_KEY=your-api-key
+# ANTHROPIC_BASE_URL=https://your-compatible-endpoint
+# ANTHROPIC_MODEL=your-model-name
+```
+
+示例文件默认是生产模式，需要满足下文的安全配置。完成本机演示配置后启动：
 
 ```bash
 docker compose up -d --build
 ```
 
-| 地址 | 用途 |
-| --- | --- |
-| [localhost:5174](http://localhost:5174) | 客服控制台 |
-| [localhost:8080/docs](http://localhost:8080/docs) | OpenAPI / Swagger |
-| [localhost:3000](http://localhost:3000) | Grafana，凭据见根目录 `.env` |
-| [localhost:9090](http://localhost:9090) | Prometheus |
+打开 [http://localhost:5174](http://localhost:5174) 使用客服控制台，或直接请求 API：
+
+```bash
+curl -X POST http://localhost:8080/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"user_id":"demo","message":"柜门关不严，该怎么处理？"}'
+```
+
+响应包含 `response`、`intent`、`primary_agent`、`supporting_agents`、`routing_reason`、`answer_confidence`、`policy_violations`、`handoff` 和 `ticket_id`。追问时传入返回的 `conv_id`。上面的无鉴权示例仅适用于本机演示模式。
+
+API 文档：[localhost:8080/docs](http://localhost:8080/docs) · Grafana：[localhost:3000](http://localhost:3000) · Prometheus：[localhost:9090](http://localhost:9090)。Grafana 与数据库凭据在根目录 `.env` 中配置。
+
+### 选择模型服务
+
+OpenAI 兼容端点使用 `LLM_PROVIDER=openai`、`OPENAI_API_KEY`、`OPENAI_MODEL`，按需填写 `OPENAI_BASE_URL`。`EMBEDDING_*` 和 `RERANK_*` 独立配置检索服务；更换 Embedding 模型时需匹配向量维度并重建已有向量。完整配置见 [backend/.env.example](backend/.env.example)，修改后重启。
+
+### 接入自己的业务知识
+
+在知识库面板上传 `.txt`、`.md` 或 JSON 文档列表，也可调用接口：
+
+```bash
+curl -X POST http://localhost:8080/knowledge/upload \
+  -F 'file=@backend/data/demo_docs/troubleshooting.md'
+```
+
+在 `backend/skills/*/SKILL.md` 中维护各专家的处理规范，修改后调用 `POST /skills/reload`。知识库提供参考资料，SOP 规定处理步骤和升级条件。实时业务数据通过 `SQL_AGENT_URL` 及对应凭据接入 ai-sql-agent，详见 [SOP 编写说明](backend/skills/README.md)与[身份集成要求](docs/integrations/sql-agent-identity-requirements.md)。开启鉴权后，这些接口需要携带相应认证头。
 
 <details>
 <summary>本地开发：Python + Node.js</summary>
@@ -126,46 +148,68 @@ scripts/dev.sh
 
 </details>
 
-## 工程验证
+## 评测与当前边界
 
-在仓库根目录执行（后端虚拟环境已安装依赖，另需安装 `ruff`）：
+以下为 **2026-09-22 检索冒烟实测**：8 条内置中文问题、6 个知识片段、SQLite、256 维确定性字符 n-gram 向量，未调用远端 Embedding 或生成模型。
+
+| 检索策略 | MRR | hit@3 |
+| --- | --- | --- |
+| 纯向量 | 0.583 | 6/8 |
+| 纯关键词 | **0.844** | 7/8 |
+| RRF 混合检索 | 0.812 | **8/8** |
+
+这组用例中，混合检索让所有目标文档进入前三；纯关键词的 MRR 更高。这是小规模的检索排名验证，不能代表回答准确率、远端 Embedding 效果或生产性能。条件、逐条排名与复现命令见[测量记录](docs/evaluation/retrieval-smoke.md)。
 
 ```bash
+# 仓库根目录执行；先安装项目依赖，Ruff 需单独安装
+backend/.venv/bin/pip install ruff
 (cd backend && .venv/bin/python -m pytest && .venv/bin/ruff check .)
 (cd frontend && npm test && npm run typecheck && npm run build)
 ```
 
-[CI](.github/workflows/ci.yml) 分别验证后端、前端、跨仓库 A2A 契约和 Docker 镜像。后端 CI 使用真实 pgvector 服务；契约任务拉取固定版本的 `a2a-contract` fixtures。测试数量随代码变化，以实际运行结果为准。
+[CI](.github/workflows/ci.yml) 覆盖真实 pgvector 服务上的后端测试、前端测试与构建、固定版本的跨仓库 A2A fixtures 和 Docker 镜像。部分本地集成用例需要外部服务或契约仓库。`POST /eval/run` 通过 LLM-as-Judge 评估相关性、准确性、完整性和有用性，`POST /eval/promote` 显式更新对照基线。
+
+压测使用 `backend/scripts/load_test.py --unique-messages --requests 100 --concurrency 10`。保留 `--unique-messages`，避免重复问题命中意图缓存，导致延迟偏低。以上检查尚不能证明真实生产容量或 SLA。
+
+**部署范围**：当前为单租户系统。签名身份用于隔离用户记忆，下游业务数据仍由共享服务密钥决定可见范围，尚未实现按客户的行级授权；开启 impersonation 或声明 `multi_tenant` 都不会补齐这一能力。生产启动要求管理密钥、用户签名密钥、对话鉴权、令牌签发来源白名单和明确的部署范围，详见[部署与安全边界](docs/deployment-boundaries.zh-CN.md)。
 
 <details>
-<summary>检索评测与压测</summary>
+<summary><strong>接口一览</strong></summary>
 
-```bash
-(cd backend && .venv/bin/python scripts/eval_retrieval.py)
-(cd backend && .venv/bin/python scripts/load_test.py --unique-messages --requests 100 --concurrency 10)
-```
+| 接口 | 用途 |
+| --- | --- |
+| `POST /chat` · `POST /chat/stream` | 回答、路由依据、策略违规与转人工状态；SSE 支持准备阶段的进度事件 |
+| `GET /tickets` · `POST /tickets/{ticket_id}/status` | 查看与推进人工工单 |
+| `POST /knowledge/add` · `POST /knowledge/upload` | 导入知识，相同切片去重 |
+| `GET /skills` · `POST /skills/reload` | 检查与热加载业务 SOP |
+| `POST /eval/run` · `POST /eval/promote` | 运行评测、显式提升基线 |
+| `GET /health` · `GET /monitor` · `GET /metrics` | 健康检查、Agent/工具监控与 Prometheus 指标 |
+| `POST /auth/token` | 通过可信集成签发用户身份令牌 |
 
-检索脚本对比 dense / lexical / hybrid 的 MRR 与 hit@3；内置 8 条用例适合做小规模回归对照。压测保留 `--unique-messages`，避免重复问题命中意图缓存导致延迟偏低。LLM-as-Judge 可通过控制台或 `POST /eval/run` 运行，使用 `POST /eval/promote` 显式更新基线。
+开启保护时，管理接口使用 `X-API-Key`，用户身份通过 `X-User-Token` 传递。`/auth/token` 是可信基础设施接口，不是终端用户登录系统，详见[登录集成说明](docs/auth-token-integration.md)。
 
 </details>
 
-## 部署边界
-
-当前定位为**单租户系统**：用户身份与记忆可隔离，下游业务数据权限仍取决于共享服务密钥，尚未实现按客户的行级权限隔离。`SQL_AGENT_IMPERSONATE` 或声明 `multi_tenant` 都不等于具备多租户授权能力。
-
-生产环境需配置管理密钥、用户签名密钥、对话鉴权、令牌签发来源白名单和部署范围；缺项会被启动校验拒绝。本机体验配置不可直接用于公网部署。详细约束见[部署与安全边界](docs/deployment-boundaries.zh-CN.md)及[登录集成说明](docs/auth-token-integration.md)。
-
-项目具备评测、观测与部署工具，尚不以真实生产流量证明容量或 SLA。
-
-## 代码与文档
+<details>
+<summary><strong>项目结构</strong></summary>
 
 ```text
-backend/app/      API、意图识别、Agent、检索、记忆、工单与评测
-backend/skills/   按 Agent 分隔、可热加载的业务 SOP
-frontend/src/    对话、知识库、监控、评测与路由检查控制台
-deploy/          Nginx 与指标、日志、追踪配置
-scripts/         开发启动、部署、备份恢复与本地 CI
-docs/            架构、代码导览、身份集成与运维记录
+backend/app/
+  api/ · core/             HTTP/SSE、意图、身份、策略与模型适配
+  agents/ · tools/         专家路由、RAG、业务查询与工具治理
+  memory/ · storage/       工作/长期记忆、持久化与对话审计
+  tickets/                 人工工单与通知 Outbox
+  monitor/ · evaluation/   运行反馈与质量回归
+backend/skills/            按领域分隔、可热加载的业务 SOP
+backend/tests/ · scripts/  测试、检索评测与压测
+frontend/src/             React 控制台与路由检查面板
+deploy/                   Nginx、指标、日志与追踪配置
+scripts/                  本地启动、部署、备份恢复与本地 CI
+docs/                     架构、集成、测量与运维记录
 ```
 
-[架构详解](docs/architecture.md) · [代码导览](docs/code-guide.md) · [后端说明](backend/README.md) · [前端说明](frontend/README.md) · [架构图维护](docs/diagrams/README.md)
+</details>
+
+## 深入阅读
+
+[架构详解](docs/architecture.md) · [代码导览](docs/code-guide.md) · [后端说明](backend/README.md) · [SOP 编写](backend/skills/README.md) · [登录集成](docs/auth-token-integration.md) · [部署边界](docs/deployment-boundaries.zh-CN.md) · [架构图维护](docs/diagrams/README.md)

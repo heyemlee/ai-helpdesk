@@ -2,87 +2,79 @@
 
 # AI Helpdesk
 
-**Multi-agent customer support & ticket orchestration**
+**Ground support answers in business knowledge. Keep routing and handoff decisions visible.**
 
-Understand intent · Retrieve evidence · Coordinate specialists · Hand off to humans
+A multi-agent support service with hybrid retrieval, specialist collaboration, conversational memory, and guarded streaming answers. Includes a React console for chat, knowledge, monitoring, and evaluation.
+
+[![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)](backend/requirements.txt)
+[![FastAPI](https://img.shields.io/badge/API-FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white)](backend/app/api/main.py)
+[![React](https://img.shields.io/badge/React-TypeScript-149ECA?style=flat-square&logo=react&logoColor=white)](frontend/package.json)
+[![CI](https://img.shields.io/badge/CI-GitHub_Actions-2088FF?style=flat-square&logo=githubactions&logoColor=white)](https://github.com/heyemlee/ai-helpdesk/actions/workflows/ci.yml)
 
 **English** · [简体中文](README.zh-CN.md)
 
-![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)
-![React](https://img.shields.io/badge/React-18-149ECA?style=flat-square&logo=react&logoColor=white)
-![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-4169E1?style=flat-square&logo=postgresql&logoColor=white)
-
-[Capabilities](#capabilities) · [Architecture](#architecture) · [Tech stack](#tech-stack) · [Quick start](#quick-start) · [Validation](#validation)
+[Quickstart](#quickstart) · [Architecture](#architecture) · [Tech stack](#tech-stack) · [Design decisions](#design-decisions) · [Evaluation](#evaluation-and-current-limits)
 
 </div>
 
-AI Helpdesk turns a support question into a traceable workflow: classify intent, load memory, retrieve evidence, route to specialists, check the answer, and create a human ticket when confidence is too low. A React console brings together streaming chat, routing inspection, knowledge management, monitoring and evaluation.
-
-The bundled knowledge and SOPs cover cabinet customization, installation, pricing and order fulfillment. Adapt the domain through the knowledge base and `backend/skills/`.
-
 ## Preview
 
-<!-- Add your screenshot as docs/images/main-interface.png, then replace the src below. Both READMEs share this image. -->
+<!-- Add docs/images/main-interface.png, then replace the src below in both READMEs. -->
 <p align="center">
-  <img src="docs/images/screenshot-placeholder.svg" alt="Placeholder for the main application screenshot" width="100%" />
+  <img src="docs/images/screenshot-placeholder.svg" alt="Reserved for a screenshot of the support console and routing inspector" width="960" />
 </p>
-<p align="center"><sub>Main interface screenshot · Show the conversation and routing inspector</sub></p>
 
-## Capabilities
+> **“My cabinet door won't close properly. What should I do?”** → identify an installation issue → retrieve troubleshooting knowledge and the specialist's SOP → check the answer → return guidance or create a human ticket.
 
-| Capability | Implementation & purpose |
-| --- | --- |
-| **Explainable intent recognition** | 19 intents; LLM, embedding and rule signals weighted 70% / 20% / 10%. Returns confidence, entities and per-source scores. Deterministic anchors skip the intent model call for common questions. |
-| **Hybrid retrieval with feedback** | pgvector semantic search + tsvector lexical search, fused with RRF. The full path adds query rewriting, parallel retrieval, deduplication and reranking; insufficient evidence can trigger one additional retrieval round. |
-| **Specialist collaboration** | Three specialists for product/installation, pricing/billing and order fulfillment, plus a generalist. Intent, entities and domain scores drive routing; cross-domain requests can run in parallel, with fallback and confidence-based human handoff. |
-| **Guarded streaming answers** | A rule guard rewrites unsupported price and turnaround commitments against retrieved knowledge and SOPs. SSE releases complete checked sentences, using the same policy as ordinary replies. |
-| **Memory & ticket continuity** | Redis stores working memory; PostgreSQL stores long-term memory, profiles, tickets and audit records. HMAC tokens establish user identity; an outbox tracks notification delivery and retries. |
-| **Operational & quality feedback** | The monitor adjusts instance routing penalties from success rate and latency. A four-dimension LLM judge detects regressions against a baseline that changes only on explicit promotion. |
+- **Context-aware support** — use recent conversation, historical summaries, and user profiles to handle follow-up questions; clarify unclear requests before proceeding.
+- **Specialist collaboration** — route to product/installation, pricing/billing, or order fulfillment; combine specialists for cross-domain questions, with a generalist fallback.
+- **Controlled answers** — check unsupported price and turnaround commitments before releasing each sentence; apply separate confidence gates for intent, routing, and agent output.
+- **Visible decisions** — inspect routing reasons, retrieved knowledge usage, policy violations, and handoff state in the console; connect requests to audit records, tickets, and traces.
 
-### Engineering details
-
-- **Two execution paths.** The rule fast path skips intent LLM calls, query rewriting and reranking. The full path adds reasoning where needed. Final answers can still require a model call. [Intent recognizer](backend/app/core/intent_recognizer.py)
-- **Separate recall from ranking.** Chinese lexical search uses character bigrams; RRF fusion requires no LLM. Reranking uses a configured cross-encoder or falls back to an LLM, with evidence sufficiency included in the LLM result. SQLite mode supplies a Python BM25 sparse index. [Retrieval](backend/app/tools/knowledge_base.py) · [Reranker](backend/app/core/reranker.py)
-- **Maintainable business policies.** Each agent receives scoped, hot-reloadable `SKILL.md` SOPs. Deterministic guards check generated answers, while intent, routing and agent confidence have separate handoff thresholds. [Orchestrator](backend/app/agents/agent_orchestrator.py) · [Answer policy](backend/app/core/answer_policy.py) · [SOPs](backend/skills/README.md)
-- **Bounded external dependencies.** Live order, stock and payment questions can be delegated to a separate `ai-sql-agent`. The tool layer manages timeouts and circuit breakers; business results join retrieved knowledge in the answer context. [Business queries](backend/app/tools/sql_agent_client.py) · [Tool manager](backend/app/tools/tool_manager.py)
+The bundled domain is cabinet customization and fulfillment. Replace the knowledge and SOPs to adapt business content; a different intent taxonomy or specialist lineup also requires changes to recognition and routing.
 
 ## Architecture
 
-![AI Helpdesk architecture, generated with Archify](docs/diagrams/architecture.en.svg)
+![AI Helpdesk architecture](docs/diagrams/architecture.en.svg)
 
-[Interactive HTML](docs/diagrams/architecture.en.html) · [Editable JSON](docs/diagrams/architecture.en.archify.json) · [Architecture guide](docs/architecture.md)
+Created with [Archify](https://github.com/tt-a1i/archify) · [Interactive HTML](docs/diagrams/architecture.en.html) (download and open in a browser) · [Editable JSON](docs/diagrams/architecture.en.archify.json)
 
-Generated with [Archify](https://github.com/tt-a1i/archify). GitHub displays the static SVG; download and open the HTML in a browser for zoom, node inspection, themes and export. Gateway, retrieval, orchestration and guards are logical modules within one FastAPI service.
+The diagram shows logical modules within one FastAPI service. PostgreSQL + pgvector persists knowledge, long-term memory, profiles, tickets, and audit; Redis holds working memory and shared operational state. SQLite can replace PostgreSQL for local persistence, while Redis is still required.
 
-The primary request path:
-
-```text
-Identity → Memory → Intent → Optional retrieval / business query
-         → Specialist routing & execution → Answer policy → Confidence gate
-         → Reply or human handoff → Memory & audit persistence
-```
+A request follows **identity → memory → intent → retrieval / optional business query → specialist execution → answer policy → confidence gate → reply or handoff**. Rule anchors skip the intent model call and the query-rewrite/rerank stages. Complex requests use the full retrieval path; live order, stock, and payment data can come from a separate [ai-sql-agent](https://github.com/heyemlee/ai-sql-agent) service.
 
 ## Tech stack
 
 | Layer | Technology | Role |
 | --- | --- | --- |
-| Frontend | React 18 · TypeScript 5 · Vite 6 | Console, typed components, development proxy and builds |
-| UI & data | Tailwind CSS 4 · TanStack Query 5 · react-markdown | Styling, server-state caching, Markdown replies; `fetch + ReadableStream` for POST SSE |
-| API & orchestration | Python 3.12 · FastAPI · Pydantic 2 · asyncio | Request validation, async I/O, custom agent routing and parallel execution |
-| Model integration | Anthropic SDK · OpenAI SDK · HTTPX | Two model protocols selected by `LLM_PROVIDER`; separately configurable embedding and rerank endpoints |
-| Persistence & retrieval | PostgreSQL 16 · pgvector · tsvector · asyncpg | Durable state, vector and lexical search; SQLite persistence fallback for local development |
-| Short-lived state | Redis 7 | Working memory, per-user rate limits, shared circuit-breaker state and routing penalties |
-| Observability | OpenTelemetry · Prometheus · Grafana · Tempo · Loki | Metrics, logs and traces; the current log collector is Promtail |
-| Delivery & testing | Docker Compose · Nginx · GitHub Actions · pytest · Ruff · Vitest · Testing Library | 11-service stack, reverse proxy, backend/frontend/contract/image CI checks |
+| Runtime & API | Python 3.12 · FastAPI · Uvicorn · Pydantic 2 | Typed requests/responses, async endpoints, startup configuration checks |
+| Web console | React 18 · TypeScript 5 · Vite 6 · Tailwind CSS 4 · TanStack Query 5 | Chat, routing inspection, knowledge, monitoring, and evaluation; Markdown answers |
+| Model integration | Anthropic SDK · OpenAI SDK · HTTPX | Intent, query rewriting, reranking, generation, and judging through configurable providers |
+| Knowledge retrieval | pgvector · tsvector · Python BM25 · RRF | Semantic/lexical recall and rank fusion; optional cross-encoder reranking, LLM fallback |
+| Memory & persistence | Redis 7 · PostgreSQL 16 · asyncpg · SQLite | Short-lived state, long-term memory, profiles, tickets, and audit; local persistence fallback |
+| Orchestration & integration | Custom asyncio orchestration · HTTP tools · HMAC tokens · SSE | Specialist collaboration, downstream timeouts/circuit breakers, identity, and streamed progress/answers |
+| Observability | OpenTelemetry · Prometheus · Grafana · Tempo · Loki | Correlated metrics, logs, and traces; Compose currently collects logs with Promtail |
+| Engineering & delivery | pytest · Ruff · Vitest · Testing Library · GitHub Actions · Docker Compose · Nginx | Backend/frontend/contract/image checks and an 11-service deployment stack |
 
-Exact dependencies live in [requirements.txt](backend/requirements.txt), [package.json](frontend/package.json) and [Compose](docker-compose.yml).
+Pinned dependencies live in [requirements.txt](backend/requirements.txt), [package-lock.json](frontend/package-lock.json), and [Compose](docker-compose.yml). Live chat requires a model provider. Embedding and reranking are configured independently; without a remote embedding endpoint, retrieval uses local character n-gram vectors.
 
-## Quick start
+## Design decisions
 
-### Local Docker demo
+| Engineering problem | Implementation | Source |
+| --- | --- | --- |
+| Routine questions should not pay for the full reasoning path | Classify 19 intents with LLM / embedding / rule signals (70% / 20% / 10%); deterministic anchors bypass intent inference and query rewrite/rerank | [intent](backend/app/core/intent_recognizer.py) · [request preparation](backend/app/api/main.py) |
+| Semantic search misses exact business terms | Recall dense and lexical candidates in parallel; fuse **ranks**, not incompatible similarity/BM25 scores, using RRF; index Chinese character bigrams and deduplicate chunks by content hash | [knowledge](backend/app/tools/knowledge_base.py) · [lexical](backend/app/core/lexical.py) |
+| Retrieved passages still do not answer the question | Rewrite into three subqueries, merge and rerank; reuse the LLM rerank's sufficiency verdict or a score threshold, then allow **one** gap-directed retrieval round | [retrieval loop](backend/app/tools/tool_manager.py) · [reranker](backend/app/core/reranker.py) |
+| A question spans domains, or a specialist becomes unreliable | Score intent, entities, and domain terms; run qualifying specialists in parallel, fall back on execution failure, and use monitor penalties to steer traffic between instances | [orchestrator](backend/app/agents/agent_orchestrator.py) · [monitor](backend/app/monitor/performance_monitor.py) |
+| Prompt instructions alone cannot constrain commitments | Inject scoped, reloadable SOPs; check generated price/time statements against evidence, rewrite unsupported promises, and record violations. SSE buffers complete sentences before applying the same guard | [answer policy](backend/app/core/answer_policy.py) · [SOP loader](backend/app/core/skill_loader.py) |
+| Human escalation or webhook delivery fails silently | Persist a handoff ticket; record notification work in an outbox before delivery, check HTTP status, and track retries and terminal failures | [tickets](backend/app/tickets/ticket_store.py) · [notifications](backend/app/tickets/notifier.py) |
+| Quality changes are hard to diagnose | Return structured routing and policy metadata, correlate audit/telemetry by request, and evaluate grounded answers against an explicitly promoted baseline | [API](backend/app/api/main.py) · [evaluator](backend/app/evaluation/evaluator.py) |
 
-Requires Docker and Docker Compose. From your shell:
+Current handoff thresholds are **intent < 0.45, routing < 0.35, or agent confidence < 0.70**. These are heuristic signals, not calibrated probabilities of correctness. The answer guard targets price/time commitments; it does not verify every factual claim.
+
+## Quickstart
+
+Requires **Docker, Docker Compose, and model credentials**. Start in a fresh directory:
 
 ```bash
 git clone https://github.com/heyemlee/ai-helpdesk.git
@@ -91,18 +83,48 @@ cp .env.example .env
 cp backend/.env.example backend/.env
 ```
 
-Edit `backend/.env`: fill in `ANTHROPIC_API_KEY` and set **`APP_ENV=development`** for the local demo. Alternatively, use `LLM_PROVIDER=openai` with `OPENAI_API_KEY`, `OPENAI_MODEL` and, if needed, `OPENAI_BASE_URL`. The example defaults to production mode; a model key alone will not pass startup validation.
+Edit `backend/.env` for a local demo; edit existing environment files directly rather than replacing them:
+
+```dotenv
+APP_ENV=development
+LLM_PROVIDER=anthropic
+ANTHROPIC_API_KEY=your-api-key
+# ANTHROPIC_BASE_URL=https://your-compatible-endpoint
+# ANTHROPIC_MODEL=your-model-name
+```
+
+The example file defaults to production mode, which requires the security settings described below. After configuring the local demo:
 
 ```bash
 docker compose up -d --build
 ```
 
-| Address | Service |
-| --- | --- |
-| [localhost:5174](http://localhost:5174) | Support console |
-| [localhost:8080/docs](http://localhost:8080/docs) | OpenAPI / Swagger |
-| [localhost:3000](http://localhost:3000) | Grafana; credentials are in the root `.env` |
-| [localhost:9090](http://localhost:9090) | Prometheus |
+Open the console at [http://localhost:5174](http://localhost:5174), or call the API:
+
+```bash
+curl -X POST http://localhost:8080/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"user_id":"demo","message":"My cabinet door will not close properly. What should I do?"}'
+```
+
+The response includes `response`, `intent`, `primary_agent`, `supporting_agents`, `routing_reason`, `answer_confidence`, `policy_violations`, `handoff`, and `ticket_id`. Reuse the returned `conv_id` for follow-up questions. This unauthenticated example applies to local demo mode.
+
+API docs: [localhost:8080/docs](http://localhost:8080/docs) · Grafana: [localhost:3000](http://localhost:3000) · Prometheus: [localhost:9090](http://localhost:9090). Grafana and database credentials are set in the root `.env`.
+
+### Choose a model provider
+
+For OpenAI-compatible endpoints, set `LLM_PROVIDER=openai`, `OPENAI_API_KEY`, `OPENAI_MODEL`, and, if needed, `OPENAI_BASE_URL`. `EMBEDDING_*` and `RERANK_*` configure separate retrieval services. Match the embedding dimension and rebuild stored vectors when changing embedding models. See [backend/.env.example](backend/.env.example); restart after configuration changes.
+
+### Add your business knowledge
+
+Upload `.txt`, `.md`, or JSON document lists in the knowledge panel, or use the API:
+
+```bash
+curl -X POST http://localhost:8080/knowledge/upload \
+  -F 'file=@backend/data/demo_docs/troubleshooting.md'
+```
+
+Maintain specialist procedures in `backend/skills/*/SKILL.md`, then call `POST /skills/reload`. Knowledge supplies reference material; SOPs define handling steps and escalation rules. For live business data, configure `SQL_AGENT_URL` and its credentials to connect ai-sql-agent. See [SOP authoring](backend/skills/README.md) and the [identity integration requirements](docs/integrations/sql-agent-identity-requirements.md). Protected deployments require authentication headers on these endpoints.
 
 <details>
 <summary>Local development: Python + Node.js</summary>
@@ -126,46 +148,68 @@ Open [localhost:5173](http://localhost:5173). The backend defaults to port `8000
 
 </details>
 
-## Validation
+## Evaluation and current limits
 
-From the repository root, with backend dependencies installed in the virtual environment and `ruff` installed separately:
+**Retrieval smoke measurement, 2026-09-22:** eight bundled Chinese queries, six knowledge chunks, SQLite, deterministic 256-dimensional character n-gram vectors, no remote embedding or generative model calls.
+
+| Retrieval strategy | MRR | hit@3 |
+| --- | --- | --- |
+| Dense only | 0.583 | 6/8 |
+| Lexical only | **0.844** | 7/8 |
+| Hybrid, RRF | 0.812 | **8/8** |
+
+Hybrid retrieval places the expected document in the top three for every case here; lexical retrieval has the higher MRR. This small check measures retrieval ranks, not answer accuracy, remote embedding quality, or production performance. Conditions, per-query ranks, and the reproduction command are in the [measurement record](docs/evaluation/retrieval-smoke.md).
 
 ```bash
+# From the repository root, after installing dependencies; Ruff is separate
+backend/.venv/bin/pip install ruff
 (cd backend && .venv/bin/python -m pytest && .venv/bin/ruff check .)
 (cd frontend && npm test && npm run typecheck && npm run build)
 ```
 
-[CI](.github/workflows/ci.yml) checks the backend, frontend, cross-repository A2A contract and Docker images independently. Backend CI exercises a real pgvector service; the contract job fetches version-pinned `a2a-contract` fixtures. Use actual test results for current counts.
+[CI](.github/workflows/ci.yml) covers backend tests with a real pgvector service, frontend tests/builds, pinned cross-repository A2A fixtures, and Docker images. Some local integration tests need services or the contract checkout. LLM-as-Judge evaluates relevance, accuracy, completeness, and helpfulness through `POST /eval/run`; update its baseline explicitly with `POST /eval/promote`.
+
+Load tests use `backend/scripts/load_test.py --unique-messages --requests 100 --concurrency 10`. Keep `--unique-messages` to avoid intent-cache hits from repeated questions. No production capacity or SLA is established by these checks.
+
+**Deployment scope:** this is a single-tenant system. Signed identities isolate user memory; a shared downstream service key still governs business-data access. Per-customer row-level authorization is not implemented, and enabling impersonation or declaring `multi_tenant` does not add it. Production startup requires the admin key, user-signing secret, protected chat, token-issuer source allowlist, and explicit deployment scope. See [deployment boundaries](docs/deployment-boundaries.md).
 
 <details>
-<summary>Retrieval evaluation & load testing</summary>
+<summary><strong>API reference</strong></summary>
 
-```bash
-(cd backend && .venv/bin/python scripts/eval_retrieval.py)
-(cd backend && .venv/bin/python scripts/load_test.py --unique-messages --requests 100 --concurrency 10)
-```
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /chat` · `POST /chat/stream` | Replies, routing metadata, policy findings, and handoff state; SSE includes preparation progress |
+| `GET /tickets` · `POST /tickets/{ticket_id}/status` | Inspect and advance human tickets |
+| `POST /knowledge/add` · `POST /knowledge/upload` | Ingest knowledge; identical chunks are deduplicated |
+| `GET /skills` · `POST /skills/reload` | Inspect and reload business SOPs |
+| `POST /eval/run` · `POST /eval/promote` | Run evaluations and explicitly promote the baseline |
+| `GET /health` · `GET /monitor` · `GET /metrics` | Health, agent/tool monitoring, and Prometheus metrics |
+| `POST /auth/token` | Issue a signed user identity through a trusted integration |
 
-The retrieval script compares dense / lexical / hybrid MRR and hit@3 on eight bundled cases, a small regression set. Keep `--unique-messages` during load testing to avoid lower latency from intent-cache hits on repeated questions. Run LLM-as-Judge through the console or `POST /eval/run`; explicitly promote the baseline through `POST /eval/promote`.
+In protected deployments, management endpoints use `X-API-Key`; user identity is carried by `X-User-Token`. `/auth/token` is a trusted infrastructure endpoint, not an end-user login system. See [login integration](docs/auth-token-integration.md).
 
 </details>
 
-## Deployment boundary
-
-This is a **single-tenant system**. User identities and memory can be isolated; downstream business-data access is still governed by a shared service key. Per-customer row-level authorization is not implemented. Neither `SQL_AGENT_IMPERSONATE` nor declaring `multi_tenant` creates that authorization boundary.
-
-Production requires an admin key, a user-signing secret, protected chat, a token-issuer source allowlist and an explicit deployment scope. Missing settings fail startup. Local demo settings are not suitable for public deployment. See [deployment boundaries](docs/deployment-boundaries.md) and [login integration](docs/auth-token-integration.md).
-
-Evaluation, observability and deployment tooling are included; capacity and SLAs have not been established against real production traffic.
-
-## Code & documentation
+<details>
+<summary><strong>Repository map</strong></summary>
 
 ```text
-backend/app/      API, intent, agents, retrieval, memory, tickets and evaluation
-backend/skills/   Scoped, hot-reloadable business SOPs
-frontend/src/    Chat, knowledge, monitoring, evaluation and routing console
-deploy/          Nginx, metrics, logging and tracing configuration
-scripts/         Development, deployment, backup/restore and local CI
-docs/            Architecture, code guide, identity integration and ops records
+backend/app/
+  api/ · core/             HTTP/SSE, intent, identity, policies, model adapters
+  agents/ · tools/         Specialist routing, RAG, business queries, tool governance
+  memory/ · storage/       Working/long-term memory, persistence, conversation audit
+  tickets/                 Human tickets and notification outbox
+  monitor/ · evaluation/   Operational feedback and quality regression
+backend/skills/            Scoped, reloadable business SOPs
+backend/tests/ · scripts/  Test suite, retrieval eval, load testing
+frontend/src/             React console and routing inspector
+deploy/                   Nginx, metrics, logs, and tracing configuration
+scripts/                  Local development, deployment, backup/restore, local CI
+docs/                     Architecture, integration, measurements, and ops records
 ```
 
-[Architecture](docs/architecture.md) · [Code guide](docs/code-guide.md) · [Backend](backend/README.md) · [Frontend](frontend/README.md) · [Diagram maintenance](docs/diagrams/README.md)
+</details>
+
+## Further reading
+
+[Architecture](docs/architecture.md) · [Code guide](docs/code-guide.md) · [Backend](backend/README.md) · [SOP authoring](backend/skills/README.md) · [Login integration](docs/auth-token-integration.md) · [Deployment boundaries](docs/deployment-boundaries.md) · [Diagram maintenance](docs/diagrams/README.md)
