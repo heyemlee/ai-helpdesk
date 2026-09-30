@@ -146,6 +146,14 @@ scripts/dev.sh
 
 访问 [localhost:5173](http://localhost:5173)。后端默认端口为 `8000`，可通过 `API_PORT` 调整，前端代理随之更新。
 
+按 [a2a-contract](https://github.com/heyemlee/a2a-contract/blob/main/README.zh-CN.md) 的本机接法与 [ai-sql-agent](https://github.com/heyemlee/ai-sql-agent) 一起启动：把 ai-sql-agent 放在同级目录（或设置 `SQL_AGENT_DIR`），然后执行：
+
+```bash
+scripts/dev-all.sh
+```
+
+脚本先在 `127.0.0.1:8000`（ai-sql-agent 自己的 `AI_SQL_PORT`）启动 ai-sql-agent，等 `/health` 和 Agent Card 就绪后，再带上 `SQL_AGENT_URL=http://127.0.0.1:8000` 运行 `scripts/dev.sh`。`API_PORT` 需要换到别的端口（例如 `8080`），两边配成同一个端口时脚本会拒绝启动。Ctrl-C 一次停掉三个进程；再次运行会先停掉上一轮。
+
 </details>
 
 ## 评测与当前边界
