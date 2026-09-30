@@ -39,11 +39,11 @@ src/
 
 | 运行方式 | `/api/*` 转发到 | 配置位置 |
 |----------|-----------------|----------|
-| `npm run dev` | `http://localhost:8000` | `vite.config.ts`（可用 `VITE_API_URL` 覆盖） |
+| `npm run dev` | `http://localhost:8080` | `vite.config.ts`（可用 `VITE_API_URL` 覆盖） |
 | 前端容器单独跑 | `host.docker.internal:8000` | `API_UPSTREAM` 环境变量 |
 | 全栈 compose | `ai-helpdesk:8000` | 仓库根的 `docker-compose.yml` |
 
-页面侧边栏的「API 地址」输入框可以临时改成任意地址（例如直接填 `http://localhost:8000`
+页面侧边栏的「API 地址」输入框可以临时改成任意地址（例如直接填 `http://localhost:8080`
 绕过代理），改动存在 localStorage 里。
 
 ## 本地运行
