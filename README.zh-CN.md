@@ -19,7 +19,7 @@
 </div>
 
 <p align="center">
-  <img src="docs/screenshots/chat.webp" width="960" alt="在 AI Helpdesk 工作台打开学习模式问三个问题：台面开裂的问题经过一轮补检后由两个专家 Agent 并行作答，一句没有依据的日期承诺被替换；订单进度通过 A2A 交给 SQL Agent 查询，它找表、规划、查询和自修的每一步都实时显示在工作台上；客户要求找人时建了工单，通知已送达" />
+  <img src="docs/screenshots/chat.webp" width="960" alt="在 AI Helpdesk 工作台打开学习模式问三个问题：台面开裂的问题经过一轮补检后由两个专家 Agent 并行作答，一句没有依据的日期承诺被替换；订单进度通过 A2A 交给 SQL Agent 查询，它找表、规划、查询和自修的每一步都实时显示在工作台上；问柜门开裂还在不在保修期时，规则没有去查业务数据，专家在有边界的工具循环里自己调用工具，查业务系统拿到交货日期、又检索了一次知识库，学习模式列出了这两次查询" />
 </p>
 
 <p align="center"><sub>虚构的公司、订单和文档，由模拟的 API 提供。</sub></p>
@@ -28,7 +28,7 @@
 
 - **路由与专家 Agent。** LLM、Embedding 和规则按 0.7 / 0.2 / 0.1 对 19 个意图投票，用 gpt-6-luna 时 90 条标注消息对了 77 条。再按领域分数从三个专家里选出主处理，每个专家跑多个副本，由监控按成功率和延迟调整权重；第二个专家分数不低于 0.45、且不低于第一名的 55% 时并行加入。
 - **有边界的工具循环，A/B 过了才打开。** 预取的资料不够时，专家通过 function calling 自己再调同样的检索和查数，每轮最多 3 次模型调用、1 次委派。72 组成对 A/B 里，规则漏掉数据的问题有 26/30 轮拿到了数据（规则组一轮都没有），没有越权调用，也没有编造数字，所以员工实例上打开了。
-- **Agent 间委派。** 数据类问题交给独立的 SQL Agent，它自己规划、写 SQL、执行、出错自修。走 A2A 时每个阶段都实时传回，另有 Agent Card 发现、降级、超时，以及钉在 `v1.12` 的契约测试。
+- **Agent 间委派。** 数据类问题交给独立的 SQL Agent，它自己规划、写 SQL、执行、出错自修。走 A2A 时每个阶段都实时传回，另有 Agent Card 发现、降级、超时，以及钉在 `v1.13` 的契约测试。
 - **Agent 之间默认不信任。** 委派结果只有在执行状态为 success 或 partial_success、且没有风险或降级标记时才算证据；字段缺失一律按不可信处理。价格和日期只能以证据、检索到的片段和 SOP 为依据。
 - **带自纠错回路的检索。** 改写成三个子查询，同时查 pgvector 和关键词索引，用 cross-encoder 或 LLM 重排并判断依据够不够，不够就针对缺的部分再检索一轮。单看融合检索这一步，108 道测试题里有 101 道把正确文档排进前 3。
 - **护栏与人工接管。** 每句话发出之前都要过检查，没有依据的价格或日期承诺会被替换。专家会声明是否需要人工，置信度低时建工单；模型停机时暂停调用，而不是建工单。
@@ -36,7 +36,7 @@
 ## 系统架构
 
 <p align="center">
-  <img src="docs/architecture.svg" width="960" alt="Agent 架构图：一个问题在 Agent 运行时里依次经过五个阶段，由 React 18 工作台发出，回答经 SSE 流回。1 Understand：意图投票，结果用 Pydantic 2 校验，工作记忆在 Redis 7。2 Gather：规则选中的工具用 asyncio.gather 并发执行，在 PostgreSQL 16 上用 pgvector 和 tsvector 检索，同时通过 A2A 委派独立的 ai-sql-agent（它有自己的循环）；依据不足时回头再检索一轮。3 Route：领域分选出专家，监控每 10 秒给副本重新加权。4 Answer：三个专家调用 Anthropic 或 OpenAI 的对话模型作答，失败时由通用 Agent 兜底；在有边界的工具循环里，专家还能通过 function calling 再检索或再查数据。5 Check：守卫加三道置信度门槛，不过就建工单交给人工。向量和重排来自 Embedding API，平台是 FastAPI、Python 3.12、httpx、Docker Compose、Nginx、OpenTelemetry 和 Grafana；光点按这个顺序依次流过每条连线" />
+  <img src="docs/architecture.svg" width="960" alt="Agent 架构图：一个问题在 Agent 运行时里依次经过五个阶段，由 React 18 工作台发出，回答经 SSE 流回。1 Understand：意图投票，结果用 Pydantic 2 校验，工作记忆在 Redis 7。2 Gather：规则选中的工具用 asyncio.gather 并发执行，在 PostgreSQL 16 上用 pgvector 和 tsvector 检索，同时通过 A2A 委派独立的 ai-sql-agent（它有自己的循环）；依据不足时回头再检索一轮。3 Route：领域分选出专家，监控每 10 秒给副本重新加权。4 Answer：三个专家调用 Anthropic 或 OpenAI 的对话模型作答，失败时由通用 Agent 兜底；在有边界的工具循环里，专家还能通过 function calling 再检索或再查数据。5 Check：守卫加三道置信度门槛，不过就建工单交给人工。每一步还按顺序记进一轮的事件日志（意图、预取、路由、模型调用、工具调用、守卫、回答和转人工），在回答路径之外批量写进 PostgreSQL。向量和重排来自 Embedding API，平台是 FastAPI、Python 3.12、httpx、Docker Compose、Nginx、OpenTelemetry 和 Grafana；光点按这个顺序依次流过每条连线" />
 </p>
 
 问题从工作台进员工实例，或者经 80 端口的 Nginx 进客户实例，然后依次经过五个阶段。**理解**（Understand）读取记忆并投票定意图；**收集**（Gather）同时运行规则为它选中的工具：在 PostgreSQL 里做混合检索，在员工实例上还会通过 A2A 或 HTTP `/query` 委派 [ai-sql-agent](https://github.com/heyemlee/ai-sql-agent) 查数据；**路由**（Route）给专家打分并选出副本，**作答**（Answer）由专家结合各自的 SOP 完成，员工实例上还能自己补查缺的资料，**检查**（Check）在发出前逐句把关，需要人工时建工单，通知先写进 outbox 再投递到 webhook。
@@ -97,7 +97,7 @@
 
 - **流式加降级。** Agent Card 缓存 30 秒；每个阶段（找表、规划、写 SQL、查询、自修）按界面语言显示在工作台上。流打开之前收到 `-32004` 就改用 `message/send`；静默超时或超过总时长就结束调用。
 - **每种传输都用同一套证据规则。** A2A 和 `/query` 的结果过同一道检查；部分成功时失败的那几步不能下结论，结果被截断时不能报总数。
-- **一份契约。** 消费方测试跑 [a2a-contract](https://github.com/heyemlee/a2a-contract) 的 golden fixtures，钉在 `v1.12`；拿不到 fixture 时测试失败，而不是跳过。
+- **一份契约。** 消费方测试跑 [a2a-contract](https://github.com/heyemlee/a2a-contract) 的 golden fixtures，钉在 `v1.13`；拿不到 fixture 时测试失败，而不是跳过。
 
 ### 检索
 

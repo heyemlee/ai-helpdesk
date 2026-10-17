@@ -137,7 +137,7 @@ pip install -r requirements.txt && ANTHROPIC_API_KEY=test-key pytest
 换向量模型时的整批重建、知识库分类。
 
 PG 合同用例要 `TEST_POSTGRES_DSN`（一个装得上 vector 扩展的空库），A2A 契约用例要
-`A2A_CONTRACT_DIR`（a2a-contract 的 `v1.12` 检出），没配就跳过。在不含 `.env`
+`A2A_CONTRACT_DIR`（a2a-contract 的 `v1.13` 检出），没配就跳过。在不含 `.env`
 的干净副本里实测（代码同 `4346f3e`）：都不配时 1344 通过、29 跳过（契约相关 19 条、PG 9 条，
 另有 1 条要真的绑定 `0.0.0.0` 端口，在那次的沙箱里跳过）；配上一次性 pgvector 容器和契约
 `v1.12`、不在沙箱里跑时 1466 通过、0 跳过（带 PG 时还会多收集一批 `[postgres]` 参数化用例）。

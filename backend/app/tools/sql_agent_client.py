@@ -1,22 +1,24 @@
 """
 ai-sql-agent 委派客户端。
 
-客服这边答不了「我那张单子排到几号了」——答案在 ERP / MES / PM / WMS 四个
+客服这边答不了「我那张单子排到几号了」——答案在 ERP、生产、交付和仓储这些
 业务库里，不在知识库里。ai-sql-agent 是另一个已经跑起来的服务，能把这句
 人话翻成只读 SQL 查出来。这个模块负责把问题递过去、把答案接回来。
 
-**为什么直接调 `/query`，不走 A2A 协议。** 两边约好的 A2A 流式契约在独立
-仓库 `a2a-contract` 的 `a2a-streaming-contract.md` 里（commit f33beb3）。那份
-文档设计得很完整，但它描述的实现两边都还不存在：服务端没有 `ai_sql_a2a/`，
-调用端也没有 client——契约跑在了实现前面。`/query` 是 ai-sql-agent 今天就有
-的同步接口，鉴权、限流、审计、trace_id 一应俱全，先用它把链路打通。
-将来换成 `message/stream` 时改的是本文件内部，注册出去的 Tool 接口不动。
+**两条 transport，默认 `/query`。** 两边的约定在独立仓库 `a2a-contract` 的
+`a2a-streaming-contract.md` 里（v1.13，tag v1.13 / commit faa699f）。`/query` 是
+ai-sql-agent 的同步接口，鉴权、限流、审计、trace_id 一应俱全，链路最早就是靠它
+打通的；`SQL_AGENT_TRANSPORT=a2a` 时改走 A2A（`message/stream` / `message/send`，
+客户端在 `a2a_client.py`），查询阶段能实时传回前端。默认仍是 `query`：它跑得久、
+验得多（契约附录 B）；切 A2A 时超时要一起调，见下文。三个承载者共用同一套结果
+语义和信任判定（契约 §4.4.1，v1.8 起），所以换 transport 不换证据标准，注册出去的
+Tool 接口也不动。
 
 **为什么不重试。** 查库路径实测 p90 17.7s（契约 §2，82 次真实调用），重试
 一次就是把 17.7s 叠到用户等待上。失败直接当「没查到数据」，让 Agent 用知识
 库和 SOP 回答或转人工。熔断和超时由 ToolManager 统一管，这里不自己做。
 
-**超时为什么是 45s。** 契约 §1 给的是 25s，那个数字是给 A2A 的 `message/send`
+**超时为什么是 45s。** 契约 §1 最早给的是 25s，那个数字是给 A2A 的 `message/send`
 定的过渡期预算——而 `send` 在契约里是**回滚路径**，掉查询的代价有限。这里走的
 `/query` 是**主路径**，代价完全不同。
 
@@ -27,10 +29,14 @@ ai-sql-agent 委派客户端。
 
 45s 覆盖实测峰值，同时远低于契约给流式定的 90s 硬顶。代价是最坏情况客户多等
 二十秒——换回来的是一个有系统数据的答案，而不是一段听起来合理的空话。
+契约 v1.6 把 send 预算补成了三档（§1③：流式未实现 25s、已实现但没承接流量 45s、
+承接流量后 90s），45s 正好是今天这一档：默认 transport 还是 `query`。
 
-**这个数字是权宜的。** 真正的解法仍然是契约描述的流式：让用户在等待期间看到
-"正在查 ERP 订单库"，那时候预算才谈得上放宽到 90s。在那之前，任何取值都是在
-"掉数据"和"看空屏"之间挑一个不那么糟的。
+**再放宽要先让用户看到进度。** 流式已经有了，走 A2A 时用户在等待期间能看到
+"正在查 ERP 订单库"。等生产流量真的切到 A2A 流式，才进第三档、send 放宽到 90s；
+那时 `SQL_AGENT_TIMEOUT_S` 要一起抬：外层工具超时 = 它 + 2s，必须大于 send 预算
+（`core/preflight.py` 启动时检查），也要盖住流式 90s 的硬顶（这条没有启动检查）。
+还走 `/query` 的时候，任何取值都仍是在"掉数据"和"看空屏"之间挑一个不那么糟的。
 
 **身份与数据权限（重要）。** 默认用一个固定的服务身份调过去
 （`SQL_AGENT_USER_ID`，默认 `ai-helpdesk`），客户自己的 id 只用作 session，
@@ -76,8 +82,9 @@ def _downstream_session_id(user_id: str, session_id: str) -> str:
     material = f"{user_id or 'anonymous'}\x00{session_id or 'oneshot'}".encode()
     return f"hd-{hashlib.sha256(material).hexdigest()[:32]}"
 
-# 实测覆盖：下游最大 40.5s（见模块开头）。契约 §1 的 25s 是给回滚路径 send 定的，
-# 直连 /query 是主路径，套用它会掉掉约四分之一的查询。
+# 实测覆盖：下游最大 40.5s（见模块开头），也正好是契约 §1③ 今天这一档的 send 预算。
+# 25s 是流式还没实现时给回滚路径 send 的那一档；直连 /query 是主路径，
+# 套用它会掉掉约四分之一的查询。
 DEFAULT_TIMEOUT_S = 45.0
 
 
@@ -86,16 +93,18 @@ DEFAULT_TIMEOUT_S = 45.0
 # should_use_knowledge：/chat 主链路和评测 harness 必须共用同一套门控，
 # 否则评测出来的分数和线上不是一回事。
 #
-# 选这六个的依据是 ai-sql-agent 手上有哪四个库（契约 §4.5）：
-#   erp_db 销售订单/采购/回款 · mes_db 工单/工序/排产 · pm_db 项目/变更单 · wms_db 库存/出入库
+# 选这六个的依据是 ai-sql-agent 手上有哪些库。契约 §4.5 从 v1.6 起只钉标识符的形状，
+# 具体有哪几个以它的 Agent Card 为准；今天是这四个（mes_db 是 prod_db 的旧名，
+# pm_db 的职责本就在 erp_db，两个都已退役）：
+#   erp_db 工程/变更单/应收与回款 · prod_db 生产工单/工序/质检 · svc_db 送货/售后/补件 · wms_db 供应商/物料/到货与库存
 # quote_pricing（报价）故意不在里面：报价是对外承诺，出口要走正式报价单，
 # 不该由一句自然语言查询直接给数。要放开就配 SQL_AGENT_INTENTS，别改这里的默认值。
 DEFAULT_DATA_INTENTS = frozenset({
     "order",          # 订单与交付（宽泛类）
-    "order_status",   # 订单/生产进度与交期  → erp_db / mes_db
-    "delivery",       # 送货、运输、到场排期  → erp_db / wms_db
-    "order_change",   # 改单                  → pm_db
-    "missing_part",   # 补件、缺件、错发      → wms_db
+    "order_status",   # 订单/生产进度与交期  → erp_db / prod_db
+    "delivery",       # 送货、运输、到场排期  → svc_db
+    "order_change",   # 改单                  → erp_db（变更单）
+    "missing_part",   # 补件、缺件、错发      → svc_db / wms_db
     "payment_issue",  # 定金/尾款/账款异常    → erp_db
 })
 
@@ -145,7 +154,7 @@ def should_query_business_data(message: str, intent=None, entities=None) -> bool
     return False
 
 class SQLAgentClient:
-    """ai-sql-agent `/query` 客户端。未配置 base_url 时 enabled=False。"""
+    """ai-sql-agent 委派客户端：默认走 `/query`，`SQL_AGENT_TRANSPORT=a2a` 时走 A2A。未配置 base_url 时 enabled=False。"""
 
     def __init__(
         self,

@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 440" width="960" height="440" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 474" width="960" height="474" role="img" aria-labelledby="title desc">
   <title id="title">AI Helpdesk agent architecture</title>
-  <desc id="desc">Agent architecture: one question runs through five stages in the agent runtime. The React 18 console posts it, and the answer streams back over SSE. 1 Understand, an intent vote typed with Pydantic 2, reading working memory from Redis 7. 2 Gather, tools picked by rules and run together with asyncio.gather: a search in PostgreSQL 16 with pgvector and tsvector, and a delegation over A2A to the peer agent ai-sql-agent, which runs its own loop; one corrective round when the evidence is thin. 3 Route, domain scores pick the specialists, and a monitor re-weights their replicas every 10 seconds. 4 Answer, three specialists through the Anthropic or OpenAI chat models, falling back to a generalist; in a bounded tool loop a specialist can search or query again through function calling, up to three model calls a turn. 5 Check, a guard and three confidence gates; a failed gate hands off to a person with a ticket. The platform is FastAPI, Python 3.12, httpx, Docker Compose, Nginx, OpenTelemetry and Grafana. Pulses travel each connection in that order and the stage badges light up in turn.</desc>
+  <desc id="desc">Agent architecture: one question runs through five stages in the agent runtime. The React 18 console posts it, and the answer streams back over SSE. 1 Understand, an intent vote typed with Pydantic 2, reading working memory from Redis 7. 2 Gather, tools picked by rules and run together with asyncio.gather: a search in PostgreSQL 16 with pgvector and tsvector, and a delegation over A2A to the peer agent ai-sql-agent, which runs its own loop; one corrective round when the evidence is thin. 3 Route, domain scores pick the specialists, and a monitor re-weights their replicas every 10 seconds. 4 Answer, three specialists through the Anthropic or OpenAI chat models, falling back to a generalist; in a bounded tool loop a specialist can search or query again through function calling, up to three model calls a turn. 5 Check, a guard and three confidence gates; a failed gate hands off to a person with a ticket. Every step is also appended, in order, to a turn event log: intent, prefetch, routing, model calls, tool calls, guard, answer and handoff, written to PostgreSQL in batches off the answer path. The platform is FastAPI, Python 3.12, httpx, Docker Compose, Nginx, OpenTelemetry and Grafana. Pulses travel each connection in that order, the stage badges light up in turn, and each event lights up as it is recorded until the batch is flushed to PostgreSQL.</desc>
   <style>
     text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif; }
     .eyebrow { font-size: 10px; font-weight: 600; letter-spacing: 0.08em; fill: #8e8e93; }
@@ -21,6 +21,10 @@
     .loopline { fill: none; stroke-width: 1.6; stroke-linecap: round; }
     .ring { fill: none; stroke-width: 2; stroke-opacity: 0; }
     .chip { fill: #eef4ff; }
+    .evpill { fill: #ffffff; stroke: #e5e5ea; }
+    .evlit { opacity: 0; }
+    .evon { fill: #e8f0ff; stroke: #0a7cff; }
+    .evtext { font-size: 11px; font-weight: 600; fill: #0a5bc4; }
 
     .b { stroke: #0a7cff; }
     .o { stroke: #e5733f; }
@@ -78,6 +82,18 @@
     @keyframes rllm2 { 0%, 55.20% { stroke-opacity: 0; } 56.20%, 60.20% { stroke-opacity: 0.85; } 63.70%, 100% { stroke-opacity: 0; } }
     @keyframes rllm3 { 0%, 66.20% { stroke-opacity: 0; } 67.20%, 71.20% { stroke-opacity: 0.85; } 74.70%, 100% { stroke-opacity: 0; } }
     @keyframes rsql { 0%, 26.00% { stroke-opacity: 0; } 27.00%, 38.00% { stroke-opacity: 0.85; } 41.50%, 100% { stroke-opacity: 0; } }
+
+    /* The turn event log: each event lights up as its step finishes, then goes
+       dark as the flush passes over it on the way into PostgreSQL (rpg4). */
+    @keyframes ev1 { 0%, 19.50% { opacity: 0; } 20.50%, 87.10% { opacity: 1; } 88.60%, 100% { opacity: 0; } }
+    @keyframes ev2 { 0%, 44.50% { opacity: 0; } 45.50%, 89.00% { opacity: 1; } 90.50%, 100% { opacity: 0; } }
+    @keyframes ev3 { 0%, 50.50% { opacity: 0; } 51.50%, 89.50% { opacity: 1; } 91.00%, 100% { opacity: 0; } }
+    @keyframes ev4 { 0%, 60.20% { opacity: 0; } 61.20%, 88.60% { opacity: 1; } 90.10%, 100% { opacity: 0; } }
+    @keyframes ev5 { 0%, 65.50% { opacity: 0; } 66.50%, 87.60% { opacity: 1; } 89.10%, 100% { opacity: 0; } }
+    @keyframes ev6 { 0%, 70.50% { opacity: 0; } 71.50%, 86.90% { opacity: 1; } 88.40%, 100% { opacity: 0; } }
+    @keyframes ev7 { 0%, 73.00% { opacity: 0; } 74.00%, 86.10% { opacity: 1; } 87.60%, 100% { opacity: 0; } }
+    @keyframes ev8 { 0%, 76.00% { opacity: 0; } 77.00%, 85.40% { opacity: 1; } 86.90%, 100% { opacity: 0; } }
+    @keyframes rpg4 { 0%, 89.60% { stroke-opacity: 0; } 90.60%, 93.60% { stroke-opacity: 0.85; } 97.10%, 100% { stroke-opacity: 0; } }
     @media (prefers-reduced-motion: reduce) {
       * { animation: none !important; }
     }
@@ -90,7 +106,7 @@
       <feDropShadow dx="0" dy="1" stdDeviation="1.5" flood-color="#000000" flood-opacity="0.05" />
       <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000000" flood-opacity="0.04" />
     </filter>
-    <filter id="glow" filterUnits="userSpaceOnUse" x="0" y="0" width="960" height="440">
+    <filter id="glow" filterUnits="userSpaceOnUse" x="0" y="0" width="960" height="474">
       <feGaussianBlur stdDeviation="2.2" result="blur" />
       <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
     </filter>
@@ -105,8 +121,8 @@
     </marker>
   </defs>
 
-  <rect x="0.5" y="0.5" width="959" height="439" rx="16" fill="#ffffff" stroke="#ececf0" />
-  <rect x="1" y="1" width="958" height="438" rx="16" fill="url(#dots)" />
+  <rect x="0.5" y="0.5" width="959" height="473" rx="16" fill="#ffffff" stroke="#ececf0" />
+  <rect x="1" y="1" width="958" height="472" rx="16" fill="url(#dots)" />
 
   <g filter="url(#lift)">
   <rect class="card" x="24" y="20" width="240" height="56" rx="14" />
@@ -225,27 +241,56 @@
   <rect class="ring b" x="215" y="311" width="166" height="66" rx="16" style="animation: rpg1 10s linear infinite" />
   <rect class="ring b" x="215" y="311" width="166" height="66" rx="16" style="animation: rpg2 10s linear infinite" />
   <rect class="ring b" x="215" y="311" width="166" height="66" rx="16" style="animation: rpg3 10s linear infinite" />
+  <rect class="ring b" x="215" y="311" width="166" height="66" rx="16" style="animation: rpg4 10s linear infinite" />
   <rect class="ring o" x="397" y="311" width="166" height="66" rx="16" style="animation: remb1 10s linear infinite" />
   <rect class="ring o" x="397" y="311" width="166" height="66" rx="16" style="animation: remb2 10s linear infinite" />
   <rect class="ring o" x="579" y="311" width="166" height="66" rx="16" style="animation: rllm1 10s linear infinite" />
   <rect class="ring o" x="579" y="311" width="166" height="66" rx="16" style="animation: rllm2 10s linear infinite" />
   <rect class="ring o" x="579" y="311" width="166" height="66" rx="16" style="animation: rllm3 10s linear infinite" />
   <rect class="ring t" x="761" y="311" width="166" height="66" rx="16" style="animation: rsql 10s linear infinite" />
-  <text class="eyebrow" x="148.0" y="411">PLATFORM</text>
-  <rect x="226.0" y="396" width="64" height="22" rx="11" fill="#f5f5f7" stroke="#e5e5ea" />
-  <text class="pilltext" x="258.0" y="411" text-anchor="middle">FastAPI</text>
-  <rect x="298.0" y="396" width="88" height="22" rx="11" fill="#f5f5f7" stroke="#e5e5ea" />
-  <text class="pilltext" x="342.0" y="411" text-anchor="middle">Python 3.12</text>
-  <rect x="394.0" y="396" width="52" height="22" rx="11" fill="#f5f5f7" stroke="#e5e5ea" />
-  <text class="pilltext" x="420.0" y="411" text-anchor="middle">httpx</text>
-  <rect x="454.0" y="396" width="110" height="22" rx="11" fill="#f5f5f7" stroke="#e5e5ea" />
-  <text class="pilltext" x="509.0" y="411" text-anchor="middle">Docker Compose</text>
-  <rect x="572.0" y="396" width="54" height="22" rx="11" fill="#f5f5f7" stroke="#e5e5ea" />
-  <text class="pilltext" x="599.0" y="411" text-anchor="middle">Nginx</text>
-  <rect x="634.0" y="396" width="104" height="22" rx="11" fill="#f5f5f7" stroke="#e5e5ea" />
-  <text class="pilltext" x="686.0" y="411" text-anchor="middle">OpenTelemetry</text>
-  <rect x="746.0" y="396" width="66" height="22" rx="11" fill="#f5f5f7" stroke="#e5e5ea" />
-  <text class="pilltext" x="779.0" y="411" text-anchor="middle">Grafana</text>
+  <path class="wire" d="M298,388 V377" marker-end="url(#arrow)" />
+  <rect x="24" y="388" width="912" height="32" rx="16" fill="#f6f8fc" stroke="#e1e7f0" />
+  <text class="eyebrow" x="44" y="408">TURN EVENT LOG</text>
+  <rect class="evpill" x="176" y="394" width="52" height="20" rx="10" />
+  <text class="pilltext" x="202" y="408" text-anchor="middle">intent</text>
+  <g class="evlit" style="animation: ev1 10s linear infinite"><rect class="evon" x="176" y="394" width="52" height="20" rx="10" /><text class="evtext" x="202" y="408" text-anchor="middle">intent</text></g>
+  <rect class="evpill" x="236" y="394" width="66" height="20" rx="10" />
+  <text class="pilltext" x="269" y="408" text-anchor="middle">prefetch</text>
+  <g class="evlit" style="animation: ev2 10s linear infinite"><rect class="evon" x="236" y="394" width="66" height="20" rx="10" /><text class="evtext" x="269" y="408" text-anchor="middle">prefetch</text></g>
+  <rect class="evpill" x="310" y="394" width="60" height="20" rx="10" />
+  <text class="pilltext" x="340" y="408" text-anchor="middle">routing</text>
+  <g class="evlit" style="animation: ev3 10s linear infinite"><rect class="evon" x="310" y="394" width="60" height="20" rx="10" /><text class="evtext" x="340" y="408" text-anchor="middle">routing</text></g>
+  <rect class="evpill" x="378" y="394" width="82" height="20" rx="10" />
+  <text class="pilltext" x="419" y="408" text-anchor="middle">model calls</text>
+  <g class="evlit" style="animation: ev4 10s linear infinite"><rect class="evon" x="378" y="394" width="82" height="20" rx="10" /><text class="evtext" x="419" y="408" text-anchor="middle">model calls</text></g>
+  <rect class="evpill" x="468" y="394" width="70" height="20" rx="10" />
+  <text class="pilltext" x="503" y="408" text-anchor="middle">tool calls</text>
+  <g class="evlit" style="animation: ev5 10s linear infinite"><rect class="evon" x="468" y="394" width="70" height="20" rx="10" /><text class="evtext" x="503" y="408" text-anchor="middle">tool calls</text></g>
+  <rect class="evpill" x="546" y="394" width="52" height="20" rx="10" />
+  <text class="pilltext" x="572" y="408" text-anchor="middle">guard</text>
+  <g class="evlit" style="animation: ev6 10s linear infinite"><rect class="evon" x="546" y="394" width="52" height="20" rx="10" /><text class="evtext" x="572" y="408" text-anchor="middle">guard</text></g>
+  <rect class="evpill" x="606" y="394" width="60" height="20" rx="10" />
+  <text class="pilltext" x="636" y="408" text-anchor="middle">answer</text>
+  <g class="evlit" style="animation: ev7 10s linear infinite"><rect class="evon" x="606" y="394" width="60" height="20" rx="10" /><text class="evtext" x="636" y="408" text-anchor="middle">answer</text></g>
+  <rect class="evpill" x="674" y="394" width="62" height="20" rx="10" />
+  <text class="pilltext" x="705" y="408" text-anchor="middle">handoff</text>
+  <g class="evlit" style="animation: ev8 10s linear infinite"><rect class="evon" x="674" y="394" width="62" height="20" rx="10" /><text class="evtext" x="705" y="408" text-anchor="middle">handoff</text></g>
+  <text class="edge" x="916" y="408" text-anchor="end">batched · off the answer path</text>
+  <text class="eyebrow" x="148.0" y="445">PLATFORM</text>
+  <rect x="226.0" y="430" width="64" height="22" rx="11" fill="#f5f5f7" stroke="#e5e5ea" />
+  <text class="pilltext" x="258.0" y="445" text-anchor="middle">FastAPI</text>
+  <rect x="298.0" y="430" width="88" height="22" rx="11" fill="#f5f5f7" stroke="#e5e5ea" />
+  <text class="pilltext" x="342.0" y="445" text-anchor="middle">Python 3.12</text>
+  <rect x="394.0" y="430" width="52" height="22" rx="11" fill="#f5f5f7" stroke="#e5e5ea" />
+  <text class="pilltext" x="420.0" y="445" text-anchor="middle">httpx</text>
+  <rect x="454.0" y="430" width="110" height="22" rx="11" fill="#f5f5f7" stroke="#e5e5ea" />
+  <text class="pilltext" x="509.0" y="445" text-anchor="middle">Docker Compose</text>
+  <rect x="572.0" y="430" width="54" height="22" rx="11" fill="#f5f5f7" stroke="#e5e5ea" />
+  <text class="pilltext" x="599.0" y="445" text-anchor="middle">Nginx</text>
+  <rect x="634.0" y="430" width="104" height="22" rx="11" fill="#f5f5f7" stroke="#e5e5ea" />
+  <text class="pilltext" x="686.0" y="445" text-anchor="middle">OpenTelemetry</text>
+  <rect x="746.0" y="430" width="66" height="22" rx="11" fill="#f5f5f7" stroke="#e5e5ea" />
+  <text class="pilltext" x="779.0" y="445" text-anchor="middle">Grafana</text>
   <path class="tail b" pathLength="1" d="M64,76 V156" style="animation-delay: 0.0s" />
   <path class="head b" pathLength="1" filter="url(#glow)" d="M64,76 V156" style="animation-delay: 0.0s" />
   <path class="tail b" pathLength="1" d="M116,314 V254" style="animation-delay: 0.5s" />
@@ -280,4 +325,8 @@
   <path class="head v" pathLength="1" filter="url(#glow)" d="M884,156 V76" style="animation-delay: 7.55s" />
   <path class="tail b" pathLength="1" d="M116,254 V314" style="animation-delay: 7.75s" />
   <path class="head b" pathLength="1" filter="url(#glow)" d="M116,254 V314" style="animation-delay: 7.75s" />
+  <path class="tail long b" pathLength="1" d="M56,388 H298 V377" style="animation-delay: 8.3s" />
+  <path class="head long b" pathLength="1" filter="url(#glow)" d="M56,388 H298 V377" style="animation-delay: 8.3s" />
+  <path class="tail long b" pathLength="1" d="M904,388 H298 V377" style="animation-delay: 8.3s" />
+  <path class="head long b" pathLength="1" filter="url(#glow)" d="M904,388 H298 V377" style="animation-delay: 8.3s" />
 </svg>
