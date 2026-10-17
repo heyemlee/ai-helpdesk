@@ -2,7 +2,7 @@
 ai-sql-agent 的 A2A 客户端：`message/send` 与 `message/stream`。
 
 契约在 a2a-contract 仓库的 `a2a-streaming-contract.md`（v1.13，tag v1.13 /
-commit faa699f）。这里实现的是契约里「调用方」那一半，几条硬规则原样照搬：
+commit be35cfb）。这里实现的是契约里「调用方」那一半，几条硬规则原样照搬：
 
 - **唯一的成功判据**（§5.1）：收到 `final:true` 且 `state:"completed"` 的终态事件。
   只收到 artifact 没收到终态、流正常结束但没终态、终态是 failed 或 canceled
