@@ -30,6 +30,10 @@ LocalStore 的暴力扫为什么可接受：demo 知识库百级片段、情景�
 （哪怕维度一样）旧向量就不能再用——它们和新模型的查询向量不在一个空间里，
 余弦算得出来，但和内容无关。check_embedding_signature 在启动时把关，
 replace_embeddings 给 scripts/reembed.py 整批换向量用。
+
+分片表的版本号：storage_meta 里另记一个 kb_revision，kb_chunks 每改一次就换成
+新值。检索结果缓存在各实例的进程里，靠它判断手里的结果还能不能用——员工和客户
+两个实例共用一个库，一边导入了文档，另一边缓存着的检索结果也得跟着作废。
 """
 from __future__ import annotations
 
@@ -39,6 +43,7 @@ import logging
 import sqlite3
 import threading
 import time
+import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -94,13 +99,15 @@ CREATE TABLE IF NOT EXISTS memory_profile (
 );
 CREATE TABLE IF NOT EXISTS storage_meta (
     key   TEXT PRIMARY KEY,
-    value TEXT NOT NULL             -- 目前只有 embedding_signature 一条
+    value TEXT NOT NULL             -- embedding_signature 和 kb_revision 两条
 );
 """
 
 # 带向量列的两张表。知识库分片和情景记忆用的是同一个 Embedder，要换一起换。
 _VECTOR_TABLES = ("kb_chunks", "memory_episodic")
 EMBEDDING_SIGNATURE_KEY = "embedding_signature"
+# 分片表的版本号：kb_chunks 每改一次（导入、删除、归档、回填关键词、换向量）就换一个新值
+KB_REVISION_KEY = "kb_revision"
 
 
 class VectorsChangedError(RuntimeError):
@@ -265,6 +272,7 @@ class LocalStore:
                       c.get("tokens", ""), c.get("doc_id", ""))
                      for c in chunks],
                 )
+                self._bump_kb_revision()
                 self._db.commit()
         await asyncio.to_thread(_w)
 
@@ -346,6 +354,7 @@ class LocalStore:
                     "UPDATE kb_chunks SET tokens = ? WHERE id = ?",
                     [(tokens, chunk_id) for chunk_id, tokens in rows],
                 )
+                self._bump_kb_revision()
                 self._db.commit()
         await asyncio.to_thread(_w)
 
@@ -482,6 +491,7 @@ class LocalStore:
             with self._lock:
                 self._db.execute("DELETE FROM kb_chunks WHERE doc_id = ?", (doc_id,))
                 self._db.execute("DELETE FROM kb_documents WHERE id = ?", (doc_id,))
+                self._bump_kb_revision()
                 self._db.commit()
         await asyncio.to_thread(_w)
 
@@ -539,6 +549,7 @@ class LocalStore:
                         f"UPDATE kb_chunks SET doc_id = ? WHERE id IN ({','.join('?' * len(batch))})",
                         [doc_id, *batch],
                     )
+                self._bump_kb_revision()
                 self._db.commit()
         await asyncio.to_thread(_w)
 
@@ -637,6 +648,18 @@ class LocalStore:
                 self._db.commit()
         await asyncio.to_thread(_w)
 
+    async def kb_revision(self) -> str:
+        """分片表现在的版本号（见 KB_REVISION_KEY）。还没写过分片时是空串。"""
+        return await self.meta_get(KB_REVISION_KEY) or ""
+
+    def _bump_kb_revision(self) -> None:
+        """给分片表换一个新版本号。调用方持锁，和改分片的语句在同一次提交里。"""
+        self._db.execute(
+            "INSERT INTO storage_meta (key, value) VALUES (?, ?)"
+            " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (KB_REVISION_KEY, uuid.uuid4().hex),
+        )
+
     async def vector_state(self) -> dict[str, dict[str, int | None]]:
         """两张向量表各有多少行、向量现在是多少维（空表的维度是 None）。"""
         def _q() -> dict[str, dict[str, int | None]]:
@@ -697,6 +720,7 @@ class LocalStore:
                         " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
                         (EMBEDDING_SIGNATURE_KEY, signature),
                     )
+                    self._bump_kb_revision()
                     self._db.commit()
                 except BaseException:
                     self._db.rollback()
@@ -757,6 +781,7 @@ class PgStore:
               c.get("tokens", ""), c.get("doc_id", ""))
              for c in chunks],
         )
+        await self._bump_kb_revision()
 
     async def kb_search(self, embedding: list[float], top_k: int) -> list[dict[str, Any]]:
         rows = await self._db.fetch(
@@ -805,6 +830,7 @@ class PgStore:
         await self._db.executemany(
             "UPDATE kb_chunks SET tokens = to_tsvector('simple', $2) WHERE id = $1", rows
         )
+        await self._bump_kb_revision()
 
     async def kb_count(self) -> int:
         row = await self._db.fetchrow("SELECT COUNT(*) AS n FROM kb_chunks")
@@ -898,6 +924,7 @@ class PgStore:
     async def kb_doc_delete(self, doc_id: str) -> None:
         await self._db.execute("DELETE FROM kb_chunks WHERE doc_id = $1", doc_id)
         await self._db.execute("DELETE FROM kb_documents WHERE id = $1", doc_id)
+        await self._bump_kb_revision()
 
     async def kb_doc_stats(self) -> dict[str, int]:
         row = await self._db.fetchrow(
@@ -933,6 +960,7 @@ class PgStore:
         await self._db.execute(
             "UPDATE kb_chunks SET doc_id = $1 WHERE id = ANY($2::text[])", doc_id, chunk_ids
         )
+        await self._bump_kb_revision()
 
     async def kb_chunk_owners(self, chunk_ids: list[str]) -> dict[str, str]:
         if not chunk_ids:
@@ -1005,6 +1033,21 @@ class PgStore:
             key, value,
         )
 
+    async def kb_revision(self) -> str:
+        return await self.meta_get(KB_REVISION_KEY) or ""
+
+    async def _bump_kb_revision(self, conn: Any = None) -> None:
+        """
+        给分片表换一个新版本号。必须排在改分片的语句之后：先换号再写的话，
+        读的一方可能拿着新号读到旧分片，把旧结果缓存在新号底下。反过来顶多是
+        新结果缓存在旧号底下，之后没人再用旧号去取，白存一份而已。
+        """
+        await (conn or self._db).execute(
+            "INSERT INTO storage_meta (key, value) VALUES ($1, $2)"
+            " ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+            KB_REVISION_KEY, uuid.uuid4().hex,
+        )
+
     async def vector_state(self) -> dict[str, dict[str, int | None]]:
         state: dict[str, dict[str, int | None]] = {}
         async with self._db.transaction() as conn:
@@ -1060,6 +1103,7 @@ class PgStore:
                 " ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
                 EMBEDDING_SIGNATURE_KEY, signature,
             )
+            await self._bump_kb_revision(conn)
 
     async def close(self) -> None:
         """连接池归 Database 管，这里不关。"""

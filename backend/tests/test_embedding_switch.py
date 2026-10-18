@@ -277,6 +277,7 @@ async def _replace_contract(store, api: _FakeEmbeddingAPI) -> None:
     before = await store.vector_state()
     assert before["kb_chunks"] == {"rows": 2, "dim": 256}
     assert before["memory_episodic"] == {"rows": 1, "dim": 256}
+    revision = await store.kb_revision()
 
     kb_rows = await store.kb_embedding_rows()
     episodic_rows = await store.episodic_embedding_rows()
@@ -290,6 +291,7 @@ async def _replace_contract(store, api: _FakeEmbeddingAPI) -> None:
         await store.replace_embeddings(api.dim, partial, new_episodic, "fake-embed/8")
     assert await store.vector_state() == before
     assert await store.meta_get(EMBEDDING_SIGNATURE_KEY) is None
+    assert await store.kb_revision() == revision        # 没换成，缓存着的检索结果照样能用
 
     await store.replace_embeddings(api.dim, new_kb, new_episodic, "fake-embed/8")
 
@@ -297,6 +299,7 @@ async def _replace_contract(store, api: _FakeEmbeddingAPI) -> None:
     assert after["kb_chunks"] == {"rows": 2, "dim": api.dim}
     assert after["memory_episodic"] == {"rows": 1, "dim": api.dim}
     assert await store.meta_get(EMBEDDING_SIGNATURE_KEY) == "fake-embed/8"
+    assert await store.kb_revision() not in ("", revision)  # 换成了：之前的检索结果作废
     # 换的只是向量：正文还在，新向量下照样能检索、能写入
     hits = await store.kb_search(api.vector("安装调整\n柜门关不严绝大多数是铰链未调到位"), 2)
     assert hits[0]["title"] == "安装调整" and hits[0]["score"] > 0.99

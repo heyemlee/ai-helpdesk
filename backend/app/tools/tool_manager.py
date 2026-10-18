@@ -35,7 +35,7 @@ import json
 import logging
 import os
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
@@ -217,6 +217,9 @@ class Tool:
     timeout_s:   float = 30.0
     supports_rerank: bool = False            # 是否支持结果重排
     fallback:    Callable | None = None    # sync/async (params, context, error) -> Any
+    # async () -> str。缓存的结果记着写入时的版本，版本变了就不再认。数据会在别处
+    # 被改掉的工具（知识库检索）靠它在改动后立刻作废旧结果，不用等 TTL 过期。
+    cache_version: Callable[[], Awaitable[str]] | None = None
 
     # 运行时状态（不参与构造）
     stats:   ToolStats    = field(default_factory=ToolStats, init=False)
@@ -245,7 +248,7 @@ class ToolManager:
         self._client = create_llm_client(api_key, base_url)
         self._model  = model
         self._tools: dict[str, Tool] = {}
-        self._cache: dict[str, tuple] = {}   # key → (result, expire_at, reranked)
+        self._cache: dict[str, tuple] = {}   # key → (result, expire_at, reranked, version)
         # 可选的 cross-encoder 重排器（core/reranker.py）。为 None 或未配置远端时
         # 全部走 LLM listwise 重排，行为与加它之前完全一致。
         self._reranker = reranker
@@ -316,10 +319,14 @@ class ToolManager:
             return ToolResult(success=False, data=None, tool_name=name, error=f"工具不存在: {name}")
 
         cache_rerank_top_k = rerank_top_k if rerank_top_k > 0 and tool.supports_rerank else 0
+        # 在执行之前取版本，写缓存时用的也是它：执行期间数据被改了的话，
+        # 这次的结果记在旧版本底下，之后的调用拿新版本来取，不会用到它。
+        # None = 版本读不出来，这一次不读也不写缓存。
+        version = await self._cache_version(tool) if tool.cache_ttl > 0 else None
 
         # 缓存命中
-        if use_cache and tool.cache_ttl > 0:
-            cached = self._get_cache(name, params, cache_rerank_top_k)
+        if use_cache and version is not None:
+            cached = self._get_cache(name, params, cache_rerank_top_k, version)
             if cached is not None:
                 cached_data, cached_reranked = cached
                 tool.stats.total += 1
@@ -363,8 +370,8 @@ class ToolManager:
                 data, reranked = outcome.items, outcome.reranked
 
             # 写缓存：缓存最终返回结果，避免下次命中未重排的原始结果。
-            if tool.cache_ttl > 0:
-                self._set_cache(name, params, data, tool.cache_ttl, cache_rerank_top_k, reranked)
+            if version is not None:
+                self._set_cache(name, params, data, tool.cache_ttl, cache_rerank_top_k, reranked, version)
 
             return ToolResult(success=True, data=data, tool_name=name,
                               latency_ms=latency, reranked=reranked)
@@ -736,11 +743,23 @@ missing 在 sufficient 为 false 时用一句话说明缺什么信息，充分�
         payload = {"params": params, "rerank_top_k": rerank_top_k}
         return f"{name}:{hashlib.md5(json.dumps(payload, sort_keys=True).encode()).hexdigest()}"
 
-    def _get_cache(self, name: str, params: dict, rerank_top_k: int = 0) -> tuple[Any, bool] | None:
+    async def _cache_version(self, tool: Tool) -> str | None:
+        """工具的数据现在是哪个版本。没有 cache_version 的工具恒为空串；读不出来返回 None。"""
+        if tool.cache_version is None:
+            return ""
+        try:
+            return await tool.cache_version()
+        except Exception as ex:  # noqa: BLE001 —— 库连不上之类：这次绕开缓存，调用本身照常走
+            logger.warning(f"读不到工具 {tool.name} 的缓存版本，这次不用缓存: {type(ex).__name__}: {ex}")
+            return None
+
+    def _get_cache(
+        self, name: str, params: dict, rerank_top_k: int = 0, version: str = ""
+    ) -> tuple[Any, bool] | None:
         key = self._cache_key(name, params, rerank_top_k)
         if key in self._cache:
-            data, expire_at, reranked = self._cache[key]
-            if time.monotonic() < expire_at:
+            data, expire_at, reranked, cached_version = self._cache[key]
+            if time.monotonic() < expire_at and cached_version == version:
                 return data, reranked
             del self._cache[key]
         return None
@@ -753,12 +772,15 @@ missing 在 sufficient 为 false 时用一句话说明缺什么信息，充分�
         ttl: float,
         rerank_top_k: int = 0,
         reranked: bool = False,
+        version: str = "",
     ) -> None:
         if len(self._cache) >= 5000:
             # 清掉最旧的 1/4
             for k in list(self._cache)[:1250]:
                 del self._cache[k]
-        self._cache[self._cache_key(name, params, rerank_top_k)] = (data, time.monotonic() + ttl, reranked)
+        self._cache[self._cache_key(name, params, rerank_top_k)] = (
+            data, time.monotonic() + ttl, reranked, version
+        )
 
     # ── 参数校验 ──────────────────────────────────────────────────────────────
 

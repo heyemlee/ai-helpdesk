@@ -391,6 +391,8 @@ async def lifespan(app: FastAPI):
             "required": ["query"],
         },
         cache_ttl=300.0,
+        # 导入文档、换向量之后，两个实例缓存着的检索结果立刻作废，不用等这 5 分钟
+        cache_version=kb.cache_version,
         supports_rerank=True,
         fallback=knowledge_fallback,
     ))

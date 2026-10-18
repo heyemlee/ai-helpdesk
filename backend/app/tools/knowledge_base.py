@@ -923,6 +923,21 @@ class KnowledgeBase:
         top_k = params.get("top_k", 5)
         return await self.search_async(query, top_k=top_k)
 
+    async def cache_version(self) -> str:
+        """
+        knowledge_search 结果缓存的版本，作为工具的 cache_version 注册。
+
+        两样东西变了，之前缓存的检索结果都不能再用：
+          - 库里的分片：导入、换向量这类写入会换掉存储层的版本号。号记在库里，
+            员工实例导入了文档，客户实例缓存着的结果也跟着作废；
+          - 这个实例算查询向量用的模型：embedder.epoch 换模型、换连接时都会变。
+            另一个实例换完向量、这个实例还没跟上的那几秒，检索只走关键词——
+            跟上之后不能再拿那几秒缓存下来的结果顶着用。
+        """
+        kb_revision = getattr(self._store, "kb_revision", None)
+        revision = await kb_revision() if kb_revision is not None else ""
+        return f"{revision}/{getattr(self._embedder, 'epoch', 0)}"
+
     # ── 内部方法 ──────────────────────────────────────────────────────────────
 
     @staticmethod
