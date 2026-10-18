@@ -104,6 +104,7 @@ Data questions on the staff instance go to [ai-sql-agent](https://github.com/hey
 - **Two legs, fused by rank.** Dense (pgvector) and lexical (`ts_rank_cd`, or BM25 on SQLite) legs, ten candidates each, fused by rank rather than by incompatible scores; with local n-gram vectors, keyword matches lead.
 - **Rewrite, rerank, retry.** Complex questions become three sub-queries. A cross-encoder `/rerank` API orders the candidates when one is set, with a score threshold for sufficiency; otherwise an LLM reranks and judges sufficiency in the same call. Too little evidence triggers one more round aimed at the gap.
 - **One embedder.** Knowledge, episodic memory and the intent vote share an OpenAI-compatible `/embeddings` API, or local n-gram vectors when none is set. A failing API is never swapped for vectors from another space, and switching models re-embeds everything while the service keeps answering.
+- **A cache with a version.** Each instance caches search results for five minutes, tagged with a revision that the database changes on every chunk write. The two instances share one database but not one process, so an import or a vector swap on either one retires the cached results on both.
 
 Top-three hits on PostgreSQL by question type, for the fused search alone (no rewriting, reranking or answer generation):
 
@@ -174,7 +175,7 @@ cd backend && .venv/bin/python -m pytest    # backend tests; TEST_POSTGRES_DSN a
 cd ../frontend && npm test                  # console tests
 ```
 
-CI runs Ruff, 1,385 backend tests against pgvector, 239 console tests, the production build, the A2A contract fixtures and both Docker images. The end-to-end and trajectory evaluations spend model calls, so they run only on request.
+CI runs Ruff, 1,399 backend tests against pgvector, 239 console tests, the production build, the A2A contract fixtures and both Docker images. The end-to-end and trajectory evaluations spend model calls, so they run only on request.
 
 ## Deploy
 
