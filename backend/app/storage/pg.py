@@ -238,6 +238,29 @@ CREATE TABLE IF NOT EXISTS conversation_log_dedup (
 # 建表那一段的 advisory lock 的键（任取的一个常数，库里别的地方不用它）
 _SCHEMA_LOCK = 7_284_620_011
 
+# schema 里声明了哪些表、补了哪些列、建了哪些索引：只认行首的语句（注释里也写着
+# "CREATE TABLE IF NOT EXISTS 不会改已有表"）
+_TABLES = re.compile(r"^CREATE TABLE IF NOT EXISTS ([a-z_][a-z0-9_]*)", re.MULTILINE)
+_INDEXES = re.compile(r"^CREATE INDEX IF NOT EXISTS ([a-z_][a-z0-9_]*)", re.MULTILINE)
+_COLUMNS = re.compile(r"^ALTER TABLE ([a-z_][a-z0-9_]*) ADD COLUMN IF NOT EXISTS ([a-z_][a-z0-9_]*)",
+                      re.MULTILINE)
+
+
+async def _schema_complete(conn: asyncpg.Connection, schema: str) -> bool:
+    """schema 声明的东西库里都有了没有。按当前 search_path 找（scripts/eval_retrieval.py 用临时 schema）。"""
+    relations = _TABLES.findall(schema) + _INDEXES.findall(schema)
+    columns = _COLUMNS.findall(schema)
+    row = await conn.fetchrow(
+        "SELECT"
+        " (SELECT count(*) FROM unnest($1::text[]) AS r(name) WHERE to_regclass(r.name) IS NULL) AS relations,"
+        " (SELECT count(*) FROM unnest($2::text[], $3::text[]) AS c(tbl, col) WHERE NOT EXISTS ("
+        "   SELECT 1 FROM pg_attribute a WHERE a.attrelid = to_regclass(c.tbl) AND a.attname = c.col"
+        "   AND NOT a.attisdropped)) AS columns,"
+        " (SELECT count(*) FROM pg_extension WHERE extname = 'vector') AS vector",
+        relations, [t for t, _ in columns], [c for _, c in columns],
+    )
+    return row["relations"] == 0 and row["columns"] == 0 and row["vector"] == 1
+
 
 class Database:
     """asyncpg 连接池 + schema 初始化。所有 PG 存储实现共用一个池。"""
@@ -269,18 +292,25 @@ class Database:
 
     async def _init_schema(self, dim: int, verify_dim: bool = True) -> None:
         """
-        建表、补列。几个进程同时起来时排队做：拿一把事务级的 advisory lock 再执行。
+        建表、补列。几个进程同时起来时排队做，而且库里什么都不缺时一条 DDL 都不执行。
 
-        `CREATE EXTENSION / TABLE IF NOT EXISTS` 并不防并发——两个进程同时在一个新库上建，
-        后提交的那个撞上系统表的唯一约束（pg_extension_name_index、pg_type_typname_nsp_index），
-        进程起不来。以前只有两个实例、一前一后起，碰不上；排队模式下 k8s 一次起五六个
-        api 和 worker，第一次部署就撞上了。锁在事务结束时自己放掉。
+        两个问题都是排队模式下 k8s 一次起五六个 api 和 worker 时撞上的：
+
+        - `CREATE EXTENSION / TABLE IF NOT EXISTS` 并不防并发——两个进程同时在一个新库上建，
+          后提交的那个撞上系统表的唯一约束（pg_extension_name_index），进程起不来。所以先拿一把
+          事务级的 advisory lock，排队做，锁在事务结束时自己放掉。
+        - 排队之后又出了死锁：`ALTER TABLE … ADD COLUMN IF NOT EXISTS` 即使什么都不用加也要拿
+          表上的排他锁，`CREATE INDEX IF NOT EXISTS` 要拿共享锁，后起的进程执行这段时，先起的进程
+          已经在读写这些表了。所以先查目录：schema 里建的表、补的列、建的索引和 vector 扩展都在，
+          整段跳过，一把表锁都不拿；缺了任何一样（新库、换了代码、老表要升级）才执行。
         """
         assert self._pool is not None
+        schema = _SCHEMA.format(dim=dim)
         async with self._pool.acquire() as conn:
             async with conn.transaction():
                 await conn.execute("SELECT pg_advisory_xact_lock($1)", _SCHEMA_LOCK)
-                await conn.execute(_SCHEMA.format(dim=dim))
+                if not await _schema_complete(conn, schema):
+                    await conn.execute(schema)
             if verify_dim:
                 await self._check_vector_dim(conn, "kb_chunks", dim)
                 await self._check_vector_dim(conn, "memory_episodic", dim)

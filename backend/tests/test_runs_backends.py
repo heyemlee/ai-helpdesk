@@ -358,3 +358,58 @@ async def test_several_processes_can_create_the_schema_on_a_fresh_database_at_on
     finally:
         await admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
         await admin.close()
+
+
+@needs_pg
+async def test_a_second_process_starts_without_locking_tables_others_are_reading():
+    """
+    schema 里的东西库里都有了：后起的进程不再执行建表、补列那一段，不拿任何表锁。
+
+    以前它会执行 `ALTER TABLE kb_chunks ADD COLUMN IF NOT EXISTS`——什么都不加也要排他锁，
+    别的进程正读着 kb_chunks 的时候，它就得等；k8s 一次起几个进程时等成了死锁。
+    """
+    import asyncpg
+
+    from app.core.embedder import Embedder
+    from app.storage.pg import Database
+
+    first = Database(TEST_PG_DSN)
+    await first.connect(embedding_dim=Embedder().dim)
+    reader = await asyncpg.connect(TEST_PG_DSN)
+    transaction = reader.transaction()
+    await transaction.start()
+    await reader.fetch("SELECT 1 FROM kb_chunks LIMIT 1")          # 一直拿着 AccessShareLock
+    try:
+        second = Database(TEST_PG_DSN)
+        await asyncio.wait_for(second.connect(embedding_dim=Embedder().dim), timeout=5)
+        await second.close()
+    finally:
+        await transaction.rollback()
+        await reader.close()
+        await first.close()
+
+
+@needs_pg
+async def test_a_dropped_table_is_created_again_on_the_next_start():
+    import asyncpg
+
+    from app.core.embedder import Embedder
+    from app.storage.pg import Database
+
+    name = f"dropped_{uuid.uuid4().hex[:8]}"
+    admin = await asyncpg.connect(TEST_PG_DSN)
+    await admin.execute(f'CREATE DATABASE "{name}"')
+    try:
+        dsn = TEST_PG_DSN.rsplit("/", 1)[0] + f"/{name}"
+        db = Database(dsn)
+        await db.connect(embedding_dim=Embedder().dim)
+        await db.execute("DROP TABLE agent_runs")
+        await db.close()
+        db = Database(dsn)
+        await db.connect(embedding_dim=Embedder().dim)
+        assert await db.fetchrow("SELECT to_regclass('agent_runs') AS t") is not None
+        assert (await db.fetchrow("SELECT to_regclass('agent_runs')::text AS t"))["t"] == "agent_runs"
+        await db.close()
+    finally:
+        await admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
+        await admin.close()
