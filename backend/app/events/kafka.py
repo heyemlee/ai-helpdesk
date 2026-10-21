@@ -217,6 +217,13 @@ class KafkaPublisher:
 
 # ── topic ─────────────────────────────────────────────────────────────────────
 
+def _refused(code: int, what: str, detail: str | None) -> Exception:
+    """broker 在管理请求的响应里逐项回的错误码，换成 aiokafka 对应的异常。"""
+    from aiokafka.errors import for_code
+
+    return for_code(code)(f"{what}：{detail}" if detail else what)
+
+
 async def ensure_topics(settings: KafkaSettings, instances: list[str], *,
                         partitions: int = DEFAULT_PARTITIONS, retention_days: int = DEFAULT_RETENTION_DAYS,
                         replication: int = 1, admin_factory: Callable[..., Any] | None = None) -> dict[str, str]:
@@ -234,6 +241,7 @@ async def ensure_topics(settings: KafkaSettings, instances: list[str], *,
         raise ValueError(f"实例只能是 {' / '.join(INSTANCES)}：{unknown or instances}")
     from aiokafka.admin import AIOKafkaAdminClient, NewTopic
     from aiokafka.admin.config_resource import ConfigResource, ConfigResourceType
+    from aiokafka.errors import TopicAlreadyExistsError
 
     admin = (admin_factory or AIOKafkaAdminClient)(bootstrap_servers=settings.bootstrap,
                                                     client_id=f"{settings.client_id}-admin")
@@ -246,15 +254,26 @@ async def ensure_topics(settings: KafkaSettings, instances: list[str], *,
         existing = set(await admin.list_topics())
         missing = [name for name in wanted if name not in existing]
         if missing:
-            await admin.create_topics([
+            response = await admin.create_topics([
                 NewTopic(name, num_partitions=partitions, replication_factor=replication, topic_configs=configs)
                 for name in missing
             ])
-            out.update({name: "created" for name in missing})
+            # 两个管理请求都不抛错，broker 逐个 topic 回错误码。"已经有了"是 list_topics 落后：刚建完
+            # 紧接着再跑一遍，broker 的元数据还没跟上 controller。这种按已有的改保留期
+            for name, code, *detail in response.topic_errors:
+                if code == TopicAlreadyExistsError.errno:
+                    existing.add(name)
+                elif code:
+                    raise _refused(code, f"建 topic {name}", detail[0] if detail else None)
+            out.update({name: "created" for name in missing if name not in existing})
         present = [name for name in wanted if name in existing]
         if present:
-            await admin.alter_configs([ConfigResource(ConfigResourceType.TOPIC, name, configs=configs)
-                                       for name in present])
+            responses = await admin.alter_configs([ConfigResource(ConfigResourceType.TOPIC, name, configs=configs)
+                                                   for name in present])
+            for response in responses:
+                for code, message, _, name in response.resources:
+                    if code:
+                        raise _refused(code, f"改 topic {name} 的保留期", message)
             out.update({name: "updated" for name in present})
     finally:
         await _quietly(admin.close())
