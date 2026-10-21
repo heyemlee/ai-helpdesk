@@ -227,6 +227,32 @@ CREATE TABLE IF NOT EXISTS conversation_log_dedup (
     dedup_key TEXT   PRIMARY KEY,
     seq       BIGINT NOT NULL
 );
+
+-- 删除请求删掉的会话（events/ops.forget）。事件日志写进 Kafka 时（AI_HELPDESK_EVENT_SINK=kafka），
+-- topic 里的副本删不掉、要等保留期到了才没；投影消费者回放时按这张表跳过，不把删掉的写回来。
+-- 只记会话 id，不记是谁、为什么
+CREATE TABLE IF NOT EXISTS forgotten_conversations (
+    instance     TEXT             NOT NULL,
+    conv_id      TEXT             NOT NULL,
+    forgotten_at DOUBLE PRECISION NOT NULL,
+    PRIMARY KEY (instance, conv_id)
+);
+
+-- 评测候选（events/consumers.py 的采样消费者从 Kafka 挑出来的轮次）。只有结构：为什么挑中、
+-- 这一轮的摘要；导出成用例时再按 turn_id 去事件日志取原文（scripts/replay_turns.py export）。
+-- rules 是采样规则的版本：改了规则换一个版本、换一个消费组从头读，新旧两份并存
+CREATE TABLE IF NOT EXISTS eval_candidates (
+    instance   TEXT             NOT NULL,
+    rules      TEXT             NOT NULL,
+    turn_id    TEXT             NOT NULL,
+    conv_id    TEXT             NOT NULL,
+    turn_ts    DOUBLE PRECISION NOT NULL,
+    sampled_at DOUBLE PRECISION NOT NULL,
+    reasons    JSONB            NOT NULL,
+    summary    JSONB            NOT NULL,
+    PRIMARY KEY (instance, rules, turn_id)
+);
+CREATE INDEX IF NOT EXISTS idx_eval_candidates_time ON eval_candidates (instance, rules, sampled_at);
 """
 
 # 数据量到十万级后再建 ivfflat/hnsw 索引；demo 阶段顺序扫描反而更快，

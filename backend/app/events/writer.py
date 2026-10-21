@@ -1,5 +1,6 @@
 """
-Postgres 那一种写入器：在回答路径之外攒批写。
+写入器：在回答路径之外攒批写。写到哪由 store 定：Postgres（PgEventStore），或者 Kafka
+（events/kafka.py 的 KafkaPublisher，AI_HELPDESK_EVENT_SINK=kafka），下面的图两边一样。
 
 ```
 请求路径（同步、不 await、不抛）     后台（每个进程一个）
@@ -9,9 +10,9 @@ TurnRecorder.emit ──put_nowait──→ 有界队列 ──→ EventWriter�
                                                  停机：限时写完
 ```
 
-写入口径是"最多一次"：进程崩溃会丢最后 250 毫秒，库挂了会丢重试之后的批次。这份日志是
-工程数据，合规留档是 conversation_log，不受影响。丢了看得出来：seq 有缺口，或者没有
-终结事件。
+写入口径是"最多一次"：进程崩溃会丢最后 250 毫秒，库（或 Kafka）挂了会丢重试之后的批次。
+这份日志是工程数据，合规留档是 conversation_log，不受影响。丢了看得出来：seq 有缺口，或者
+没有终结事件。
 """
 from __future__ import annotations
 
@@ -36,7 +37,12 @@ def _bad_row(ex: BaseException) -> bool:
 
 
 class EventWriter:
-    """把事件攒批写进 store（PgEventStore）。`put` 给记录器用，同步、O(1)、不抛。"""
+    """
+    把事件攒批写进 store（PgEventStore 或 KafkaPublisher）。`put` 给记录器用，同步、O(1)、不抛。
+
+    store.insert 可以返回真正写进去的条数（Kafka 那边一条太大只丢它自己）；不返回就按整批算。
+    重试之后仍然写不进去的整批，按 error_reason 计数丢弃。
+    """
 
     def __init__(
         self,
@@ -48,8 +54,10 @@ class EventWriter:
         flush_s: float = 0.25,
         retries: int = 3,
         backoff_s: float = 0.5,
+        error_reason: str = "db_error",
     ):
         self._store = store
+        self._error_reason = error_reason
         self._stats = stats
         self._queue: asyncio.Queue[Event] = asyncio.Queue(maxsize=max_queue)
         self._batch_size = batch_size
@@ -111,7 +119,7 @@ class EventWriter:
         for attempt in range(self._retries + 1):
             started = time.monotonic()
             try:
-                await self._store.insert(batch)
+                written = await self._store.insert(batch)
             except asyncio.CancelledError:
                 raise
             except Exception as ex:
@@ -123,12 +131,12 @@ class EventWriter:
                     return
                 if attempt == self._retries:
                     logger.warning("事件日志写入失败，丢掉 %d 条（%s）", len(batch), ex)
-                    self._stats.drop("db_error", len(batch))
+                    self._stats.drop(self._error_reason, len(batch))
                     return
                 await asyncio.sleep(self._backoff_s * (2 ** attempt))
                 continue
             TURN_EVENTS_WRITE_SECONDS.observe(time.monotonic() - started)
-            self._stats.wrote(len(batch))
+            self._stats.wrote(written if isinstance(written, int) else len(batch))
             return
 
     async def _write_rows(self, batch: list[Event]) -> None:

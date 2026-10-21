@@ -70,7 +70,7 @@ class EventLogStats:
         TURN_EVENTS_WRITTEN.inc(n)
 
     def drop(self, reason: str, n: int = 1) -> None:
-        """reason 是固定集合：queue_full / db_error / too_large / serialize / shutdown。"""
+        """reason 是固定集合：queue_full / db_error / kafka_error / too_large / serialize / shutdown。"""
         self.dropped[reason] = self.dropped.get(reason, 0) + n
         TURN_EVENTS_DROPPED.labels(reason=reason).inc(n)
 

@@ -7,6 +7,9 @@
 #   docker run --rm --network host -v "$PWD/loadtest:/scripts" grafana/k6 run /scripts/runs.js   # 压测
 #   docker compose -f deploy/drill/docker-compose.yml down -v
 #
+# 事件日志走 Kafka（events/kafka.py）的那一档：多起一个 broker、建 topic、投影和采样两个消费者
+#   DRILL_EVENT_SINK=kafka docker compose -f deploy/drill/docker-compose.yml --profile kafka up -d --wait
+#
 # 模型是假的（scripts/mock_llm.py）：不花钱，延迟、限流可配、可复现。没有观测那一整套
 # （Grafana、Tempo、Loki）——演练脚本直接读 Postgres、Redis 和各进程的 /metrics。
 # worker 默认三个、各跑 4 个 run；租约 10 秒（日常是 30 秒），被杀掉的 worker 手上的 run
@@ -35,6 +38,9 @@ x-backend-env: &backend-env
   AI_HELPDESK_LLM_RPM: ${DRILL_LLM_RPM:-0}
   AI_HELPDESK_LLM_TPM: ${DRILL_LLM_TPM:-0}
   AI_HELPDESK_FRONTEND_DIST: /nonexistent
+  # 事件日志写到哪：postgres（默认），或者 kafka（要 --profile kafka 起 broker 和消费者）
+  AI_HELPDESK_EVENT_SINK: ${DRILL_EVENT_SINK:-postgres}
+  AI_HELPDESK_KAFKA_BOOTSTRAP: kafka:9092
 
 services:
   postgres:
@@ -143,3 +149,91 @@ services:
       timeout: 5s
       retries: 30
       start_period: 30s
+
+  # ── 事件日志的 Kafka 那一侧（--profile kafka）────────────────────────────────
+  # 单节点 KRaft（broker 和 controller 一个进程，不要 ZooKeeper）。容器里的服务连 kafka:9092，
+  # 本机的演练脚本连 127.0.0.1:29092。不自动建 topic：topic 的分区数和保留期由 kafka-topics 定，
+  # 写错名字的生产者拿到的是错误，不是一个保留期不对的新 topic。不挂数据卷：docker restart
+  # 保留容器里的文件，演练重启 broker 时 topic 和消费组的 offset 都在；down 之后才清掉
+  kafka:
+    image: apache/kafka:4.3.1
+    profiles: ["kafka"]
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: INTERNAL://:9092,EXTERNAL://:29092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://127.0.0.1:${DRILL_KAFKA_PORT:-29092}
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+    ports:
+      - "127.0.0.1:${DRILL_KAFKA_PORT:-29092}:29092"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 15s
+
+  # 建 topic（6 个分区、留 7 天）和死信 topic，跑完就退出；已经有了只改保留期
+  kafka-topics:
+    image: aihd-drill/backend:dev
+    pull_policy: never
+    profiles: ["kafka"]
+    command: ["python", "-m", "app.events", "topics", "--instance", "staff"]
+    environment:
+      <<: *backend-env
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: "no"
+
+  # 投影：topic → turn_events。指标（消费积压）在 :9102
+  projector:
+    image: aihd-drill/backend:dev
+    pull_policy: never
+    profiles: ["kafka"]
+    command: ["python", "-m", "app.events", "project", "--instance", "staff"]
+    environment:
+      <<: *backend-env
+    ports:
+      - "127.0.0.1:${DRILL_PROJECTOR_METRICS_PORT:-29102}:9102"
+    depends_on:
+      kafka-topics:
+        condition: service_completed_successfully
+      api:
+        condition: service_healthy
+    stop_grace_period: 20s
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9102/metrics >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  # 采样：topic → eval_candidates
+  sampler:
+    image: aihd-drill/backend:dev
+    pull_policy: never
+    profiles: ["kafka"]
+    command: ["python", "-m", "app.events", "sample", "--instance", "staff"]
+    environment:
+      <<: *backend-env
+    ports:
+      - "127.0.0.1:${DRILL_SAMPLER_METRICS_PORT:-29103}:9102"
+    depends_on:
+      kafka-topics:
+        condition: service_completed_successfully
+      api:
+        condition: service_healthy
+    stop_grace_period: 20s
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9102/metrics >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
