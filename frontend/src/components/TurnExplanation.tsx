@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { agentIdentity, agentLabel, ms, num } from '@/lib/format'
 import { handoffReason } from '@/lib/handoff'
 import { llmReasonKey } from '@/lib/llm'
+import { degradeSummary } from '@/lib/runs'
 import { useT } from '@/i18n'
 import type { Key } from '@/i18n/catalog'
 import { fallbackAgent, type ChatMessage } from '@/hooks/useChatStream'
@@ -156,6 +157,7 @@ export function TurnExplanation({ message, routingConfig, onInspect }: {
     evidence: 'lm.data.evidence', unverified: 'lm.data.unverified', failed: 'lm.data.failed',
     unavailable: 'lm.data.unavailable', not_applicable: 'lm.data.not_applicable',
     empty: 'lm.data.empty', error: 'lm.data.error', model_unavailable: 'lm.data.model_unavailable',
+    paused: 'lm.data.paused',
   }
   const dataKey = data?.outcome ? DATA_KEYS[data.outcome] : undefined
   rows.push(['lm.data', dataKey
@@ -228,6 +230,21 @@ export function TurnExplanation({ message, routingConfig, onInspect }: {
     </>])
   } else {
     rows.push(['lm.handoff', t('lm.handoff.none', { conf: confText })])
+  }
+
+  // 7. 排队模式（后端 app/runs/）：这一轮处理了几次、是不是按提交点收的尾、按哪一档降级。
+  // inline 的后端不报 run，这一行不出现
+  const run = result.run ?? meta?.run
+  const degrade = result.degrade ?? meta?.degrade
+  if (run && (run.attempt > 1 || (degrade && degrade.level > 0))) {
+    rows.push(['lm.run', <>
+      {run.attempt > 1 && <>{t('lm.run.attempt', { run: run.run_id.slice(0, 12), n: run.attempt })} </>}
+      {run.resumed_from && <>{t('lm.run.resumed')} </>}
+      {degrade && degrade.level > 0 && t('lm.run.degraded', {
+        backlog: degrade.backlog, level: degrade.level, threshold: degrade.threshold,
+        what: degradeSummary(degrade.off, t),
+      })}
+    </>])
   }
 
   return (

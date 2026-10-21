@@ -194,18 +194,49 @@ export const api = {
  *
  * 浏览器原生的 EventSource 只支持 GET，而这个接口是 POST，
  * 所以用 fetch + ReadableStream 手动按 SSE 线格式解析。
+ *
+ * idempotencyKey 随请求发出（Idempotency-Key）：后端在排队模式下按它去重，同一个键
+ * 重复提交拿到的是同一个 run。inline 模式的后端不认它，也不受影响。
  */
 export async function* streamChat(
   base: string,
   body: ChatRequest,
   signal?: AbortSignal,
+  idempotencyKey?: string,
 ): AsyncGenerator<StreamEvent> {
   const response = await fetch(`${trimSlash(base)}/chat/stream`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
+      ...authHeaders(),
+    },
     body: JSON.stringify(body),
     signal: signal ?? null,
   })
+  yield* readSse(response)
+}
+
+/**
+ * 断线之后接着读一个 run 的帧流（排队模式，GET /runs/{run_id}/events）。
+ *
+ * 带上最后收到的那一帧的 id（Last-Event-ID），后端从它后面接着发：一帧不重、一帧不漏。
+ * 没收到过任何带 id 的帧时从头读。
+ */
+export async function* streamRun(
+  base: string,
+  runId: string,
+  lastEventId?: string,
+  signal?: AbortSignal,
+): AsyncGenerator<StreamEvent> {
+  const response = await fetch(`${trimSlash(base)}/runs/${encodeURIComponent(runId)}/events`, {
+    headers: { ...(lastEventId ? { 'Last-Event-ID': lastEventId } : {}), ...authHeaders() },
+    signal: signal ?? null,
+  })
+  yield* readSse(response)
+}
+
+async function* readSse(response: Response): AsyncGenerator<StreamEvent> {
   if (!response.ok || !response.body) {
     const raw = await response.text()
     let detail: unknown = raw
@@ -240,14 +271,17 @@ export async function* streamChat(
 
 export function parseSseBlock(block: string): StreamEvent | null {
   let event = ''
+  let id = ''
   const dataLines: string[] = []
   for (const line of block.split('\n')) {
     if (line.startsWith('event:')) event = line.slice(6).trim()
     else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim())
+    else if (line.startsWith('id:')) id = line.slice(3).trim()
   }
   if (!event || dataLines.length === 0) return null
   try {
-    return { event, data: JSON.parse(dataLines.join('\n')) } as StreamEvent
+    const data = JSON.parse(dataLines.join('\n'))
+    return (id ? { event, data, id } : { event, data }) as StreamEvent
   } catch {
     return null
   }

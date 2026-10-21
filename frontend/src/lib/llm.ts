@@ -11,6 +11,7 @@ const REASON_KEYS: Record<string, Key> = {
   rate_limited: 'llm.reason.rate_limited',
   forbidden: 'llm.reason.forbidden',
   model_error: 'llm.reason.model_error',
+  overloaded: 'llm.reason.overloaded',
 }
 
 export const llmReasonKey = (reason: string | null | undefined): Key =>

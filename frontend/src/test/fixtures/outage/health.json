@@ -157,5 +157,12 @@
       "row_days": 180,
       "last_run": null
     }
+  },
+  "runs": {
+    "mode": "inline"
+  },
+  "admission": {
+    "rpm": 0,
+    "tpm": 0
   }
 }

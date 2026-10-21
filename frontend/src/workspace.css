@@ -430,6 +430,8 @@ section > .state-block { margin-top: 14px; }
 /* 模型服务不可用的那条说明：两段话（发生了什么 / 原因和下一步），不是工单卡 */
 .unavailable-note { display: grid; gap: 4px; }
 .unavailable-note .unavailable-cause { font-size: 12px; line-height: 1.6; }
+/* 排队模式：续流、换人重跑、精简处理的提示（MessageBubble 的 RunNote） */
+.run-notes { display: grid; gap: 6px; }
 
 /* Learning mode: numbered steps, one sentence each */
 .explain { gap: 10px; padding: 14px 16px; }
