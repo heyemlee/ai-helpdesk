@@ -190,6 +190,24 @@ export const api = {
 }
 
 /**
+ * 多久什么都没收到（连心跳注释都没有）就当这条连接已经死了。服务端静默满 15 秒发一条
+ * `: ping`，所以正常的流不会这么久没动静。
+ *
+ * 为什么要它：连接可能"半开"——API 实例被杀掉、容器重启时，前面的代理或者 Docker 的端口
+ * 转发不一定会把连接关掉，浏览器这一头就一直挂着等。实测过：Vite 的代理加 Docker Desktop，
+ * API 重启之后请求一直停在 pending，一个字节都不再来，也不报错。
+ */
+export const STREAM_IDLE_MS = 45_000
+
+/** 连接静默超过 STREAM_IDLE_MS：当作断线处理（排队模式下按 run_id 续流） */
+export class StreamIdle extends Error {
+  constructor(ms: number) {
+    super(`${Math.round(ms / 1000)} 秒没有收到任何数据，连接可能已经断开`)
+    this.name = 'StreamIdle'
+  }
+}
+
+/**
  * 消费 /chat/stream 的 SSE。
  *
  * 浏览器原生的 EventSource 只支持 GET，而这个接口是 POST，
@@ -203,6 +221,7 @@ export async function* streamChat(
   body: ChatRequest,
   signal?: AbortSignal,
   idempotencyKey?: string,
+  idleMs: number = STREAM_IDLE_MS,
 ): AsyncGenerator<StreamEvent> {
   const response = await fetch(`${trimSlash(base)}/chat/stream`, {
     method: 'POST',
@@ -214,7 +233,7 @@ export async function* streamChat(
     body: JSON.stringify(body),
     signal: signal ?? null,
   })
-  yield* readSse(response)
+  yield* readSse(response, idleMs)
 }
 
 /**
@@ -228,15 +247,30 @@ export async function* streamRun(
   runId: string,
   lastEventId?: string,
   signal?: AbortSignal,
+  idleMs: number = STREAM_IDLE_MS,
 ): AsyncGenerator<StreamEvent> {
   const response = await fetch(`${trimSlash(base)}/runs/${encodeURIComponent(runId)}/events`, {
     headers: { ...(lastEventId ? { 'Last-Event-ID': lastEventId } : {}), ...authHeaders() },
     signal: signal ?? null,
   })
-  yield* readSse(response)
+  yield* readSse(response, idleMs)
 }
 
-async function* readSse(response: Response): AsyncGenerator<StreamEvent> {
+/** 等 promise，idleMs 之内没结果就先调 onIdle（关掉读取器），再抛 StreamIdle */
+function withinIdle<T>(promise: Promise<T>, idleMs: number, onIdle: () => void): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      onIdle()
+      reject(new StreamIdle(idleMs))
+    }, idleMs)
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value) },
+      (error: unknown) => { clearTimeout(timer); reject(error) },
+    )
+  })
+}
+
+async function* readSse(response: Response, idleMs: number = STREAM_IDLE_MS): AsyncGenerator<StreamEvent> {
   if (!response.ok || !response.body) {
     const raw = await response.text()
     let detail: unknown = raw
@@ -250,7 +284,7 @@ async function* readSse(response: Response): AsyncGenerator<StreamEvent> {
 
   try {
     for (;;) {
-      const { done, value } = await reader.read()
+      const { done, value } = await withinIdle(reader.read(), idleMs, () => { void reader.cancel().catch(() => {}) })
       if (done) break
       buffer += decoder.decode(value, { stream: true })
 
@@ -265,7 +299,7 @@ async function* readSse(response: Response): AsyncGenerator<StreamEvent> {
     const tail = parseSseBlock(buffer)
     if (tail) yield tail
   } finally {
-    reader.releaseLock()
+    try { reader.releaseLock() } catch { /* 读取器已经取消或者正被占着：不用再放 */ }
   }
 }
 
