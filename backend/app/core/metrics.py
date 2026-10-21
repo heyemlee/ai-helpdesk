@@ -203,3 +203,82 @@ TURNS_CONCURRENT = Counter(
     "开始时同一会话里已经有另一轮在途的轮次数。后端没有串行化同一会话，"
     "这个数决定要不要加会话锁",
 )
+
+
+# ── 可恢复的运行（app/runs/）和模型准入（core/admission.py）────────────────────
+#
+# 排队模式（AI_HELPDESK_RUN_MODE=queued）下一轮对话是一个 run：API 落库、派发，worker 领走、
+# 执行、写结果。这几条回答三个问题：排了多久、第一句话多久出来、出过多少次"换人接着跑"。
+# 标签都是固定集合：status 是 run 的终态，kind 是这一次执行是怎么来的，level 是降级档位。
+RUNS_SUBMITTED = Counter(
+    "agent_runs_submitted_total",
+    "提交的 run：accepted（新建）、deduplicated（同一个 Idempotency-Key 又来了一次）、"
+    "rejected（积压超过上限，回了 429）",
+    ["outcome"],
+)
+
+RUN_QUEUE_WAIT = Histogram(
+    "agent_run_queue_wait_seconds",
+    "run 从提交到第一次被 worker 领走等了多久",
+    buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 120.0),
+)
+
+FIRST_DELTA_SECONDS = Histogram(
+    "chat_first_delta_seconds",
+    "一轮从开始到发出第一句回答用了多久。mode=inline 从请求进来算，mode=queued 从 run 提交算"
+    "（含排队）：两种模式比的就是排队多花的那一截",
+    ["mode"],
+    buckets=(0.25, 0.5, 1.0, 2.0, 3.0, 5.0, 8.0, 12.0, 20.0, 30.0, 45.0, 60.0, 90.0),
+)
+
+RUN_DURATION = Histogram(
+    "agent_run_duration_seconds",
+    "run 从提交到终态用了多久，按终态分",
+    ["status"],
+    buckets=(0.5, 1.0, 2.5, 5.0, 10.0, 20.0, 30.0, 45.0, 60.0, 90.0, 120.0, 300.0),
+)
+
+RUN_ATTEMPTS = Counter(
+    "agent_run_attempts_total",
+    "run 的执行次数，按来路分：first（第一次）、reclaimed（原来的 worker 失联，被别人接手）",
+    ["kind"],
+)
+
+RUNS_FINISHED = Counter(
+    "agent_runs_finished_total",
+    "到达终态的 run：succeeded / failed（这一轮自己出错，不重试）/ dead（反复失联，进死信）",
+    ["status"],
+)
+
+RUN_LEASE_LOST = Counter(
+    "agent_run_lease_lost_total",
+    "worker 续租时发现租约已经不是自己的了（被判失联、别人接手）。这一次执行的结果作废",
+)
+
+RUN_BACKLOG = Gauge(
+    "agent_run_backlog",
+    "派发队列里还没跑完的 run：没被领走的加上领走了还没确认的。KEDA 按同一个数扩缩 worker",
+    ["instance"],
+)
+
+RUNS_IN_FLIGHT = Gauge(
+    "agent_runs_in_flight",
+    "这个 worker 进程手上正在跑的 run",
+)
+
+RUN_DEGRADED = Counter(
+    "agent_run_degraded_total",
+    "按积压降级执行的 run，按档位分：1 关工具循环，2 不改写不重排，3 不委派查库，4 不出网",
+    ["level"],
+)
+
+LLM_ADMISSION_WAIT = Histogram(
+    "llm_admission_wait_seconds",
+    "一次模型调用在本地等令牌等了多久（令牌桶没开时不记）",
+    buckets=(0.0, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 40.0),
+)
+
+LLM_ADMISSION_REJECTED = Counter(
+    "llm_admission_rejected_total",
+    "等令牌超过上限、在本地判过载、没有出网的模型调用次数",
+)

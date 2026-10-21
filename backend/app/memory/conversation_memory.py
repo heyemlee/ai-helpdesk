@@ -208,21 +208,68 @@ class MemoryManager:
             self._safe_text(k): self._safe_metadata_value(v)
             for k, v in (metadata or {}).items()
         }
-        msg = Message(role=role, content=self._safe_text(content), metadata=clean_metadata)
         key = self._wm_key(user_id, conv_id)
 
         # 追加到 Redis 列表（左推，最新在前）
-        await self._redis.lpush(key, json.dumps({
-            "role":      msg.role.value,
-            "content":   msg.content,
-            "ts":        msg.timestamp.isoformat(),
-            "metadata":  msg.metadata,
-        }))
+        await self._redis.lpush(key, self._encode(role, content, clean_metadata))
         await self._redis.expire(key, 86400)  # 24h TTL
 
         # 超过压缩阈值时触发压缩
         if await self._redis.llen(key) >= self.COMPRESS_AT:
             await self._compress(user_id, conv_id)
+
+    # 一轮的两条一起写，同一个去重键只写一次。占键和两次左推在一个脚本里：要么都写进去，
+    # 要么都没写——分开做的话，占了键之后进程挂掉，这一轮的原话就再也写不进来了
+    _APPEND_ONCE_LUA = """
+if redis.call('SET', KEYS[2], '1', 'NX', 'EX', ARGV[3]) then
+  redis.call('LPUSH', KEYS[1], ARGV[1], ARGV[2])
+  redis.call('EXPIRE', KEYS[1], 86400)
+  return 1
+end
+return 0
+"""
+
+    async def add_turn(
+        self,
+        user_id: str,
+        conv_id: str,
+        user_text: str,
+        assistant_text: str,
+        *,
+        dedup_key: str = "",
+    ) -> bool:
+        """
+        一轮对话的两条（客户原话、助手回答）写进工作记忆。返回这次是不是真的写了。
+
+        dedup_key 非空时同一个键只写一次：排队模式下一轮可能跑不止一遍（app/runs/），客户的
+        原话不能在记忆里出现两次——下一轮的模型会以为客户把同一句话说了两遍。没有去重键就和
+        原来一样，逐条 add_message。
+        """
+        if not dedup_key:
+            await self.add_message(user_id, conv_id, MsgRole.USER, user_text)
+            await self.add_message(user_id, conv_id, MsgRole.ASSISTANT, assistant_text)
+            return True
+        user_id = self._safe_text(user_id)
+        conv_id = self._safe_text(conv_id)
+        key = self._wm_key(user_id, conv_id)
+        written = await self._redis.eval(
+            self._APPEND_ONCE_LUA, 2, key, f"{key}:once:{dedup_key}",
+            self._encode(MsgRole.USER, user_text, {}),
+            self._encode(MsgRole.ASSISTANT, assistant_text, {}),
+            86400,
+        )
+        if written and await self._redis.llen(key) >= self.COMPRESS_AT:
+            await self._compress(user_id, conv_id)
+        return bool(written)
+
+    def _encode(self, role: MsgRole, content: str, metadata: dict[str, Any]) -> str:
+        msg = Message(role=role, content=self._safe_text(content), metadata=metadata)
+        return json.dumps({
+            "role":      msg.role.value,
+            "content":   msg.content,
+            "ts":        msg.timestamp.isoformat(),
+            "metadata":  msg.metadata,
+        })
 
     async def update_profile(self, user_id: str, conv_id: str) -> None:
         """

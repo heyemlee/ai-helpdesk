@@ -1074,6 +1074,12 @@ _CUSTOMER_TEXT = {
             "我还不能确定您要处理的是哪类问题。请补充一下是订单交付、报价账款，"
             "还是产品安装方面的问题？"
         ),
+        # 排队模式下一轮反复处理失败、进了死信（app/runs/worker.py）。和转人工一样只说
+        # 能如实说的：没答上来、需要人工；工单建没建成由响应里的工单字段另外报
+        "run_failed": (
+            "抱歉，这个问题在处理时系统出了故障，没有得到解答。"
+            "这个问题需要由人工客服来处理，请准备好订单号或柜号等相关资料。"
+        ),
         "role_primary": "主处理",
         "role_supporting": "辅助处理",
     },
@@ -1096,6 +1102,11 @@ _CUSTOMER_TEXT = {
             "I'm not yet sure which kind of issue this is. Could you tell me whether it's "
             "about order delivery, quoting and billing, or product and installation?"
         ),
+        "run_failed": (
+            "Sorry, something went wrong on our side while handling this question, and it "
+            "was not answered. This needs to be handled by a member of our team; please have "
+            "your order or cabinet number ready."
+        ),
         "role_primary": "primary",
         "role_supporting": "supporting",
     },
@@ -1110,6 +1121,10 @@ def _customer_text(req_or_message, key: str) -> str:
     """取面向客户的文案，语种跟客户提问走。"""
     message = getattr(req_or_message, "message", req_or_message) or ""
     return _CUSTOMER_TEXT[detect_language(message)][key]
+
+
+# 编排器之外也要给客户出固定文案的地方（进死信的 run，api/main.py）用这个名字
+customer_text = _customer_text
 
 # "向用户要东西"的表述：疑问句，或让用户提供/告知/补充信息的祈使句。
 # 动词前允许插一个副词——"请**先**提供订单号""烦请**先**补一下照片"都漏网过。

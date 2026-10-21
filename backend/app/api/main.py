@@ -32,17 +32,20 @@ except RuntimeError as _alias_ex:  # pragma: no cover - 只在导入顺序被破
     )
 
 import asyncio
+import contextlib
 import dataclasses
 import ipaddress
 import json
 import logging
 import os
 import pathlib
+import re
 import secrets
 import sys
+import time
 import uuid
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Annotated, Any
 
 # backend/ 目录：data/、skills/ 的默认位置都相对它解析。
 # 不再往 sys.path 塞路径——`app` 是正规包，从 backend/ 启动（uvicorn app.api.main:app）
@@ -131,6 +134,12 @@ _embedder     = None
 _model_runtime = None
 _model_watch_task = None
 _llm_info: dict[str, str] = {}
+# 排队模式（app/runs/）：收提交、续流的一侧（RunService），和领 run 执行的一侧（RunWorker）。
+# inline 模式下两个都是 None；一个进程是哪一侧由 AI_HELPDESK_ROLE 决定
+_runs = None
+_worker = None
+# 停机开始了：/readyz 回 503
+_draining = False
 # 一轮对话的事件日志（app/events/）。lifespan 里按配置换成真的；默认这个什么都不记，
 # 但 turn_id 照样生成——不跑 lifespan 的测试和脚本也拿得到
 _event_log: EventLog = EventLog.disabled()
@@ -197,6 +206,7 @@ async def lifespan(app: FastAPI):
     global _user_auth, _rate_limiter, _ticket_store, _shared_state, _infra_redis
     global _conv_log, _pg_database, _reranker, _ticket_notifier, _embedder
     global _model_runtime, _model_watch_task, _event_log
+    global _runs, _worker, _draining
 
     from app.api import model_admin
     from app.core import model_settings
@@ -269,6 +279,23 @@ async def lifespan(app: FastAPI):
     # 一轮对话的事件日志（app/events/）：有 Postgres 写 turn_events，没有就存进程内最近
     # 200 轮。默认关着；关着时 turn_id 照样生成、照样返回
     _event_log = await EventLog.open(EventLogConfig.from_env(), db=_pg_database)
+
+    # 模型调用的准入控制（core/admission）：按供应商的 RPM / TPM 发令牌，所有副本共用 Redis
+    # 里的同一只桶。没配上限时什么都不限
+    limits = admission.Limits.from_env()
+    admission.install(admission.Admission(limits, _infra_redis))
+    if limits.active:
+        logger.info("模型准入控制已开启：RPM %s，TPM %s，最多等令牌 %gs（所有副本共用一只桶）",
+                    limits.rpm or "不限", limits.tpm or "不限", limits.max_wait_s)
+
+    # 排队模式（app/runs/）缺 Postgres、Redis 或实例名就不起：缺了任何一样，run 要么没处存，
+    # 要么会被另一个实例的 worker 领走
+    for warning in _RUN_CONFIG.warnings:
+        logger.warning("排队模式: %s", warning)
+    run_problems = _RUN_CONFIG.problems(instance=_INSTANCE, postgres=_pg_database is not None,
+                                        redis=bool(os.getenv("REDIS_URL", "").strip()))
+    if run_problems:
+        raise RuntimeError("AI_HELPDESK_RUN_MODE=queued 起不来：" + "；".join(run_problems))
 
     # 工单通知：outbox 投递器。先落待发送记录再发，失败按退避重试，
     # 到上限则升级（ERROR + ticket_notify_failures_total）。
@@ -490,9 +517,18 @@ async def lifespan(app: FastAPI):
             "公网部署请设置 AI_HELPDESK_API_KEY。"
         )
 
+    if _RUN_CONFIG.queued:
+        await _start_runs()
+
     logger.info("ai-helpdesk 已就绪")
     yield
 
+    # 停机：先停 worker（等手上的 run 跑完，到时限没跑完的交还给别的 worker），再关别的——
+    # 在跑的 run 还要用下面这些组件
+    _draining = True
+    if _worker is not None:
+        drained = await _worker.drain(float(os.getenv("AI_HELPDESK_RUN_DRAIN_S", "90")))
+        logger.info("run worker 已停：跑完 %d 个，交还 %d 个", drained["finished"], drained["released"])
     await _monitor.stop()
     if _model_watch_task is not None:
         _model_watch_task.cancel()
@@ -565,7 +601,9 @@ async def _request_validation_error(request: HttpRequest, exc: RequestValidation
 
 from app.agents.tool_loop import LoopConfig, LoopSetup, deadline_for, deadline_warnings  # noqa: E402
 from app.agents.turn_prep import TurnDeps, prepare_turn  # noqa: E402
+from app.core import admission  # noqa: E402
 from app.core.metrics import (  # noqa: E402
+    FIRST_DELTA_SECONDS,  # noqa: E402
     RATE_LIMIT_HITS,
     TICKET_NOTIFY_FAILURES,
     TICKET_NOTIFY_PENDING,
@@ -574,6 +612,15 @@ from app.core.metrics import (  # noqa: E402
     observe_http,
 )
 from app.core.telemetry import current_trace_id, setup_telemetry, tag_current_span  # noqa: E402
+from app.runs.checkpoint import decode_result, encode_result  # noqa: E402
+from app.runs.config import RunConfig  # noqa: E402
+from app.runs.degrade import NONE as NO_DEGRADE  # noqa: E402
+from app.runs.degrade import Degrade, DegradePolicy  # noqa: E402
+from app.runs.memo import RunScope, bind_run, current_run, deterministic_id  # noqa: E402
+from app.runs.records import FAILED, SUCCEEDED, TERMINAL_FRAMES  # noqa: E402
+from app.runs.service import Backpressure, RunService  # noqa: E402
+from app.runs.store import IdempotencyConflict  # noqa: E402
+from app.runs.worker import RunContext, RunOutcome, RunWorker  # noqa: E402
 from app.tools.knowledge_base import UnknownCategory  # noqa: E402
 from app.tools.turn_tools import Prefetch, loop_tools  # noqa: E402
 
@@ -598,7 +645,7 @@ async def request_id_middleware(request: HttpRequest, call_next):
 
     def _observe(path_template: str) -> None:
         nonlocal observed
-        if observed or path_template in ("/metrics", "/health"):  # 探活不计入业务指标
+        if observed or path_template in ("/metrics", "/health", "/livez", "/readyz"):  # 探活不计入业务指标
             return
         observed = True
         observe_http(request.method, path_template, status, _time.monotonic() - t0)
@@ -814,6 +861,9 @@ async def _create_handoff_ticket(
         return None
     ticket = None
     if _ticket_store is not None:
+        # 排队模式：工单号由 run 推出来，同一个 run 重跑多少遍都只有这一张（app/runs/memo.py）
+        scope = current_run()
+        once = {"ticket_id": deterministic_id("tk_", scope, "handoff")} if scope is not None else {}
         try:
             ticket = await _ticket_store.create(
                 conv_id=conv_id,
@@ -824,6 +874,7 @@ async def _create_handoff_ticket(
                 answer_confidence=result.answer_confidence,
                 last_message=message,
                 turn_id=turn_id,
+                **once,
             )
         except Exception:
             logger.exception("转人工工单创建失败")
@@ -1040,6 +1091,10 @@ async def health():
         # 事件日志开没开、写进去多少、丢了多少。没开成（实例没设）时 disabled_reason 写明原因；
         # last_error 只有异常类名：这个接口在客户实例上是匿名可读的
         "event_log": _event_log.health(),
+        # 排队模式（app/runs/）和模型准入控制（core/admission）。这里只有计数和开关，
+        # 没有 run_id 和原话：/health 在客户实例上是匿名可读的
+        "runs": await _runs_health(),
+        "admission": {"rpm": admission.current().limits.rpm, "tpm": admission.current().limits.tpm},
     }
 
 
@@ -1082,23 +1137,30 @@ def _model_unavailable_reason() -> str:
     return reason() if callable(reason) else ""
 
 
-def _prefetch() -> Prefetch:
+def _prefetch(degrade: Degrade | None = None) -> Prefetch:
     """
     规则预取那两路查询，绑定到当前进程的工具上（实现见 tools/turn_tools.py）。
 
-    每次现取、不缓存：换模型、测试替换改的都是这几个模块级变量。
+    每次现取、不缓存：换模型、测试替换改的都是这几个模块级变量。degrade 是排队模式下
+    worker 按积压定的档位（app/runs/degrade.py）：第 2 档起检索走直检，第 3 档起不委派查库。
     """
-    return Prefetch(tool_manager=_tool_manager, sql_agent=_sql_agent, label_sources=_label_sources)
+    degrade = degrade or NO_DEGRADE
+    return Prefetch(tool_manager=_tool_manager, sql_agent=_sql_agent, label_sources=_label_sources,
+                    direct_search=degrade.direct_search,
+                    data_paused=f"degraded:level{degrade.level}" if degrade.no_delegation else "")
 
 
 # 工具循环（agents/tool_loop.py）：AI_HELPDESK_TOOL_LOOP 没打开时为 None，默认关闭。
 # 进程启动时读一次，改了要重启。
 _LOOP_CONFIG = LoopConfig.from_env()
 
+# 排队模式（app/runs/config.py）：和工具循环一样，进程启动时读一次，改了要重启
+_RUN_CONFIG = RunConfig.from_env()
 
-def _loop_setup(prefetch: Prefetch) -> LoopSetup | None:
-    """工具循环打开时，这一轮能用的工具（绑定当前进程的工具）和边界；关着返回 None。"""
-    if _LOOP_CONFIG is None:
+
+def _loop_setup(prefetch: Prefetch, degrade: Degrade | None = None) -> LoopSetup | None:
+    """工具循环打开时，这一轮能用的工具（绑定当前进程的工具）和边界；关着、或者降级到第 1 档起返回 None。"""
+    if _LOOP_CONFIG is None or (degrade is not None and degrade.no_tool_loop):
         return None
     return LoopSetup(tools=loop_tools(prefetch), config=_LOOP_CONFIG)
 
@@ -1121,14 +1183,15 @@ def _log_loop_config() -> None:
                 deadline_for(_LOOP_CONFIG.budget, [t for t in tools if not t.slow]))
 
 
-async def _prepare_request(req: "ChatRequest", conv_id: str, user_id: str, progress_cb=None):
+async def _prepare_request(req: "ChatRequest", conv_id: str, user_id: str, progress_cb=None,
+                           degrade: Degrade | None = None):
     """
     /chat 和 /chat/stream 共用的准备阶段，实现见 `agents/turn_prep.prepare_turn`。
 
     返回 (编排请求, 意图结果, 是否用到知识库, 依据记录)。这里只按当前进程的单例
     装配依赖：记忆、意图识别、模型服务的保护状态、两路预取，以及工具循环（打开时）。
     """
-    prefetch = _prefetch()
+    prefetch = _prefetch(degrade)
     return await prepare_turn(
         req.message,
         user_id=user_id,
@@ -1140,7 +1203,7 @@ async def _prepare_request(req: "ChatRequest", conv_id: str, user_id: str, progr
             recognize_intent=_orchestrator.recognize_intent,
             outage_reason=_model_unavailable_reason,
             prefetch=prefetch,
-            loop=_loop_setup(prefetch),
+            loop=_loop_setup(prefetch, degrade),
         ),
         progress_cb=progress_cb,
     )
@@ -1175,7 +1238,23 @@ def _loop_summary() -> dict[str, Any]:
     }
 
 
-def _start_turn(transport: str, conv_id: str, user_id: str, message: str) -> TurnRecorder:
+def _run_fields(degrade: Degrade | None = None, resumed_from: str = "") -> dict[str, Any]:
+    """
+    排队模式下这一轮是哪个 run 的第几次执行、按哪一档降级：进 turn_started、meta 和 result。
+
+    不在 run 里（inline）时是空的——响应和事件日志和原来一个字都不差。
+    """
+    scope = current_run()
+    if scope is None:
+        return {}
+    run: dict[str, Any] = {"run_id": scope.run_id, "attempt": scope.attempt}
+    if resumed_from:
+        run["resumed_from"] = resumed_from
+    return {"run": run, "degrade": (degrade or NO_DEGRADE).to_dict()}
+
+
+def _start_turn(transport: str, conv_id: str, user_id: str, message: str,
+                degrade: Degrade | None = None, resumed_from: str = "") -> TurnRecorder:
     """
     一轮开始：分配 turn_id，发 turn_started。在身份解析和限流之后调——被拒之门外的
     请求（401、429）不算一轮。结束时必须 `turn.close()`（同会话在途表）。
@@ -1193,6 +1272,7 @@ def _start_turn(transport: str, conv_id: str, user_id: str, message: str) -> Tur
         "cross_session": bool(getattr(_memory, "cross_session", False)),
         "data_enabled": bool(_sql_agent is not None and _sql_agent.enabled),
         "concurrent": turn.concurrent,
+        **_run_fields(degrade, resumed_from),
     }, {"user_id": user_id, "message": message})
     return turn
 
@@ -1268,18 +1348,26 @@ def _fail_turn(turn: TurnRecorder, ex: BaseException, stage: str) -> None:
 
 
 @app.post("/chat", response_model=ChatResponse, dependencies=[Depends(protect_chat)])
-async def chat(req: ChatRequest, x_user_token: str | None = Header(None, alias="X-User-Token")):
+async def chat(
+    req: ChatRequest,
+    x_user_token: str | None = Header(None, alias="X-User-Token"),
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+):
     """
     主对话接口。完整流程：
       身份解析/限流 → 记忆读取 → 意图识别 → Agent 路由 → 执行 → 工单 → 记忆写入
+
+    排队模式下提交成 run、等它跑完（最多 AI_HELPDESK_RUN_WAIT_S）；等不到回 202 和 run_id，
+    这一轮照样在跑，结局去 GET /runs/{run_id} 取。
     """
     if _orchestrator is None or _memory is None:
         raise HTTPException(503, "服务未就绪")
 
-    from app.memory.conversation_memory import MsgRole
-
     user_id = await resolve_user_id(req, x_user_token)
     conv_id = req.conv_id or str(uuid.uuid4())
+    if _runs is not None:
+        run = await _submit_run(req, user_id, conv_id, idempotency_key, transport="chat")
+        return await _chat_via_run(run)
     turn = _start_turn("chat", conv_id, user_id, req.message)
     # audited：这一轮写过审计没有。没写到那一步就出来的（出错、被取消），收尾时补写客户原话
     stage, audited = "prepare", False
@@ -1299,8 +1387,7 @@ async def chat(req: ChatRequest, x_user_token: str | None = Header(None, alias="
                                                      turn.turn_id)
 
             # 5. 写入记忆 + 审计留档（审计写入不阻塞响应）
-            await _memory.add_message(user_id, conv_id, MsgRole.USER, req.message)
-            await _memory.add_message(user_id, conv_id, MsgRole.ASSISTANT, result.response)
+            await _remember_turn(user_id, conv_id, req.message, result.response)
             _spawn_background(_log_turn(conv_id, user_id, req.message, result.response,
                                         result.agent_type.value, current_request_id(),
                                         turn.turn_id))
@@ -1365,7 +1452,11 @@ async def chat(req: ChatRequest, x_user_token: str | None = Header(None, alias="
 
 
 @app.post("/chat/stream", dependencies=[Depends(protect_chat)], tags=["对话"])
-async def chat_stream(req: ChatRequest, x_user_token: str | None = Header(None, alias="X-User-Token")):
+async def chat_stream(
+    req: ChatRequest,
+    x_user_token: str | None = Header(None, alias="X-User-Token"),
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+):
     """
     /chat 的流式版本，SSE（text/event-stream）。
 
@@ -1376,142 +1467,27 @@ async def chat_stream(req: ChatRequest, x_user_token: str | None = Header(None, 
       result   最终结构化结果，字段与 /chat 的响应一致
       error    服务端异常
 
+    排队模式（AI_HELPDESK_RUN_MODE=queued）下这一轮提交成 run，交给 worker 跑（app/runs/）。
+    流的样子不变，只多三样：开头一帧 `run`（run_id，断线后拿它续流）；每帧带 SSE 的 `id:`；
+    worker 失联、换人重跑时有一帧 `attempt`，前端据此清掉上一遍的半截回答。客户端断开
+    不再中止这一轮：它照样跑完，结局在 GET /runs/{run_id}。
+
     浏览器的 EventSource 只支持 GET，这里是 POST，前端用 fetch + ReadableStream 消费。
     """
     if _orchestrator is None or _memory is None:
         raise HTTPException(503, "服务未就绪")
 
-    from app.memory.conversation_memory import MsgRole
-
     user_id = await resolve_user_id(req, x_user_token)
     conv_id = req.conv_id or str(uuid.uuid4())
+    if _runs is not None:
+        run = await _submit_run(req, user_id, conv_id, idempotency_key, transport="stream")
+        return _sse_response(_runs.events(run))
+    return _sse_response(_turn_frames(req, conv_id, user_id))
 
-    async def event_source():
-        # 在生成器里开始这一轮：响应一个字节都没发出去就断开的，生成器根本不会跑，
-        # 也就不留一条没有结尾的轮次
-        turn = _start_turn("stream", conv_id, user_id, req.message)
-        # 走到哪一步、客户已经看到了哪些字：中途断开时记进 turn_aborted。
-        # audited：这一轮写过审计没有；没写到那一步就出来的，收尾时按客户实际看到的补写。
-        # 生成器可能在请求的 context 之外被关掉（那里取到的是 "-"），request_id 先在这里取好
-        stage, shown, audited, routing = "prepare", [], False, {}
-        request_id = current_request_id()
-        with bind(turn):
-            try:
-                # 准备阶段（记忆、意图、检索、**委派查库**）以前是先 await 完再发第一个事件——
-                # 委派那 17~40 秒里客户端零字节。现在把它放进任务，边等边把下游进度作为
-                # progress 事件推出去；静默满 15s 发一条 SSE 注释当心跳。
-                progress_q: asyncio.Queue = asyncio.Queue()
-                prep = asyncio.create_task(
-                    _prepare_request(req, conv_id, user_id, progress_cb=progress_q.put_nowait)
-                )
-                async for frame in _pump_until_done(prep, progress_q, heartbeat_s=SSE_HEARTBEAT_S):
-                    yield frame
-                orch_req, intent_result, knowledge_used, evidence_trace = prep.result()
-                meta = {
-                    "conv_id": conv_id,
-                    "turn_id": turn.turn_id,
-                    "intent": intent_result.intent.value,
-                    "intent_group": intent_result.intent_group,
-                    "intent_confidence": round(intent_result.confidence, 4),
-                    "intent_strategy": intent_result.strategy,
-                    "intent_latency_ms": round(intent_result.latency_ms, 2),
-                    "intent_source_scores": intent_result.source_scores,
-                    "entities": intent_result.entities,
-                    "knowledge_used": knowledge_used,
-                    **_evidence_fields(evidence_trace),
-                }
-                yield _sse("meta", meta)
 
-                # 作答阶段同样边等边报进度、静默发心跳：工具循环打开时，专家作答中途也可能
-                # 委派查库（一次十几秒到四十多秒），这段时间编排器一个事件都不出。
-                stage = "answer"
-                final = None
-                answer = _pump_answer(_orchestrator.run_stream(orch_req), progress_q,
-                                      heartbeat_s=SSE_HEARTBEAT_S)
-                async for source, item in answer:
-                    if source == "frame":
-                        yield item
-                        continue
-                    kind = item["type"]
-                    if kind == "routing":
-                        routing = {k: v for k, v in item.items() if k != "type"}
-                        yield _sse("routing", routing)
-                    elif kind == "delta":
-                        shown.append(item["text"])
-                        yield _sse("delta", {"text": item["text"]})
-                    elif kind == "tool":
-                        yield _sse("progress", _tool_progress(item))
-                    elif kind == "result":
-                        final = item["result"]
-
-                if final is None:
-                    turn.emit("turn_failed", {"error_type": "NoResult", "stage": stage},
-                              {"error": "编排器未返回结果"})
-                    yield _sse("error", {"detail": "编排器未返回结果"})
-                    return
-
-                stage = "after"
-                ticket_id = await _create_handoff_ticket(final, user_id, conv_id, req.message,
-                                                         turn.turn_id)
-                await _memory.add_message(user_id, conv_id, MsgRole.USER, req.message)
-                await _memory.add_message(user_id, conv_id, MsgRole.ASSISTANT, final.response)
-                _spawn_background(_log_turn(conv_id, user_id, req.message, final.response,
-                                            final.agent_type.value, current_request_id(),
-                                            turn.turn_id))
-                audited = True
-                if not final.service_unavailable:      # 同 /chat：没答上来的轮次不提炼画像
-                    _spawn_background(_memory.update_profile(user_id, conv_id))
-                _complete_turn(turn, final, ticket_id, shown="".join(shown))
-
-                result = {
-                    "conv_id": conv_id,
-                    "request_id": current_request_id(),
-                    "turn_id": turn.turn_id,
-                    **_ticket_fields(final, ticket_id),
-                    "response": final.response,
-                    "agent_type": final.agent_type.value,
-                    "agent_types": [a.value for a in final.agent_types],
-                    "primary_agent": final.primary_agent.value if final.primary_agent else final.agent_type.value,
-                    "supporting_agents": [a.value for a in final.supporting_agents],
-                    "routing_reason": final.routing_reason,
-                    "routing_confidence": final.routing_confidence,
-                    "escalated": final.escalated,
-                    "handoff": final.handoff,
-                    "handoff_reason": final.handoff_reason,
-                    "needs_clarification": final.needs_clarification,
-                    "answer_confidence": final.answer_confidence,
-                    "policy_violations": [v.to_dict() for v in final.policy_violations],
-                    "service_unavailable": final.service_unavailable,
-                    "unavailable_reason": final.unavailable_reason,
-                    "latency_ms": round(final.latency_ms, 1),
-                    "trajectory": final.trajectory,
-                    "answer_usage": final.answer_usage,
-                }
-                _shadow_check(turn, meta=meta, routing=routing, result=result)
-                yield _sse("result", result)
-            except Exception as ex:
-                logger.exception("流式对话失败")
-                _fail_turn(turn, ex, stage)
-                yield _sse("error", {"detail": str(ex)})
-            finally:
-                if not turn.terminal:
-                    # 生成器被关掉、终结事件还没发：客户端中途断开了。这里不能 yield，
-                    # 也不能 await——emit 是同步的，正是为了能在这里调
-                    turn.emit("turn_aborted", {"stage": stage,
-                                               "sent_chars": sum(len(t) for t in shown)})
-                if not audited:
-                    # 出错或中途断开的轮次也留档：客户的原话，加上已经发出去的那半截回答
-                    # （客户确实看到了它）；一个字都没发出去就只有原话。作答 Agent 取路由给的
-                    # 主专家
-                    seen = "".join(shown)
-                    _spawn_background(_log_turn(
-                        conv_id, user_id, req.message, seen or None,
-                        str(routing.get("primary_agent") or "") if seen else "",
-                        request_id, turn.turn_id))
-                turn.close()
-
+def _sse_response(frames) -> StreamingResponse:
     return StreamingResponse(
-        event_source(),
+        frames,
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -1520,6 +1496,536 @@ async def chat_stream(req: ChatRequest, x_user_token: str | None = Header(None, 
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@dataclasses.dataclass
+class _TurnState:
+    """
+    流式一轮走到哪一步、客户已经看到了哪些字、审计写过没有：中途断开时记进 turn_aborted，
+    没写到审计那一步就出来的，收尾时按客户实际看到的补写。
+    """
+
+    stage: str = "prepare"
+    shown: list[str] = dataclasses.field(default_factory=list)
+    audited: bool = False
+    routing: dict[str, Any] = dataclasses.field(default_factory=dict)
+    # 被取消（客户端断开、停机交还、租约丢了）。排队模式下据此不补写审计
+    cancelled: bool = False
+
+
+class _LeaseLost(Exception):
+    """排队模式：写提交点时发现租约已经不在手上。这一遍不许再落副作用，直接放弃。"""
+
+
+async def _turn_frames(
+    req: ChatRequest,
+    conv_id: str,
+    user_id: str,
+    *,
+    transport: str = "stream",
+    degrade: Degrade | None = None,
+    started_at: float | None = None,
+    on_turn=None,
+    on_commit=None,
+):
+    """
+    一轮流式对话产出的 SSE 帧。inline 的 /chat/stream 把它们直接写进响应；排队模式下 worker
+    把它们转进 run 的帧流（_execute_run）。两条路跑的是同一段代码。
+
+    排队模式多做三件事：开始时把 turn_id 记进 run（on_turn）；回答定下来、落副作用之前写
+    提交点（on_commit，写不进去说明租约丢了，直接放弃）；被取消（停机交还、租约丢了）时
+    不补写审计——这一轮还会再跑，审计留给真正收尾的那一遍。
+    """
+    scope = current_run()
+    started = time.time() if started_at is None else started_at
+    # 在生成器里开始这一轮：响应一个字节都没发出去就断开的，生成器根本不会跑，
+    # 也就不留一条没有结尾的轮次
+    turn = _start_turn(transport, conv_id, user_id, req.message, degrade=degrade)
+    state = _TurnState()
+    # 生成器可能在请求的 context 之外被关掉（那里取到的是 "-"），request_id 先在这里取好
+    request_id = current_request_id()
+    with bind(turn):
+        try:
+            if on_turn is not None:
+                await on_turn(turn.turn_id)
+            # 准备阶段（记忆、意图、检索、**委派查库**）以前是先 await 完再发第一个事件——
+            # 委派那 17~40 秒里客户端零字节。现在把它放进任务，边等边把下游进度作为
+            # progress 事件推出去；静默满 15s 发一条 SSE 注释当心跳。
+            progress_q: asyncio.Queue = asyncio.Queue()
+            prep = asyncio.create_task(
+                _prepare_request(req, conv_id, user_id, progress_cb=progress_q.put_nowait,
+                                 degrade=degrade)
+            )
+            async for frame in _pump_until_done(prep, progress_q, heartbeat_s=SSE_HEARTBEAT_S):
+                yield frame
+            orch_req, intent_result, knowledge_used, evidence_trace = prep.result()
+            meta = {
+                "conv_id": conv_id,
+                "turn_id": turn.turn_id,
+                "intent": intent_result.intent.value,
+                "intent_group": intent_result.intent_group,
+                "intent_confidence": round(intent_result.confidence, 4),
+                "intent_strategy": intent_result.strategy,
+                "intent_latency_ms": round(intent_result.latency_ms, 2),
+                "intent_source_scores": intent_result.source_scores,
+                "entities": intent_result.entities,
+                "knowledge_used": knowledge_used,
+                **_evidence_fields(evidence_trace),
+                **_run_fields(degrade),
+            }
+            yield _sse("meta", meta)
+
+            # 作答阶段同样边等边报进度、静默发心跳：工具循环打开时，专家作答中途也可能
+            # 委派查库（一次十几秒到四十多秒），这段时间编排器一个事件都不出。
+            state.stage = "answer"
+            final = None
+            answer = _pump_answer(_orchestrator.run_stream(orch_req), progress_q,
+                                  heartbeat_s=SSE_HEARTBEAT_S)
+            async for source, item in answer:
+                if source == "frame":
+                    yield item
+                    continue
+                kind = item["type"]
+                if kind == "routing":
+                    state.routing = {k: v for k, v in item.items() if k != "type"}
+                    yield _sse("routing", state.routing)
+                elif kind == "delta":
+                    if not state.shown:
+                        FIRST_DELTA_SECONDS.labels(mode="queued" if scope is not None else "inline").observe(
+                            time.time() - started)
+                    state.shown.append(item["text"])
+                    yield _sse("delta", {"text": item["text"]})
+                elif kind == "tool":
+                    yield _sse("progress", _tool_progress(item))
+                elif kind == "result":
+                    final = item["result"]
+
+            if final is None:
+                turn.emit("turn_failed", {"error_type": "NoResult", "stage": state.stage},
+                          {"error": "编排器未返回结果"})
+                yield _sse("error", {"detail": "编排器未返回结果"})
+                return
+
+            # 提交点（排队模式）：回答定下来了，副作用还一样都没落。写不进去说明这个 run 已经
+            # 被别人领走，这一遍到此为止——工单、记忆、审计都留给拿着租约的那一遍
+            if on_commit is not None and not await on_commit({
+                "turn_id": turn.turn_id, "meta": meta, "routing": state.routing,
+                "shown": "".join(state.shown), "final": encode_result(final),
+            }):
+                raise _LeaseLost()
+            result = await _finish_turn(turn, state, req, conv_id, user_id, final, degrade=degrade)
+            _shadow_check(turn, meta=meta, routing=state.routing, result=result)
+            yield _sse("result", result)
+        except _LeaseLost:
+            state.cancelled = True
+        except (asyncio.CancelledError, GeneratorExit):
+            state.cancelled = True
+            raise
+        except Exception as ex:
+            logger.exception("流式对话失败")
+            _fail_turn(turn, ex, state.stage)
+            yield _sse("error", {"detail": str(ex)})
+        finally:
+            _close_turn(turn, state, req, conv_id, user_id, request_id, scope)
+
+
+async def _finish_turn(
+    turn: TurnRecorder,
+    state: _TurnState,
+    req: ChatRequest,
+    conv_id: str,
+    user_id: str,
+    final,
+    *,
+    degrade: Degrade | None = None,
+    resumed_from: str = "",
+) -> dict[str, Any]:
+    """
+    回答定下来之后：落工单、写记忆和审计、提炼画像、记 turn_completed，返回 result 帧的载荷。
+
+    直接跑完的一轮和按提交点收尾的一轮（_resume_frames）都走这里，副作用只有这一份写法。
+    """
+    state.stage = "after"
+    ticket_id = await _create_handoff_ticket(final, user_id, conv_id, req.message, turn.turn_id)
+    await _remember_turn(user_id, conv_id, req.message, final.response)
+    _spawn_background(_log_turn(conv_id, user_id, req.message, final.response,
+                                final.agent_type.value, current_request_id(), turn.turn_id))
+    state.audited = True
+    if not final.service_unavailable:      # 同 /chat：没答上来的轮次不提炼画像
+        _spawn_background(_memory.update_profile(user_id, conv_id))
+    _complete_turn(turn, final, ticket_id, shown="".join(state.shown))
+    return {
+        "conv_id": conv_id,
+        "request_id": current_request_id(),
+        "turn_id": turn.turn_id,
+        **_ticket_fields(final, ticket_id),
+        "response": final.response,
+        "agent_type": final.agent_type.value,
+        "agent_types": [a.value for a in final.agent_types],
+        "primary_agent": final.primary_agent.value if final.primary_agent else final.agent_type.value,
+        "supporting_agents": [a.value for a in final.supporting_agents],
+        "routing_reason": final.routing_reason,
+        "routing_confidence": final.routing_confidence,
+        "escalated": final.escalated,
+        "handoff": final.handoff,
+        "handoff_reason": final.handoff_reason,
+        "needs_clarification": final.needs_clarification,
+        "answer_confidence": final.answer_confidence,
+        "policy_violations": [v.to_dict() for v in final.policy_violations],
+        "service_unavailable": final.service_unavailable,
+        "unavailable_reason": final.unavailable_reason,
+        "latency_ms": round(final.latency_ms, 1),
+        "trajectory": final.trajectory,
+        "answer_usage": final.answer_usage,
+        **_run_fields(degrade, resumed_from),
+    }
+
+
+def _close_turn(turn: TurnRecorder, state: _TurnState, req: ChatRequest, conv_id: str,
+                user_id: str, request_id: str, scope: RunScope | None) -> None:
+    """流式一轮的收尾，在 finally 里调：这里不能 yield，也不能 await——emit 是同步的。"""
+    if not turn.terminal:
+        # 生成器被关掉、终结事件还没发：客户端中途断开了（排队模式下是停机交还或租约丢了）
+        turn.emit("turn_aborted", {"stage": state.stage,
+                                   "sent_chars": sum(len(t) for t in state.shown)})
+    # 出错或中途断开的轮次也留档：客户的原话，加上已经发出去的那半截回答（客户确实看到了它）；
+    # 一个字都没发出去就只有原话。作答 Agent 取路由给的主专家。排队模式下被取消的那一遍
+    # 不写：这一轮还会再跑，审计留给真正收尾的那一遍（按 run 只写一次）
+    if not state.audited and not (state.cancelled and scope is not None):
+        seen = "".join(state.shown)
+        _spawn_background(_log_turn(
+            conv_id, user_id, req.message, seen or None,
+            str(state.routing.get("primary_agent") or "") if seen else "",
+            request_id, turn.turn_id))
+    turn.close()
+
+
+async def _resume_frames(req: ChatRequest, conv_id: str, user_id: str, checkpoint: dict[str, Any], *,
+                         degrade: Degrade | None = None):
+    """
+    提交点之后失联的那一轮，接手时走这里：不再作答，照着提交点把副作用补完（都按 run 去重，
+    上一遍落过的不会再落一次），发出同一个回答。
+
+    帧和直接跑完的那一遍一样：meta、routing、整段回答作为一个 delta、result。客户端在这之前
+    收到了一帧 attempt，已经把上一遍的半截清掉了。事件日志里这是新的一轮，只有
+    turn_started（run.resumed_from 指回作答的那一轮）、工单和 turn_completed。
+    """
+    resumed_from = str(checkpoint.get("turn_id") or "")
+    turn = _start_turn("queued", conv_id, user_id, req.message, degrade=degrade, resumed_from=resumed_from)
+    shown = str(checkpoint.get("shown") or "")
+    state = _TurnState(stage="after", shown=[shown] if shown else [],
+                       routing=dict(checkpoint.get("routing") or {}))
+    request_id = current_request_id()
+    scope = current_run()
+    with bind(turn):
+        try:
+            yield _sse("meta", {**(checkpoint.get("meta") or {}), **_run_fields(degrade, resumed_from)})
+            if state.routing:
+                yield _sse("routing", state.routing)
+            if shown:
+                yield _sse("delta", {"text": shown})
+            final = decode_result(checkpoint["final"])
+            result = await _finish_turn(turn, state, req, conv_id, user_id, final, degrade=degrade,
+                                        resumed_from=resumed_from)
+            yield _sse("result", result)
+        except (asyncio.CancelledError, GeneratorExit):
+            state.cancelled = True
+            raise
+        except Exception as ex:
+            logger.exception("按提交点收尾失败")
+            _fail_turn(turn, ex, state.stage)
+            yield _sse("error", {"detail": str(ex)})
+        finally:
+            _close_turn(turn, state, req, conv_id, user_id, request_id, scope)
+
+
+def _parse_sse(frame: str) -> tuple[str, dict[str, Any]] | None:
+    """
+    `_sse` 产出的一帧 → (事件, 数据)；心跳注释返回 None。
+
+    只认 `_sse` 自己的格式：一行 event、一行 data，data 是单行 JSON（json.dumps 不换行）。
+    worker 把 `_turn_frames` 的帧转进 run 的帧流时用：inline 和排队两条路共用同一个生成器，
+    帧的写法只有 `_sse` 这一处。
+    """
+    if not frame.startswith("event: "):
+        return None
+    head, _, rest = frame.partition("\n")
+    return head[len("event: "):], json.loads(rest[len("data: "):].strip())
+
+
+async def _execute_run(ctx: RunContext) -> RunOutcome:
+    """
+    worker 执行一个 run（app/runs/worker.py 调）：在这个 run 的上下文里跑完整的一轮，帧转进
+    帧流，返回结局。有提交点的（上一遍答完了、落副作用时失联）按提交点收尾，不再作答。
+    """
+    run = ctx.run
+    req = ChatRequest(message=run.message, user_id=run.user_id, conv_id=run.conv_id)
+    token = request_id_var.set(run.request_id or new_request_id())
+    meta: dict[str, Any] = {}
+    terminal: tuple[str, dict[str, Any]] | None = None
+    try:
+        # 降级到最后一档：这一轮的模型调用全部在本地判"过载"（core/admission.shed），
+        # 走和停机时同一条路——不调 Agent、不建工单
+        with bind_run(ctx.scope), (admission.shed() if ctx.degrade.shed else contextlib.nullcontext()):
+            if run.checkpoint:
+                frames = _resume_frames(req, run.conv_id, run.user_id, run.checkpoint, degrade=ctx.degrade)
+            else:
+                frames = _turn_frames(req, run.conv_id, run.user_id, transport="queued", degrade=ctx.degrade,
+                                      started_at=run.created_at, on_turn=ctx.set_turn, on_commit=ctx.commit)
+            async for frame in frames:
+                parsed = _parse_sse(frame)
+                if parsed is None:
+                    continue                # 心跳：续流的一方自己发
+                event, data = parsed
+                if event in TERMINAL_FRAMES:
+                    terminal = (event, data)
+                    continue                # 终结帧由 worker 在写完结局之后发
+                if event == "meta":
+                    meta = data
+                await ctx.publish(event, data)
+    finally:
+        request_id_var.reset(token)
+    if terminal is None:
+        return RunOutcome(status=FAILED, terminal=("error", {"detail": "这一轮没有产出结果"}),
+                          error="no terminal frame")
+    event, data = terminal
+    if event == "error":
+        return RunOutcome(status=FAILED, terminal=terminal, error=str(data.get("detail") or ""))
+    # 存进库的是 /chat 的形状：meta 和 result 合起来（GET /runs/{id}、非流式 /chat 都读它）
+    return RunOutcome(status=SUCCEEDED, terminal=terminal, result={**meta, **data})
+
+
+# ── 排队模式：装配、提交、查询、续流（app/runs/）──────────────────────────────
+
+async def _start_runs() -> None:
+    """按 AI_HELPDESK_ROLE 装上收提交的一侧和/或 worker。只在排队模式、启动的最后调。"""
+    global _runs, _worker
+    from app.runs.broker import RedisBroker
+    from app.runs.channel import RedisChannel
+    from app.runs.memo import RedisMemo
+    from app.runs.store import PgRunStore
+
+    store = PgRunStore(_pg_database, _INSTANCE)
+    broker = RedisBroker(_infra_redis, _INSTANCE)
+    channel = RedisChannel(_infra_redis)
+    await broker.ensure_group()
+    if _RUN_CONFIG.serves_api:
+        _runs = RunService(store=store, broker=broker, channel=channel, config=_RUN_CONFIG,
+                           heartbeat_s=SSE_HEARTBEAT_S)
+    if _RUN_CONFIG.runs_worker:
+        _worker = RunWorker(store=store, broker=broker, channel=channel, memo=RedisMemo(_infra_redis),
+                            execute=_execute_run, config=_RUN_CONFIG, policy=DegradePolicy.from_env(),
+                            on_dead=_handoff_dead_run)
+        await _worker.start()
+    logger.info("排队模式已开启：实例 %s，角色 %s（%s%s），积压上限 %d",
+                _INSTANCE, _RUN_CONFIG.role, "收提交" if _runs is not None else "",
+                (" + " if _runs is not None else "") + f"worker ×{_RUN_CONFIG.concurrency}"
+                if _worker is not None else "", _RUN_CONFIG.queue_max)
+
+
+async def _submit_run(req: ChatRequest, user_id: str, conv_id: str, idempotency_key: str | None,
+                      *, transport: str):
+    """提交一轮。积压超限回 429 + Retry-After；同一个 Idempotency-Key 换了内容回 422。"""
+    key = (idempotency_key or "").strip()
+    if key and (problem := _id_problem(key)):
+        raise HTTPException(422, f"Idempotency-Key {problem}")
+    try:
+        run, _created = await _runs.submit(
+            conv_id=conv_id, user_id=user_id, message=req.message, request_id=current_request_id(),
+            idempotency_key=key, transport=transport,
+        )
+    except Backpressure as bp:
+        logger.warning("积压 %d 条，拒收（%ss 后再试）", bp.backlog, bp.retry_after_s)
+        raise HTTPException(
+            429, f"当前咨询量较大，请 {bp.retry_after_s} 秒后再试",
+            headers={"Retry-After": str(bp.retry_after_s)},
+        ) from bp
+    except IdempotencyConflict as conflict:
+        raise HTTPException(422, "这个 Idempotency-Key 已经用于另一条消息") from conflict
+    return run
+
+
+async def _chat_via_run(run) -> JSONResponse:
+    """排队模式下的非流式 /chat：等 run 跑完，按 /chat 的形状返回。"""
+    done = await _runs.wait(run.run_id, _RUN_CONFIG.wait_s)
+    if done is None:
+        raise HTTPException(404, f"run 不存在: {run.run_id}")
+    if not done.terminal:
+        return JSONResponse(
+            status_code=202,
+            content={"run_id": done.run_id, "conv_id": done.conv_id, "status": done.status,
+                     "detail": f"{_RUN_CONFIG.wait_s:g} 秒内没有跑完，这一轮仍在处理"},
+            headers={"Location": f"/runs/{done.run_id}"},
+        )
+    if done.result is None:
+        raise HTTPException(500, done.error or f"run {done.status}")
+    body = ChatResponse(**{k: v for k, v in done.result.items() if k in ChatResponse.model_fields}).model_dump()
+    body.update({k: done.result[k] for k in ("run", "degrade") if k in done.result})
+    return JSONResponse(content=jsonable_encoder(body))
+
+
+async def _handoff_dead_run(run, reason: str) -> dict[str, Any]:
+    """
+    worker 反复失联的 run（进死信）：开一张转人工的工单，留下客户原话，返回客户端看到的结局。
+
+    工单号由 run 推出来，和这一轮自己判了转人工时的是同一个：之前某一遍已经建过的，这里拿到
+    的就是那一张。回答文案只说能如实说的：没答上来，需要人工。
+    """
+    from app.agents.agent_orchestrator import customer_text
+
+    scope = RunScope(run.run_id, run.attempt, instance=_INSTANCE)
+    token = request_id_var.set(run.request_id or new_request_id())
+    ticket = None
+    try:
+        with bind_run(scope):
+            if _ticket_store is not None:
+                try:
+                    ticket = await _ticket_store.create(
+                        conv_id=run.conv_id, user_id=run.user_id,
+                        reason=f"系统处理失败，转人工：{reason}", request_id=run.request_id,
+                        answer_confidence=0.0, last_message=run.message, turn_id=run.turn_id,
+                        ticket_id=deterministic_id("tk_", scope, "handoff"),
+                    )
+                except Exception:
+                    logger.exception("死信 run %s 的转人工工单没建成", run.run_id)
+                if ticket is not None and _ticket_notifier is not None and _ticket_notifier.enabled:
+                    _spawn_background(_ticket_notifier.enqueue(ticket))
+            await _log_turn(run.conv_id, run.user_id, run.message, None, "", run.request_id, run.turn_id)
+    finally:
+        request_id_var.reset(token)
+    ticket_id = ticket.id if ticket is not None else None
+    body = ChatResponse(
+        conv_id=run.conv_id, response=customer_text(run.message, "run_failed"), intent="other",
+        agent_type="system", primary_agent="system", escalated=True, latency_ms=0.0,
+        handoff=True, handoff_reason=reason, answer_confidence=0.0,
+        request_id=run.request_id, turn_id=run.turn_id, ticket_id=ticket_id,
+        ticket_status="open" if ticket_id else "not_created",
+        ticket_notification=("queued" if _notifications_enabled() else "not_configured") if ticket_id else "",
+    ).model_dump()
+    body["run"] = {"run_id": run.run_id, "attempt": run.attempt, "dead": True}
+    return body
+
+
+async def _readable_run(run_id: str, user_token: str | None):
+    """
+    读一个 run（状态、续流）。排队模式没开、run 不存在、不是这个实例的，都是 404。
+
+    开了令牌鉴权时还要是同一个人：令牌推出来的 user_id 和提交时的不一样也是 404，不说
+    "有这个 run 但不是你的"。没开令牌鉴权时 run_id 本身就是凭据（80 位随机数，猜不到）——
+    和这时 /chat 信任请求体里的 user_id 是同一个信任级别。
+    """
+    if _runs is None or not _RUN_ID.fullmatch(run_id):
+        raise HTTPException(404, "Not Found")
+    run = await _runs.get(run_id)
+    if run is None:
+        raise HTTPException(404, f"run 不存在或已超出保留期: {run_id}")
+    if _user_auth is not None and _user_auth.enabled:
+        from app.core.auth import AuthError
+        try:
+            caller = _user_auth.verify(user_token, None)
+        except AuthError as exc:
+            raise HTTPException(401, str(exc)) from exc
+        if caller != run.user_id:
+            raise HTTPException(404, f"run 不存在或已超出保留期: {run_id}")
+    return run
+
+
+_RUN_ID = re.compile(r"[0-9a-f]{32}")
+_EVENT_ID = re.compile(r"\d{1,20}-\d{1,20}")
+
+
+@app.post("/runs", status_code=202, dependencies=[Depends(protect_chat)], tags=["对话"])
+async def submit_run(
+    req: ChatRequest,
+    x_user_token: str | None = Header(None, alias="X-User-Token"),
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+):
+    """
+    提交一轮，不等结果（排队模式）。返回 run_id；进度和回答从 GET /runs/{run_id}/events 读，
+    结局从 GET /runs/{run_id} 读。同一个 Idempotency-Key 重复提交拿到的是同一个 run。
+    """
+    if _runs is None:
+        raise HTTPException(404, "排队模式没开（AI_HELPDESK_RUN_MODE=queued）")
+    user_id = await resolve_user_id(req, x_user_token)
+    conv_id = req.conv_id or str(uuid.uuid4())
+    run = await _submit_run(req, user_id, conv_id, idempotency_key, transport="runs")
+    return {"run_id": run.run_id, "conv_id": run.conv_id, "status": run.status,
+            "status_url": f"/runs/{run.run_id}", "events_url": f"/runs/{run.run_id}/events"}
+
+
+@app.get("/runs/{run_id}", dependencies=[Depends(protect_chat)], tags=["对话"])
+async def get_run(run_id: str, x_user_token: str | None = Header(None, alias="X-User-Token")):
+    """一个 run 的状态：第几次执行、每次谁跑的、怎么结束的；结束了带结果（/chat 的形状）。"""
+    return (await _readable_run(run_id, x_user_token)).public()
+
+
+@app.get("/runs/{run_id}/events", dependencies=[Depends(protect_chat)], tags=["对话"])
+async def run_events(
+    run_id: str,
+    after: str | None = None,
+    x_user_token: str | None = Header(None, alias="X-User-Token"),
+    last_event_id: Annotated[str | None, Header(alias="Last-Event-ID")] = None,
+):
+    """
+    一个 run 的 SSE 流，和 /chat/stream 的帧一样。断线重连时带上最后收到的那一帧的 id
+    （`Last-Event-ID` 头，或 `?after=`），从它后面接着读，一帧不重、一帧不漏；不带就从头读。
+    """
+    run = await _readable_run(run_id, x_user_token)
+    cursor = (last_event_id or after or "").strip()
+    if cursor and not _EVENT_ID.fullmatch(cursor):
+        raise HTTPException(422, "Last-Event-ID 的格式不对")
+    return _sse_response(_runs.events(run, after=cursor or None))
+
+
+@app.get("/livez", include_in_schema=False)
+async def livez():
+    """存活探针：进程还能应答就算活着。不查任何依赖——依赖挂了重启这个进程也没用。"""
+    return {"status": "alive"}
+
+
+@app.get("/readyz", include_in_schema=False)
+async def readyz():
+    """
+    就绪探针：组件装配完、没在停机、Redis 和 Postgres 都应答（各 1 秒），才接流量。
+
+    和 /health 分开：/health 是给人看的详细状态，每次都查库做统计，太重，不适合每几秒
+    被探一次；探针只问"现在能不能接活"。
+    """
+    problems = []
+    if _orchestrator is None:
+        problems.append("starting")
+    if _draining:
+        problems.append("draining")
+    checks = []
+    if _infra_redis is not None:
+        checks.append(("redis", _infra_redis.ping()))
+    if _pg_database is not None:
+        checks.append(("postgres", _pg_database.fetchrow("SELECT 1")))
+    for name, probe in checks:
+        try:
+            await asyncio.wait_for(probe, timeout=1.0)
+        except Exception:
+            problems.append(f"{name}_unreachable")
+    if problems:
+        return JSONResponse(status_code=503, content={"ready": False, "problems": problems})
+    return {"ready": True, "mode": _RUN_CONFIG.mode, "role": _RUN_CONFIG.role if _RUN_CONFIG.queued else ""}
+
+
+async def _runs_health() -> dict[str, Any]:
+    """/health 里的排队模式：开没开、这个进程是哪一侧、积压多少、worker 手上有几个。"""
+    out: dict[str, Any] = {"mode": _RUN_CONFIG.mode}
+    if not _RUN_CONFIG.queued:
+        return out
+    out.update(role=_RUN_CONFIG.role, accepting=_runs is not None, queue_max=_RUN_CONFIG.queue_max)
+    if _runs is not None:
+        try:
+            out["backlog"] = await _runs.backlog()
+        except Exception as ex:
+            out["backlog_error"] = type(ex).__name__
+    if _worker is not None:
+        out["worker"] = {"concurrency": _RUN_CONFIG.concurrency, "in_flight": _worker.in_flight,
+                         "draining": _worker.draining}
+    return out
 
 
 def _sse(event: str, data: dict[str, Any]) -> str:
@@ -1782,16 +2288,37 @@ async def _log_turn(
     把一轮对话写入审计日志，带上 turn_id 和实例：客户原话一条，助手回答一条。
 
     assistant_msg 为 None 时只写客户原话：出错或中途断开、客户什么都没看到的轮次。
+    排队模式下按 run 去重（一轮可能跑不止一遍，审计只写一次）。
     """
     if _conv_log is None:
         return
+    scope = current_run()
+
+    def once(role: str) -> dict[str, str]:
+        return {"dedup_key": scope.dedup_key(f"audit:{role}")} if scope is not None else {}
+
     await _conv_log.append(conv_id, user_id, "user", user_msg, request_id=request_id,
-                           turn_id=turn_id, instance=_INSTANCE)
+                           turn_id=turn_id, instance=_INSTANCE, **once("user"))
     if assistant_msg is None:
         return
     await _conv_log.append(conv_id, user_id, "assistant", assistant_msg,
                            request_id=request_id, agent_type=agent_type,
-                           turn_id=turn_id, instance=_INSTANCE)
+                           turn_id=turn_id, instance=_INSTANCE, **once("assistant"))
+
+
+async def _remember_turn(user_id: str, conv_id: str, message: str, answer: str) -> None:
+    """
+    一轮的两条写进工作记忆。排队模式下按 run 只写一次（一轮可能跑不止一遍，客户的原话
+    不能在记忆里出现两次），两条要么都写要么都不写；inline 和原来一样逐条写。
+    """
+    from app.memory.conversation_memory import MsgRole
+
+    scope = current_run()
+    if scope is None:
+        await _memory.add_message(user_id, conv_id, MsgRole.USER, message)
+        await _memory.add_message(user_id, conv_id, MsgRole.ASSISTANT, answer)
+        return
+    await _memory.add_turn(user_id, conv_id, message, answer, dedup_key=scope.dedup_key("memory"))
 
 
 @app.get("/conversations/{conv_id}", tags=["Tickets"], dependencies=[Depends(require_api_key)])

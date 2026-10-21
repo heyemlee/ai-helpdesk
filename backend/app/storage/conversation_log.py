@@ -42,6 +42,11 @@ CREATE TABLE IF NOT EXISTS conversation_log (
 );
 CREATE INDEX IF NOT EXISTS idx_convlog_conv ON conversation_log (conv_id, seq);
 CREATE INDEX IF NOT EXISTS idx_convlog_time ON conversation_log (created_at);
+-- 去重键：排队模式下一轮可能跑不止一遍（app/runs/），同一个 run 的审计只写一次
+CREATE TABLE IF NOT EXISTS conversation_log_dedup (
+    dedup_key TEXT PRIMARY KEY,
+    seq       INTEGER NOT NULL
+);
 """
 
 # 加列之前建的库：CREATE TABLE IF NOT EXISTS 不会改已有的表，SQLite 的 ADD COLUMN
@@ -116,12 +121,18 @@ class ConversationLog:
         agent_type: str = "",
         turn_id: str = "",
         instance: str = "",
+        dedup_key: str = "",
     ) -> None:
-        """追加一条记录。审计写入失败不能影响主链路，只记错误。"""
+        """
+        追加一条记录。审计写入失败不能影响主链路，只记错误。
+
+        dedup_key 非空时同一个键只写一次（排队模式下一轮可能跑不止一遍）：去重表和记录本身
+        在同一个事务里，不会出现"记了键、没写记录"。
+        """
         try:
             await asyncio.to_thread(
                 self._append, conv_id, user_id, role, content, request_id, agent_type,
-                turn_id, instance,
+                turn_id, instance, dedup_key,
             )
         except Exception:
             logger.exception("对话审计日志写入失败")
@@ -129,16 +140,29 @@ class ConversationLog:
     def _append(
         self, conv_id: str, user_id: str, role: str,
         content: str, request_id: str, agent_type: str,
-        turn_id: str, instance: str,
+        turn_id: str, instance: str, dedup_key: str = "",
     ) -> None:
         with self._lock:
-            self._db.execute(
-                "INSERT INTO conversation_log (conv_id, user_id, request_id, role, content,"
-                " agent_type, created_at, turn_id, instance) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (conv_id, user_id, request_id, role, content, agent_type, time.time(),
-                 turn_id, instance),
-            )
-            self._db.commit()
+            try:
+                if dedup_key and self._db.execute(
+                    "SELECT 1 FROM conversation_log_dedup WHERE dedup_key = ?", (dedup_key,)
+                ).fetchone():
+                    return
+                cur = self._db.execute(
+                    "INSERT INTO conversation_log (conv_id, user_id, request_id, role, content,"
+                    " agent_type, created_at, turn_id, instance) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (conv_id, user_id, request_id, role, content, agent_type, time.time(),
+                     turn_id, instance),
+                )
+                if dedup_key:
+                    self._db.execute(
+                        "INSERT INTO conversation_log_dedup (dedup_key, seq) VALUES (?, ?)",
+                        (dedup_key, cur.lastrowid),
+                    )
+                self._db.commit()
+            except Exception:
+                self._db.rollback()
+                raise
 
     async def get_conversation(
         self, conv_id: str, limit: int = 500, instance: str | None = None,
@@ -246,9 +270,20 @@ class PgConversationLog:
         agent_type: str = "",
         turn_id: str = "",
         instance: str = "",
+        dedup_key: str = "",
     ) -> None:
         try:
             async with self._db.transaction() as conn:
+                if dedup_key:
+                    # 先占键：占不到说明这一个 run 的这一条已经写过了。占键和写记录同一个事务，
+                    # 并发的两遍里只有一遍占得到，另一遍等前一个事务提交后撞上主键
+                    claimed = await conn.fetchval(
+                        "INSERT INTO conversation_log_dedup (dedup_key, seq) VALUES ($1, 0)"
+                        " ON CONFLICT (dedup_key) DO NOTHING RETURNING dedup_key",
+                        dedup_key,
+                    )
+                    if claimed is None:
+                        return
                 seq = await conn.fetchval(
                     "INSERT INTO conversation_log"
                     " (conv_id, user_id, request_id, role, content, agent_type, created_at)"
@@ -259,6 +294,10 @@ class PgConversationLog:
                     await conn.execute(
                         "INSERT INTO conversation_log_turns (seq, turn_id, instance) VALUES ($1, $2, $3)",
                         seq, turn_id, instance,
+                    )
+                if dedup_key:
+                    await conn.execute(
+                        "UPDATE conversation_log_dedup SET seq = $2 WHERE dedup_key = $1", dedup_key, seq,
                     )
         except Exception:
             logger.exception("对话审计日志写入失败")

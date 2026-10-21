@@ -187,6 +187,46 @@ CREATE TABLE IF NOT EXISTS turn_events (
 CREATE INDEX IF NOT EXISTS idx_turn_events_conv ON turn_events (instance, conv_id, ts);
 CREATE INDEX IF NOT EXISTS idx_turn_events_ts   ON turn_events (instance, ts);
 CREATE INDEX IF NOT EXISTS idx_turn_events_req  ON turn_events (request_id) WHERE type = 'turn_started';
+
+-- 排队模式的 run（app/runs/）。状态只有这一份：Redis 里的派发消息和帧流都能从这里重建。
+-- (instance, idempotency_key) 唯一：同一个 Idempotency-Key 重复提交拿到的是同一个 run。
+-- 租约、栅栏和时间都用数据库的钟，说明见 app/runs/store.py。history 每次执行一条
+CREATE TABLE IF NOT EXISTS agent_runs (
+    run_id          TEXT             PRIMARY KEY,
+    instance        TEXT             NOT NULL,
+    idempotency_key TEXT             NOT NULL,
+    conv_id         TEXT             NOT NULL,
+    user_id         TEXT             NOT NULL,
+    message         TEXT             NOT NULL,
+    request_id      TEXT             NOT NULL DEFAULT '',
+    transport       TEXT             NOT NULL DEFAULT '',
+    status          TEXT             NOT NULL DEFAULT 'queued',
+    attempt         INTEGER          NOT NULL DEFAULT 0,
+    lease_owner     TEXT             NOT NULL DEFAULT '',
+    lease_until     DOUBLE PRECISION NOT NULL DEFAULT 0,
+    turn_id         TEXT             NOT NULL DEFAULT '',
+    degrade_level   SMALLINT         NOT NULL DEFAULT 0,
+    checkpoint      JSONB,
+    result          JSONB,
+    error           TEXT             NOT NULL DEFAULT '',
+    history         JSONB            NOT NULL DEFAULT '[]'::jsonb,
+    created_at      DOUBLE PRECISION NOT NULL,
+    updated_at      DOUBLE PRECISION NOT NULL,
+    dispatched_at   DOUBLE PRECISION NOT NULL,
+    started_at      DOUBLE PRECISION,
+    finished_at     DOUBLE PRECISION,
+    UNIQUE (instance, idempotency_key)
+);
+-- 清扫：queued 太久没人领、租约过期太久的
+CREATE INDEX IF NOT EXISTS idx_runs_sweep    ON agent_runs (instance, status, dispatched_at);
+CREATE INDEX IF NOT EXISTS idx_runs_finished ON agent_runs (instance, finished_at) WHERE finished_at IS NOT NULL;
+
+-- 审计记录的去重键（排队模式下一轮可能跑不止一遍，审计只写一次）。和 conversation_log_turns
+-- 一样单独成表，不在 conversation_log 上加列。键是 run 加角色
+CREATE TABLE IF NOT EXISTS conversation_log_dedup (
+    dedup_key TEXT   PRIMARY KEY,
+    seq       BIGINT NOT NULL
+);
 """
 
 # 数据量到十万级后再建 ivfflat/hnsw 索引；demo 阶段顺序扫描反而更快，
