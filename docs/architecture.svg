@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 474" width="960" height="474" role="img" aria-labelledby="title desc">
   <title id="title">AI Helpdesk agent architecture</title>
-  <desc id="desc">Agent architecture: one question runs through five stages in the agent runtime. The React 18 console posts it, and the answer streams back over SSE. 1 Understand, an intent vote typed with Pydantic 2, reading working memory from Redis 7. 2 Gather, tools picked by rules and run together with asyncio.gather: a search in PostgreSQL 16 with pgvector and tsvector, and a delegation over A2A to the peer agent ai-sql-agent, which runs its own loop; one corrective round when the evidence is thin. 3 Route, domain scores pick the specialists, and a monitor re-weights their replicas every 10 seconds. 4 Answer, three specialists through the Anthropic or OpenAI chat models, falling back to a generalist; in a bounded tool loop a specialist can search or query again through function calling, up to three model calls a turn. 5 Check, a guard and three confidence gates; a failed gate hands off to a person with a ticket. Optionally, in queued mode, the run waits on Redis Streams for workers that hold a fenced lease on it: worker w1 claims it as attempt 1, loses its lease after the delegation returns, and w2 takes it over as attempt 2, while the console can resume the SSE stream with Last-Event-ID. Every step is also appended, in order, to a turn event log: intent, prefetch, routing, model calls, tool calls, guard, answer and handoff, written to PostgreSQL in batches off the answer path, or optionally through Kafka, where a projector and a sampler each read it. The platform is FastAPI, Python 3.12, httpx, Docker Compose, Kubernetes, KEDA, Nginx, OpenTelemetry and Grafana. Pulses travel each connection in that order, the stage badges light up in turn, and each event lights up as it is recorded until the batch is flushed to PostgreSQL and Kafka.</desc>
+  <desc id="desc">Agent architecture: one question runs through five stages in the agent runtime. The React 18 console posts it, and the answer streams back over SSE. 1 Understand, an intent vote typed with Pydantic 2, reading working memory from Redis 7. 2 Gather, tools picked by rules and run together with asyncio.gather: a search in PostgreSQL 16 with pgvector and tsvector, and a delegation over A2A to the peer agent ai-sql-agent, which runs its own loop; one corrective round when the evidence is thin. 3 Route, domain scores pick the specialists, and a monitor re-weights their replicas every 10 seconds. 4 Answer, three specialists through the Anthropic or OpenAI chat models, falling back to a generalist; in a bounded tool loop a specialist can search or query again through function calling, up to three model calls a turn. 5 Check, a guard and three confidence gates; a failed gate hands off to a person with a ticket. In queued mode, off by default on Docker Compose and on in the Kubernetes manifests, the run waits on Redis Streams for workers that hold a fenced lease on it: worker w1 claims it as attempt 1, loses its lease after the delegation returns, and w2 takes it over as attempt 2, while the console can resume the SSE stream with Last-Event-ID. Every step is also appended, in order, to a turn event log: intent, prefetch, routing, model calls, tool calls, guard, answer and handoff, written to PostgreSQL in batches off the answer path, or, with the same defaults, through Kafka, where a projector and a sampler each read it. The platform is FastAPI, Python 3.12, httpx, Docker Compose, Kubernetes, KEDA, Nginx, OpenTelemetry and Grafana. Pulses travel each connection in that order, the stage badges light up in turn, and each event lights up as it is recorded until the batch is flushed to PostgreSQL and Kafka.</desc>
   <style>
     text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif; }
     .eyebrow { font-size: 10px; font-weight: 600; letter-spacing: 0.08em; fill: #8e8e93; }
@@ -94,12 +94,15 @@
     @keyframes ev7 { 0%, 73.00% { opacity: 0; } 74.00%, 84.81% { opacity: 1; } 86.31%, 100% { opacity: 0; } }
     @keyframes ev8 { 0%, 76.00% { opacity: 0; } 77.00%, 83.68% { opacity: 1; } 85.18%, 100% { opacity: 0; } }
     @keyframes rpg4 { 0%, 89.60% { stroke-opacity: 0; } 90.60%, 93.60% { stroke-opacity: 0.85; } 97.10%, 100% { stroke-opacity: 0; } }
-    /* Optional parts are dashed: queued mode and the event log on Kafka. */
+    /* Dashed parts are off by default on Docker Compose and on in the
+       Kubernetes manifests: queued mode and the event log on Kafka. */
     .opt { fill: #ffffff; stroke: #b8c4d6; stroke-width: 1; stroke-dasharray: 4 3; }
     .optstrip { fill: #f6f8fc; stroke: #b8c4d6; stroke-width: 1; stroke-dasharray: 4 3; }
     .optwire { fill: none; stroke: #c7c7cc; stroke-width: 1.5; stroke-dasharray: 4 3; }
     .opttag { fill: #ffffff; stroke: #b8c4d6; }
     .opttext { font-size: 8px; font-weight: 700; letter-spacing: 0.1em; fill: #8e8e93; }
+    .tagon { fill: #e8f0ff; stroke: #8ab8ff; }
+    .tagontext { font-size: 8px; font-weight: 700; letter-spacing: 0.1em; fill: #0a5bc4; }
     .evdead { fill: #fdeceb; stroke: #e5484d; }
     .xmark { fill: none; stroke: #e5484d; stroke-width: 1.6; stroke-linecap: round; }
     .caption { font-size: 10.5px; font-weight: 600; }
@@ -165,8 +168,10 @@
   <rect class="ring b" x="297" y="17" width="366" height="62" rx="16" style="animation: rq1 10s linear infinite" />
   <rect class="ring r" x="297" y="17" width="366" height="62" rx="16" style="animation: rqx 10s linear infinite" />
   <rect class="ring b" x="297" y="17" width="366" height="62" rx="16" style="animation: rq2 10s linear infinite" />
-  <rect class="opttag" x="313" y="13" width="66" height="14" rx="7" />
-  <text class="opttext" x="346" y="23" text-anchor="middle">OPTIONAL</text>
+  <rect class="opttag" x="313" y="13" width="84" height="14" rx="7" />
+  <text class="opttext" x="355" y="23" text-anchor="middle">COMPOSE OFF</text>
+  <rect class="tagon" x="401" y="13" width="52" height="14" rx="7" />
+  <text class="tagontext" x="427" y="23" text-anchor="middle">K8S ON</text>
   <g class="icon b" transform="translate(316 33)"><path d="M1 3.5 H10" /><path d="M1 8 H15" /><path d="M1 12.5 H10" /><path d="M11.5 4.5 L15 8 L11.5 11.5" /></g>
   <text class="name" x="340" y="46">Redis Streams</text>
   <text class="sub" x="316" y="66">queued mode · workers ×N</text>
@@ -331,8 +336,10 @@
   <path class="optwire" d="M668,404 H693" marker-end="url(#arrow)" />
   <rect class="optstrip" x="696" y="388" width="240" height="32" rx="16" />
   <rect class="ring b" x="693" y="385" width="246" height="38" rx="19" style="animation: rkafka 10s linear infinite" />
-  <rect class="opttag" x="709" y="381" width="66" height="14" rx="7" />
-  <text class="opttext" x="742" y="391" text-anchor="middle">OPTIONAL</text>
+  <rect class="opttag" x="709" y="381" width="84" height="14" rx="7" />
+  <text class="opttext" x="751" y="391" text-anchor="middle">COMPOSE OFF</text>
+  <rect class="tagon" x="797" y="381" width="52" height="14" rx="7" />
+  <text class="tagontext" x="823" y="391" text-anchor="middle">K8S ON</text>
   <text class="eyebrow" x="716" y="408">KAFKA</text>
   <rect class="evpill" x="765" y="394" width="68" height="20" rx="10" />
   <text class="pilltext" x="799" y="408" text-anchor="middle">projector</text>
