@@ -271,6 +271,20 @@ Timeline:
 
 </details>
 
+## The main stack with the real model
+
+The drills use the mock model, the drill stack and kind. Afterwards queued mode ran once on the main Compose stack (`docker-compose.yml` plus `docker-compose.queued.yml`, both instances, nginx in front of the customer instance, ai-sql-agent on the host) with the real model, at commit 79bcac2. Five turns, each reconciled against Postgres and Redis afterwards like a drill run:
+
+| Turn | Entry | Outcome |
+| --- | --- | --- |
+| Staff, hinge adjustment | console proxy | answered in 6.4 s |
+| Staff, order status | console proxy | two delegations to ai-sql-agent (prefetch and tool loop), answered in 57.3 s, one handoff ticket |
+| Staff, order date and amount; worker SIGKILLed after the prefetch delegation | console proxy | taken over on attempt 2, answered in 83.8 s on the same connection |
+| Customer, warranty | nginx | answered in 14.7 s |
+| Customer, door gap; client dropped after four frames | nginx | resumed through `GET /runs/{id}/events` with `Last-Event-ID`; the frames after the cursor added up to the stored answer |
+
+The killed worker was started again 10 s later; the run was taken over 41 s after the kill, mostly the 30 s lease. In attempt 2 the event log records the prefetch delegation at 1.1 ms and the knowledge search at 2.7 ms, against 12.7 s and 15.3 s for real calls in the same session: both came from the per-run memo, and ai-sql-agent was not asked again. Every turn had at most one ticket (the one its result names), one customer line and one answer in the audit equal to the result, and one turn in working memory. Each instance's runs were executed by its own worker, and the customer entry point answered 404 for a staff run id.
+
 ## What the drills found
 
 Deploying to Kubernetes and running the drill there found four real defects before any run failed a check, each fixed in the same branch:
@@ -283,3 +297,5 @@ Deploying to Kubernetes and running the drill there found four real defects befo
 One more gap was found while preparing the first drill rather than by it: a Redis blip during the follow-up steps (writing working memory) would have failed a turn for good, although its answer was already decided. Runs that hit an infrastructure error, or fail after their commit point, are now handed back and retried; errors in the turn itself are still final.
 
 Checking the console by hand against the drill stack found the last one: when the API container restarted in the middle of an answer, the dev proxy and Docker Desktop's port forwarding kept the browser's connection open without sending anything, so the console waited forever instead of resuming. It now treats 45 s without a byte, three missed heartbeats, as a dropped connection and resumes from `Last-Event-ID`. The drill never restarts the API, so it could not have caught this.
+
+Switching the main stack back to inline mode found one more, older than this branch: nginx resolved `ai-helpdesk-customer` once at startup, so when the customer container was recreated with a new IP it kept connecting to the old one and answered 502 until reloaded. The upstream now re-resolves through Docker's DNS (`resolve`, valid 10 s); with throwaway containers, a backend recreated on a new IP was served again within 6 s, where the old configuration kept timing out.
