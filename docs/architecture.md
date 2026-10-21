@@ -271,3 +271,24 @@ flowchart LR
 ```
 
 两个实例的派发流、run 存储（每条查询都带实例）和 worker 都是分开的：员工那边的 worker 能委派查订单，它领不到客户的问题。
+
+### 事件日志走 Kafka（可选）
+
+`AI_HELPDESK_EVENT_SINK=kafka` 时，每一轮的事件不直接写 `turn_events`，而是发进 Kafka；两个消费组各读各的。
+只有事件日志走 Kafka——它只追加、有几个读的一方、要能回放；派发和帧流仍在 Redis（理由见
+[durable-agent-runs.md](design/durable-agent-runs.md) 的"The event log on Kafka"）。
+
+```mermaid
+flowchart LR
+    W[worker / API<br/>EventWriter] -->|key conv_id| T[(ai-helpdesk.turn-events.staff<br/>6 个分区，留 7 天)]
+    T --> P[投影消费者<br/>写库后才提交 offset]
+    T --> S[采样消费者<br/>一轮结束才判断]
+    P --> PG[(turn_events)]
+    P -.->|解不开、库拒收| D[(… .dlq)]
+    S --> E[(eval_candidates)]
+    PG --> R[读接口 / 控制台 / 保留期 / forget]
+    K[KEDA<br/>按消费组积压] -.->|最多 = 分区数| P
+```
+
+投影按主键去重、跳过删除请求删过的会话（`forgotten_conversations`），所以随时可以换一个消费组从头重建；
+采样换了规则就换一个消费组，新旧两份候选并排。客户实例和员工实例各一个 topic。

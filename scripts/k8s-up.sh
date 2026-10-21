@@ -34,16 +34,21 @@ kubectl -n keda rollout status deploy/keda-operator --timeout=180s
 kubectl -n keda rollout status deploy/keda-metrics-apiserver --timeout=180s
 kubectl -n keda rollout status deploy/keda-admission --timeout=180s
 
+# 建 topic 的 Job 每次都重跑（幂等）：Job 建好之后不能改，先删掉旧的
+kubectl -n aihd delete job kafka-topics --ignore-not-found >/dev/null
 kubectl apply -k "$ROOT/deploy/k8s"
 kubectl -n aihd rollout status statefulset/postgres --timeout=180s
 kubectl -n aihd rollout status statefulset/redis --timeout=180s
+kubectl -n aihd rollout status statefulset/kafka --timeout=300s
+kubectl -n aihd wait --for=condition=complete job/kafka-topics --timeout=300s
 # 镜像换了标签没变（都是 :dev）：重启一下才会用上刚装进去的那一个
-kubectl -n aihd rollout restart deploy/mock-llm deploy/api-staff deploy/api-customer \
-  deploy/worker-staff deploy/worker-customer >/dev/null
-for deploy in mock-llm api-staff api-customer worker-staff worker-customer; do
+DEPLOYS="mock-llm api-staff api-customer worker-staff worker-customer
+         projector-staff projector-customer sampler-staff sampler-customer"
+for deploy in $DEPLOYS; do kubectl -n aihd rollout restart "deploy/$deploy" >/dev/null; done
+for deploy in $DEPLOYS; do
   kubectl -n aihd rollout status "deploy/$deploy" --timeout=300s
 done
 kubectl -n aihd get pods,scaledobjects
 echo
 echo "API:   kubectl -n aihd port-forward svc/api-staff 38080:8000"
-echo "演练:  scripts/k8s-drill.sh"
+echo "演练:  scripts/k8s-drill.sh            # 加 --kafka 对账事件日志那一侧"

@@ -84,3 +84,49 @@ spec:
         consumerGroup: workers
         lagCount: "4"
         activationLagCount: "0"
+---
+# 投影消费者按消费组的积压扩缩（KEDA 的 kafka 触发器）。上限是分区数（6）：一个分区同一时刻只归
+# 消费组里的一个消费者，多出来的分不到分区、只会闲着（allowIdleConsumers=false，KEDA 也不会扩过
+# 分区数）。这正是派发不用 Kafka 的原因之一：并行度被分区数钉死（docs/design/durable-agent-runs.md）。
+# 采样消费者有状态（按轮次攒事件），不扩，固定一个副本。
+#
+# 实测（docs/evaluation/chaos-drill.md）：这个量下一个投影就够——把它停住攒出 687 条积压，放开后不到
+# 8 秒追平，KEDA 还没来得及扩。触发器是通的（READY），扩出去要等积压真的压得住一个副本。
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: projector-staff
+spec:
+  scaleTargetRef:
+    name: projector-staff
+  minReplicaCount: 1
+  maxReplicaCount: 6
+  triggers:
+    - type: kafka
+      metadata:
+        bootstrapServers: kafka.aihd.svc.cluster.local:9092
+        consumerGroup: ai-helpdesk.turn-events.projector.staff
+        topic: ai-helpdesk.turn-events.staff
+        # 每个副本扛 500 条积压；一个消费组还没提交过 offset 时从最早那条算起
+        lagThreshold: "500"
+        offsetResetPolicy: earliest
+        allowIdleConsumers: "false"
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: projector-customer
+spec:
+  scaleTargetRef:
+    name: projector-customer
+  minReplicaCount: 1
+  maxReplicaCount: 6
+  triggers:
+    - type: kafka
+      metadata:
+        bootstrapServers: kafka.aihd.svc.cluster.local:9092
+        consumerGroup: ai-helpdesk.turn-events.projector.customer
+        topic: ai-helpdesk.turn-events.customer
+        lagThreshold: "500"
+        offsetResetPolicy: earliest
+        allowIdleConsumers: "false"
