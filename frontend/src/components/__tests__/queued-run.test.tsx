@@ -95,6 +95,34 @@ describe('断线续流', () => {
     expect(answer.reconnecting).toBe(false)
   })
 
+  it('续流时 API 正在重启、代理先回了 503：接着重试，等它起来', async () => {
+    let calls = 0
+    const fetchMock = vi.fn(async (url: string) => {
+      calls += 1
+      if (url.endsWith('/chat/stream')) {
+        return sseResponse([frame('run', { run_id: RUN, conv_id: 'c1', status: 'queued', attempt: 0 }),
+                            frame('delta', { text: '补件' }, '1-0')], true)
+      }
+      if (calls === 2) return new Response('Service Unavailable', { status: 503, statusText: 'Service Unavailable' })
+      return sseResponse([frame('delta', { text: '已经登记。' }, '2-0'), frame('result', RESULT, '3-0')])
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const hook = await send()
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(hook.result.current.messages.at(-1)!.content).toBe('补件已经登记。')
+    expect(hook.result.current.messages.at(-1)!.error).toBeUndefined()
+  })
+
+  it('run 已经不在了（404）：不再重试，如实报错', async () => {
+    const fetchMock = vi.fn(async (url: string) => url.endsWith('/chat/stream')
+      ? sseResponse([frame('run', { run_id: RUN, conv_id: 'c1', status: 'queued', attempt: 0 })], true)
+      : new Response(JSON.stringify({ detail: 'run 不存在或已超出保留期' }), { status: 404 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const hook = await send()
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(hook.result.current.messages.at(-1)!.error).toMatch(/不存在/)
+  })
+
   it('inline 的后端没有 run 帧：断了就报错，不去续流', async () => {
     const fetchMock = vi.fn(async () => sseResponse([frame('meta', { ...META, run: undefined })], true))
     vi.stubGlobal('fetch', fetchMock)

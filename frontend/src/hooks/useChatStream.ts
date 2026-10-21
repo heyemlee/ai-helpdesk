@@ -73,6 +73,14 @@ const RECONNECT_DELAYS_MS = [500, 1000, 2000, 4000, 8000]
 /** 后端在流里报的错（error 事件）：这一轮的结局，不是断线，不续流 */
 class StreamFailure extends Error {}
 
+/**
+ * 续流时值得再试的 HTTP 状态：API 实例正在重启、发版，前面的代理（nginx、Vite）先回了网关错误。
+ * 404（run 不在了）、401（钥匙不对）这类再试也一样，照原样报出来。
+ */
+const RETRYABLE_STATUS = new Set([502, 503, 504])
+const retryable = (err: unknown) =>
+  !(err instanceof StreamFailure) && (!(err instanceof ApiError) || RETRYABLE_STATUS.has(err.status))
+
 const sleep = (ms: number, signal: AbortSignal) => new Promise<void>((resolve) => {
   const timer = setTimeout(resolve, ms)
   signal.addEventListener('abort', () => { clearTimeout(timer); resolve() }, { once: true })
@@ -261,9 +269,7 @@ export function useChatStream(
                 if (evt.event === 'result') finished = true
               }
             } catch (err) {
-              if (err instanceof StreamFailure || err instanceof ApiError || controller.signal.aborted || !runId) {
-                throw err
-              }
+              if (!retryable(err) || controller.signal.aborted || !runId) throw err
             }
             if (finished || !runId || controller.signal.aborted) break
             const delay = RECONNECT_DELAYS_MS[retry]
