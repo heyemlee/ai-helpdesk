@@ -1,17 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 474" width="960" height="474" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 844 586" width="844" height="586" role="img" aria-labelledby="title desc">
   <title id="title">AI Helpdesk agent architecture</title>
-  <desc id="desc">Agent architecture: one question runs through five stages in the agent runtime. The React 18 console posts it, and the answer streams back over SSE. 1 Understand, an intent vote typed with Pydantic 2, reading working memory from Redis 7. 2 Gather, tools picked by rules and run together with asyncio.gather: a search in PostgreSQL 16 with pgvector and tsvector, and a delegation over A2A to the peer agent ai-sql-agent, which runs its own loop; one corrective round when the evidence is thin. 3 Route, domain scores pick the specialists, and a monitor re-weights their replicas every 10 seconds. 4 Answer, three specialists through the Anthropic or OpenAI chat models, falling back to a generalist; in a bounded tool loop a specialist can search or query again through function calling, up to three model calls a turn. 5 Check, a guard and three confidence gates; a failed gate hands off to a person with a ticket. In queued mode, off by default on Docker Compose and on in the Kubernetes manifests, the run waits on Redis Streams for workers that hold a fenced lease on it: worker w1 claims it as attempt 1, loses its lease after the delegation returns, and w2 takes it over as attempt 2, while the console can resume the SSE stream with Last-Event-ID. Every step is also appended, in order, to a turn event log: intent, prefetch, routing, model calls, tool calls, guard, answer and handoff, written to PostgreSQL in batches off the answer path, or, with the same defaults, through Kafka, where a projector and a sampler each read it. The platform is FastAPI, Python 3.12, httpx, Docker Compose, Kubernetes, KEDA, Nginx, OpenTelemetry and Grafana. Pulses travel each connection in that order, the stage badges light up in turn, and each event lights up as it is recorded until the batch is flushed to PostgreSQL and Kafka.</desc>
+  <desc id="desc">Agent architecture: one question runs through five stages in the agent runtime. The React 18 console posts it, and the answer streams back over SSE. 1 Understand, an intent vote typed with Pydantic 2, reading working memory from Redis 7. 2 Gather, tools picked by rules and run together with asyncio.gather: a search in PostgreSQL 16 with pgvector and tsvector, and a delegation over A2A to the peer agent ai-sql-agent, which runs its own loop; one corrective round when the evidence is thin. 3 Route, domain scores pick the specialists, and a monitor re-weights their replicas every 10 seconds. 4 Answer, three specialists through the Anthropic or OpenAI chat models, falling back to a generalist; in a bounded tool loop a specialist can search or query again through function calling, up to three model calls a turn. 5 Check, a guard and three confidence gates; a failed gate hands off to a person with a ticket. In queued mode, opt-in on Docker Compose and on by default in the Kubernetes manifests, the run waits on Redis Streams for workers that hold a fenced lease on it: worker w1 claims it as attempt 1, loses its lease after the delegation returns, and w2 takes it over as attempt 2, while the console can resume the SSE stream with Last-Event-ID. Every step is also appended, in order, to a turn event log: intent, prefetch, routing, model calls, tool calls, guard, answer and handoff, written to PostgreSQL in batches off the answer path, or, with the same defaults, through Kafka, where a projector and a sampler each read it. The platform is FastAPI, Python 3.12, httpx, Docker Compose, Kubernetes, KEDA, Nginx, OpenTelemetry and Grafana. Pulses travel each connection in that order, the stage badges light up in turn, and each event lights up as it is recorded until the batch is flushed to PostgreSQL and Kafka.</desc>
   <style>
     text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif; }
-    .eyebrow { font-size: 10px; font-weight: 600; letter-spacing: 0.08em; fill: #8e8e93; }
-    .stage { font-size: 14.5px; font-weight: 650; fill: #1d1d1f; }
-    .name { font-size: 13.5px; font-weight: 600; fill: #1d1d1f; }
-    .sub { font-size: 11.5px; fill: #6e6e73; }
-    .edge { font-size: 10.5px; fill: #8e8e93; }
-    .chiptext { font-size: 11px; font-weight: 600; fill: #0a5bc4; }
-    .pilltext { font-size: 11px; font-weight: 600; fill: #6e6e73; }
-    .badgenum { font-size: 10.5px; font-weight: 700; fill: #ffffff; }
-    .looplabel { font-size: 10.5px; font-weight: 600; }
+    .eyebrow { font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; fill: #8e8e93; }
+    .stage { font-size: 15px; font-weight: 650; fill: #1d1d1f; }
+    .name { font-size: 14.5px; font-weight: 600; fill: #1d1d1f; }
+    .sub { font-size: 12.5px; fill: #6e6e73; }
+    .edge { font-size: 11.5px; fill: #8e8e93; }
+    .chiptext { font-size: 12px; font-weight: 600; fill: #0a5bc4; }
+    .pilltext { font-size: 12px; font-weight: 600; fill: #6e6e73; }
+    .badgenum { font-size: 11.5px; font-weight: 700; fill: #ffffff; }
+    .looplabel { font-size: 11.5px; font-weight: 600; }
     .loopblue { fill: #0a7cff; }
     .loopteal { fill: #0d9488; }
 
@@ -24,7 +24,8 @@
     .evpill { fill: #ffffff; stroke: #e5e5ea; }
     .evlit { opacity: 0; }
     .evon { fill: #e8f0ff; stroke: #0a7cff; }
-    .evtext { font-size: 11px; font-weight: 600; fill: #0a5bc4; }
+    .evtext { font-size: 12px; font-weight: 600; fill: #0a5bc4; }
+    .platpill { fill: #f5f5f7; stroke: #e5e5ea; }
 
     .b { stroke: #0a7cff; }
     .o { stroke: #e5733f; }
@@ -32,22 +33,35 @@
     .v { stroke: #7c5cff; }
     .ft { fill: #0d9488; }
 
+    /* Dashed parts are opt-in on Docker Compose and on by default in the
+       Kubernetes manifests: queued mode and the event log on Kafka. */
+    .opt { fill: #ffffff; stroke: #b8c4d6; stroke-width: 1; stroke-dasharray: 4 3; }
+    .optstrip { fill: #f6f8fc; stroke: #b8c4d6; stroke-width: 1; stroke-dasharray: 4 3; }
+    .optwire { fill: none; stroke: #c7c7cc; stroke-width: 1.5; stroke-dasharray: 4 3; }
+    .opttag { fill: #ffffff; stroke: #b8c4d6; }
+    .opttext { font-size: 9.5px; font-weight: 700; letter-spacing: 0.08em; fill: #8e8e93; }
+    .tagon { fill: #e8f0ff; stroke: #8ab8ff; }
+    .tagontext { font-size: 9.5px; font-weight: 700; letter-spacing: 0.08em; fill: #0a5bc4; }
+    .evdead { fill: #fdeceb; stroke: #e5484d; }
+    .xmark { fill: none; stroke: #e5484d; stroke-width: 1.6; stroke-linecap: round; }
+    .caption { font-size: 12px; font-weight: 600; }
+    .capb { fill: #0a5bc4; }
+    .capr { fill: #c62a2f; }
+    .r { stroke: #e5484d; }
+
     /* A comet: a soft tail with a bright head */
     .tail, .head { fill: none; stroke-linecap: round; opacity: 0; animation: 10s linear infinite; }
     .tail { stroke-width: 3; stroke-dasharray: 0.3 1.5; stroke-dashoffset: 0.3; animation-name: tail; }
     .head { stroke-width: 4.5; stroke-dasharray: 0.02 1.5; stroke-dashoffset: 0.02; animation-name: head; }
     .tail.long { animation-name: tailL; }
     .head.long { animation-name: headL; }
+    .march { stroke-dasharray: 3 3; animation: march 1.2s linear infinite; }
+    .badge { fill: #c7c7cc; transform-box: fill-box; transform-origin: center; }
     @keyframes tail { 0% { stroke-dashoffset: 0.3; opacity: 0.35; } 6% { stroke-dashoffset: -1; opacity: 0.35; } 6.5%, 100% { stroke-dashoffset: -1; opacity: 0; } }
     @keyframes head { 0% { stroke-dashoffset: 0.02; opacity: 1; } 6% { stroke-dashoffset: -1.28; opacity: 1; } 6.5%, 100% { stroke-dashoffset: -1.28; opacity: 0; } }
     @keyframes tailL { 0% { stroke-dashoffset: 0.3; opacity: 0.35; } 9% { stroke-dashoffset: -1; opacity: 0.35; } 9.5%, 100% { stroke-dashoffset: -1; opacity: 0; } }
     @keyframes headL { 0% { stroke-dashoffset: 0.02; opacity: 1; } 9% { stroke-dashoffset: -1.28; opacity: 1; } 9.5%, 100% { stroke-dashoffset: -1.28; opacity: 0; } }
-
-    /* The monitor's loop never stops */
-    .march { stroke-dasharray: 3 3; animation: march 1.2s linear infinite; }
     @keyframes march { to { stroke-dashoffset: -12; } }
-    .badge { fill: #c7c7cc; transform-box: fill-box; transform-origin: center; }
-
     @keyframes rcon { 0%, 78.70% { stroke-opacity: 0; } 79.70%, 83.70% { stroke-opacity: 0.85; } 87.20%, 100% { stroke-opacity: 0; } }
     @keyframes rhum { 0%, 79.50% { stroke-opacity: 0; } 80.50%, 84.50% { stroke-opacity: 0.85; } 88.00%, 100% { stroke-opacity: 0; } }
     @keyframes st1 { 0%, 4.50% { stroke-opacity: 0; } 5.50%, 19.50% { stroke-opacity: 0.9; } 22.50%, 100% { stroke-opacity: 0; } }
@@ -82,36 +96,7 @@
     @keyframes rllm2 { 0%, 55.20% { stroke-opacity: 0; } 56.20%, 60.20% { stroke-opacity: 0.85; } 63.70%, 100% { stroke-opacity: 0; } }
     @keyframes rllm3 { 0%, 66.20% { stroke-opacity: 0; } 67.20%, 71.20% { stroke-opacity: 0.85; } 74.70%, 100% { stroke-opacity: 0; } }
     @keyframes rsql { 0%, 26.00% { stroke-opacity: 0; } 27.00%, 38.00% { stroke-opacity: 0.85; } 41.50%, 100% { stroke-opacity: 0; } }
-
-    /* The turn event log: each event lights up as its step finishes, then goes
-       dark as the flush passes over it on the way into PostgreSQL (rpg4). */
-    @keyframes ev1 { 0%, 19.50% { opacity: 0; } 20.50%, 86.67% { opacity: 1; } 88.17%, 100% { opacity: 0; } }
-    @keyframes ev2 { 0%, 44.50% { opacity: 0; } 45.50%, 88.26% { opacity: 1; } 89.76%, 100% { opacity: 0; } }
-    @keyframes ev3 { 0%, 50.50% { opacity: 0; } 51.50%, 89.72% { opacity: 1; } 91.22%, 100% { opacity: 0; } }
-    @keyframes ev4 { 0%, 60.20% { opacity: 0; } 61.20%, 88.39% { opacity: 1; } 89.89%, 100% { opacity: 0; } }
-    @keyframes ev5 { 0%, 65.50% { opacity: 0; } 66.50%, 86.97% { opacity: 1; } 88.47%, 100% { opacity: 0; } }
-    @keyframes ev6 { 0%, 70.50% { opacity: 0; } 71.50%, 85.84% { opacity: 1; } 87.34%, 100% { opacity: 0; } }
-    @keyframes ev7 { 0%, 73.00% { opacity: 0; } 74.00%, 84.81% { opacity: 1; } 86.31%, 100% { opacity: 0; } }
-    @keyframes ev8 { 0%, 76.00% { opacity: 0; } 77.00%, 83.68% { opacity: 1; } 85.18%, 100% { opacity: 0; } }
     @keyframes rpg4 { 0%, 89.60% { stroke-opacity: 0; } 90.60%, 93.60% { stroke-opacity: 0.85; } 97.10%, 100% { stroke-opacity: 0; } }
-    /* Dashed parts are off by default on Docker Compose and on in the
-       Kubernetes manifests: queued mode and the event log on Kafka. */
-    .opt { fill: #ffffff; stroke: #b8c4d6; stroke-width: 1; stroke-dasharray: 4 3; }
-    .optstrip { fill: #f6f8fc; stroke: #b8c4d6; stroke-width: 1; stroke-dasharray: 4 3; }
-    .optwire { fill: none; stroke: #c7c7cc; stroke-width: 1.5; stroke-dasharray: 4 3; }
-    .opttag { fill: #ffffff; stroke: #b8c4d6; }
-    .opttext { font-size: 8px; font-weight: 700; letter-spacing: 0.1em; fill: #8e8e93; }
-    .tagon { fill: #e8f0ff; stroke: #8ab8ff; }
-    .tagontext { font-size: 8px; font-weight: 700; letter-spacing: 0.1em; fill: #0a5bc4; }
-    .evdead { fill: #fdeceb; stroke: #e5484d; }
-    .xmark { fill: none; stroke: #e5484d; stroke-width: 1.6; stroke-linecap: round; }
-    .caption { font-size: 10.5px; font-weight: 600; }
-    .capb { fill: #0a5bc4; }
-    .capr { fill: #c62a2f; }
-    .r { stroke: #e5484d; }
-
-    /* Queued mode: w1 claims the run, loses its lease after the delegation
-       returns, and w2 takes the run over as attempt 2. */
     @keyframes rq1 { 0%, 2.00% { stroke-opacity: 0; } 3.00%, 6.50% { stroke-opacity: 0.85; } 10.00%, 100% { stroke-opacity: 0; } }
     @keyframes rqx { 0%, 45.50% { stroke-opacity: 0; } 46.50%, 49.00% { stroke-opacity: 0.85; } 51.00%, 100% { stroke-opacity: 0; } }
     @keyframes rq2 { 0%, 49.00% { stroke-opacity: 0; } 50.00%, 53.00% { stroke-opacity: 0.85; } 56.50%, 100% { stroke-opacity: 0; } }
@@ -121,12 +106,17 @@
     @keyframes cap1 { 0%, 2.50% { opacity: 0; } 3.50%, 45.50% { opacity: 1; } 46.50%, 100% { opacity: 0; } }
     @keyframes capx { 0%, 45.50% { opacity: 0; } 46.50%, 49.00% { opacity: 1; } 50.00%, 100% { opacity: 0; } }
     @keyframes cap2 { 0%, 49.00% { opacity: 0; } 50.00%, 91.50% { opacity: 1; } 94.50%, 100% { opacity: 0; } }
-
-    /* The event log on Kafka: the batch reaches the topic too, and the
-       projector and the sampler each read it. */
     @keyframes rkafka { 0%, 87.50% { stroke-opacity: 0; } 88.50%, 92.00% { stroke-opacity: 0.85; } 95.50%, 100% { stroke-opacity: 0; } }
     @keyframes kc1 { 0%, 88.50% { opacity: 0; } 89.50%, 94.50% { opacity: 1; } 96.00%, 100% { opacity: 0; } }
     @keyframes kc2 { 0%, 89.50% { opacity: 0; } 90.50%, 94.50% { opacity: 1; } 96.00%, 100% { opacity: 0; } }
+    @keyframes ev1 { 0%, 19.50% { opacity: 0; } 20.50%, 87.44% { opacity: 1; } 88.94%, 100% { opacity: 0; } }
+    @keyframes ev2 { 0%, 44.50% { opacity: 0; } 45.50%, 89.49% { opacity: 1; } 90.99%, 100% { opacity: 0; } }
+    @keyframes ev3 { 0%, 50.50% { opacity: 0; } 51.50%, 89.01% { opacity: 1; } 90.51%, 100% { opacity: 0; } }
+    @keyframes ev4 { 0%, 60.20% { opacity: 0; } 61.20%, 87.99% { opacity: 1; } 89.49%, 100% { opacity: 0; } }
+    @keyframes ev5 { 0%, 65.50% { opacity: 0; } 66.50%, 86.90% { opacity: 1; } 88.40%, 100% { opacity: 0; } }
+    @keyframes ev6 { 0%, 70.50% { opacity: 0; } 71.50%, 86.01% { opacity: 1; } 87.51%, 100% { opacity: 0; } }
+    @keyframes ev7 { 0%, 73.00% { opacity: 0; } 74.00%, 85.18% { opacity: 1; } 86.68%, 100% { opacity: 0; } }
+    @keyframes ev8 { 0%, 76.00% { opacity: 0; } 77.00%, 84.27% { opacity: 1; } 85.77%, 100% { opacity: 0; } }
     @media (prefers-reduced-motion: reduce) {
       * { animation: none !important; }
     }
@@ -139,7 +129,7 @@
       <feDropShadow dx="0" dy="1" stdDeviation="1.5" flood-color="#000000" flood-opacity="0.05" />
       <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000000" flood-opacity="0.04" />
     </filter>
-    <filter id="glow" filterUnits="userSpaceOnUse" x="0" y="0" width="960" height="474">
+    <filter id="glow" filterUnits="userSpaceOnUse" x="0" y="0" width="844" height="586">
       <feGaussianBlur stdDeviation="2.2" result="blur" />
       <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
     </filter>
@@ -154,256 +144,255 @@
     </marker>
   </defs>
 
-  <rect x="0.5" y="0.5" width="959" height="473" rx="16" fill="#ffffff" stroke="#ececf0" />
-  <rect x="1" y="1" width="958" height="472" rx="16" fill="url(#dots)" />
-
+  <rect x="0.5" y="0.5" width="843" height="585" rx="16" fill="#ffffff" stroke="#ececf0" />
+  <rect x="1" y="1" width="842" height="584" rx="16" fill="url(#dots)" />
   <g filter="url(#lift)">
-  <rect class="card" x="24" y="20" width="240" height="56" rx="14" />
-  <rect class="card" x="696" y="20" width="240" height="56" rx="14" />
+  <rect class="card" x="16" y="16" width="232" height="64" rx="14" />
+  <rect class="card" x="620" y="16" width="208" height="64" rx="14" />
   </g>
-  <rect class="ring b" x="21" y="17" width="246" height="62" rx="16" style="animation: rcon 10s linear infinite" />
-  <rect class="ring v" x="693" y="17" width="246" height="62" rx="16" style="animation: rhum 10s linear infinite" />
-  <path class="optwire" d="M264,48 H297" marker-end="url(#arrow)" />
-  <rect class="opt" x="300" y="20" width="360" height="56" rx="14" />
-  <rect class="ring b" x="297" y="17" width="366" height="62" rx="16" style="animation: rq1 10s linear infinite" />
-  <rect class="ring r" x="297" y="17" width="366" height="62" rx="16" style="animation: rqx 10s linear infinite" />
-  <rect class="ring b" x="297" y="17" width="366" height="62" rx="16" style="animation: rq2 10s linear infinite" />
-  <rect class="opttag" x="313" y="13" width="84" height="14" rx="7" />
-  <text class="opttext" x="355" y="23" text-anchor="middle">COMPOSE OFF</text>
-  <rect class="tagon" x="401" y="13" width="52" height="14" rx="7" />
-  <text class="tagontext" x="427" y="23" text-anchor="middle">K8S ON</text>
-  <g class="icon b" transform="translate(316 33)"><path d="M1 3.5 H10" /><path d="M1 8 H15" /><path d="M1 12.5 H10" /><path d="M11.5 4.5 L15 8 L11.5 11.5" /></g>
-  <text class="name" x="340" y="46">Redis Streams</text>
-  <text class="sub" x="316" y="66">queued mode · workers ×N</text>
-  <rect class="evpill" x="542" y="31" width="30" height="18" rx="9" />
-  <text class="pilltext" x="557" y="44" text-anchor="middle">w1</text>
-  <rect class="evpill" x="578" y="31" width="30" height="18" rx="9" />
-  <text class="pilltext" x="593" y="44" text-anchor="middle">w2</text>
-  <rect class="evpill" x="614" y="31" width="30" height="18" rx="9" />
-  <text class="pilltext" x="629" y="44" text-anchor="middle">w3</text>
-  <g class="evlit" style="animation: w1on 10s linear infinite"><rect class="evon" x="542" y="31" width="30" height="18" rx="9" /><text class="evtext" x="557" y="44" text-anchor="middle">w1</text></g>
-  <g class="evlit" style="animation: w1dead 10s linear infinite"><rect class="evdead" x="542" y="31" width="30" height="18" rx="9" /><path class="xmark" d="M553.5,36.5 L560.5,43.5 M560.5,36.5 L553.5,43.5" /></g>
-  <g class="evlit" style="animation: w2on 10s linear infinite"><rect class="evon" x="578" y="31" width="30" height="18" rx="9" /><text class="evtext" x="593" y="44" text-anchor="middle">w2</text></g>
-  <text class="caption capb evlit" x="644" y="66" text-anchor="end" style="animation: cap1 10s linear infinite">attempt 1</text>
-  <text class="caption capr evlit" x="644" y="66" text-anchor="end" style="animation: capx 10s linear infinite">lease lost</text>
-  <text class="caption capb evlit" x="644" y="66" text-anchor="end" style="animation: cap2 10s linear infinite">attempt 2</text>
-  <path class="optwire" d="M360,76 V109" marker-end="url(#arrow)" />
-  <g class="icon b" transform="translate(40 33)"><rect x="0" y="2" width="16" height="12" rx="2.5" /><path d="M0 6 H16" /></g>
-  <text class="name" x="64" y="46">React 18 + TS</text>
-  <text class="sub" x="40" y="66">console · Vite · TanStack Query</text>
-  <g class="icon v" transform="translate(712 33)"><circle cx="8" cy="4.5" r="3.5" /><path d="M1.5 15.5 C1.5 11 4.5 9.5 8 9.5 C11.5 9.5 14.5 11 14.5 15.5" /></g>
-  <text class="name" x="736" y="46">Human handoff</text>
-  <text class="sub" x="712" y="66">tickets · webhook outbox</text>
-  <path class="wire" d="M64,76 V154" marker-end="url(#arrow)" />
-  <text class="edge" x="72" y="100">POST /chat</text>
-  <path class="wire" d="M804,156 V100 H200 V79" marker-end="url(#arrow)" />
-  <text class="edge" x="502" y="93" text-anchor="middle">SSE stream · resumable (Last-Event-ID)</text>
-  <path class="wire" d="M884,156 V79" marker-end="url(#arrow)" />
-  <text class="edge" x="876" y="100" text-anchor="end">ticket</text>
-  <rect x="24" y="112" width="912" height="162" rx="20" fill="#f6f8fc" stroke="#e1e7f0" />
-  <text class="eyebrow" x="84" y="130">AGENT RUNTIME</text>
-  <path class="loopline b" d="M346,156 C346,132 250,132 250,154" marker-end="url(#mb)" />
-  <text class="looplabel loopblue" x="298" y="130" text-anchor="middle">1 corrective round</text>
-  <path class="loopline t march" d="M528,156 C528,132 432,132 432,154" marker-end="url(#mt)" />
-  <text class="looplabel loopteal" x="480" y="130" text-anchor="middle">replicas re-weighted every 10 s</text>
-  <path class="loopline b" d="M710,156 C710,132 614,132 614,154" marker-end="url(#mb)" />
-  <text class="looplabel loopblue" x="662" y="130" text-anchor="middle">tool loop · ≤ 3 calls</text>
-  <path class="tail b" pathLength="1" d="M346,156 C346,132 250,132 250,154" style="animation-delay: 3.3s" />
-  <path class="head b" pathLength="1" filter="url(#glow)" d="M346,156 C346,132 250,132 250,154" style="animation-delay: 3.3s" />
-  <path class="tail b" pathLength="1" d="M710,156 C710,132 614,132 614,154" style="animation-delay: 5.5s" />
-  <path class="head b" pathLength="1" filter="url(#glow)" d="M710,156 C710,132 614,132 614,154" style="animation-delay: 5.5s" />
+  <rect class="ring b" x="13" y="13" width="238" height="70" rx="17" style="animation: rcon 10s linear infinite" />
+  <rect class="ring v" x="617" y="13" width="214" height="70" rx="17" style="animation: rhum 10s linear infinite" />
+  <g class="icon b" transform="translate(32 32)"><rect x="0" y="2" width="16" height="12" rx="2.5" /><path d="M0 6 H16" /></g>
+  <text class="name" x="56" y="46">React 18 + TS</text>
+  <text class="sub" x="32" y="68">console · Vite · TanStack Query</text>
+  <g class="icon v" transform="translate(636 32)"><circle cx="8" cy="4.5" r="3.5" /><path d="M1.5 15.5 C1.5 11 4.5 9.5 8 9.5 C11.5 9.5 14.5 11 14.5 15.5" /></g>
+  <text class="name" x="660" y="46">Human handoff</text>
+  <text class="sub" x="636" y="68">tickets · webhook outbox</text>
+  <path class="optwire" d="M248,48 H269" marker-end="url(#arrow)" />
+  <rect class="opt" x="272" y="16" width="324" height="64" rx="14" />
+  <rect class="ring b" x="269" y="13" width="330" height="70" rx="17" style="animation: rq1 10s linear infinite" />
+  <rect class="ring r" x="269" y="13" width="330" height="70" rx="17" style="animation: rqx 10s linear infinite" />
+  <rect class="ring b" x="269" y="13" width="330" height="70" rx="17" style="animation: rq2 10s linear infinite" />
+  <rect class="opttag" x="288" y="9" width="116" height="14" rx="7" />
+  <text class="opttext" x="346" y="19.5" text-anchor="middle">COMPOSE OPT-IN</text>
+  <rect class="tagon" x="408" y="9" width="60" height="14" rx="7" />
+  <text class="tagontext" x="438" y="19.5" text-anchor="middle">K8S ON</text>
+  <g class="icon b" transform="translate(288 32)"><path d="M1 3.5 H10" /><path d="M1 8 H15" /><path d="M1 12.5 H10" /><path d="M11.5 4.5 L15 8 L11.5 11.5" /></g>
+  <text class="name" x="312" y="46">Redis Streams</text>
+  <text class="sub" x="288" y="68">queued mode · workers ×N</text>
+  <rect class="evpill" x="474" y="31" width="32" height="20" rx="10" />
+  <text class="pilltext" x="490" y="45.3" text-anchor="middle">w1</text>
+  <rect class="evpill" x="511" y="31" width="32" height="20" rx="10" />
+  <text class="pilltext" x="527" y="45.3" text-anchor="middle">w2</text>
+  <rect class="evpill" x="548" y="31" width="32" height="20" rx="10" />
+  <text class="pilltext" x="564" y="45.3" text-anchor="middle">w3</text>
+  <g class="evlit" style="animation: w1on 10s linear infinite"><rect class="evon" x="474" y="31" width="32" height="20" rx="10" /><text class="evtext" x="490" y="45.3" text-anchor="middle">w1</text></g>
+  <g class="evlit" style="animation: w1dead 10s linear infinite"><rect class="evdead" x="474" y="31" width="32" height="20" rx="10" /><path class="xmark" d="M486.5,37.5 L493.5,44.5 M493.5,37.5 L486.5,44.5" /></g>
+  <g class="evlit" style="animation: w2on 10s linear infinite"><rect class="evon" x="511" y="31" width="32" height="20" rx="10" /><text class="evtext" x="527" y="45.3" text-anchor="middle">w2</text></g>
+  <text class="caption capb evlit" x="580" y="68" text-anchor="end" style="animation: cap1 10s linear infinite">attempt 1</text>
+  <text class="caption capr evlit" x="580" y="68" text-anchor="end" style="animation: capx 10s linear infinite">lease lost</text>
+  <text class="caption capb evlit" x="580" y="68" text-anchor="end" style="animation: cap2 10s linear infinite">attempt 2</text>
+  <path class="optwire" d="M300,80 V125" marker-end="url(#arrow)" />
+  <path class="wire" d="M40,80 V174" marker-end="url(#arrow)" />
+  <text class="edge" x="48" y="112">POST /chat</text>
+  <path class="wire" d="M712,176 V108 H200 V83" marker-end="url(#arrow)" />
+  <text class="edge" x="456" y="100" text-anchor="middle">SSE stream · resumable (Last-Event-ID)</text>
+  <path class="wire" d="M792,176 V83" marker-end="url(#arrow)" />
+  <text class="edge" x="784" y="112" text-anchor="end">ticket</text>
+  <rect x="16" y="128" width="812" height="190" rx="20" fill="#f6f8fc" stroke="#e1e7f0" />
+  <text class="eyebrow" x="56" y="148">AGENT RUNTIME</text>
+  <path class="loopline b" d="M314,176 C314,152 206,152 206,174" marker-end="url(#mb)" />
+  <text class="looplabel loopblue" x="260" y="148" text-anchor="middle">1 corrective round</text>
+  <path class="loopline t march" d="M476,176 C476,152 368,152 368,174" marker-end="url(#mt)" />
+  <text class="looplabel loopteal" x="422" y="148" text-anchor="middle">replicas re-weighted every 10 s</text>
+  <path class="loopline b" d="M638,176 C638,152 530,152 530,174" marker-end="url(#mb)" />
+  <text class="looplabel loopblue" x="584" y="148" text-anchor="middle">tool loop · ≤ 3 calls</text>
+  <path class="tail b" pathLength="1" d="M314,176 C314,152 206,152 206,174" style="animation-delay: 3.3s" />
+  <path class="head b" pathLength="1" filter="url(#glow)" d="M314,176 C314,152 206,152 206,174" style="animation-delay: 3.3s" />
+  <path class="tail b" pathLength="1" d="M638,176 C638,152 530,152 530,174" style="animation-delay: 5.5s" />
+  <path class="head b" pathLength="1" filter="url(#glow)" d="M638,176 C638,152 530,152 530,174" style="animation-delay: 5.5s" />
   <g filter="url(#lift)">
-  <rect class="card" x="36" y="156" width="160" height="98" rx="14" />
-  <rect class="card" x="218" y="156" width="160" height="98" rx="14" />
-  <rect class="card" x="400" y="156" width="160" height="98" rx="14" />
-  <rect class="card" x="582" y="156" width="160" height="98" rx="14" />
-  <rect class="card" x="764" y="156" width="160" height="98" rx="14" />
+  <rect class="card" x="24" y="176" width="148" height="126" rx="14" />
+  <rect class="card" x="186" y="176" width="148" height="126" rx="14" />
+  <rect class="card" x="348" y="176" width="148" height="126" rx="14" />
+  <rect class="card" x="510" y="176" width="148" height="126" rx="14" />
+  <rect class="card" x="672" y="176" width="148" height="126" rx="14" />
   </g>
-  <rect class="ring b" x="33" y="153" width="166" height="104" rx="16" style="animation: st1 10s linear infinite" />
-  <circle class="badge" cx="56" cy="178" r="9" style="animation: bd1 10s ease-out infinite" />
-  <text class="badgenum" x="56" y="182" text-anchor="middle">1</text>
-  <text class="eyebrow" x="72" y="182">UNDERSTAND</text>
-  <text class="stage" x="52" y="207">Intent vote</text>
-  <rect class="chip" x="52" y="220" width="80" height="20" rx="10" style="animation: cp1 10s linear infinite" />
-  <text class="chiptext" x="92.0" y="234" text-anchor="middle">Pydantic 2</text>
-  <rect class="ring b" x="215" y="153" width="166" height="104" rx="16" style="animation: st2 10s linear infinite" />
-  <circle class="badge" cx="238" cy="178" r="9" style="animation: bd2 10s ease-out infinite" />
-  <text class="badgenum" x="238" y="182" text-anchor="middle">2</text>
-  <text class="eyebrow" x="254" y="182">GATHER</text>
-  <text class="stage" x="234" y="207">Rule-gated tools</text>
-  <rect class="chip" x="234" y="220" width="104" height="20" rx="10" style="animation: cp2 10s linear infinite" />
-  <text class="chiptext" x="286.0" y="234" text-anchor="middle">asyncio.gather</text>
-  <rect class="ring b" x="397" y="153" width="166" height="104" rx="16" style="animation: st3 10s linear infinite" />
-  <circle class="badge" cx="420" cy="178" r="9" style="animation: bd3 10s ease-out infinite" />
-  <text class="badgenum" x="420" y="182" text-anchor="middle">3</text>
-  <text class="eyebrow" x="436" y="182">ROUTE</text>
-  <text class="stage" x="416" y="207">Domain router</text>
-  <rect class="chip" x="416" y="220" width="98" height="20" rx="10" style="animation: cp3 10s linear infinite" />
-  <text class="chiptext" x="465.0" y="234" text-anchor="middle">domain scores</text>
-  <rect class="ring b" x="579" y="153" width="166" height="104" rx="16" style="animation: st4 10s linear infinite" />
-  <circle class="badge" cx="602" cy="178" r="9" style="animation: bd4 10s ease-out infinite" />
-  <text class="badgenum" x="602" y="182" text-anchor="middle">4</text>
-  <text class="eyebrow" x="618" y="182">ANSWER</text>
-  <text class="stage" x="598" y="207">Specialists ×3</text>
-  <rect class="ring b" x="761" y="153" width="166" height="104" rx="16" style="animation: st5 10s linear infinite" />
-  <circle class="badge" cx="784" cy="178" r="9" style="animation: bd5 10s ease-out infinite" />
-  <text class="badgenum" x="784" y="182" text-anchor="middle">5</text>
-  <text class="eyebrow" x="800" y="182">CHECK</text>
-  <text class="stage" x="780" y="207">Guard + gates</text>
-  <rect class="chip" x="780" y="220" width="124" height="20" rx="10" style="animation: cp5 10s linear infinite" />
-  <text class="chiptext" x="842.0" y="234" text-anchor="middle">3 confidence gates</text>
-  <circle cx="607" cy="230" r="9" stroke="#c7c7cc" style="fill: #f5f5f7; animation: av0 10s linear infinite" />
-  <circle cx="604" cy="229.5" r="1.3" fill="#6e6e73" /><circle cx="610" cy="229.5" r="1.3" fill="#6e6e73" />
-  <circle cx="629" cy="230" r="9" stroke="#c7c7cc" style="fill: #f5f5f7; animation: av1 10s linear infinite" />
-  <circle cx="626" cy="229.5" r="1.3" fill="#6e6e73" /><circle cx="632" cy="229.5" r="1.3" fill="#6e6e73" />
-  <circle cx="651" cy="230" r="9" stroke="#c7c7cc" style="fill: #f5f5f7; " />
-  <circle cx="648" cy="229.5" r="1.3" fill="#6e6e73" /><circle cx="654" cy="229.5" r="1.3" fill="#6e6e73" />
-  <circle cx="673" cy="230" r="9" fill="#ffffff" stroke="#c7c7cc" stroke-dasharray="2 2" />
-  <circle cx="670" cy="229.5" r="1.3" fill="#6e6e73" /><circle cx="676" cy="229.5" r="1.3" fill="#6e6e73" />
-  <path d="M204 199 L211 205 L204 211 Z" style="fill: #c7c7cc; animation: ch0 10s linear infinite" />
-  <path d="M386 199 L393 205 L386 211 Z" style="fill: #c7c7cc; animation: ch1 10s linear infinite" />
-  <path d="M568 199 L575 205 L568 211 Z" style="fill: #c7c7cc; animation: ch2 10s linear infinite" />
-  <path d="M750 199 L757 205 L750 211 Z" style="fill: #c7c7cc; animation: ch3 10s linear infinite" />
-  <path class="wire" d="M116,254 V314" />
-  <path class="wire" d="M298,254 V314" />
-  <path class="wire" d="M662,254 V314" />
-  <path class="wire" d="M116,294 H844" />
-  <path class="wire" d="M480,294 V314" />
-  <path class="wire" d="M844,294 V314" />
+  <rect class="ring b" x="21" y="173" width="154" height="132" rx="17" style="animation: st1 10s linear infinite" />
+  <circle class="badge" cx="53.1" cy="202" r="10" style="animation: bd1 10s ease-out infinite" />
+  <text class="badgenum" x="53.1" y="206" text-anchor="middle">1</text>
+  <text class="eyebrow" x="70.1" y="206">UNDERSTAND</text>
+  <text class="stage" x="98" y="238" text-anchor="middle">Intent vote</text>
+  <rect class="chip" x="56" y="258" width="84" height="24" rx="12" style="animation: cp1 10s linear infinite" />
+  <text class="chiptext" x="98" y="274.3" text-anchor="middle">Pydantic 2</text>
+  <rect class="ring b" x="183" y="173" width="154" height="132" rx="17" style="animation: st2 10s linear infinite" />
+  <circle class="badge" cx="232.2" cy="202" r="10" style="animation: bd2 10s ease-out infinite" />
+  <text class="badgenum" x="232.2" y="206" text-anchor="middle">2</text>
+  <text class="eyebrow" x="249.2" y="206">GATHER</text>
+  <text class="stage" x="260" y="238" text-anchor="middle">Rule-gated tools</text>
+  <rect class="chip" x="206" y="258" width="108" height="24" rx="12" style="animation: cp2 10s linear infinite" />
+  <text class="chiptext" x="260" y="274.3" text-anchor="middle">asyncio.gather</text>
+  <rect class="ring b" x="345" y="173" width="154" height="132" rx="17" style="animation: st3 10s linear infinite" />
+  <circle class="badge" cx="397.9" cy="202" r="10" style="animation: bd3 10s ease-out infinite" />
+  <text class="badgenum" x="397.9" y="206" text-anchor="middle">3</text>
+  <text class="eyebrow" x="414.9" y="206">ROUTE</text>
+  <text class="stage" x="422" y="238" text-anchor="middle">Domain router</text>
+  <rect class="chip" x="368" y="258" width="108" height="24" rx="12" style="animation: cp3 10s linear infinite" />
+  <text class="chiptext" x="422" y="274.3" text-anchor="middle">domain scores</text>
+  <rect class="ring b" x="507" y="173" width="154" height="132" rx="17" style="animation: st4 10s linear infinite" />
+  <circle class="badge" cx="554.5" cy="202" r="10" style="animation: bd4 10s ease-out infinite" />
+  <text class="badgenum" x="554.5" y="206" text-anchor="middle">4</text>
+  <text class="eyebrow" x="571.5" y="206">ANSWER</text>
+  <text class="stage" x="584" y="238" text-anchor="middle">Specialists ×3</text>
+  <circle cx="548" cy="270" r="10" stroke="#c7c7cc" style="fill: #f5f5f7; animation: av0 10s linear infinite" />
+  <circle cx="545" cy="269.5" r="1.4" fill="#6e6e73" /><circle cx="551" cy="269.5" r="1.4" fill="#6e6e73" />
+  <circle cx="572" cy="270" r="10" stroke="#c7c7cc" style="fill: #f5f5f7; animation: av1 10s linear infinite" />
+  <circle cx="569" cy="269.5" r="1.4" fill="#6e6e73" /><circle cx="575" cy="269.5" r="1.4" fill="#6e6e73" />
+  <circle cx="596" cy="270" r="10" stroke="#c7c7cc" style="fill: #f5f5f7; " />
+  <circle cx="593" cy="269.5" r="1.4" fill="#6e6e73" /><circle cx="599" cy="269.5" r="1.4" fill="#6e6e73" />
+  <circle cx="620" cy="270" r="10" fill="#ffffff" stroke="#c7c7cc" stroke-dasharray="2 2" />
+  <circle cx="617" cy="269.5" r="1.4" fill="#6e6e73" /><circle cx="623" cy="269.5" r="1.4" fill="#6e6e73" />
+  <rect class="ring b" x="669" y="173" width="154" height="132" rx="17" style="animation: st5 10s linear infinite" />
+  <circle class="badge" cx="721.6" cy="202" r="10" style="animation: bd5 10s ease-out infinite" />
+  <text class="badgenum" x="721.6" y="206" text-anchor="middle">5</text>
+  <text class="eyebrow" x="738.6" y="206">CHECK</text>
+  <text class="stage" x="746" y="238" text-anchor="middle">Guard + gates</text>
+  <rect class="chip" x="679" y="258" width="134" height="24" rx="12" style="animation: cp5 10s linear infinite" />
+  <text class="chiptext" x="746" y="274.3" text-anchor="middle">3 confidence gates</text>
+  <path d="M175.5 233 L182.5 239 L175.5 245 Z" style="fill: #c7c7cc; animation: ch0 10s linear infinite" />
+  <path d="M337.5 233 L344.5 239 L337.5 245 Z" style="fill: #c7c7cc; animation: ch1 10s linear infinite" />
+  <path d="M499.5 233 L506.5 239 L499.5 245 Z" style="fill: #c7c7cc; animation: ch2 10s linear infinite" />
+  <path d="M661.5 233 L668.5 239 L661.5 245 Z" style="fill: #c7c7cc; animation: ch3 10s linear infinite" />
+  <path class="wire" d="M98,302 V362" />
+  <path class="wire" d="M260,302 V362" />
+  <path class="wire" d="M584,302 V362" />
+  <path class="wire" d="M98,340 H746" />
+  <path class="wire" d="M422,340 V362" />
+  <path class="wire" d="M746,340 V362" />
   <g filter="url(#lift)">
-  <rect class="card" x="36" y="314" width="160" height="60" rx="14" />
-  <rect class="card" x="218" y="314" width="160" height="60" rx="14" />
-  <rect class="card" x="400" y="314" width="160" height="60" rx="14" />
-  <rect class="card" x="582" y="314" width="160" height="60" rx="14" />
-  <rect class="card" x="764" y="314" width="160" height="60" rx="14" />
+  <rect class="card" x="24" y="362" width="148" height="70" rx="14" />
+  <rect class="card" x="186" y="362" width="148" height="70" rx="14" />
+  <rect class="card" x="348" y="362" width="148" height="70" rx="14" />
+  <rect class="card" x="510" y="362" width="148" height="70" rx="14" />
+  <rect class="card" x="672" y="362" width="148" height="70" rx="14" />
   </g>
-  <g class="icon b" transform="translate(52 327)"><path d="M8 1 L15 4.5 L8 8 L1 4.5 Z" /><path d="M1 8 L8 11.5 L15 8" /><path d="M1 11.5 L8 15 L15 11.5" /></g>
-  <text class="name" x="76" y="340">Redis 7</text>
-  <text class="sub" x="52" y="360">working memory</text>
-  <g class="icon b" transform="translate(234 327)"><ellipse cx="8" cy="3.5" rx="6.5" ry="2.5" /><path d="M1.5 3.5 V12.5 C1.5 15.8 14.5 15.8 14.5 12.5 V3.5" /><path d="M1.5 8 C1.5 11.3 14.5 11.3 14.5 8" /></g>
-  <text class="name" x="258" y="340">PostgreSQL 16</text>
-  <text class="sub" x="234" y="360">pgvector · tsvector</text>
-  <g class="icon o" transform="translate(416 327)"><path d="M2 13 L13 2" /><path d="M2 13 L14 9" /><path d="M2 13 L6 1.5" /></g>
-  <text class="name" x="440" y="340">Embedding API</text>
-  <text class="sub" x="416" y="360">/embeddings · /rerank</text>
-  <g class="icon o" transform="translate(598 327)"><path d="M8 0.5 C8.6 5 10.9 7.3 15.5 8 C10.9 8.7 8.6 11 8 15.5 C7.4 11 5.1 8.7 0.5 8 C5.1 7.3 7.4 5 8 0.5 Z" /></g>
-  <text class="name" x="622" y="340">Chat models</text>
-  <text class="sub" x="598" y="360">Anthropic · OpenAI</text>
-  <g class="icon t" transform="translate(780 327)"><rect x="1" y="4" width="14" height="10" rx="3" /><path d="M8 4 V1" /><circle cx="5.5" cy="9" r="0.9" class="ft" /><circle cx="10.5" cy="9" r="0.9" class="ft" /></g>
-  <text class="name" x="804" y="340">ai-sql-agent</text>
-  <text class="sub" x="780" y="360">peer agent · A2A</text>
-  <path class="loopline t" d="M908 338 A7 7 0 1 1 907 330.5" marker-end="url(#mt)" />
-  <circle cx="902" cy="328" r="2.4" fill="#0d9488" style="transform-box: view-box; transform-origin: 902px 335px; animation: spin 10s linear infinite" />
-  <rect class="ring b" x="33" y="311" width="166" height="66" rx="16" style="animation: rredis1 10s linear infinite" />
-  <rect class="ring b" x="33" y="311" width="166" height="66" rx="16" style="animation: rredis2 10s linear infinite" />
-  <rect class="ring b" x="215" y="311" width="166" height="66" rx="16" style="animation: rpg1 10s linear infinite" />
-  <rect class="ring b" x="215" y="311" width="166" height="66" rx="16" style="animation: rpg2 10s linear infinite" />
-  <rect class="ring b" x="215" y="311" width="166" height="66" rx="16" style="animation: rpg3 10s linear infinite" />
-  <rect class="ring b" x="215" y="311" width="166" height="66" rx="16" style="animation: rpg4 10s linear infinite" />
-  <rect class="ring o" x="397" y="311" width="166" height="66" rx="16" style="animation: remb1 10s linear infinite" />
-  <rect class="ring o" x="397" y="311" width="166" height="66" rx="16" style="animation: remb2 10s linear infinite" />
-  <rect class="ring o" x="579" y="311" width="166" height="66" rx="16" style="animation: rllm1 10s linear infinite" />
-  <rect class="ring o" x="579" y="311" width="166" height="66" rx="16" style="animation: rllm2 10s linear infinite" />
-  <rect class="ring o" x="579" y="311" width="166" height="66" rx="16" style="animation: rllm3 10s linear infinite" />
-  <rect class="ring t" x="761" y="311" width="166" height="66" rx="16" style="animation: rsql 10s linear infinite" />
-  <path class="wire" d="M298,388 V377" marker-end="url(#arrow)" />
-  <rect x="24" y="388" width="644" height="32" rx="16" fill="#f6f8fc" stroke="#e1e7f0" />
-  <text class="eyebrow" x="44" y="408">TURN EVENT LOG</text>
-  <rect class="evpill" x="162" y="394" width="46" height="20" rx="10" />
-  <text class="pilltext" x="185" y="408" text-anchor="middle">intent</text>
-  <g class="evlit" style="animation: ev1 10s linear infinite"><rect class="evon" x="162" y="394" width="46" height="20" rx="10" /><text class="evtext" x="185" y="408" text-anchor="middle">intent</text></g>
-  <rect class="evpill" x="213" y="394" width="60" height="20" rx="10" />
-  <text class="pilltext" x="243" y="408" text-anchor="middle">prefetch</text>
-  <g class="evlit" style="animation: ev2 10s linear infinite"><rect class="evon" x="213" y="394" width="60" height="20" rx="10" /><text class="evtext" x="243" y="408" text-anchor="middle">prefetch</text></g>
-  <rect class="evpill" x="278" y="394" width="54" height="20" rx="10" />
-  <text class="pilltext" x="305" y="408" text-anchor="middle">routing</text>
-  <g class="evlit" style="animation: ev3 10s linear infinite"><rect class="evon" x="278" y="394" width="54" height="20" rx="10" /><text class="evtext" x="305" y="408" text-anchor="middle">routing</text></g>
-  <rect class="evpill" x="337" y="394" width="78" height="20" rx="10" />
-  <text class="pilltext" x="376" y="408" text-anchor="middle">model calls</text>
-  <g class="evlit" style="animation: ev4 10s linear infinite"><rect class="evon" x="337" y="394" width="78" height="20" rx="10" /><text class="evtext" x="376" y="408" text-anchor="middle">model calls</text></g>
-  <rect class="evpill" x="420" y="394" width="64" height="20" rx="10" />
-  <text class="pilltext" x="452" y="408" text-anchor="middle">tool calls</text>
-  <g class="evlit" style="animation: ev5 10s linear infinite"><rect class="evon" x="420" y="394" width="64" height="20" rx="10" /><text class="evtext" x="452" y="408" text-anchor="middle">tool calls</text></g>
-  <rect class="evpill" x="489" y="394" width="46" height="20" rx="10" />
-  <text class="pilltext" x="512" y="408" text-anchor="middle">guard</text>
-  <g class="evlit" style="animation: ev6 10s linear infinite"><rect class="evon" x="489" y="394" width="46" height="20" rx="10" /><text class="evtext" x="512" y="408" text-anchor="middle">guard</text></g>
-  <rect class="evpill" x="540" y="394" width="54" height="20" rx="10" />
-  <text class="pilltext" x="567" y="408" text-anchor="middle">answer</text>
-  <g class="evlit" style="animation: ev7 10s linear infinite"><rect class="evon" x="540" y="394" width="54" height="20" rx="10" /><text class="evtext" x="567" y="408" text-anchor="middle">answer</text></g>
-  <rect class="evpill" x="599" y="394" width="56" height="20" rx="10" />
-  <text class="pilltext" x="627" y="408" text-anchor="middle">handoff</text>
-  <g class="evlit" style="animation: ev8 10s linear infinite"><rect class="evon" x="599" y="394" width="56" height="20" rx="10" /><text class="evtext" x="627" y="408" text-anchor="middle">handoff</text></g>
-  <path class="optwire" d="M668,404 H693" marker-end="url(#arrow)" />
-  <rect class="optstrip" x="696" y="388" width="240" height="32" rx="16" />
-  <rect class="ring b" x="693" y="385" width="246" height="38" rx="19" style="animation: rkafka 10s linear infinite" />
-  <rect class="opttag" x="709" y="381" width="84" height="14" rx="7" />
-  <text class="opttext" x="751" y="391" text-anchor="middle">COMPOSE OFF</text>
-  <rect class="tagon" x="797" y="381" width="52" height="14" rx="7" />
-  <text class="tagontext" x="823" y="391" text-anchor="middle">K8S ON</text>
-  <text class="eyebrow" x="716" y="408">KAFKA</text>
-  <rect class="evpill" x="765" y="394" width="68" height="20" rx="10" />
-  <text class="pilltext" x="799" y="408" text-anchor="middle">projector</text>
-  <g class="evlit" style="animation: kc1 10s linear infinite"><rect class="evon" x="765" y="394" width="68" height="20" rx="10" /><text class="evtext" x="799" y="408" text-anchor="middle">projector</text></g>
-  <rect class="evpill" x="838" y="394" width="58" height="20" rx="10" />
-  <text class="pilltext" x="867" y="408" text-anchor="middle">sampler</text>
-  <g class="evlit" style="animation: kc2 10s linear infinite"><rect class="evon" x="838" y="394" width="58" height="20" rx="10" /><text class="evtext" x="867" y="408" text-anchor="middle">sampler</text></g>
-  <text class="eyebrow" x="72.0" y="445">PLATFORM</text>
-  <rect x="150.0" y="430" width="64" height="22" rx="11" fill="#f5f5f7" stroke="#e5e5ea" />
-  <text class="pilltext" x="182.0" y="445" text-anchor="middle">FastAPI</text>
-  <rect x="222.0" y="430" width="88" height="22" rx="11" fill="#f5f5f7" stroke="#e5e5ea" />
-  <text class="pilltext" x="266.0" y="445" text-anchor="middle">Python 3.12</text>
-  <rect x="318.0" y="430" width="52" height="22" rx="11" fill="#f5f5f7" stroke="#e5e5ea" />
-  <text class="pilltext" x="344.0" y="445" text-anchor="middle">httpx</text>
-  <rect x="378.0" y="430" width="110" height="22" rx="11" fill="#f5f5f7" stroke="#e5e5ea" />
-  <text class="pilltext" x="433.0" y="445" text-anchor="middle">Docker Compose</text>
-  <rect x="496.0" y="430" width="86" height="22" rx="11" fill="#f5f5f7" stroke="#e5e5ea" />
-  <text class="pilltext" x="539.0" y="445" text-anchor="middle">Kubernetes</text>
-  <rect x="590.0" y="430" width="50" height="22" rx="11" fill="#f5f5f7" stroke="#e5e5ea" />
-  <text class="pilltext" x="615.0" y="445" text-anchor="middle">KEDA</text>
-  <rect x="648.0" y="430" width="54" height="22" rx="11" fill="#f5f5f7" stroke="#e5e5ea" />
-  <text class="pilltext" x="675.0" y="445" text-anchor="middle">Nginx</text>
-  <rect x="710.0" y="430" width="104" height="22" rx="11" fill="#f5f5f7" stroke="#e5e5ea" />
-  <text class="pilltext" x="762.0" y="445" text-anchor="middle">OpenTelemetry</text>
-  <rect x="822.0" y="430" width="66" height="22" rx="11" fill="#f5f5f7" stroke="#e5e5ea" />
-  <text class="pilltext" x="855.0" y="445" text-anchor="middle">Grafana</text>
-  <path class="tail b" pathLength="1" d="M64,76 V156" style="animation-delay: 0.0s" />
-  <path class="head b" pathLength="1" filter="url(#glow)" d="M64,76 V156" style="animation-delay: 0.0s" />
-  <path class="tail b" pathLength="1" d="M116,314 V254" style="animation-delay: 0.5s" />
-  <path class="head b" pathLength="1" filter="url(#glow)" d="M116,314 V254" style="animation-delay: 0.5s" />
-  <path class="tail long o" pathLength="1" d="M116,254 V294 H662 V314" style="animation-delay: 0.95s" />
-  <path class="head long o" pathLength="1" filter="url(#glow)" d="M116,254 V294 H662 V314" style="animation-delay: 0.95s" />
-  <path class="tail long o" pathLength="1" d="M116,254 V294 H480 V314" style="animation-delay: 0.95s" />
-  <path class="head long o" pathLength="1" filter="url(#glow)" d="M116,254 V294 H480 V314" style="animation-delay: 0.95s" />
-  <path class="tail b" pathLength="1" d="M298,254 V314" style="animation-delay: 1.95s" />
-  <path class="head b" pathLength="1" filter="url(#glow)" d="M298,254 V314" style="animation-delay: 1.95s" />
-  <path class="tail long t" pathLength="1" d="M298,254 V294 H844 V314" style="animation-delay: 1.95s" />
-  <path class="head long t" pathLength="1" filter="url(#glow)" d="M298,254 V294 H844 V314" style="animation-delay: 1.95s" />
-  <path class="tail long o" pathLength="1" d="M298,254 V294 H480 V314" style="animation-delay: 2.55s" />
-  <path class="head long o" pathLength="1" filter="url(#glow)" d="M298,254 V294 H480 V314" style="animation-delay: 2.55s" />
-  <path class="tail b" pathLength="1" d="M298,254 V314" style="animation-delay: 3.8s" />
-  <path class="head b" pathLength="1" filter="url(#glow)" d="M298,254 V314" style="animation-delay: 3.8s" />
-  <path class="tail long t" pathLength="1" d="M844,314 V294 H298 V254" style="animation-delay: 3.65s" />
-  <path class="head long t" pathLength="1" filter="url(#glow)" d="M844,314 V294 H298 V254" style="animation-delay: 3.65s" />
-  <path class="tail o" pathLength="1" d="M662,254 V314" style="animation-delay: 5.1s" />
-  <path class="head o" pathLength="1" filter="url(#glow)" d="M662,254 V314" style="animation-delay: 5.1s" />
-  <path class="tail o" pathLength="1" d="M662,254 V314" style="animation-delay: 5.28s" />
-  <path class="head o" pathLength="1" filter="url(#glow)" d="M662,254 V314" style="animation-delay: 5.28s" />
-  <path class="tail long b" pathLength="1" d="M662,254 V294 H298 V314" style="animation-delay: 5.7s" />
-  <path class="head long b" pathLength="1" filter="url(#glow)" d="M662,254 V294 H298 V314" style="animation-delay: 5.7s" />
-  <path class="tail long b" pathLength="1" d="M298,314 V294 H662 V254" style="animation-delay: 6.1s" />
-  <path class="head long b" pathLength="1" filter="url(#glow)" d="M298,314 V294 H662 V254" style="animation-delay: 6.1s" />
-  <path class="tail o" pathLength="1" d="M662,254 V314" style="animation-delay: 6.4s" />
-  <path class="head o" pathLength="1" filter="url(#glow)" d="M662,254 V314" style="animation-delay: 6.4s" />
-  <path class="tail long b" pathLength="1" d="M804,156 V100 H200 V76" style="animation-delay: 7.25s" />
-  <path class="head long b" pathLength="1" filter="url(#glow)" d="M804,156 V100 H200 V76" style="animation-delay: 7.25s" />
-  <path class="tail v" pathLength="1" d="M884,156 V76" style="animation-delay: 7.55s" />
-  <path class="head v" pathLength="1" filter="url(#glow)" d="M884,156 V76" style="animation-delay: 7.55s" />
-  <path class="tail b" pathLength="1" d="M116,254 V314" style="animation-delay: 7.75s" />
-  <path class="head b" pathLength="1" filter="url(#glow)" d="M116,254 V314" style="animation-delay: 7.75s" />
-  <path class="tail long b" pathLength="1" d="M56,388 H298 V377" style="animation-delay: 8.3s" />
-  <path class="head long b" pathLength="1" filter="url(#glow)" d="M56,388 H298 V377" style="animation-delay: 8.3s" />
-  <path class="tail long b" pathLength="1" d="M656,388 H298 V377" style="animation-delay: 8.3s" />
-  <path class="head long b" pathLength="1" filter="url(#glow)" d="M656,388 H298 V377" style="animation-delay: 8.3s" />
-  <path class="tail b" pathLength="1" d="M668,404 H694" style="animation-delay: 8.3s" />
-  <path class="head b" pathLength="1" filter="url(#glow)" d="M668,404 H694" style="animation-delay: 8.3s" />
+  <g class="icon b" transform="translate(61.2 377)"><path d="M8 1 L15 4.5 L8 8 L1 4.5 Z" /><path d="M1 8 L8 11.5 L15 8" /><path d="M1 11.5 L8 15 L15 11.5" /></g>
+  <text class="name" x="84.2" y="390">Redis 7</text>
+  <text class="sub" x="98" y="412" text-anchor="middle">working memory</text>
+  <g class="icon b" transform="translate(196.9 377)"><ellipse cx="8" cy="3.5" rx="6.5" ry="2.5" /><path d="M1.5 3.5 V12.5 C1.5 15.8 14.5 15.8 14.5 12.5 V3.5" /><path d="M1.5 8 C1.5 11.3 14.5 11.3 14.5 8" /></g>
+  <text class="name" x="219.9" y="390">PostgreSQL 16</text>
+  <text class="sub" x="260" y="412" text-anchor="middle">pgvector · tsvector</text>
+  <g class="icon o" transform="translate(357.4 377)"><path d="M2 13 L13 2" /><path d="M2 13 L14 9" /><path d="M2 13 L6 1.5" /></g>
+  <text class="name" x="380.4" y="390">Embedding API</text>
+  <text class="sub" x="422" y="412" text-anchor="middle">/embeddings · /rerank</text>
+  <g class="icon o" transform="translate(528.8 377)"><path d="M8 0.5 C8.6 5 10.9 7.3 15.5 8 C10.9 8.7 8.6 11 8 15.5 C7.4 11 5.1 8.7 0.5 8 C5.1 7.3 7.4 5 8 0.5 Z" /></g>
+  <text class="name" x="551.8" y="390">Chat models</text>
+  <text class="sub" x="584" y="412" text-anchor="middle">Anthropic · OpenAI</text>
+  <g class="icon t" transform="translate(681.5 377)"><rect x="1" y="4" width="14" height="10" rx="3" /><path d="M8 4 V1" /><circle cx="5.5" cy="9" r="0.9" class="ft" /><circle cx="10.5" cy="9" r="0.9" class="ft" /></g>
+  <text class="name" x="704.5" y="390">ai-sql-agent</text>
+  <text class="sub" x="746" y="412" text-anchor="middle">peer agent · A2A</text>
+  <path class="loopline t" d="M809.5 388 A7 7 0 1 1 808.5 380.5" marker-end="url(#mt)" />
+  <circle cx="803.5" cy="378" r="2.4" fill="#0d9488" style="transform-box: view-box; transform-origin: 803.5px 385px; animation: spin 10s linear infinite" />
+  <rect class="ring b" x="21" y="359" width="154" height="76" rx="17" style="animation: rredis1 10s linear infinite" />
+  <rect class="ring b" x="21" y="359" width="154" height="76" rx="17" style="animation: rredis2 10s linear infinite" />
+  <rect class="ring b" x="183" y="359" width="154" height="76" rx="17" style="animation: rpg1 10s linear infinite" />
+  <rect class="ring b" x="183" y="359" width="154" height="76" rx="17" style="animation: rpg2 10s linear infinite" />
+  <rect class="ring b" x="183" y="359" width="154" height="76" rx="17" style="animation: rpg3 10s linear infinite" />
+  <rect class="ring b" x="183" y="359" width="154" height="76" rx="17" style="animation: rpg4 10s linear infinite" />
+  <rect class="ring o" x="345" y="359" width="154" height="76" rx="17" style="animation: remb1 10s linear infinite" />
+  <rect class="ring o" x="345" y="359" width="154" height="76" rx="17" style="animation: remb2 10s linear infinite" />
+  <rect class="ring o" x="507" y="359" width="154" height="76" rx="17" style="animation: rllm1 10s linear infinite" />
+  <rect class="ring o" x="507" y="359" width="154" height="76" rx="17" style="animation: rllm2 10s linear infinite" />
+  <rect class="ring o" x="507" y="359" width="154" height="76" rx="17" style="animation: rllm3 10s linear infinite" />
+  <rect class="ring t" x="669" y="359" width="154" height="76" rx="17" style="animation: rsql 10s linear infinite" />
+  <path class="wire" d="M260,450 V435" marker-end="url(#arrow)" />
+  <rect x="16" y="450" width="812" height="36" rx="18" fill="#f6f8fc" stroke="#e1e7f0" />
+  <text class="eyebrow" x="32" y="472">TURN EVENT LOG</text>
+  <rect class="evpill" x="156" y="457" width="54" height="22" rx="11" />
+  <text class="pilltext" x="183" y="472.3" text-anchor="middle">intent</text>
+  <g class="evlit" style="animation: ev1 10s linear infinite"><rect class="evon" x="156" y="457" width="54" height="22" rx="11" /><text class="evtext" x="183" y="472.3" text-anchor="middle">intent</text></g>
+  <rect class="evpill" x="220" y="457" width="70" height="22" rx="11" />
+  <text class="pilltext" x="255" y="472.3" text-anchor="middle">prefetch</text>
+  <g class="evlit" style="animation: ev2 10s linear infinite"><rect class="evon" x="220" y="457" width="70" height="22" rx="11" /><text class="evtext" x="255" y="472.3" text-anchor="middle">prefetch</text></g>
+  <rect class="evpill" x="300" y="457" width="62" height="22" rx="11" />
+  <text class="pilltext" x="331" y="472.3" text-anchor="middle">routing</text>
+  <g class="evlit" style="animation: ev3 10s linear infinite"><rect class="evon" x="300" y="457" width="62" height="22" rx="11" /><text class="evtext" x="331" y="472.3" text-anchor="middle">routing</text></g>
+  <rect class="evpill" x="372" y="457" width="86" height="22" rx="11" />
+  <text class="pilltext" x="415" y="472.3" text-anchor="middle">model calls</text>
+  <g class="evlit" style="animation: ev4 10s linear infinite"><rect class="evon" x="372" y="457" width="86" height="22" rx="11" /><text class="evtext" x="415" y="472.3" text-anchor="middle">model calls</text></g>
+  <rect class="evpill" x="468" y="457" width="72" height="22" rx="11" />
+  <text class="pilltext" x="504" y="472.3" text-anchor="middle">tool calls</text>
+  <g class="evlit" style="animation: ev5 10s linear infinite"><rect class="evon" x="468" y="457" width="72" height="22" rx="11" /><text class="evtext" x="504" y="472.3" text-anchor="middle">tool calls</text></g>
+  <rect class="evpill" x="550" y="457" width="54" height="22" rx="11" />
+  <text class="pilltext" x="577" y="472.3" text-anchor="middle">guard</text>
+  <g class="evlit" style="animation: ev6 10s linear infinite"><rect class="evon" x="550" y="457" width="54" height="22" rx="11" /><text class="evtext" x="577" y="472.3" text-anchor="middle">guard</text></g>
+  <rect class="evpill" x="614" y="457" width="62" height="22" rx="11" />
+  <text class="pilltext" x="645" y="472.3" text-anchor="middle">answer</text>
+  <g class="evlit" style="animation: ev7 10s linear infinite"><rect class="evon" x="614" y="457" width="62" height="22" rx="11" /><text class="evtext" x="645" y="472.3" text-anchor="middle">answer</text></g>
+  <rect class="evpill" x="686" y="457" width="66" height="22" rx="11" />
+  <text class="pilltext" x="719" y="472.3" text-anchor="middle">handoff</text>
+  <g class="evlit" style="animation: ev8 10s linear infinite"><rect class="evon" x="686" y="457" width="66" height="22" rx="11" /><text class="evtext" x="719" y="472.3" text-anchor="middle">handoff</text></g>
+  <path class="optwire" d="M790,486 V513" marker-end="url(#arrow)" />
+  <rect class="optstrip" x="560" y="516" width="268" height="48" rx="18" />
+  <rect class="ring b" x="557" y="513" width="274" height="54" rx="21" style="animation: rkafka 10s linear infinite" />
+  <rect class="opttag" x="576" y="509" width="116" height="14" rx="7" />
+  <text class="opttext" x="634" y="519.5" text-anchor="middle">COMPOSE OPT-IN</text>
+  <rect class="tagon" x="696" y="509" width="60" height="14" rx="7" />
+  <text class="tagontext" x="726" y="519.5" text-anchor="middle">K8S ON</text>
+  <text class="eyebrow" x="576" y="547.8">KAFKA</text>
+  <rect class="evpill" x="632" y="533" width="74" height="22" rx="11" />
+  <text class="pilltext" x="669" y="548.3" text-anchor="middle">projector</text>
+  <g class="evlit" style="animation: kc1 10s linear infinite"><rect class="evon" x="632" y="533" width="74" height="22" rx="11" /><text class="evtext" x="669" y="548.3" text-anchor="middle">projector</text></g>
+  <rect class="evpill" x="714" y="533" width="66" height="22" rx="11" />
+  <text class="pilltext" x="747" y="548.3" text-anchor="middle">sampler</text>
+  <g class="evlit" style="animation: kc2 10s linear infinite"><rect class="evon" x="714" y="533" width="66" height="22" rx="11" /><text class="evtext" x="747" y="548.3" text-anchor="middle">sampler</text></g>
+  <text class="eyebrow" x="32" y="528.5">PLATFORM</text>
+  <rect class="platpill" x="113" y="512" width="66" height="24" rx="12" />
+  <text class="pilltext" x="146" y="528.3" text-anchor="middle">FastAPI</text>
+  <rect class="platpill" x="187" y="512" width="90" height="24" rx="12" />
+  <text class="pilltext" x="232" y="528.3" text-anchor="middle">Python 3.12</text>
+  <rect class="platpill" x="285" y="512" width="52" height="24" rx="12" />
+  <text class="pilltext" x="311" y="528.3" text-anchor="middle">httpx</text>
+  <rect class="platpill" x="345" y="512" width="110" height="24" rx="12" />
+  <text class="pilltext" x="400" y="528.3" text-anchor="middle">OpenTelemetry</text>
+  <rect class="platpill" x="463" y="512" width="68" height="24" rx="12" />
+  <text class="pilltext" x="497" y="528.3" text-anchor="middle">Grafana</text>
+  <rect class="platpill" x="113" y="544" width="56" height="24" rx="12" />
+  <text class="pilltext" x="141" y="560.3" text-anchor="middle">Nginx</text>
+  <rect class="platpill" x="177" y="544" width="122" height="24" rx="12" />
+  <text class="pilltext" x="238" y="560.3" text-anchor="middle">Docker Compose</text>
+  <rect class="platpill" x="307" y="544" width="88" height="24" rx="12" />
+  <text class="pilltext" x="351" y="560.3" text-anchor="middle">Kubernetes</text>
+  <rect class="platpill" x="403" y="544" width="54" height="24" rx="12" />
+  <text class="pilltext" x="430" y="560.3" text-anchor="middle">KEDA</text>
+  <path class="tail b" pathLength="1" d="M40,80 V176" style="animation-delay: 0.0s" />
+  <path class="head b" pathLength="1" filter="url(#glow)" d="M40,80 V176" style="animation-delay: 0.0s" />
+  <path class="tail b" pathLength="1" d="M98,362 V302" style="animation-delay: 0.5s" />
+  <path class="head b" pathLength="1" filter="url(#glow)" d="M98,362 V302" style="animation-delay: 0.5s" />
+  <path class="tail long o" pathLength="1" d="M98,302 V340 H584 V362" style="animation-delay: 0.95s" />
+  <path class="head long o" pathLength="1" filter="url(#glow)" d="M98,302 V340 H584 V362" style="animation-delay: 0.95s" />
+  <path class="tail long o" pathLength="1" d="M98,302 V340 H422 V362" style="animation-delay: 0.95s" />
+  <path class="head long o" pathLength="1" filter="url(#glow)" d="M98,302 V340 H422 V362" style="animation-delay: 0.95s" />
+  <path class="tail b" pathLength="1" d="M260,302 V362" style="animation-delay: 1.95s" />
+  <path class="head b" pathLength="1" filter="url(#glow)" d="M260,302 V362" style="animation-delay: 1.95s" />
+  <path class="tail long t" pathLength="1" d="M260,302 V340 H746 V362" style="animation-delay: 1.95s" />
+  <path class="head long t" pathLength="1" filter="url(#glow)" d="M260,302 V340 H746 V362" style="animation-delay: 1.95s" />
+  <path class="tail long o" pathLength="1" d="M260,302 V340 H422 V362" style="animation-delay: 2.55s" />
+  <path class="head long o" pathLength="1" filter="url(#glow)" d="M260,302 V340 H422 V362" style="animation-delay: 2.55s" />
+  <path class="tail b" pathLength="1" d="M260,302 V362" style="animation-delay: 3.8s" />
+  <path class="head b" pathLength="1" filter="url(#glow)" d="M260,302 V362" style="animation-delay: 3.8s" />
+  <path class="tail long t" pathLength="1" d="M746,362 V340 H260 V302" style="animation-delay: 3.65s" />
+  <path class="head long t" pathLength="1" filter="url(#glow)" d="M746,362 V340 H260 V302" style="animation-delay: 3.65s" />
+  <path class="tail o" pathLength="1" d="M584,302 V362" style="animation-delay: 5.1s" />
+  <path class="head o" pathLength="1" filter="url(#glow)" d="M584,302 V362" style="animation-delay: 5.1s" />
+  <path class="tail o" pathLength="1" d="M584,302 V362" style="animation-delay: 5.28s" />
+  <path class="head o" pathLength="1" filter="url(#glow)" d="M584,302 V362" style="animation-delay: 5.28s" />
+  <path class="tail long b" pathLength="1" d="M584,302 V340 H260 V362" style="animation-delay: 5.7s" />
+  <path class="head long b" pathLength="1" filter="url(#glow)" d="M584,302 V340 H260 V362" style="animation-delay: 5.7s" />
+  <path class="tail long b" pathLength="1" d="M260,362 V340 H584 V302" style="animation-delay: 6.1s" />
+  <path class="head long b" pathLength="1" filter="url(#glow)" d="M260,362 V340 H584 V302" style="animation-delay: 6.1s" />
+  <path class="tail o" pathLength="1" d="M584,302 V362" style="animation-delay: 6.4s" />
+  <path class="head o" pathLength="1" filter="url(#glow)" d="M584,302 V362" style="animation-delay: 6.4s" />
+  <path class="tail long b" pathLength="1" d="M712,176 V108 H200 V80" style="animation-delay: 7.25s" />
+  <path class="head long b" pathLength="1" filter="url(#glow)" d="M712,176 V108 H200 V80" style="animation-delay: 7.25s" />
+  <path class="tail v" pathLength="1" d="M792,176 V80" style="animation-delay: 7.55s" />
+  <path class="head v" pathLength="1" filter="url(#glow)" d="M792,176 V80" style="animation-delay: 7.55s" />
+  <path class="tail b" pathLength="1" d="M98,302 V362" style="animation-delay: 7.75s" />
+  <path class="head b" pathLength="1" filter="url(#glow)" d="M98,302 V362" style="animation-delay: 7.75s" />
+  <path class="tail long b" pathLength="1" d="M32,450 H260 V435" style="animation-delay: 8.3s" />
+  <path class="head long b" pathLength="1" filter="url(#glow)" d="M32,450 H260 V435" style="animation-delay: 8.3s" />
+  <path class="tail long b" pathLength="1" d="M812,450 H260 V435" style="animation-delay: 8.3s" />
+  <path class="head long b" pathLength="1" filter="url(#glow)" d="M812,450 H260 V435" style="animation-delay: 8.3s" />
+  <path class="tail b" pathLength="1" d="M790,486 V513" style="animation-delay: 8.3s" />
+  <path class="head b" pathLength="1" filter="url(#glow)" d="M790,486 V513" style="animation-delay: 8.3s" />
 </svg>
