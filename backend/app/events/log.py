@@ -292,6 +292,20 @@ class EventLog:
             out["disabled_reason"] = config.disabled_reason
         return out
 
+    async def flush(self, timeout_s: float = 1.0) -> bool:
+        """
+        等这一刻之前记下的事件都送到（库，或者 Kafka 确认收下）。排队模式下 worker 在把 run 记成
+        跑完之前调：跑完的 run，它那一轮在日志里一定是结束了的。超时返回 False，不抛——日志
+        不可用时不拖住 run。没有写入器（进程内存储、日志关着）时立刻返回 True。
+        """
+        if self._writer is None:
+            return True
+        try:
+            return await self._writer.flush(timeout_s)
+        except Exception:
+            logger.debug("等事件日志送达时出错", exc_info=True)
+            return False
+
     async def close(self, timeout_s: float = 10.0) -> None:
         """停机：停保留任务，限时把没写的写完。"""
         if self._retention_task is not None:

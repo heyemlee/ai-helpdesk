@@ -317,6 +317,34 @@ async def test_events_after_a_turn_ended_are_ignored_and_a_turn_that_never_ends_
     assert sampler.open_turns == 0 and consumer.offsets[-1] == {TP: 4}
 
 
+async def test_after_a_restart_the_tail_of_a_finished_turn_does_not_open_a_turn():
+    """
+    重启后从提交点重读，读到的是早已结束的那一轮的尾巴（终结事件之后的后台任务）：它的开头在提交点
+    之前，不会再来。开成一轮的话永远等不到结束，提交点就一直压在那里——演练撞上过。
+    """
+    db, consumer = Candidates(), Commits()
+    sampler = _sampler(db)
+    tail = [_event("t-old", 5, "model_call", data={"purpose": "profile"}),       # 上一个进程已经采过的那一轮
+            *_answered("t-new", conv="c2", outcome="handoff")]
+    await sampler.handle(consumer, TP, _messages(tail, start=40))
+    await sampler.tick(consumer)
+    assert sampler.open_turns == 0 and consumer.offsets[-1] == {TP: 43}
+    assert [key[2] for key in db.rows] == ["t-new"]
+
+
+async def test_a_turn_left_open_stops_holding_the_commit_point_after_a_while():
+    db, consumer, clock = Candidates(), Commits(), Clock()
+    sampler = _sampler(db, clock, hold_s=120, max_open_s=600)
+    await sampler.handle(consumer, TP, _messages([_event("t-stuck", 0, "turn_started"), *_answered("t2", conv="c2")]))
+    await sampler.tick(consumer)
+    assert consumer.offsets[-1] == {TP: 0}                            # 还在等它
+    clock.now += 121
+    await sampler.tick(consumer)
+    assert consumer.offsets[-1] == {TP: 3} and sampler.open_turns == 1   # 不再压着提交点，但还在等它结束
+    await sampler.handle(consumer, TP, _messages([_event("t-stuck", 1, "turn_failed")], start=3))
+    assert ("staff", NO_RANDOM.label, "t-stuck") in db.rows
+
+
 async def test_partitions_handed_to_another_consumer_are_committed_and_forgotten():
     db, consumer = Candidates(), Commits()
     sampler = _sampler(db)

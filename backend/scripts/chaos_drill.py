@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
 import os
 import random
 import subprocess
@@ -87,6 +88,36 @@ class ComposeDriver:
         subprocess.run(["docker", "compose", "-f", self.compose_file, "restart", "--timeout", "60", "worker"],
                        check=True, capture_output=True, text=True)
 
+    # 事件日志的 Kafka 那一侧（--kafka）：service 是 projector / sampler / kafka
+    def kill_service(self, service: str) -> str | None:
+        """硬杀这个服务的容器。还没起来（上一次杀了还没回来）时返回 None，不算错。"""
+        name = f"{self.project}-{service}-1"
+        if self._docker("inspect", "-f", "{{.State.Running}}", name) != "true":
+            return None
+        self._docker("kill", "--signal", "KILL", name)
+        return name
+
+    def start_service(self, service: str) -> None:
+        self._docker("start", f"{self.project}-{service}-1")
+
+    def restart_kafka(self) -> None:
+        self._docker("restart", f"{self.project}-kafka-1")
+
+    def producer_drops(self) -> dict[str, int] | None:
+        """API 和每个 worker 的事件日志丢了多少条（按原因）：从各自的 /health 读。"""
+        names = ["api"] + [n.removeprefix(f"{self.project}-") for n in self.workers()]
+        total: dict[str, int] = {}
+        for name in names:
+            try:
+                raw = self._docker("exec", f"{self.project}-{name}" if name.startswith("worker") else
+                                   f"{self.project}-{name}-1", "curl", "-s", "localhost:8000/health")
+                dropped = (json.loads(raw).get("event_log") or {}).get("dropped_by_reason") or {}
+            except (subprocess.CalledProcessError, ValueError):
+                return None
+            for reason, n in dropped.items():
+                total[reason] = total.get(reason, 0) + n
+        return total
+
 
 class K8sDriver:
     """kind 那一套：worker 是 deploy/worker-staff 的 pod，删掉之后 Deployment 自己补一个。"""
@@ -117,6 +148,25 @@ class K8sDriver:
     def rollout(self) -> None:
         """发版：滚动重启 worker。旧 pod 收到 SIGTERM 排空，新 pod 就绪后才删下一个。"""
         self._kubectl("rollout", "restart", "deploy/worker-staff")
+
+    # 事件日志的 Kafka 那一侧（--kafka）：pod 的标签是 projector-staff / sampler-staff / kafka
+    def kill_service(self, service: str) -> str | None:
+        component = service if service == "kafka" else f"{service}-staff"
+        out = self._kubectl("get", "pods", "-l", f"app.kubernetes.io/component={component}",
+                            "--field-selector=status.phase=Running", "-o", "name")
+        pods = [line.split("/", 1)[1] for line in out.splitlines() if line]
+        for pod in pods:
+            self._kubectl("delete", "pod", pod, "--grace-period=0", "--force", "--wait=false")
+        return ", ".join(pods) or None
+
+    def start_service(self, service: str) -> None:
+        return None                      # Deployment 自己补
+
+    def restart_kafka(self) -> None:
+        self._kubectl("delete", "pod", "-l", "app.kubernetes.io/component=kafka", "--wait=false")
+
+    def producer_drops(self) -> dict[str, int] | None:
+        return None                      # 没有逐个 pod 去读；靠 seq 缺口和终结事件那一条不变量发现丢失
 
 
 # ── 演练 ──────────────────────────────────────────────────────────────────────
@@ -242,6 +292,13 @@ async def chaos(drill: Drill, mock: httpx.AsyncClient) -> None:
         events.append((args.first_kill + args.kill_every * 1.5, "storm"))
     if args.rollout:
         events.append((args.first_kill + args.kill_every * max(args.kills, 1) + 2, "rollout"))
+    if args.kafka:
+        # 同一个消费者两次被杀之间要隔开它躺着的那段时间，不然第二次杀的是一个还没起来的容器
+        spacing = max(args.kill_every, args.down_for + 2)
+        events += [(args.first_kill + 2 + n * spacing, "kill:projector") for n in range(args.kill_projector)]
+        events += [(args.first_kill + 6 + n * spacing, "kill:sampler") for n in range(args.kill_sampler)]
+        if args.restart_kafka:
+            events.append((args.first_kill + args.kill_every * 1.25, "kafka"))
     revive: list[asyncio.Task] = []
     for at, kind in sorted(events):
         await asyncio.sleep(max(0.0, drill.started + at - time.time()))
@@ -270,6 +327,24 @@ async def chaos(drill: Drill, mock: httpx.AsyncClient) -> None:
             drill.note("restarting the workers as a deploy would (SIGTERM, drain)")
             await asyncio.to_thread(drill.driver.rollout)
             drill.note("restart command returned")
+        elif kind.startswith("kill:"):
+            service = kind.split(":", 1)[1]
+            victim = drill.driver.kill_service(service)
+            if victim is None:
+                drill.note(f"{service} not running, kill skipped")
+                continue
+            drill.note(f"SIGKILL {service} {victim}")
+
+            async def bring_service_back(name: str = service) -> None:
+                await asyncio.sleep(args.down_for)
+                drill.driver.start_service(name)
+                drill.note(f"{name} back")
+
+            revive.append(asyncio.create_task(bring_service_back()))
+        elif kind == "kafka":
+            drill.note("Kafka broker restarting")
+            await asyncio.to_thread(drill.driver.restart_kafka)
+            drill.note("Kafka broker restart command returned")
     await asyncio.gather(*revive)
 
 
@@ -295,6 +370,239 @@ async def _retry(call, attempts: int = 30):
             if n == attempts - 1:
                 raise
             await asyncio.sleep(1.0)
+
+
+
+# ── 事件日志的 Kafka 那一侧（--kafka）──────────────────────────────────────────
+#
+# 演练栈要用 kafka 那一档起：DRILL_EVENT_SINK=kafka docker compose ... --profile kafka up -d --wait。
+# 这一侧的问题也只有一个：broker 重启、消费者被杀，事件会不会丢、会不会多、采样会不会漏。
+# 跑完之后（run 都到了终态、两个消费组的积压都是 0）只看这次演练的会话：
+#
+# K1. topic 里这些会话的事件，和 turn_events 里的一一对上（投影没丢、没多）；
+# K2. 每一轮都结束了：自己的终结事件，或者别人替它补的 turn_abandoned；自己编号的那一段没有缺口；
+# K3. 采样挑出来的，和拿库里的事件按同一套规则重算的一样：没漏、没多；
+# K4. 死信 topic 里没有新东西；
+# K5. （--replay）删掉投影、按删除请求删几个会话，换一个消费组从头重建：对得上，删过的不回来。
+
+def _backend_on_path() -> None:
+    backend = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if backend not in sys.path:
+        sys.path.insert(0, backend)
+
+
+class KafkaSide:
+    def __init__(self, drill: Drill, bootstrap: str):
+        _backend_on_path()
+        from app.events.consumers import SamplingRules, group_id
+        from app.events.kafka import KafkaSettings
+
+        self.drill = drill
+        self.settings = KafkaSettings(bootstrap=bootstrap)
+        self.topic = self.settings.topic("staff")
+        self.dlq = self.settings.dead_letter_topic("staff")
+        self.rules = SamplingRules()
+        self.groups = {"projector": group_id(self.settings, "projector", "staff"),
+                       "sampler": group_id(self.settings, "sampler", "staff", self.rules.label)}
+        self.lag_samples: list[tuple[float, int, int]] = []
+        self.dlq_start: int | None = None
+
+    async def _end(self, topic: str) -> dict[Any, int]:
+        from aiokafka import AIOKafkaConsumer
+        from aiokafka.structs import TopicPartition
+
+        consumer = AIOKafkaConsumer(bootstrap_servers=self.settings.bootstrap, group_id=None)
+        await consumer.start()
+        try:
+            partitions = [TopicPartition(topic, p) for p in (consumer.partitions_for_topic(topic) or
+                                                             await self._partitions(consumer, topic))]
+            return await consumer.end_offsets(partitions)
+        finally:
+            await consumer.stop()
+
+    @staticmethod
+    async def _partitions(consumer, topic: str) -> set[int]:
+        await consumer._client.force_metadata_update()
+        return consumer.partitions_for_topic(topic) or set()
+
+    async def lag(self, group: str) -> int:
+        from aiokafka.admin import AIOKafkaAdminClient
+
+        ends = await self._end(self.topic)
+        admin = AIOKafkaAdminClient(bootstrap_servers=self.settings.bootstrap)
+        await admin.start()
+        try:
+            committed = await admin.list_consumer_group_offsets(group)
+        finally:
+            await admin.close()
+        return sum(max(end - (committed[tp].offset if tp in committed else 0), 0) for tp, end in ends.items())
+
+    async def watch(self, stop: asyncio.Event) -> None:
+        """演练期间每秒记一次两个消费组的积压，报告里给最大值和追平用了多久。"""
+        while not stop.is_set():
+            try:
+                self.lag_samples.append((time.time() - self.drill.started, await self.lag(self.groups["projector"]),
+                                         await self.lag(self.groups["sampler"])))
+            except Exception:
+                pass                      # broker 正在重启：这一秒没有样本
+            try:
+                await asyncio.wait_for(stop.wait(), timeout=1.0)
+            except TimeoutError:
+                pass
+
+    async def wait_caught_up(self, timeout_s: float) -> float | None:
+        started = time.time()
+        while time.time() - started < timeout_s:
+            try:
+                if await self.lag(self.groups["projector"]) == 0 and await self.lag(self.groups["sampler"]) == 0:
+                    await asyncio.sleep(1.0)               # 采样器每 5 秒提交一次：再看一眼确认
+                    if await self.lag(self.groups["sampler"]) == 0:
+                        self.drill.note("both consumer groups caught up (lag 0)")
+                        return time.time() - started
+            except Exception:
+                pass
+            await asyncio.sleep(1.0)
+        self.drill.note(f"consumer groups still lagging after {timeout_s:.0f} s")
+        return None
+
+    async def read(self, topic: str, start: dict[Any, int] | None = None) -> list[Any]:
+        from aiokafka import AIOKafkaConsumer
+
+        consumer = AIOKafkaConsumer(topic, bootstrap_servers=self.settings.bootstrap, group_id=None,
+                                    auto_offset_reset="earliest", enable_auto_commit=False)
+        await consumer.start()
+        out, idle = [], 0
+        try:
+            if start:
+                await consumer.getmany(timeout_ms=100)
+                for tp, offset in start.items():
+                    if tp in consumer.assignment():
+                        consumer.seek(tp, offset)
+            while idle < 3:
+                messages = [m for batch in (await consumer.getmany(timeout_ms=1000)).values() for m in batch]
+                idle = 0 if messages else idle + 1
+                out.extend(messages)
+        finally:
+            await consumer.stop()
+        return out
+
+    async def verify(self, pg: asyncpg.Pool, dsn: str) -> dict[str, Any]:
+        from app.events.consumers import reasons_for
+        from app.events.kafka import BadEvent, decode
+        from app.events.types import CLOSING_TYPES, TERMINAL_TYPES, event_from_row, own_seq
+
+        convs = {s.conv_id for s in self.drill.submitted}
+        decoded = []
+        for message in await self.read(self.topic):
+            try:
+                event = decode(message.value)
+            except BadEvent:
+                continue
+            if event.conv_id in convs:
+                decoded.append(event)
+        in_kafka = {(e.turn_id, e.seq) for e in decoded}
+        rows = await pg.fetch("SELECT * FROM turn_events WHERE instance = 'staff' AND conv_id = ANY($1)", list(convs))
+        events = [event_from_row(r) for r in rows]
+        in_pg = {(e.turn_id, e.seq) for e in events}
+
+        by_turn: dict[str, list[Any]] = {}
+        for event in events:
+            by_turn.setdefault(event.turn_id, []).append(event)
+        unclosed, gaps, abandoned = [], [], 0
+        expected: dict[str, list[str]] = {}
+        for turn_id, turn in by_turn.items():
+            turn.sort(key=lambda e: e.seq)
+            own = [e for e in turn if own_seq(e.seq)]
+            kinds = {e.type for e in turn}
+            if not kinds & CLOSING_TYPES:
+                unclosed.append(turn_id)
+                continue
+            if not any(e.type in TERMINAL_TYPES for e in own):
+                abandoned += 1
+            if [e.seq for e in own] != list(range(len(own))):
+                gaps.append(turn_id)
+            reasons = reasons_for(turn, self.rules)
+            if reasons:
+                expected[turn_id] = reasons
+        sampled = {r["turn_id"]: json.loads(r["reasons"]) for r in await pg.fetch(
+            "SELECT turn_id, reasons FROM eval_candidates WHERE instance = 'staff' AND rules = $1 AND conv_id = ANY($2)",
+            self.rules.label, list(convs))}
+        dlq_end = sum((await self._end(self.dlq)).values())
+
+        failures = {
+            "kafka_projection": [f"missing in Postgres: {t}#{s}" for t, s in sorted(in_kafka - in_pg)]
+            + [f"in Postgres, not in Kafka: {t}#{s}" for t, s in sorted(in_pg - in_kafka)],
+            "kafka_closed": [f"no terminal event: {t}" for t in unclosed] + [f"seq gap: {t}" for t in gaps],
+            "kafka_sampler": [f"missed: {t} {r}" for t, r in expected.items() if t not in sampled]
+            + [f"extra: {t} {r}" for t, r in sampled.items() if t not in expected]
+            + [f"reasons differ: {t} {sampled[t]} vs {r}" for t, r in expected.items() if t in sampled and sampled[t] != r],
+            "kafka_dlq": [f"{dlq_end - (self.dlq_start or 0)} new dead-letter messages"]
+            if self.dlq_start is not None and dlq_end > self.dlq_start else [],
+        }
+        reasons_count: dict[str, int] = {}
+        for reasons in sampled.values():
+            for reason in reasons:
+                reasons_count[reason] = reasons_count.get(reason, 0) + 1
+        peak = (max((p for _, p, _ in self.lag_samples), default=None),
+                max((q for _, _, q in self.lag_samples), default=None))
+        numbers = {
+            "kafka_messages": len(decoded),
+            "kafka_duplicates": len(decoded) - len(in_kafka),
+            "turns": len(by_turn),
+            "abandoned_turns": abandoned,
+            "candidates": len(sampled),
+            "candidates_by_reason": reasons_count,
+            "peak_lag": {"projector": peak[0], "sampler": peak[1]},
+            "producer_drops": self.drill.driver.producer_drops(),
+        }
+        if self.drill.args.replay:
+            failures["kafka_replay"], numbers["replay"] = await self.replay(pg, dsn, convs, decoded)
+        return {"failures": failures, "numbers": numbers}
+
+    async def replay(self, pg: asyncpg.Pool, dsn: str, convs: set[str], decoded: list[Any]) -> tuple[list[str], dict]:
+        """删掉这次演练的投影，按删除请求删几个会话，换一个消费组从头重建：要和 topic 对得上，删过的不回来。"""
+        from app.events.consumers import ConsumerSettings, Projector
+        from app.events.store import PgEventStore
+        from app.storage.pg import Database
+
+        db = Database(dsn, max_size=4)
+        await db.connect_pool()
+        store = PgEventStore(db, "staff")
+        forgotten = set(random.sample(sorted(convs), min(self.drill.args.forget, len(convs))))
+        for conv_id in forgotten:
+            await store.delete_conversation(conv_id)
+        await pg.execute("DELETE FROM turn_events WHERE instance = 'staff' AND conv_id = ANY($1)", list(convs))
+        self.drill.note(f"projection deleted; {len(forgotten)} conversations forgotten; rebuilding from Kafka")
+        expected = {(e.turn_id, e.seq) for e in decoded if e.conv_id not in forgotten}
+
+        async def rows() -> list[asyncpg.Record]:
+            return await pg.fetch("SELECT turn_id, seq, conv_id FROM turn_events WHERE instance = 'staff'"
+                                  " AND conv_id = ANY($1)", list(convs))
+
+        projector = Projector(ConsumerSettings(instance="staff", kafka=self.settings), store)
+        projector.group += f".replay-{uuid.uuid4().hex[:6]}"
+        stop = asyncio.Event()
+        task = asyncio.create_task(projector.run(stop))
+        started = time.time()
+        try:
+            while time.time() - started < 120:
+                await asyncio.sleep(1.0)
+                if {(r["turn_id"], r["seq"]) for r in await rows()} >= expected and await self.lag(projector.group) == 0:
+                    break
+        finally:
+            stop.set()
+            await asyncio.wait_for(task, 30)
+            await db.close()
+        took = time.time() - started
+        final = await rows()
+        rebuilt = {(r["turn_id"], r["seq"]) for r in final if r["conv_id"] not in forgotten}
+        back = sum(1 for r in final if r["conv_id"] in forgotten)
+        self.drill.note(f"projection rebuilt in {took:.1f} s: {len(rebuilt)} rows")
+        failures = ([f"{back} rows of forgotten conversations came back"] if back else []) \
+            + ([f"{len(expected - rebuilt)} rows not rebuilt"] if expected - rebuilt else []) \
+            + ([f"{len(rebuilt - expected)} rows rebuilt that are not in Kafka"] if rebuilt - expected else [])
+        return failures, {"rebuilt_rows": len(rebuilt), "forgotten_conversations": len(forgotten),
+                          "rebuild_s": round(took, 1), "forgotten_rows_back": back}
 
 
 def _pct(values: list[float], q: float) -> float | None:
@@ -416,7 +724,19 @@ def report_markdown(drill: Drill, summary: dict[str, Any], mock_stats: dict[str,
         f"a {a.storm:g} s storm of 429s from the model" if a.storm else "",
         "the workers restarted as a deploy would (SIGTERM, drain)" if a.rollout else "",
         "Redis flushed (data loss) once" if a.flush_redis else "",
+        f"the projector SIGKILLed {a.kill_projector} times" if a.kafka and a.kill_projector else "",
+        f"the sampler SIGKILLed {a.kill_sampler} times" if a.kafka and a.kill_sampler else "",
+        "the Kafka broker restarted once" if a.kafka and a.restart_kafka else "",
     ]
+    if a.kafka:
+        checks += [
+            ("K1 Events in Kafka and rows in turn_events match one to one", "kafka_projection"),
+            ("K2 Every turn closed (own terminal event or turn_abandoned), no seq gaps", "kafka_closed"),
+            ("K3 Sampled candidates equal the rules recomputed from the event log", "kafka_sampler"),
+            ("K4 Nothing new in the dead-letter topic", "kafka_dlq"),
+        ]
+        if a.replay:
+            checks.append(("K5 A rebuild from Kafka matches, forgotten conversations stay gone", "kafka_replay"))
     lines = [
         f"### Drill {time.strftime('%Y-%m-%d %H:%M', time.localtime(drill.started))} ({a.driver})",
         "",
@@ -450,6 +770,23 @@ def report_markdown(drill: Drill, summary: dict[str, Any], mock_stats: dict[str,
         f"{secs(summary['interrupted_total_s']['max'])} |",
         f"| Clients that dropped on purpose / reconnects | {summary['readers']} / {summary['reader_reconnects']} |",
         f"| Model requests by status | {mock_stats.get('statuses')} |",
+    ]
+    if a.kafka:
+        k = summary.get("kafka", {})
+        replay = k.get("replay") or {}
+        lines += [
+            f"| Events in Kafka for these runs / duplicates | {k.get('kafka_messages')} / {k.get('kafka_duplicates')} |",
+            f"| Turns / closed by turn_abandoned | {k.get('turns')} / {k.get('abandoned_turns')} |",
+            f"| Peak lag, projector / sampler (messages) | {k.get('peak_lag', {}).get('projector')} / "
+            f"{k.get('peak_lag', {}).get('sampler')} |",
+            f"| Consumers caught up after the runs ended (s) | {secs(k.get('catch_up_s'))} |",
+            f"| Events dropped by producers | {k.get('producer_drops') if k.get('producer_drops') is not None else 'not collected'} |",
+            f"| Eval candidates by reason | {k.get('candidates_by_reason')} |",
+        ]
+        if replay:
+            lines.append(f"| Rebuild: rows / forgotten conversations / seconds | {replay.get('rebuilt_rows')} / "
+                         f"{replay.get('forgotten_conversations')} / {replay.get('rebuild_s')} |")
+    lines += [
         "",
         "Timeline:",
         "",
@@ -484,6 +821,14 @@ async def main() -> int:
     parser.add_argument("--report", default="")
     parser.add_argument("--json", default="")
     parser.add_argument("--seed", type=int, default=None)
+    kafka_args = parser.add_argument_group("事件日志走 Kafka（演练栈用 --profile kafka、DRILL_EVENT_SINK=kafka 起）")
+    kafka_args.add_argument("--kafka", action="store_true", help="多对账 Kafka 那一侧（K1–K4，--replay 加 K5）")
+    kafka_args.add_argument("--kafka-bootstrap", default="127.0.0.1:29092")
+    kafka_args.add_argument("--kill-projector", type=int, default=0, help="投影消费者被硬杀几次")
+    kafka_args.add_argument("--kill-sampler", type=int, default=0, help="采样消费者被硬杀几次")
+    kafka_args.add_argument("--restart-kafka", action="store_true", help="中途重启一次 broker")
+    kafka_args.add_argument("--replay", action="store_true", help="对完账删掉投影，换一个消费组从头重建")
+    kafka_args.add_argument("--forget", type=int, default=3, help="重建之前按删除请求删几个会话")
     args = parser.parse_args()
     if args.seed is not None:
         random.seed(args.seed)
@@ -499,6 +844,12 @@ async def main() -> int:
         if args.slow:
             await mock.post("/admin/config", json={"latency_ms": 3000, "structured_latency_ms": 800, "chunk_ms": 150})
         drill.note(f"start: workers {driver.workers()}")
+        kafka = KafkaSide(drill, args.kafka_bootstrap) if args.kafka else None
+        watch_stop = asyncio.Event()
+        watcher = None
+        if kafka is not None:
+            kafka.dlq_start = sum((await kafka._end(kafka.dlq)).values())
+            watcher = asyncio.create_task(kafka.watch(watch_stop))
         flush = None
         if args.flush_redis:
             async def do_flush():
@@ -509,6 +860,14 @@ async def main() -> int:
         await asyncio.gather(submit_all(drill, client), chaos(drill, mock), *([flush] if flush else []))
         rows = await wait_terminal(drill, pg, args.timeout)
         summary = await verify(drill, pg, redis, client, rows)
+        if kafka is not None:
+            caught_up = await kafka.wait_caught_up(args.timeout)
+            watch_stop.set()
+            await watcher
+            checked = await kafka.verify(pg, args.pg)
+            summary["failures"].update(checked["failures"])
+            summary["kafka"] = {**checked["numbers"], "catch_up_s": caught_up}
+            summary["passed"] = all(not v for v in summary["failures"].values())
         mock_stats = (await mock.get("/admin/stats")).json()
         if args.slow:
             await mock.post("/admin/config", json={"latency_ms": 800, "structured_latency_ms": 400, "chunk_ms": 60})
@@ -530,4 +889,6 @@ async def main() -> int:
 
 if __name__ == "__main__":
     os.environ.setdefault("PYTHONUNBUFFERED", "1")
+    # broker 重启的那几秒，aiokafka 每次重连失败都打一条错误：演练里那是意料之中的
+    logging.getLogger("aiokafka").setLevel(logging.CRITICAL)
     sys.exit(asyncio.run(main()))

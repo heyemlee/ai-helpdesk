@@ -20,8 +20,11 @@
 - 有状态：一轮的事件要攒齐了才能判断。所以 offset 不能处理一条提交一条——没结束的轮次在内存
   里，进程一挂就没了。每个分区只提交到"手上最早一个还没结束的轮次的第一条消息"：重启后从那里
   重读，把没结束的轮次补齐；已经采过的按主键去重。
-- 一轮迟迟不结束（终结事件丢了，又没人替它补）就会一直压着这个分区的提交点：开着超过
-  max_open_s（默认 15 分钟）的丢掉不采，计数。
+- 只有 turn_started 能开一轮。重启后从提交点重读，会读到早已结束的轮次的"尾巴"（终结事件之后
+  的后台任务、生产者重试多发的那几条）：它们的开头在提交点之前、不会再读到，开成新的一轮就永远
+  等不到结束，提交点会被它一直压着。演练撞上过（docs/evaluation/chaos-drill.md）。
+- 一轮迟迟不结束（终结事件丢了，又没人替它补）：开着超过 hold_s（默认 2 分钟）就不再压着提交点
+  ——之后进程重启的话，这一轮就不采了；超过 max_open_s（默认 10 分钟）丢掉不采，计数。
 - 同一个会话的事件在一个分区里，按发出的顺序到达：接手的第二遍开始之前，第一遍那一轮的
   turn_abandoned 已经先到了。
 """
@@ -485,11 +488,15 @@ class _PartitionState:
     next_offset: int | None = None
     committed: int | None = None
 
-    def watermark(self) -> int | None:
-        """能提交到哪：手上最早一个没结束的轮次的第一条；都结束了就是处理到的下一条。"""
+    def watermark(self, now: float, hold_s: float) -> int | None:
+        """
+        能提交到哪：手上最早一个没结束的轮次的第一条；都结束了就是处理到的下一条。开着超过
+        hold_s 的不再算（见本模块开头）。
+        """
         if self.next_offset is None:
             return None
-        return min((turn.first_offset for turn in self.open.values()), default=self.next_offset)
+        return min((turn.first_offset for turn in self.open.values() if now - turn.opened_at <= hold_s),
+                   default=self.next_offset)
 
 
 class Sampler(_ConsumerLoop):
@@ -498,13 +505,14 @@ class Sampler(_ConsumerLoop):
     consumer_name = "sampler"
 
     def __init__(self, settings: ConsumerSettings, db, rules: SamplingRules | None = None, *,
-                 max_open_s: float = 900.0, commit_every_s: float = 5.0,
+                 hold_s: float = 120.0, max_open_s: float = 600.0, commit_every_s: float = 5.0,
                  clock: Callable[[], float] = time.time, monotonic: Callable[[], float] = time.monotonic,
                  **factories):
         self.rules = rules or SamplingRules()
         label = "".join(c if c.isalnum() or c in "-_" else "_" for c in self.rules.label)
         super().__init__(settings, group_id(settings.kafka, "sampler", settings.instance, label), **factories)
         self.db = db
+        self.hold_s = hold_s
         self.max_open_s = max_open_s
         self.commit_every_s = commit_every_s
         self._clock = clock
@@ -525,11 +533,11 @@ class Sampler(_ConsumerLoop):
             except BadEvent:
                 self._skip("bad_message")             # 进死信是投影那边的事，这里只是不看
                 continue
-            if event.turn_id in part.closed:
-                self._skip("late")
-                continue
             turn = part.open.get(event.turn_id)
             if turn is None:
+                if event.turn_id in part.closed or event.type != "turn_started":
+                    self._skip("late")            # 结束过的轮次的尾巴，或者开头不在这次读到的范围里
+                    continue
                 turn = part.open[event.turn_id] = _OpenTurn(message.offset, self._monotonic())
             turn.events.setdefault(event.seq, event)
             if event.type in CLOSING_TYPES:
@@ -575,7 +583,7 @@ class Sampler(_ConsumerLoop):
         for tp, part in self._parts.items():
             if partitions is not None and tp not in partitions:
                 continue
-            mark = part.watermark()
+            mark = part.watermark(self._monotonic(), self.hold_s)
             if mark is not None and mark != part.committed:
                 offsets[tp] = mark
         if offsets and await self._commit(consumer, offsets):

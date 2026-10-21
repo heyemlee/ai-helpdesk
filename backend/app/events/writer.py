@@ -22,7 +22,7 @@ import time
 
 from app.core.metrics import TURN_EVENTS_QUEUE_DEPTH, TURN_EVENTS_WRITE_SECONDS
 from app.events.recorder import EventLogStats
-from app.events.types import Event
+from app.events.types import CLOSING_TYPES, Event
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +42,9 @@ class EventWriter:
 
     store.insert 可以返回真正写进去的条数（Kafka 那边一条太大只丢它自己）；不返回就按整批算。
     重试之后仍然写不进去的整批，按 error_reason 计数丢弃。
+
+    一轮结束的事件（终结事件、turn_abandoned）不等攒批的那 250 毫秒，到了就发：进程在这时候被杀，
+    丢的才不会恰好是"这一轮结束了"这一条。要确定某一刻之前的都送到了，调 flush。
     """
 
     def __init__(
@@ -68,6 +71,10 @@ class EventWriter:
         self._closed = False
         # 已经从队列里取出、还没写完的那一批。停机超时时它也算丢掉的
         self._holding: list[Event] = []
+        # 收下了多少条、处理完了多少条（写进去或者计数丢掉）：flush 按它们判断
+        self._accepted = 0
+        self._processed = 0
+        self._waiters: list[tuple[int, asyncio.Future]] = []
 
     @property
     def depth(self) -> int:
@@ -83,16 +90,46 @@ class EventWriter:
             return
         try:
             self._queue.put_nowait(event)
+            self._accepted += 1
         except asyncio.QueueFull:
             self._stats.drop("queue_full")
         TURN_EVENTS_QUEUE_DEPTH.set(self._queue.qsize())
 
+    async def flush(self, timeout_s: float) -> bool:
+        """
+        等这一刻之前收下的事件都处理完（写进去，或者重试之后计数丢掉）。之后再进来的不等——
+        别的轮次一直在写，等队列空可能永远等不到。超时返回 False，不抛。
+        """
+        target = self._accepted
+        if self._processed >= target:
+            return True
+        if self._task is None:
+            return False
+        future = asyncio.get_running_loop().create_future()
+        self._waiters.append((target, future))
+        try:
+            await asyncio.wait_for(asyncio.shield(future), timeout=timeout_s)
+            return True
+        except TimeoutError:
+            return False
+
+    def _processed_up_to(self, n: int) -> None:
+        self._processed += n
+        ready = [(target, future) for target, future in self._waiters if target <= self._processed]
+        self._waiters = [(target, future) for target, future in self._waiters if target > self._processed]
+        for _, future in ready:
+            if not future.done():
+                future.set_result(None)
+
     async def _next_batch(self) -> None:
-        """等到第一条，再最多等 flush_s 把后面的攒进来，满 batch_size 就不等了。"""
+        """
+        等到第一条，再最多等 flush_s 把后面的攒进来，满 batch_size 就不等了；攒到一轮结束的事件
+        也不等了（见类的说明）。
+        """
         self._holding.append(await self._queue.get())
         loop = asyncio.get_running_loop()
         until = loop.time() + self._flush_s
-        while len(self._holding) < self._batch_size:
+        while len(self._holding) < self._batch_size and self._holding[-1].type not in CLOSING_TYPES:
             try:
                 self._holding.append(self._queue.get_nowait())
                 continue
@@ -113,6 +150,7 @@ class EventWriter:
                 self._holding = []
                 for _ in batch:
                     self._queue.task_done()
+                self._processed_up_to(len(batch))
                 TURN_EVENTS_QUEUE_DEPTH.set(self._queue.qsize())
 
     async def _write(self, batch: list[Event]) -> None:

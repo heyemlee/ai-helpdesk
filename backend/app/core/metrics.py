@@ -298,7 +298,7 @@ TURN_EVENTS_CONSUMER_SKIPPED = Counter(
     "turn_events_consumer_skipped_total",
     "消费者没有按常规处理的事件：bad_message（解不开，进死信）、bad_row（库拒收，进死信）、"
     "forgotten（删除请求删过的会话）、expired（整行已过保留期）、stripped（原文已过保留期，去掉原文再写）、"
-    "late（所属轮次已经处理过）、expired_open（轮次迟迟不结束，丢掉不采）",
+    "late（所属轮次已经处理过，或者它的开头不在读到的范围里）、expired_open（轮次迟迟不结束，丢掉不采）",
     ["consumer", "instance", "reason"],
 )
 

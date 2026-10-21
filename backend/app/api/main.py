@@ -1817,7 +1817,18 @@ async def _execute_run(ctx: RunContext) -> RunOutcome:
     """
     worker 执行一个 run（app/runs/worker.py 调）：在这个 run 的上下文里跑完整的一轮，帧转进
     帧流，返回结局。有提交点的（上一遍答完了、落副作用时失联）按提交点收尾，不再作答。
+
+    返回之前等这一轮的事件送到（最多 1 秒），worker 才把 run 记成跑完：不然 worker 恰好在
+    run 跑完、事件还在攒批的那一刻被杀，run 是成功的，它那一轮在日志里却永远没有结束——没人
+    会替一个成功的 run 补 turn_abandoned。演练（docs/evaluation/chaos-drill.md）撞上过一次。
     """
+    outcome = await _run_queued_turn(ctx)
+    if not await _event_log.flush(timeout_s=1.0):
+        logger.warning("run %s 这一轮的事件 1 秒内没送到，照常收尾（日志之后补上或计数丢掉）", ctx.run.run_id)
+    return outcome
+
+
+async def _run_queued_turn(ctx: RunContext) -> RunOutcome:
     run = ctx.run
     if run.attempt > 1:
         _close_lost_turns(run, "superseded")

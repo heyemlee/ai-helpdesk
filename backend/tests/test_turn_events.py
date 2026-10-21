@@ -353,6 +353,51 @@ async def test_events_are_written_in_batches_and_flushed_on_close():
     assert (stats.written, stats.dropped) == (450, {})
 
 
+async def test_the_event_that_ends_a_turn_is_sent_without_waiting_for_the_batch():
+    """攒批窗口开得很长也一样：一轮结束的事件到了就发，进程这时候被杀，丢的不会是它。"""
+    store = _Store()
+    stats = EventLogStats()
+    writer = EventWriter(store, stats, flush_s=30.0)
+    turn = TurnRecorder(new_turn_id(), instance="staff", conv_id="c1", mode="full", sink=writer, stats=stats)
+    writer.start()
+    try:
+        turn.emit("turn_started", {"transport": "queued"})
+        turn.emit("turn_completed", {"outcome": "answered"})
+        for _ in range(100):
+            if store.batches:
+                break
+            await asyncio.sleep(0.01)
+        assert [[e.type for e in b] for b in store.batches] == [["turn_started", "turn_completed"]]
+    finally:
+        await writer.close(timeout_s=1)
+
+
+async def test_flush_waits_for_what_came_before_it_and_not_for_what_came_after():
+    store = _Store()
+    writer, turn, stats = _writer_turn(store)
+    writer.start()
+    try:
+        for _ in range(5):
+            turn.emit("model_call", {"purpose": "answer"})
+        flushed = asyncio.create_task(writer.flush(timeout_s=2))
+        turn.emit("model_call", {"purpose": "answer"})               # 之后进来的，不在等的范围里
+        assert await flushed is True
+        assert len(store.rows) >= 5
+        assert await writer.flush(timeout_s=2) is True and len(store.rows) == 6
+    finally:
+        await writer.close(timeout_s=1)
+
+    stuck = _Store()
+    stuck.hang = True
+    writer, turn, _ = _writer_turn(stuck)
+    writer.start()
+    turn.emit("turn_started", {})
+    started = time.monotonic()
+    assert await writer.flush(timeout_s=0.2) is False                 # 库卡住了：等到点就放手，不抛
+    assert time.monotonic() - started < 1.0
+    await writer.close(timeout_s=0.1)
+
+
 async def test_a_full_queue_drops_and_counts():
     writer, turn, stats = _writer_turn(_Store(), max_queue=5)     # 没启动：队列只进不出
     for _ in range(8):

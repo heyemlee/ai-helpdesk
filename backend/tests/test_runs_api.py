@@ -479,6 +479,28 @@ async def test_a_dead_run_is_handed_to_a_person(monkeypatch, tmp_path):
         await _close(desk)
 
 
+async def test_a_run_is_marked_finished_only_after_its_turn_reached_the_event_log(monkeypatch, tmp_path):
+    """
+    worker 在 run 跑完、事件还在攒批的那一刻被杀：run 成功了，它那一轮在日志里却永远没有结束。
+    所以 worker 先等这一轮的事件送到，再把 run 记成跑完。
+    """
+    desk = await _queued(monkeypatch, tmp_path)
+    seen = []
+
+    async def flush(timeout_s=1.0):
+        runs = list(desk.store._runs.values())
+        seen.append((runs[0].status, timeout_s))
+        return True
+
+    monkeypatch.setattr(desk.log, "flush", flush)
+    try:
+        submitted = await desk.main.submit_run(_ask(desk.main, conv_id="c-flush"), None)
+        await _until(desk.store, submitted["run_id"], SUCCEEDED)
+        assert seen == [(RUNNING, 1.0)]
+    finally:
+        await _close(desk)
+
+
 async def test_a_turn_whose_worker_was_lost_is_closed_by_the_attempt_that_takes_over(monkeypatch, tmp_path):
     """
     第一遍开了一轮、记了一条事件，进程就没了：那一轮永远等不到自己的终结事件。接手的第二遍
