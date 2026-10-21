@@ -271,6 +271,119 @@ Timeline:
 
 </details>
 
+## Before and after: what inline mode loses
+
+The drills above show queued mode losing nothing; they do not show what the old architecture lost. [disconnect_drill.py](../../backend/scripts/disconnect_drill.py) measures that by putting the same questions, under the same faults, to both modes on the drill stack. Inline mode is the `api-inline` service of the `compare` profile, on the same database, Redis and mock model.
+
+- 30% of clients (the same turns in both modes, chosen by seed) drop their stream after 2–5 frames, as a refreshed page or a network blip would.
+- 12 s in, the API is restarted the way a deploy restarts it: `docker restart -t 10`, SIGTERM and 10 s to finish before SIGKILL.
+- Clients then recover the way the console does. In queued mode they resume from `Last-Event-ID`, resubmitting with the same `Idempotency-Key` if the stream broke before its first frame. In inline mode there is nothing to resume; the customer would have to ask again. In both modes a stream silent for 45 s counts as cut.
+
+A turn is lost when its client never received the answer. The server side is checked separately, in the event log.
+
+| Drill (seed) | Mode | Turns | Streams the client dropped (answered) | Streams the restart cut (answered) | Lost | Event log |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| 1 (7) | inline | 60 | 14 (0) | 17 (0) | **31** | 31 completed, 12 aborted, 17 with no terminal event |
+| 1 (7) | queued | 60 | 15 (15) | 17 (17) | **0** | 60 completed |
+| 2 (11) | inline | 60 | 12 (0) | 21 (0) | **33** | 29 completed, 10 aborted, 21 with no terminal event |
+| 2 (11) | queued | 60 | 14 (14) | 16 (16) | **0** | 60 completed |
+
+- **Inline lost every turn whose stream was cut: 64 of 120 (53%).** Queued lost none of 120: all 62 cut streams resumed and received their answer, after a median of 4.6 and 5.1 s and at most 14.9 s.
+- **A restart takes more than the stream.** The inline turns it cut have no terminal event at all: they went down with the process, and so did the end of their event log. Two dropped inline turns in each drill did finish on the server and are in the audit, but the clients that asked had gone.
+- **Lost turns are not free.** Inline spent 3.1 and 3.6 model requests per delivered answer, queued 2.2 and 3.0. The mix of questions moves both between drills; the gap includes calls spent on answers nobody received.
+- With the same seed, one or two more streams counted as dropped in queued mode: a queued stream starts with two extra frames (`run`, `attempt`), so "drop after 2–5 frames" lands earlier in the turn.
+
+```bash
+docker compose -f deploy/drill/docker-compose.yml --profile compare up -d --wait
+backend/.venv/bin/python backend/scripts/disconnect_drill.py --mode inline --api http://127.0.0.1:28081 --service api-inline --slow --seed 7
+backend/.venv/bin/python backend/scripts/disconnect_drill.py --mode queued --api http://127.0.0.1:28080 --service api --slow --seed 7
+```
+
+<details>
+<summary>The four reports as printed by <code>disconnect_drill.py</code></summary>
+
+### inline · 2026-10-21 13:28 (drill 1, seed 7)
+
+60 turns at 2/s; 30% of clients drop after 2–5 frames; api-inline restarted at 12 s with 10 s grace.
+
+| | Turns | Got the answer |
+| --- | ---: | ---: |
+| Client dropped the stream | 14 | 0 |
+| Stream cut by the API restart | 17 | 0 |
+| Not cut | 29 | 29 |
+| **All** | **60** | **29** (lost 31) |
+
+Server side (event log): {'turn_completed': 31, 'turn_aborted': 12}. Model requests: 90 (3.1 per delivered answer). Submissions retried while the API was down: 1. Cut streams recovered after p50 — s, max — s.
+
+Timeline:
+
+-   0.0 s: start: inline mode against http://127.0.0.1:28081
+-  12.0 s: restarting api-inline (docker restart -t 10: SIGTERM, 10 s grace, then SIGKILL)
+-  19.5 s: api-inline restart command returned
+-  33.6 s: all clients finished: 29 of 60 got the answer
+
+### queued · 2026-10-21 13:29 (drill 1, seed 7)
+
+60 turns at 2/s; 30% of clients drop after 2–5 frames; api restarted at 12 s with 10 s grace.
+
+| | Turns | Got the answer |
+| --- | ---: | ---: |
+| Client dropped the stream | 15 | 15 |
+| Stream cut by the API restart | 17 | 17 |
+| Not cut | 28 | 28 |
+| **All** | **60** | **60** (lost 0) |
+
+Server side (event log): {'turn_completed': 60}. Model requests: 134 (2.23 per delivered answer). Submissions retried while the API was down: 0. Cut streams recovered after p50 4.6 s, max 14.1 s.
+
+Timeline:
+
+-   0.1 s: start: queued mode against http://127.0.0.1:28080
+-  12.0 s: restarting api (docker restart -t 10: SIGTERM, 10 s grace, then SIGKILL)
+-  19.7 s: api restart command returned
+-  34.0 s: all clients finished: 60 of 60 got the answer
+
+### inline · 2026-10-21 13:30 (drill 2, seed 11)
+
+60 turns at 2/s; 30% of clients drop after 2–5 frames; api-inline restarted at 12 s with 10 s grace.
+
+| | Turns | Got the answer |
+| --- | ---: | ---: |
+| Client dropped the stream | 12 | 0 |
+| Stream cut by the API restart | 21 | 0 |
+| Not cut | 27 | 27 |
+| **All** | **60** | **27** (lost 33) |
+
+Server side (event log): {'turn_completed': 29, 'turn_aborted': 10}. Model requests: 97 (3.59 per delivered answer). Submissions retried while the API was down: 0. Cut streams recovered after p50 — s, max — s.
+
+Timeline:
+
+-   0.0 s: start: inline mode against http://127.0.0.1:28081
+-  12.0 s: restarting api-inline (docker restart -t 10: SIGTERM, 10 s grace, then SIGKILL)
+-  21.7 s: api-inline restart command returned
+-  34.1 s: all clients finished: 27 of 60 got the answer
+
+### queued · 2026-10-21 13:30 (drill 2, seed 11)
+
+60 turns at 2/s; 30% of clients drop after 2–5 frames; api restarted at 12 s with 10 s grace.
+
+| | Turns | Got the answer |
+| --- | ---: | ---: |
+| Client dropped the stream | 14 | 14 |
+| Stream cut by the API restart | 16 | 16 |
+| Not cut | 30 | 30 |
+| **All** | **60** | **60** (lost 0) |
+
+Server side (event log): {'turn_completed': 60}. Model requests: 179 (2.98 per delivered answer). Submissions retried while the API was down: 0. Cut streams recovered after p50 5.1 s, max 14.9 s.
+
+Timeline:
+
+-   0.0 s: start: queued mode against http://127.0.0.1:28080
+-  12.0 s: restarting api (docker restart -t 10: SIGTERM, 10 s grace, then SIGKILL)
+-  19.3 s: api restart command returned
+-  36.4 s: all clients finished: 60 of 60 got the answer
+
+</details>
+
 ## The main stack with the real model
 
 The drills use the mock model, the drill stack and kind. Afterwards queued mode ran once on the main Compose stack (`docker-compose.yml` plus `docker-compose.queued.yml`, both instances, nginx in front of the customer instance, ai-sql-agent on the host) with the real model, at commit 79bcac2. Five turns, each reconciled against Postgres and Redis afterwards like a drill run:

@@ -89,9 +89,47 @@ At low load, the same backend in inline and queued mode (30 alternating pairs, [
 
 The write to Postgres, the dispatch, the claim and the extra hop of every frame through Redis are below what this probe resolves.
 
+## The event log on Kafka: latency and throughput
+
+With `AI_HELPDESK_EVENT_SINK=kafka` a turn event goes writer → Kafka → projector → `turn_events` instead of writer → `turn_events`. Two questions: what the detour costs an event, and how much one projector can take.
+
+### Latency
+
+With Postgres's `track_commit_timestamp` on, every row carries the time it was committed; minus the event's own timestamp, taken when it was emitted (both clocks are the same Docker host's), that is the time from emitting an event to its being readable. Same load for both sinks: 60 runs at 2 a second with the default mock model, no faults.
+
+| Sink | Events | Batched events p50 / p95 | Turn-ending events p50 / p95 | All events p99 / max |
+| --- | ---: | ---: | ---: | ---: |
+| Kafka → projector → Postgres | 687 | 250 / 281 ms | 72 / 79 ms | 298 / 392 ms |
+| Postgres directly | 683 | 244 / 254 ms | 48 / 51 ms | 285 / 288 ms |
+
+Most events wait for the writer's 250 ms batch window, which sets the median either way. A turn-ending event is sent at once, so its latency is the path itself: Kafka adds about 24 ms (72 against 48 ms), close to the producer's 20 ms linger. The 48 ms of a direct write comes from the writer checking its queue every 50 ms while it collects a batch (`EventWriter._next_batch`), not from Postgres.
+
+### Throughput
+
+[kafka_bench.py](../../backend/scripts/kafka_bench.py) clones the 120 turns these drills recorded (1,370 events with their data and text) into 411,000 events on a separate 6-partition topic, starts projectors on the drill network with the image and entry point that are deployed, and reads the consumer group's committed offsets every half second.
+
+| Projectors | Steady rate (10% → 90% of the backlog) | Drained | Rows in `turn_events` |
+| --- | ---: | ---: | ---: |
+| 1 | 21,348 events/s (14.4 MB/s) | 19.8 s | 411,000 of 411,000 |
+| 3 | 52,743 events/s (35.5 MB/s) | 10.9 s, the group joining included | 411,000 of 411,000 |
+
+The heaviest load test above produced about 42 events a second (3.7 turns a second, 11.4 events each), so one projector has about 500 times that in hand, which is why KEDA never had a reason to add a second one in the drills. Three projectors on six partitions did 2.5 times one, not 3; all three write to the one Postgres on the same laptop.
+
+```bash
+DRILL_EVENT_SINK=kafka docker compose -f deploy/drill/docker-compose.yml --profile kafka up -d --wait
+docker exec aihd-drill-postgres-1 psql -U drill -d drill -c "ALTER SYSTEM SET track_commit_timestamp = on"
+docker restart aihd-drill-postgres-1
+backend/.venv/bin/python backend/scripts/chaos_drill.py --runs 60 --rate 2 --kills 0 --reader-ratio 0
+#   then: percentiles of extract(epoch FROM pg_xact_commit_timestamp(xmin)) - ts over that drill's rows;
+#   again with DRILL_EVENT_SINK=postgres for the direct write
+backend/.venv/bin/python backend/scripts/kafka_bench.py --copies 300 --consumers 1
+backend/.venv/bin/python backend/scripts/kafka_bench.py --copies 300 --consumers 3
+```
+
 ## Limits of this record
 
 - One laptop, one run per scenario, a mock model with fixed latencies. The shape (where throughput stops, what the bucket and the ladder change) carries over; the absolute numbers do not.
+- The Kafka figures come from one broker and one Postgres on the same laptop, and the throughput test replays cloned turns rather than live traffic; the latency comparison and the ratio between one and three projectors carry over better than the absolute rates.
 - Load came in at a ramping rate; k6 could not start 57 iterations in the first heavy run (the 90% one) for lack of VUs, which were raised for the others (0 dropped).
 - Messages are drawn from eight templates, and half the turns were classified by the rule channel without the intent vote; traffic with more open-ended questions makes more calls per run, and the ceiling moves with it.
 

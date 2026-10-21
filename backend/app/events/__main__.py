@@ -104,7 +104,7 @@ async def _topics(args) -> int:
             logger.error("%s", ex)
             return 2
         except Exception as ex:
-            logger.warning("建 topic 失败（%s），%.0f 秒后再试", type(ex).__name__, delay)
+            logger.warning("建 topic 失败（%r），%.0f 秒后再试", ex, delay)
             await asyncio.sleep(delay)
             delay = min(delay * 2, 10.0)
     return 1

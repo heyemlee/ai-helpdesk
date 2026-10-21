@@ -9,9 +9,10 @@ import json
 import os
 import time
 import uuid
+from types import SimpleNamespace
 
 import pytest
-from aiokafka.errors import KafkaTimeoutError, MessageSizeTooLargeError
+from aiokafka.errors import KafkaTimeoutError, MessageSizeTooLargeError, PolicyViolationError, TopicAlreadyExistsError
 
 from app.events import EventLog, EventLogConfig
 from app.events.kafka import (
@@ -178,6 +179,8 @@ async def test_a_kafka_event_log_writes_through_the_publisher_and_flushes_on_clo
 
 class FakeAdmin:
     existing: set[str] = set()
+    unlisted: set[str] = set()     # broker 上已经有、list_topics 还没列出来的
+    refused: dict[str, int] = {}   # topic → broker 回的错误码
 
     def __init__(self, **_):
         self.created, self.altered = [], []
@@ -191,11 +194,16 @@ class FakeAdmin:
     async def list_topics(self):
         return list(self.existing) + ["__consumer_offsets"]
 
+    # 和真的一样不抛错，逐个 topic 回错误码
     async def create_topics(self, topics):
         self.created.extend(topics)
+        already = TopicAlreadyExistsError.errno
+        return SimpleNamespace(topic_errors=[
+            (t.name, self.refused.get(t.name, already if t.name in self.unlisted else 0), None) for t in topics])
 
     async def alter_configs(self, resources):
         self.altered.extend(resources)
+        return [SimpleNamespace(resources=[(self.refused.get(r.name, 0), None, 2, r.name) for r in resources])]
 
 
 async def test_topics_are_created_once_and_their_retention_kept_in_line():
@@ -214,6 +222,34 @@ async def test_topics_are_created_once_and_their_retention_kept_in_line():
     assert {t.name: (t.num_partitions, t.topic_configs["retention.ms"]) for t in admin.created} == {
         name: (6, str(7 * 86_400_000)) for name, state in out.items() if state == "created"}
     assert [r.name for r in admin.altered] == ["ai-helpdesk.turn-events.staff"]
+
+
+async def test_a_topic_the_listing_has_not_caught_up_with_is_updated_not_created():
+    # 刚建完紧接着再跑一遍：broker 的元数据还没跟上，list_topics 里没有，再建回"已经有了"
+    topics = ["ai-helpdesk.turn-events.staff", "ai-helpdesk.turn-events.staff.dlq"]
+
+    class Lagging(FakeAdmin):
+        existing, unlisted = set(), set(topics)
+
+    admins: list[FakeAdmin] = []
+
+    def factory(**kwargs):
+        admins.append(Lagging(**kwargs))
+        return admins[-1]
+
+    out = await ensure_topics(KafkaSettings(bootstrap="kafka:9092"), ["staff"], admin_factory=factory)
+    assert out == dict.fromkeys(topics, "updated")
+    assert [r.name for r in admins[0].altered] == topics
+
+
+@pytest.mark.parametrize("listed", [False, True], ids=["create", "alter"])
+async def test_a_topic_the_broker_refuses_fails_the_call(listed):
+    class Refusing(FakeAdmin):
+        existing = {"ai-helpdesk.turn-events.staff"} if listed else set()
+        refused = {"ai-helpdesk.turn-events.staff": PolicyViolationError.errno}
+
+    with pytest.raises(PolicyViolationError, match="ai-helpdesk.turn-events.staff"):
+        await ensure_topics(KafkaSettings(bootstrap="kafka:9092"), ["staff"], admin_factory=Refusing)
 
 
 @pytest.mark.parametrize("days", [0, MAX_RETENTION_DAYS + 1, 30])
