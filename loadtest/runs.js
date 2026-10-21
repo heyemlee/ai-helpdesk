@@ -28,7 +28,7 @@ export const options = {
       executor: 'ramping-arrival-rate',
       startRate: PROFILE[0],
       timeUnit: '1m',
-      preAllocatedVUs: 50,
+      preAllocatedVUs: 300,
       maxVUs: 900,
       stages: PROFILE.map((target) => ({ target, duration: STAGE })),
       gracefulStop: `${WAIT_S}s`,
