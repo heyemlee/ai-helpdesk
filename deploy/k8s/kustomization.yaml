@@ -1,0 +1,51 @@
+# ai-helpdesk 排队模式的一套 Kubernetes 清单（本地 kind 集群上验证过，见 scripts/k8s-up.sh）。
+#
+#   kubectl apply -k deploy/k8s
+#
+# 和 docker-compose 那一套的对应关系：每个实例拆成"收请求、续流"的 api 和"领 run 执行"的
+# worker 两个 Deployment，同一个镜像、同一份配置，只差 AI_HELPDESK_ROLE。worker 由 KEDA
+# 按派发队列的积压扩缩（keda.yaml）。模型是 scripts/mock_llm.py 那个假服务——接真模型时
+# 把 config/backend.env 里的 LLM_PROVIDER / OPENAI_BASE_URL / OPENAI_MODEL 和 secret 换掉，
+# 再按供应商给的 RPM 定 KEDA 的副本上限（keda.yaml 开头的算式）。
+#
+# Postgres 和 Redis 各是一个单副本 StatefulSet：够验证排队、续租、接手、扩缩这些行为，
+# 不是生产形态（生产用托管的 Postgres 和 Redis，或者带复制的 operator）。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: aihd
+
+resources:
+  - namespace.yaml
+  - postgres.yaml
+  - redis.yaml
+  - mock-llm.yaml
+  - api.yaml
+  - worker.yaml
+  - keda.yaml
+
+configMapGenerator:
+  - name: backend-config
+    envs:
+      - config/backend.env
+  # 两个实例的差别（和 docker-compose.yml 里写死的那几项一致）
+  - name: staff-config
+    envs:
+      - config/staff.env
+  - name: customer-config
+    envs:
+      - config/customer.env
+
+secretGenerator:
+  # 本地集群用的固定值。真部署用 sealed-secrets / external-secrets 之类，不进仓库
+  - name: backend-secrets
+    envs:
+      - config/secrets.env
+
+images:
+  - name: aihd/backend
+    newTag: dev
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: ai-helpdesk
+    includeSelectors: false

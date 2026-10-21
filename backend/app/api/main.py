@@ -189,7 +189,7 @@ async def lifespan(app: FastAPI):
     from app.core.auth import RateLimiter, UserTokenAuth
     from app.core.intent_recognizer import IntentRecognizer
     from app.core.reranker import Reranker
-    from app.core.shared_state import SharedState
+    from app.core.shared_state import REDIS_TIMEOUTS, SharedState
     from app.core.skill_loader import SkillManager
     from app.evaluation.evaluator import EndToEndEvaluator
     from app.memory.conversation_memory import MemoryManager
@@ -230,7 +230,7 @@ async def lifespan(app: FastAPI):
     # 基础设施 Redis 连接：限流计数、熔断状态、路由惩罚共享。
     # 与 MemoryManager 的连接分开建，记忆和基础设施状态互不干扰。
     _infra_redis = aioredis.from_url(
-        os.getenv("REDIS_URL", "redis://redis:6379/0"), decode_responses=True
+        os.getenv("REDIS_URL", "redis://redis:6379/0"), decode_responses=True, **REDIS_TIMEOUTS
     )
     _shared_state = SharedState(_infra_redis)
 

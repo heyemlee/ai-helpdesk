@@ -65,11 +65,16 @@ class RunService:
     def instance(self) -> str:
         return self.store.instance
 
-    async def backlog(self) -> int:
+    async def backlog(self) -> int | None:
+        """派发队列的积压。读不出来（Redis 连不上）返回 None。"""
         at, value = self._backlog_cache
         if time.monotonic() - at < 0.5:
             return value
-        value = await self.broker.backlog()
+        try:
+            value = await asyncio.wait_for(self.broker.backlog(), timeout=2.0)
+        except Exception:
+            logger.warning("读不到派发队列的积压，这一次不做背压检查", exc_info=True)
+            return None
         self._backlog_cache = (time.monotonic(), value)
         RUN_BACKLOG.labels(instance=self.instance).set(value)
         return value
@@ -105,8 +110,10 @@ class RunService:
                     raise IdempotencyConflict(existing)
                 RUNS_SUBMITTED.labels(outcome="deduplicated").inc()
                 return existing, False
+        # 积压读不出来（Redis 连不上）时照收不误：run 落在 Postgres 里，派发这一步失败了也有
+        # 清扫任务补——为一个读不到的数把客户挡在门外，不划算
         backlog = await self.backlog()
-        if backlog >= self.config.queue_max:
+        if backlog is not None and backlog >= self.config.queue_max:
             RUNS_SUBMITTED.labels(outcome="rejected").inc()
             raise Backpressure(backlog, self.retry_after(backlog))
         run = RunRecord(
@@ -119,11 +126,12 @@ class RunService:
             RUNS_SUBMITTED.labels(outcome="deduplicated").inc()
             return stored, False
         try:
-            await self.broker.dispatch(stored.run_id)
+            await asyncio.wait_for(self.broker.dispatch(stored.run_id), timeout=2.0)
         except Exception:
             logger.warning("run %s 派发失败，等清扫任务重新派发", stored.run_id, exc_info=True)
         RUNS_SUBMITTED.labels(outcome="accepted").inc()
-        self._backlog_cache = (self._backlog_cache[0], self._backlog_cache[1] + 1)
+        if backlog is not None:
+            self._backlog_cache = (self._backlog_cache[0], backlog + 1)
         return stored, True
 
     async def get(self, run_id: str) -> RunRecord | None:
@@ -136,7 +144,10 @@ class RunService:
                               "attempt": run.attempt})
         cursor = after or "0-0"
         attempt = 0
-        block_ms = max(int(self.heartbeat_s * 1000), 1)
+        # 一次最多阻塞 5 秒（Redis 连接的读超时是 10 秒，见 core/shared_state.REDIS_TIMEOUTS），
+        # 静默满一个心跳周期才发心跳、看一眼库
+        block_ms = max(int(min(self.heartbeat_s, 5.0) * 1000), 1)
+        quiet_since = time.monotonic()
         while True:
             try:
                 frames = await self.channel.read(run.run_id, cursor, block_ms=block_ms)
@@ -154,7 +165,11 @@ class RunService:
                 if frame.event in TERMINAL_FRAMES:
                     return
             if frames:
+                quiet_since = time.monotonic()
                 continue
+            if time.monotonic() - quiet_since < self.heartbeat_s:
+                continue
+            quiet_since = time.monotonic()
             current = await self.store.get(run.run_id)
             if current is None:
                 yield sse("error", {"detail": "run 不存在或已超出保留期"})

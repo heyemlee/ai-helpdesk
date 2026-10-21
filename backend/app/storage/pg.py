@@ -235,6 +235,10 @@ CREATE TABLE IF NOT EXISTS conversation_log_dedup (
 #   CREATE INDEX ON memory_episodic USING hnsw (embedding vector_cosine_ops);
 
 
+# 建表那一段的 advisory lock 的键（任取的一个常数，库里别的地方不用它）
+_SCHEMA_LOCK = 7_284_620_011
+
+
 class Database:
     """asyncpg 连接池 + schema 初始化。所有 PG 存储实现共用一个池。"""
 
@@ -264,9 +268,19 @@ class Database:
         )
 
     async def _init_schema(self, dim: int, verify_dim: bool = True) -> None:
+        """
+        建表、补列。几个进程同时起来时排队做：拿一把事务级的 advisory lock 再执行。
+
+        `CREATE EXTENSION / TABLE IF NOT EXISTS` 并不防并发——两个进程同时在一个新库上建，
+        后提交的那个撞上系统表的唯一约束（pg_extension_name_index、pg_type_typname_nsp_index），
+        进程起不来。以前只有两个实例、一前一后起，碰不上；排队模式下 k8s 一次起五六个
+        api 和 worker，第一次部署就撞上了。锁在事务结束时自己放掉。
+        """
         assert self._pool is not None
         async with self._pool.acquire() as conn:
-            await conn.execute(_SCHEMA.format(dim=dim))
+            async with conn.transaction():
+                await conn.execute("SELECT pg_advisory_xact_lock($1)", _SCHEMA_LOCK)
+                await conn.execute(_SCHEMA.format(dim=dim))
             if verify_dim:
                 await self._check_vector_dim(conn, "kb_chunks", dim)
                 await self._check_vector_dim(conn, "memory_episodic", dim)

@@ -336,3 +336,25 @@ async def test_working_memory_gets_a_turn_once(redis, prefix):
     stored = await redis.lrange(MemoryManager._wm_key(user, conv), 0, -1)
     assert [json.loads(item)["content"] for item in stored] == ["已登记。", "补件到哪了"]   # 最新的在前
     await redis.delete(MemoryManager._wm_key(user, conv), f"{MemoryManager._wm_key(user, conv)}:once:run:staff:r1:memory")
+
+
+@needs_pg
+async def test_several_processes_can_create_the_schema_on_a_fresh_database_at_once():
+    """k8s 一次起五六个 api 和 worker：在一个新库上同时建表，谁都不能因为撞了系统表起不来。"""
+    import asyncpg
+
+    from app.core.embedder import Embedder
+    from app.storage.pg import Database
+
+    name = f"race_{uuid.uuid4().hex[:8]}"
+    admin = await asyncpg.connect(TEST_PG_DSN)
+    await admin.execute(f'CREATE DATABASE "{name}"')
+    try:
+        dsn = TEST_PG_DSN.rsplit("/", 1)[0] + f"/{name}"
+        dbs = [Database(dsn, max_size=2) for _ in range(6)]
+        await asyncio.gather(*(db.connect(embedding_dim=Embedder().dim) for db in dbs))
+        for db in dbs:
+            await db.close()
+    finally:
+        await admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
+        await admin.close()

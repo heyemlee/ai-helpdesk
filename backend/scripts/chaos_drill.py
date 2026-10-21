@@ -41,6 +41,7 @@ from typing import Any
 import asyncpg
 import httpx
 import redis.asyncio as aioredis
+from redis.exceptions import ConnectionError as RedisConnectionError
 
 MESSAGES = [
     "补件什么时候能到",
@@ -81,6 +82,11 @@ class ComposeDriver:
     def restart_redis(self) -> None:
         self._docker("restart", f"{self.project}-redis-1")
 
+    def rollout(self) -> None:
+        """发版：worker 收到 SIGTERM，排空（等手上的跑完，到时限的交还），再起新的。"""
+        subprocess.run(["docker", "compose", "-f", self.compose_file, "restart", "--timeout", "60", "worker"],
+                       check=True, capture_output=True, text=True)
+
 
 class K8sDriver:
     """kind 那一套：worker 是 deploy/worker-staff 的 pod，删掉之后 Deployment 自己补一个。"""
@@ -107,6 +113,10 @@ class K8sDriver:
 
     def restart_redis(self) -> None:
         self._kubectl("delete", "pod", "-l", "app.kubernetes.io/component=redis", "--wait=false")
+
+    def rollout(self) -> None:
+        """发版：滚动重启 worker。旧 pod 收到 SIGTERM 排空，新 pod 就绪后才删下一个。"""
+        self._kubectl("rollout", "restart", "deploy/worker-staff")
 
 
 # ── 演练 ──────────────────────────────────────────────────────────────────────
@@ -230,6 +240,8 @@ async def chaos(drill: Drill, mock: httpx.AsyncClient) -> None:
         events.append((args.first_kill + args.kill_every * 0.5, "redis"))
     if args.storm:
         events.append((args.first_kill + args.kill_every * 1.5, "storm"))
+    if args.rollout:
+        events.append((args.first_kill + args.kill_every * max(args.kills, 1) + 2, "rollout"))
     revive: list[asyncio.Task] = []
     for at, kind in sorted(events):
         await asyncio.sleep(max(0.0, drill.started + at - time.time()))
@@ -254,6 +266,10 @@ async def chaos(drill: Drill, mock: httpx.AsyncClient) -> None:
         elif kind == "storm":
             await mock.post("/admin/config", json={"storm_s": args.storm})
             drill.note(f"model answers 429 to everything for {args.storm:g} s")
+        elif kind == "rollout":
+            drill.note("rolling restart of the workers (SIGTERM, drain)")
+            await asyncio.to_thread(drill.driver.rollout)
+            drill.note("rolling restart issued")
     await asyncio.gather(*revive)
 
 
@@ -268,6 +284,17 @@ async def wait_terminal(drill: Drill, pg: asyncpg.Pool, timeout_s: float) -> lis
             drill.note(f"terminal: {counts}")
             return await pg.fetch("SELECT * FROM agent_runs WHERE run_id = ANY($1)", ids)
         await asyncio.sleep(2.0)
+
+
+async def _retry(call, attempts: int = 30):
+    """对账时连不上（Redis 刚重启完、k8s 的 port-forward 正在重连）：等一等再试，别把它算成不变量没过。"""
+    for n in range(attempts):
+        try:
+            return await call()
+        except (OSError, httpx.HTTPError, RedisConnectionError):
+            if n == attempts - 1:
+                raise
+            await asyncio.sleep(1.0)
 
 
 def _pct(values: list[float], q: float) -> float | None:
@@ -314,12 +341,12 @@ async def verify(drill: Drill, pg: asyncpg.Pool, redis: aioredis.Redis, client: 
             failures["audit"].append(f"{s.run_id}: user×{len(users)} assistant×{len(assistants)}")
 
         if run["status"] == "succeeded" and not drill.args.flush_redis:
-            stored = await redis.lrange(f"wm:{s.user_id}:{s.conv_id}", 0, -1)
+            stored = await _retry(lambda s=s: redis.lrange(f"wm:{s.user_id}:{s.conv_id}", 0, -1))
             contents = [json.loads(item).get("content") for item in stored]
             if contents != [answer, s.message]:
                 failures["memory"].append(f"{s.run_id}: {len(contents)} entries")
 
-        frames, _, done = await read_events(client, s.run_id)
+        frames, _, done = await _retry(lambda s=s: read_events(client, s.run_id))
         folded = _fold(frames)
         terminal = folded["terminal"]
         if not done or terminal is None or (run["status"] == "succeeded" and terminal[1].get("response") != answer):
@@ -390,6 +417,7 @@ def report_markdown(drill: Drill, summary: dict[str, Any], mock_stats: dict[str,
         f"(each back after {a.down_for:g} s)"
         + ("; Redis restarted once" if a.restart_redis else "")
         + (f"; a {a.storm:g} s storm of 429s from the model" if a.storm else "")
+        + ("; a rolling restart of the workers" if a.rollout else "")
         + ("; Redis flushed (data loss) once" if a.flush_redis else "") + ".",
         "",
         "| Invariant | Result |",
@@ -447,6 +475,7 @@ async def main() -> int:
     parser.add_argument("--restart-redis", action="store_true")
     parser.add_argument("--flush-redis", action="store_true", help="中途 FLUSHALL：Redis 整个丢了")
     parser.add_argument("--storm", type=float, default=0.0, help="模型连续回 429 多少秒")
+    parser.add_argument("--rollout", action="store_true", help="中途滚动重启 worker（发版）：SIGTERM、排空")
     parser.add_argument("--slow", action="store_true", help="把模型调慢（作答 3 秒起），一轮更容易被拦腰杀掉")
     parser.add_argument("--reader-ratio", type=float, default=0.25, help="多大比例的 run 由一个会断线的客户端跟着读")
     parser.add_argument("--timeout", type=float, default=600.0)

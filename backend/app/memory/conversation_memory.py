@@ -37,6 +37,7 @@ from app.core.llm_utils import (
     structured_create,
     structured_parse,
 )
+from app.core.shared_state import REDIS_TIMEOUTS
 from app.core.telemetry import span
 from app.events.recorder import model_call_tag
 
@@ -175,7 +176,9 @@ class MemoryManager:
         self._client = create_llm_client(api_key, base_url)
         self._model  = model
 
-        self._redis = redis.from_url(redis_url, decode_responses=True)
+        # 超时和基础设施那一路一样（core/shared_state.REDIS_TIMEOUTS）：Redis 没了的时候，读写记忆
+        # 报错而不是挂住，排队模式下这一遍交还重试
+        self._redis = redis.from_url(redis_url, decode_responses=True, **REDIS_TIMEOUTS)
         # 情景记忆 + 用户画像的存储后端（PgStore 或 LocalStore）与向量生成器
         self._store = store
         self._embedder = embedder

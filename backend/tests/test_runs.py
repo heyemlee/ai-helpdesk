@@ -418,3 +418,16 @@ def test_roles_decide_which_side_this_process_runs():
     assert (inline.serves_api, inline.runs_worker) == (False, False)
     bad = RunConfig.from_env({"AI_HELPDESK_RUN_MODE": "queue", "AI_HELPDESK_RUN_LEASE_S": "-1"})
     assert bad.mode == "inline" and bad.lease_s == 30.0 and len(bad.warnings) == 2
+
+
+async def test_a_submission_is_accepted_even_when_redis_is_unreachable():
+    """读不到积压、派发也失败：run 照样落库收下，由清扫任务稍后派发——不为一个读不到的数挡客户。"""
+    desk = Desk()
+
+    async def down(*args, **kwargs):
+        raise ConnectionError("redis is restarting")
+
+    desk.broker.backlog = down
+    desk.broker.dispatch = down
+    run = await desk.submit()
+    assert (await desk.store.get(run.run_id)).status == QUEUED
