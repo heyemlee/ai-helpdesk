@@ -56,6 +56,10 @@ class Prefetch:
     tool_manager: Any
     sql_agent: Any = None
     label_sources: LabelSources | None = None
+    # 负载降级（app/runs/degrade.py）：第 2 档起检索一律走直检（不改写、不重排）；第 3 档起
+    # 不委派查库，这里写着为什么。都只在排队模式下由 worker 按积压决定，平时是默认值
+    direct_search: bool = False
+    data_paused: str = ""
 
     @property
     def data_enabled(self) -> bool:
@@ -67,16 +71,21 @@ class Prefetch:
         return self.tool_manager is not None and should_use_knowledge(message, intent=intent)
 
     def not_queried(self) -> dict[str, Any]:
-        """这一轮不委派时，响应里的 business_data 报什么：实例没接业务数据，或者这个问题不需要查。"""
+        """
+        这一轮不委派时，响应里的 business_data 报什么：实例没接业务数据，或者这个问题不需要查，
+        或者负载降级暂停了委派（paused，带原因）。
+        """
         if self.tool_manager is None or not self.data_enabled:
             return {"enabled": False, "attempted": False, "outcome": "not_configured"}
+        if self.data_paused:
+            return {"enabled": True, "attempted": False, "outcome": "paused", "reason": self.data_paused}
         return {"enabled": True, "attempted": False, "outcome": "skipped"}
 
     def will_query(self, message: str, intent=None, entities=None) -> bool:
         """这一轮会不会去委派查业务数据。和 `order_data_context` 开头的三道门是同一套判断。"""
         from app.tools.sql_agent_client import should_query_business_data
 
-        if self.tool_manager is None or not self.data_enabled:
+        if self.tool_manager is None or not self.data_enabled or self.data_paused:
             return False
         return bool(should_query_business_data(message, intent=intent, entities=entities))
 
@@ -111,6 +120,7 @@ class Prefetch:
             return "", False
         if not should_use_knowledge(message, intent=intent):
             return "", False
+        fast_path = fast_path or self.direct_search
         info.update(attempted=True, mode="direct" if fast_path else "rewrite_rerank")
         return await knowledge_lookup(
             self.tool_manager, message, top_k=top_k, fast_path=fast_path,
@@ -147,7 +157,7 @@ class Prefetch:
 
         info = trace if trace is not None else {}
         info.update(self.not_queried())
-        if self.tool_manager is None or not self.data_enabled:
+        if self.tool_manager is None or not self.data_enabled or self.data_paused:
             return "", False
         if not should_query_business_data(message, intent=intent, entities=entities):
             return "", False

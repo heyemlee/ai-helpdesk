@@ -55,6 +55,8 @@ export interface KnowledgeTrace {
 export type BusinessDataOutcome =
   | 'not_configured' | 'skipped' | 'evidence' | 'unverified'
   | 'failed' | 'unavailable' | 'error' | 'not_applicable' | 'empty'
+  /** 负载降级暂停了委派（排队模式，后端 app/runs/degrade.py 第 3 档起） */
+  | 'paused'
 
 export interface BusinessDataTrace {
   enabled?: boolean
@@ -119,6 +121,33 @@ export interface ChatResponse {
   trajectory?: TrajectoryEntry[]
   /** 同上：作答阶段的模型调用次数和 token。循环关着时是空对象 */
   answer_usage?: Partial<AnswerUsage>
+  /** 排队模式才有：这一轮是哪个 run 的第几次执行 */
+  run?: RunInfo
+  /** 排队模式才有：这一轮按哪一档降级（level 0 是没降） */
+  degrade?: DegradeInfo
+}
+
+/**
+ * 排队模式（后端 AI_HELPDESK_RUN_MODE=queued，app/runs/）：一轮对话是一个 run，交给 worker 跑。
+ * attempt 大于 1 说明之前处理它的 worker 失联了，换了一个接着跑；resumed_from 是"上一遍已经
+ * 答完、这一遍只补收尾"时作答的那一轮；dead 是反复失联、转了人工。
+ */
+export interface RunInfo {
+  run_id: string
+  attempt: number
+  resumed_from?: string
+  dead?: boolean
+}
+
+/**
+ * 按积压降级（后端 app/runs/degrade.py）。档位累加：1 关工具循环，2 检索不改写不重排，
+ * 3 不委派查订单数据，4 这一轮不调模型。off 是这一轮关掉的环节。
+ */
+export interface DegradeInfo {
+  level: number
+  backlog: number
+  threshold: number
+  off: string[]
 }
 
 /** 工具循环里的一次工具调用。outcome 的取值随工具：知识库是 found / empty，业务数据同 BusinessDataTrace.outcome */
@@ -160,6 +189,8 @@ export interface AnswerUsage {
 export type LlmUnavailableReason =
   | 'credential_rejected' | 'permission_denied' | 'quota_exhausted'
   | 'rate_limited' | 'forbidden' | 'model_error'
+  /** 本地判的过载：等令牌等不起，或者负载降级到最后一档（后端 core/admission.py） */
+  | 'overloaded'
 
 // ── 对话审计日志（GET /conversations/{conv_id}）────────────────────────────
 // 审计日志只留原文和作答 Agent。路由决策、置信度这些在事件日志里，按 turn_id 取
@@ -246,6 +277,25 @@ export interface StreamMetaEvent {
   knowledge_sources?: KnowledgeSource[]
   knowledge?: KnowledgeTrace
   business_data?: BusinessDataTrace
+  /** 排队模式才有，见 RunInfo / DegradeInfo */
+  run?: RunInfo
+  degrade?: DegradeInfo
+}
+
+/** 排队模式的第一帧：run_id 是断线之后续流的凭据（GET /runs/{run_id}/events） */
+export interface StreamRunEvent {
+  run_id: string
+  conv_id: string
+  status: string
+  attempt: number
+}
+
+/** 排队模式：第几次执行从这一帧开始。attempt > 1 时，上一遍已经发出来的半截作废 */
+export interface StreamAttemptEvent {
+  run_id: string
+  attempt: number
+  reclaimed: boolean
+  degrade?: DegradeInfo
 }
 
 export interface StreamRoutingEvent {
@@ -267,13 +317,17 @@ export type StreamResultEvent = Omit<
   | 'knowledge_sources' | 'knowledge' | 'business_data'
 >
 
-export type StreamEvent =
+/** id 是 SSE 的 `id:`：排队模式下每帧都有，断线重连时带上最后一个（Last-Event-ID）接着读 */
+export type StreamEvent = (
   | { event: 'progress'; data: StreamProgressEvent }
   | { event: 'meta'; data: StreamMetaEvent }
   | { event: 'routing'; data: StreamRoutingEvent }
   | { event: 'delta'; data: StreamDeltaEvent }
   | { event: 'result'; data: StreamResultEvent }
   | { event: 'error'; data: { detail: string } }
+  | { event: 'run'; data: StreamRunEvent }
+  | { event: 'attempt'; data: StreamAttemptEvent }
+) & { id?: string }
 
 // ── 监控 ────────────────────────────────────────────────────────────────────
 

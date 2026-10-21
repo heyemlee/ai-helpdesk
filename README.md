@@ -32,6 +32,7 @@ A FastAPI agent service: a router votes on each question's intent, tools run con
 - **Trust between agents fails closed.** A delegated result is evidence only with a success or partial-success status and no risk or degraded flag; a missing field counts against it. Only evidence, retrieved passages and SOPs can ground a price or a date.
 - **Retrieval with a corrective loop.** Three sub-queries over pgvector and a keyword index, a cross-encoder or LLM rerank with a check on whether the evidence is enough, and one more round for what is missing. The fused search alone finds the right document in the top three for 101 of 108 test questions.
 - **Guardrails and a human in the loop.** Every sentence is checked before it is sent, and unsupported price or date promises are replaced. Specialists declare when a person is needed, low confidence opens a ticket, and a model outage pauses calls instead of opening tickets.
+- **Turns that outlive their worker.** In queued mode a turn is a run in Postgres, executed by workers that hold a fenced lease and record the answer before any side effect; tickets, audit and memory are keyed by the run, and clients resume the stream with `Last-Event-ID`. In five chaos drills, 340 runs went through worker kills, Redis restarts and a Redis flush with no second ticket, audit line or answer.
 
 ## Architecture
 
@@ -53,11 +54,11 @@ A question reaches the staff instance from the console, or the customer instance
 | Agent protocol       | A2A JSON-RPC (`message/stream`, `message/send`) · Agent Card · httpx             | Delegation to the SQL agent with streamed stages, fallbacks and timeouts; plain HTTP `/query` as the default transport                                                                                                                         |
 | Embeddings, rerank   | OpenAI-compatible `/embeddings` · local n-gram vectors · cross-encoder `/rerank` | One embedder for knowledge, episodic memory and the intent vote, with local vectors when no API is set; a cross-encoder rerank with the LLM as fallback                                                                                        |
 | Retrieval store      | PostgreSQL 16 · pgvector · `tsvector` · asyncpg · SQLite                         | Dense and lexical legs fused by rank; SQLite with BM25 as a local fallback                                                                                                                                                                     |
-| Memory, shared state | Redis 7                                                                          | 24-hour working memory and its summarisation lock, per-user rate limits, and circuit breakers and routing penalties shared across instances                                                                                                    |
+| Memory, shared state | Redis 7                                                                          | 24-hour working memory and its summarisation lock, per-user rate limits, and circuit breakers and routing penalties shared across instances; in queued mode, run dispatch and resumable frames (Streams) and the model token bucket (Lua)     |
 | Guardrails, identity | Rule-based answer policy · confidence gates · HMAC user tokens                   | Sentence-level checks, handoff decisions and signed user identities                                                                                                                                                                            |
 | Console              | React 18 · TypeScript · Vite 6 · TanStack Query 5 · Tailwind CSS 4               | SSE read from a `fetch` stream (EventSource can't POST), streamed Markdown and Learning mode, in English and Chinese                                                                                                                           |
 | Observability        | OpenTelemetry · Prometheus · Grafana · Tempo · Loki                              | Traces per request, metrics, logs and alert rules, next to the monitor's Z-score anomaly checks                                                                                                                                                |
-| Delivery, quality    | Docker Compose · Nginx · GitHub Actions · pytest · Ruff · Vitest                 | 12 services in one deploy; CI runs the tests against pgvector, the A2A contract fixtures and both image builds                                                                                                                                 |
+| Delivery, quality    | Docker Compose · Nginx · Kubernetes · KEDA · GitHub Actions · pytest · Ruff · Vitest · k6 | 12 services in one deploy, or Kustomize manifests with KEDA-scaled workers; CI runs the tests against pgvector and Redis, the A2A contract fixtures and both image builds; k6 and a chaos drill for queued mode                     |
 
 ## Features
 
@@ -98,6 +99,20 @@ Data questions on the staff instance go to [ai-sql-agent](https://github.com/hey
 - **Streaming with fallbacks.** The Agent Card is cached for 30 s, and each stage (table search, planning, SQL, queries, repair) reaches the console in the interface language. A `-32004` before the stream opens switches to `message/send`; silence or a hard deadline ends the call.
 - **Evidence rules on every carrier.** One check covers A2A and `/query` results; a partial result also limits what may be said about failed steps, and a truncated one rules out totals.
 - **One contract.** Consumer tests run the golden fixtures of [a2a-contract](https://github.com/heyemlee/a2a-contract), pinned at `v1.13`, and fail rather than skip when they are missing.
+
+### Durable runs
+
+`AI_HELPDESK_RUN_MODE=queued` takes a turn off the connection that asked for it ([design](docs/design/durable-agent-runs.md)). The API writes the run to Postgres and dispatches its id on a per-instance Redis stream; workers, the same image with `AI_HELPDESK_ROLE=worker`, claim it and run the unchanged pipeline, and every SSE frame goes to a per-run stream the client can resume. Inline mode, the default, is untouched.
+
+- **One source of truth.** Run state, leases and results live in `agent_runs`; Redis streams carry dispatch and frames and can be rebuilt, because a sweep re-dispatches whatever Postgres says nobody is running.
+- **Leases with a fence.** Workers renew a lease every third of its length; another worker takes over an idle message with `XAUTOCLAIM` and `attempt + 1`. A worker that lost its lease can no longer write, and its late frames are dropped.
+- **Decided once, applied once.** The answer is recorded before any side effect, so a takeover after that point resends it without calling the model. Ticket ids derive from the run, audit and working memory are written once per run, and tool results are memoized so a retry does not repeat a 40 s delegation. Infrastructure errors are retried; runs that keep failing go to a dead letter and a person.
+- **Load is admitted, not absorbed.** A token bucket in Redis, shared by every replica, admits model calls by provider RPM and TPM; a backlog-driven ladder turns off the tool loop, then rewrite and rerank, then delegation, then model calls; above the cap the API answers 429 with `Retry-After`.
+- **Ready for Kubernetes.** Liveness, readiness and drain on SIGTERM; [manifests](deploy/k8s) with KEDA scaling workers on the stream backlog, verified on kind.
+
+In five chaos drills on Compose and kind (worker kills, Redis restarts and a flush, a storm of 429s, deploys), all 340 runs finished and every check against a second ticket, audit line or answer passed. A killed worker's runs were taken over and finished at most 42 s after submission; deploys took none over.
+
+Against a mock model with a quota of 300 requests a minute, two workers already reach what the quota allows (97 turns a minute; four finished 103.5). Without the token bucket the same overload looked faster only because 27% of turns were answered "can't answer right now" after 718 upstream 429s; with the bucket at 85% of the quota the model returned none. At low load the queue adds nothing measurable: first sentence p50 1.006 s inline, 1.005 s queued. All of it ran on one laptop with fixed model latencies, so the shape carries over and the absolute numbers do not. Records: [chaos drill](docs/evaluation/chaos-drill.md), [load test](docs/evaluation/load-test.md).
 
 ### Retrieval
 
@@ -164,6 +179,12 @@ scripts/dev-all.sh                    # the same, plus ai-sql-agent from a sibli
 
 Configuration, model providers, knowledge import, setup without Docker and the API: [docs/setup.md](docs/setup.md).
 
+Queued mode needs Postgres, Redis and `AI_HELPDESK_INSTANCE`; the drill stack has all three and a mock model:
+
+```bash
+docker compose -f deploy/drill/docker-compose.yml up -d --build --wait   # API :28080, three workers, mock model
+```
+
 ## Test
 
 ```bash
@@ -173,9 +194,11 @@ cd backend && .venv/bin/python -m pytest    # backend tests; TEST_POSTGRES_DSN a
 .venv/bin/python scripts/run_eval.py        # end-to-end evaluation; calls the model
 .venv/bin/python scripts/run_trajectory_eval.py  # tool loop vs rules on 40 trajectory cases; calls the model with --yes
 cd ../frontend && npm test                  # console tests
+backend/.venv/bin/python backend/scripts/chaos_drill.py --kills 3 --restart-redis --storm 20 --slow  # queued mode under failure
+loadtest/run.sh <name>                      # k6 against the drill stack; WORKERS, LLM_RPM, DEGRADE, MOCK_RPM
 ```
 
-CI runs Ruff, 1,399 backend tests against pgvector, 239 console tests, the production build, the A2A contract fixtures and both Docker images. The end-to-end and trajectory evaluations spend model calls, so they run only on request.
+CI runs Ruff, 1,486 backend tests against pgvector and Redis, 253 console tests, the production build, the A2A contract fixtures and both Docker images. The end-to-end and trajectory evaluations spend model calls, so they run only on request.
 
 ## Deploy
 
@@ -183,6 +206,8 @@ CI runs Ruff, 1,399 backend tests against pgvector, 239 console tests, the produ
 docker compose up -d --build                    # 12 services; only Nginx :80 listens beyond localhost
 scripts/docker-deploy.sh backup                 # Postgres, Redis, env files and deploy/ config
 scripts/docker-deploy.sh restore backups/<dir>  # restore and restart; a drill took 17 s
+docker compose -f docker-compose.yml -f docker-compose.queued.yml up -d --build   # queued mode: api + worker per instance
+scripts/k8s-up.sh                               # kind cluster: manifests, KEDA, mock model
 ```
 
 In production mode the service refuses to start without the admin key, the user-signing secret, chat protection and a declared deployment scope. It is single-tenant by design; [deployment boundaries](docs/deployment-boundaries.md) explains what that covers.

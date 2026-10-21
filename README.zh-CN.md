@@ -32,6 +32,7 @@
 - **Agent 之间默认不信任。** 委派结果只有在执行状态为 success 或 partial_success、且没有风险或降级标记时才算证据；字段缺失一律按不可信处理。价格和日期只能以证据、检索到的片段和 SOP 为依据。
 - **带自纠错回路的检索。** 改写成三个子查询，同时查 pgvector 和关键词索引，用 cross-encoder 或 LLM 重排并判断依据够不够，不够就针对缺的部分再检索一轮。单看融合检索这一步，108 道测试题里有 101 道把正确文档排进前 3。
 - **护栏与人工接管。** 每句话发出之前都要过检查，没有依据的价格或日期承诺会被替换。专家会声明是否需要人工，置信度低时建工单；模型停机时暂停调用，而不是建工单。
+- **一轮对话不跟着 worker 一起死。** 排队模式下一轮对话是 Postgres 里的一个 run，由拿着带栅栏租约的 worker 执行，回答在任何副作用之前先记下；工单、审计和记忆都按 run 去重，客户端断线后带 `Last-Event-ID` 续读。五次故障演练里，340 个 run 经历了杀 worker、重启和清空 Redis，没有多出一张工单、一条审计或一个回答。
 
 ## 系统架构
 
@@ -53,11 +54,11 @@
 | Agent 协议     | A2A JSON-RPC（`message/stream`、`message/send`）· Agent Card · httpx   | 委派给 SQL Agent，带实时阶段、降级和超时；默认传输是普通 HTTP `/query`                                                                                          |
 | 向量与重排     | OpenAI 兼容 `/embeddings` · 本地 n-gram 向量 · cross-encoder `/rerank` | 知识库、情景记忆和意图投票共用一个向量化入口，没配 API 时用本地向量；重排优先 cross-encoder，LLM 兜底                                                           |
 | 检索存储       | PostgreSQL 16 · pgvector · `tsvector` · asyncpg · SQLite               | 稠密和关键词两路按名次融合；本地兜底用 SQLite 加 BM25                                                                                                           |
-| 记忆与共享状态 | Redis 7                                                                | 24 小时工作记忆及其压缩锁、按用户限流，以及多实例共享的熔断状态和路由扣分                                                                                       |
+| 记忆与共享状态 | Redis 7                                                                | 24 小时工作记忆及其压缩锁、按用户限流，以及多实例共享的熔断状态和路由扣分；排队模式下还有 run 的派发和可续读的帧流（Streams）、模型调用的令牌桶（Lua）     |
 | 护栏与身份     | 纯规则的答案策略 · 置信度门槛 · HMAC 用户令牌                          | 逐句检查、转人工判定、签名的用户身份                                                                                                                            |
 | 工作台         | React 18 · TypeScript · Vite 6 · TanStack Query 5 · Tailwind CSS 4     | 从 `fetch` 流里读 SSE（EventSource 不支持 POST）、流式 Markdown 和学习模式，中英文界面                                                                          |
 | 可观测性       | OpenTelemetry · Prometheus · Grafana · Tempo · Loki                    | 每个请求的链路追踪、指标、日志和告警规则，另有监控的 Z-score 异常检测                                                                                           |
-| 交付与质量     | Docker Compose · Nginx · GitHub Actions · pytest · Ruff · Vitest       | 一次部署 12 个服务；CI 连 pgvector 跑测试，并跑 A2A 契约用例和两个镜像的构建                                                                                    |
+| 交付与质量     | Docker Compose · Nginx · Kubernetes · KEDA · GitHub Actions · pytest · Ruff · Vitest · k6 | 一次部署 12 个服务，或者用 Kustomize 清单、worker 由 KEDA 扩缩；CI 连 pgvector 和 Redis 跑测试，并跑 A2A 契约用例和两个镜像的构建；排队模式另有 k6 压测和故障演练 |
 
 ## 功能
 
@@ -98,6 +99,20 @@
 - **流式加降级。** Agent Card 缓存 30 秒；每个阶段（找表、规划、写 SQL、查询、自修）按界面语言显示在工作台上。流打开之前收到 `-32004` 就改用 `message/send`；静默超时或超过总时长就结束调用。
 - **每种传输都用同一套证据规则。** A2A 和 `/query` 的结果过同一道检查；部分成功时失败的那几步不能下结论，结果被截断时不能报总数。
 - **一份契约。** 消费方测试跑 [a2a-contract](https://github.com/heyemlee/a2a-contract) 的 golden fixtures，钉在 `v1.13`；拿不到 fixture 时测试失败，而不是跳过。
+
+### 可恢复的运行
+
+`AI_HELPDESK_RUN_MODE=queued` 时一轮对话不再绑在发起它的连接上（[设计](docs/design/durable-agent-runs.md)，英文）。API 把 run 写进 Postgres、把 run_id 发到按实例分开的 Redis Stream；worker（同一个镜像，`AI_HELPDESK_ROLE=worker`）领走它，跑原样不动的整轮流程，每个 SSE 帧写进这个 run 自己的帧流，客户端随时可以续读。默认的 inline 模式不受影响。
+
+- **状态只有一份。** run 的状态、租约和结局都在 `agent_runs`；Redis 里的派发和帧流都能重建——清扫任务按 Postgres 里"没人在跑"的 run 重新派发。
+- **带栅栏的租约。** worker 每过三分之一个租约续一次；别的 worker 用 `XAUTOCLAIM` 接手闲置的消息，`attempt + 1`。丢了租约的 worker 再也写不进去，它发出的迟到帧会被丢掉。
+- **回答只定一次，副作用只落一次。** 回答在任何副作用之前先记下，之后接手的那一遍不再调模型、直接发同一个回答。工单号由 run 推出来，审计和工作记忆按 run 只写一次，工具结果按 run 记下来，重跑时 40 秒的委派不再做第二遍。基础设施故障交还重试；一直不成的进死信、转人工。
+- **负载是放进来的，不是硬扛的。** Redis 里一只所有副本共用的令牌桶，按供应商的 RPM 和 TPM 放行模型调用；按积压逐档降级：关工具循环、不改写不重排、不委派、不调模型；超过上限 API 回 429 和 `Retry-After`。
+- **能上 Kubernetes。** 存活、就绪探针，SIGTERM 时排空；[清单](deploy/k8s)里 worker 由 KEDA 按派发流的积压扩缩，在 kind 上验证过。
+
+在 Compose 和 kind 上的五次故障演练（杀 worker、重启和清空 Redis、模型 429 风暴、发版）里，340 个 run 全部跑完，防重复工单、重复审计、重复回答的检查全部通过。被杀的 worker 手上的 run 都被接手跑完，从提交到结束最长 42 秒；发版时一个都不用接手。
+
+假模型的限额是每分钟 300 次请求：两个 worker 就已经到了限额允许的上限（每分钟 97 轮；四个 worker 是 103.5 轮）。不开令牌桶时，同样的过载看起来反而更快，只是因为上游回了 718 次 429，27% 的对话被答成"暂时答不了"；令牌桶设在限额的 85% 时，模型一次 429 都没回。低负载下排队几乎不增加耗时：首句 p50 inline 1.006 秒、排队 1.005 秒。这些都是在一台笔记本上、对着固定延迟的假模型测的，形状能推广，绝对数字不能。记录（英文）：[故障演练](docs/evaluation/chaos-drill.md)、[压测](docs/evaluation/load-test.md)。
 
 ### 检索
 
@@ -164,6 +179,12 @@ scripts/dev-all.sh                    # 同上，并从相邻目录启动 ai-sql
 
 配置、模型服务、导入知识、不用 Docker 的本地环境和 API 一览见 [docs/setup.md](docs/setup.md)（英文）；完整的中文使用指南见 [backend/README.md](backend/README.md)。
 
+排队模式要 Postgres、Redis 和 `AI_HELPDESK_INSTANCE`；演练那一套三样都有，模型是假的：
+
+```bash
+docker compose -f deploy/drill/docker-compose.yml up -d --build --wait   # API 在 :28080，三个 worker，假模型
+```
+
 ## 测试
 
 ```bash
@@ -173,9 +194,11 @@ cd backend && .venv/bin/python -m pytest    # 后端测试；设了 TEST_POSTGRE
 .venv/bin/python scripts/run_eval.py        # 端到端评测；会调用模型
 .venv/bin/python scripts/run_trajectory_eval.py  # 工具循环对规则组，40 条轨迹用例；加 --yes 才调用模型
 cd ../frontend && npm test                  # 工作台测试
+backend/.venv/bin/python backend/scripts/chaos_drill.py --kills 3 --restart-redis --storm 20 --slow  # 排队模式的故障演练
+loadtest/run.sh <名字>                      # 用 k6 压演练那一套；WORKERS、LLM_RPM、DEGRADE、MOCK_RPM
 ```
 
-CI 跑 Ruff、连 pgvector 的 1,399 个后端用例、239 个工作台用例、生产构建、A2A 契约用例，以及两个 Docker 镜像的构建。端到端评测和轨迹评测要花模型调用，所以只在手动触发时运行。
+CI 跑 Ruff、连 pgvector 和 Redis 的 1,486 个后端用例、253 个工作台用例、生产构建、A2A 契约用例，以及两个 Docker 镜像的构建。端到端评测和轨迹评测要花模型调用，所以只在手动触发时运行。
 
 ## 部署
 
@@ -183,6 +206,8 @@ CI 跑 Ruff、连 pgvector 的 1,399 个后端用例、239 个工作台用例、
 docker compose up -d --build                    # 12 个服务；只有 80 端口的 Nginx 对外监听
 scripts/docker-deploy.sh backup                 # 备份 Postgres、Redis、env 文件和 deploy/ 配置
 scripts/docker-deploy.sh restore backups/<dir>  # 恢复并重启；恢复演练用时 17 秒
+docker compose -f docker-compose.yml -f docker-compose.queued.yml up -d --build   # 排队模式：每个实例一个 api、一个 worker
+scripts/k8s-up.sh                               # kind 集群：清单、KEDA、假模型
 ```
 
 生产模式下，缺管理钥匙、用户签名密钥、对话保护或部署范围声明中的任何一项，服务都拒绝启动。系统按单租户设计，具体范围见[部署边界](docs/deployment-boundaries.zh-CN.md)。

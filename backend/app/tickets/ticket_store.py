@@ -186,9 +186,16 @@ class TicketStore:
         answer_confidence: float = 0.0,
         last_message: str = "",
         turn_id: str = "",
+        ticket_id: str | None = None,
     ) -> Ticket:
+        """
+        建一张工单。ticket_id 不给就随机生成。
+
+        给了 ticket_id（排队模式下由 run 推出来，app/runs/memo.deterministic_id）时插入是幂等的：
+        同一个 run 重跑多少遍都只有这一张，已经有了就把那一张原样返回。
+        """
         ticket = Ticket(
-            id=f"tk_{uuid.uuid4().hex[:12]}",
+            id=ticket_id or f"tk_{uuid.uuid4().hex[:12]}",
             conv_id=conv_id,
             user_id=user_id,
             reason=reason,
@@ -199,13 +206,28 @@ class TicketStore:
             last_message=last_message[:500],
             turn_id=turn_id,
         )
-        await asyncio.to_thread(self._insert, ticket)
+        if ticket_id:
+            existing = await asyncio.to_thread(self._insert_once, ticket)
+            if existing is not None:
+                logger.info(f"工单已存在（同一个 run 重跑）: {existing.id} conv={conv_id}")
+                return existing
+        else:
+            await asyncio.to_thread(self._insert, ticket)
         logger.info(f"工单已创建: {ticket.id} conv={conv_id} reason={reason[:60]}")
         return ticket
 
     def _insert(self, t: Ticket) -> None:
         with self._lock:
             self._insert_locked(t)
+
+    def _insert_once(self, t: Ticket) -> Ticket | None:
+        """插入；同一个 id 已经有了就不插，返回已有的那一张（插进去了返回 None）。"""
+        with self._lock:
+            existing = self._get_locked(t.id)
+            if existing is not None:
+                return existing
+            self._insert_locked(t)
+            return None
 
     def _insert_locked(self, t: Ticket) -> None:
         conn = self._conn()
@@ -253,9 +275,12 @@ class TicketStore:
 
     def _get(self, ticket_id: str) -> Ticket | None:
         with self._lock:
-            row = self._conn().execute(
-                "SELECT * FROM tickets WHERE id = ?", (ticket_id,)
-            ).fetchone()
+            return self._get_locked(ticket_id)
+
+    def _get_locked(self, ticket_id: str) -> Ticket | None:
+        row = self._conn().execute(
+            "SELECT * FROM tickets WHERE id = ?", (ticket_id,)
+        ).fetchone()
         return self._row_to_ticket(row) if row else None
 
     async def list(self, status: str | None = None, limit: int = 50) -> list[Ticket]:
@@ -413,9 +438,11 @@ class PgTicketStore:
         answer_confidence: float = 0.0,
         last_message: str = "",
         turn_id: str = "",
+        ticket_id: str | None = None,
     ) -> Ticket:
+        """和 TicketStore.create 一样：给了 ticket_id 时插入是幂等的，已经有了就返回那一张。"""
         ticket = Ticket(
-            id=f"tk_{uuid.uuid4().hex[:12]}",
+            id=ticket_id or f"tk_{uuid.uuid4().hex[:12]}",
             conv_id=conv_id,
             user_id=user_id,
             reason=reason,
@@ -427,19 +454,27 @@ class PgTicketStore:
             turn_id=turn_id,
         )
         async with self._db.transaction() as conn:
-            await conn.execute(
+            inserted = await conn.fetchval(
                 "INSERT INTO tickets (id, conv_id, user_id, request_id, reason, intent,"
                 " urgency, answer_confidence, last_message, status, created_at, updated_at)"
-                " VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
+                " VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)"
+                " ON CONFLICT (id) DO NOTHING RETURNING id",
                 ticket.id, ticket.conv_id, ticket.user_id, ticket.request_id,
                 ticket.reason, ticket.intent, ticket.urgency, ticket.answer_confidence,
                 ticket.last_message, ticket.status, ticket.created_at, ticket.updated_at,
             )
-            if ticket.turn_id:
+            if inserted is not None and ticket.turn_id:
                 await conn.execute(
                     "INSERT INTO ticket_turns (ticket_id, turn_id) VALUES ($1, $2)",
                     ticket.id, ticket.turn_id,
                 )
+        if inserted is None:
+            if not ticket_id:
+                # 随机 id 撞了（不该发生）：和原来一样当成错误
+                raise RuntimeError(f"工单 id 冲突: {ticket.id}")
+            existing = await self.get(ticket.id)
+            logger.info(f"工单已存在（同一个 run 重跑）: {ticket.id} conv={conv_id}")
+            return existing if existing is not None else ticket
         logger.info(f"工单已创建: {ticket.id} conv={conv_id} reason={reason[:60]}")
         return ticket
 

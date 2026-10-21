@@ -1,0 +1,147 @@
+# 员工实例的 worker：领 ai-helpdesk:runs:staff 上的 run 执行（ROLE=worker）
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-staff
+spec:
+  # 副本数归 KEDA 管（keda.yaml），这里只是初始值
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: worker-staff
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ai-helpdesk
+        app.kubernetes.io/component: worker-staff
+    spec:
+      # 停机：/readyz 先变 503，停止领新的 run，等手上的跑完（AI_HELPDESK_RUN_DRAIN_S=90），
+      # 到时限没跑完的交还给别的 worker。宽限期要比 90 秒长，不然 kubelet 先一步 SIGKILL；
+      # 真被 SIGKILL 了也不丢——租约过期之后别的 worker 接手
+      terminationGracePeriodSeconds: 120
+      # Postgres、Redis 能连上再起：不然第一次部署时 api 和 worker 会连不上库、崩掉、退避重启几轮
+      initContainers:
+        - name: wait-for-deps
+          image: aihd/backend
+          command: ["python", "scripts/wait_for.py", "postgres:5432", "redis:6379", "--timeout", "180"]
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {memory: 64Mi}
+      containers:
+        - name: worker
+          image: aihd/backend
+          envFrom:
+            - configMapRef:
+                name: backend-config
+            - configMapRef:
+                name: staff-config
+            - secretRef:
+                name: backend-secrets
+          env:
+            - name: AI_HELPDESK_ROLE
+              value: worker
+          ports:
+            - containerPort: 8000
+              name: http
+          startupProbe:
+            httpGet: {path: /livez, port: http}
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: {path: /livez, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          resources:
+            requests: {cpu: 200m, memory: 192Mi}
+            limits: {memory: 768Mi}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: worker-staff
+spec:
+  # 驱逐（节点维护、缩容）一次只动一个 worker：每个被驱逐的都要排空几十秒
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: worker-staff
+---
+# 客户实例的 worker：只领 ai-helpdesk:runs:customer，读不到员工的 run
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-customer
+spec:
+  # 副本数归 KEDA 管（keda.yaml），这里只是初始值
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: worker-customer
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ai-helpdesk
+        app.kubernetes.io/component: worker-customer
+    spec:
+      # 停机：/readyz 先变 503，停止领新的 run，等手上的跑完（AI_HELPDESK_RUN_DRAIN_S=90），
+      # 到时限没跑完的交还给别的 worker。宽限期要比 90 秒长，不然 kubelet 先一步 SIGKILL；
+      # 真被 SIGKILL 了也不丢——租约过期之后别的 worker 接手
+      terminationGracePeriodSeconds: 120
+      # Postgres、Redis 能连上再起：不然第一次部署时 api 和 worker 会连不上库、崩掉、退避重启几轮
+      initContainers:
+        - name: wait-for-deps
+          image: aihd/backend
+          command: ["python", "scripts/wait_for.py", "postgres:5432", "redis:6379", "--timeout", "180"]
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {memory: 64Mi}
+      containers:
+        - name: worker
+          image: aihd/backend
+          envFrom:
+            - configMapRef:
+                name: backend-config
+            - configMapRef:
+                name: customer-config
+            - secretRef:
+                name: backend-secrets
+          env:
+            - name: AI_HELPDESK_ROLE
+              value: worker
+          ports:
+            - containerPort: 8000
+              name: http
+          startupProbe:
+            httpGet: {path: /livez, port: http}
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: {path: /livez, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          resources:
+            requests: {cpu: 200m, memory: 192Mi}
+            limits: {memory: 768Mi}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: worker-customer
+spec:
+  # 驱逐（节点维护、缩容）一次只动一个 worker：每个被驱逐的都要排空几十秒
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: worker-customer

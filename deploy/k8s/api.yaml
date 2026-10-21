@@ -1,0 +1,199 @@
+# 员工实例：收请求、续流（ROLE=api）。两个副本，滚动更新时不少于一个在线
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-staff
+  labels:
+    app.kubernetes.io/name: ai-helpdesk
+    app.kubernetes.io/component: api-staff
+spec:
+  selector:
+    app.kubernetes.io/component: api-staff
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-staff
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: api-staff
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ai-helpdesk
+        app.kubernetes.io/component: api-staff
+    spec:
+      # api 手上没有长任务，只有续流的连接：停机时 uvicorn 等 15 秒就把剩下的连接断掉，
+      # 客户端带着 Last-Event-ID 连到别的副本接着读（这一轮在 worker 上，不受影响）
+      terminationGracePeriodSeconds: 30
+      # Postgres、Redis 能连上再起：不然第一次部署时 api 和 worker 会连不上库、崩掉、退避重启几轮
+      initContainers:
+        - name: wait-for-deps
+          image: aihd/backend
+          command: ["python", "scripts/wait_for.py", "postgres:5432", "redis:6379", "--timeout", "180"]
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {memory: 64Mi}
+      containers:
+        - name: api
+          image: aihd/backend
+          command: ["python", "-m", "uvicorn", "app.api.main:app", "--host", "0.0.0.0", "--port", "8000",
+                    "--timeout-graceful-shutdown", "15"]
+          envFrom:
+            - configMapRef:
+                name: backend-config
+            - configMapRef:
+                name: staff-config
+            - secretRef:
+                name: backend-secrets
+          env:
+            - name: AI_HELPDESK_ROLE
+              value: api
+          ports:
+            - containerPort: 8000
+              name: http
+          # 启动要连库、建表、灌知识库，给足一分钟；之后存活只问进程，就绪还要问依赖
+          startupProbe:
+            httpGet: {path: /livez, port: http}
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: {path: /livez, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          lifecycle:
+            # 先从 Service 的端点里摘掉、再收 SIGTERM：摘端点和发信号是并行的，不等这几秒，
+            # 还会有新连接打到一个已经在停的进程上
+            preStop:
+              exec:
+                command: ["sleep", "5"]
+          resources:
+            requests: {cpu: 100m, memory: 192Mi}
+            limits: {memory: 512Mi}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: api-staff
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: api-staff
+---
+# 客户实例：同一个镜像，配置见 config/customer.env
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-customer
+  labels:
+    app.kubernetes.io/name: ai-helpdesk
+    app.kubernetes.io/component: api-customer
+spec:
+  selector:
+    app.kubernetes.io/component: api-customer
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-customer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: api-customer
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ai-helpdesk
+        app.kubernetes.io/component: api-customer
+    spec:
+      # api 手上没有长任务，只有续流的连接：停机时 uvicorn 等 15 秒就把剩下的连接断掉，
+      # 客户端带着 Last-Event-ID 连到别的副本接着读（这一轮在 worker 上，不受影响）
+      terminationGracePeriodSeconds: 30
+      # Postgres、Redis 能连上再起：不然第一次部署时 api 和 worker 会连不上库、崩掉、退避重启几轮
+      initContainers:
+        - name: wait-for-deps
+          image: aihd/backend
+          command: ["python", "scripts/wait_for.py", "postgres:5432", "redis:6379", "--timeout", "180"]
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {memory: 64Mi}
+      containers:
+        - name: api
+          image: aihd/backend
+          command: ["python", "-m", "uvicorn", "app.api.main:app", "--host", "0.0.0.0", "--port", "8000",
+                    "--timeout-graceful-shutdown", "15"]
+          envFrom:
+            - configMapRef:
+                name: backend-config
+            - configMapRef:
+                name: customer-config
+            - secretRef:
+                name: backend-secrets
+          env:
+            - name: AI_HELPDESK_ROLE
+              value: api
+          ports:
+            - containerPort: 8000
+              name: http
+          # 启动要连库、建表、灌知识库，给足一分钟；之后存活只问进程，就绪还要问依赖
+          startupProbe:
+            httpGet: {path: /livez, port: http}
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: {path: /livez, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          lifecycle:
+            # 先从 Service 的端点里摘掉、再收 SIGTERM：摘端点和发信号是并行的，不等这几秒，
+            # 还会有新连接打到一个已经在停的进程上
+            preStop:
+              exec:
+                command: ["sleep", "5"]
+          resources:
+            requests: {cpu: 100m, memory: 192Mi}
+            limits: {memory: 512Mi}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: api-customer
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: api-customer

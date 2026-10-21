@@ -50,6 +50,7 @@ from app.core.llm_utils import (
     structured_parse,
 )
 from app.events.recorder import model_call_tag
+from app.runs.memo import current_run, memo_key
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,8 @@ class ToolResult:
     reranked:       bool = False   # 是否经过重排
     corrected:      bool = False   # 是否触发过检索自纠错（补检一轮）
     evidence_ok:    bool | None = None  # 证据充分性判定；None = 未判定
+    # 排队模式下这一轮是重跑，结果取自上一遍记下的（app/runs/memo.py），这一次没有真的调用
+    replayed:       bool = False
 
 
 # 类的 docstring 和字段的 description 会写进 JSON Schema、随请求发给模型，
@@ -319,6 +322,15 @@ class ToolManager:
             return ToolResult(success=False, data=None, tool_name=name, error=f"工具不存在: {name}")
 
         cache_rerank_top_k = rerank_top_k if rerank_top_k > 0 and tool.supports_rerank else 0
+        # 排队模式：这一轮属于一个 run。重跑时同一个工具、同样的参数直接取上一遍记下的结果
+        # ——worker 在委派查库的第 35 秒被杀掉，接手的那一遍不该再让下游跑 40 秒（app/runs/memo.py）
+        scope = current_run()
+        memo = memo_key("call", name, {"params": params, "rerank_top_k": cache_rerank_top_k}) if scope else ""
+        if scope is not None:
+            recalled = await scope.recall(memo)
+            if recalled is not None:
+                return ToolResult(success=True, data=recalled.get("data"), tool_name=name, cached=True,
+                                  reranked=bool(recalled.get("reranked")), replayed=True)
         # 在执行之前取版本，写缓存时用的也是它：执行期间数据被改了的话，
         # 这次的结果记在旧版本底下，之后的调用拿新版本来取，不会用到它。
         # None = 版本读不出来，这一次不读也不写缓存。
@@ -372,6 +384,8 @@ class ToolManager:
             # 写缓存：缓存最终返回结果，避免下次命中未重排的原始结果。
             if version is not None:
                 self._set_cache(name, params, data, tool.cache_ttl, cache_rerank_top_k, reranked, version)
+            if scope is not None:
+                await scope.remember(memo, {"data": data, "reranked": reranked})
 
             return ToolResult(success=True, data=data, tool_name=name,
                               latency_ms=latency, reranked=reranked)
@@ -478,6 +492,39 @@ class ToolManager:
             return RewrittenQueries([query], failed=True)
 
     async def search_with_rewrite(
+        self,
+        tool_name: str,
+        query: str,
+        top_k: int = 5,
+        context: dict[str, Any] | None = None,
+        *,
+        self_correct: bool = True,
+    ) -> ToolResult:
+        """
+        完整的检索优化链路，见 `_search_with_rewrite`。
+
+        排队模式下整条链路的结果按 run 记下来（app/runs/memo.py）：重跑时不再花改写和重排
+        那几次模型往返，拿到的也是和上一遍一样的片段。只记成功的结果。
+        """
+        scope = current_run()
+        if scope is None:
+            return await self._search_with_rewrite(tool_name, query, top_k, context,
+                                                   self_correct=self_correct)
+        key = memo_key("search", tool_name, {"query": query, "top_k": top_k, "self_correct": self_correct})
+        recalled = await scope.recall(key)
+        if recalled is not None:
+            return ToolResult(success=True, data=recalled.get("data"), tool_name=tool_name, cached=True,
+                              reranked=bool(recalled.get("reranked")),
+                              corrected=bool(recalled.get("corrected")),
+                              evidence_ok=recalled.get("evidence_ok"), replayed=True)
+        result = await self._search_with_rewrite(tool_name, query, top_k, context,
+                                                 self_correct=self_correct)
+        if result.success:
+            await scope.remember(key, {"data": result.data, "reranked": result.reranked,
+                                       "corrected": result.corrected, "evidence_ok": result.evidence_ok})
+        return result
+
+    async def _search_with_rewrite(
         self,
         tool_name: str,
         query: str,

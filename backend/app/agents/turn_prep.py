@@ -150,7 +150,8 @@ async def prepare_turn(
             report_stage(progress_cb, STAGE_GATHERING, knowledge=searching, order_data=querying)
         recorder.emit("prefetch_planned", {
             "knowledge": searching, "order_data": querying,
-            "mode": ("direct" if intent_result.fast_path else "rewrite_rerank") if searching else "",
+            "mode": ("direct" if intent_result.fast_path or prefetch.direct_search else "rewrite_rerank")
+                    if searching else "",
             "data_enabled": prefetch.data_enabled, "skipped": "",
             **({} if querying else {"not_queried": prefetch.not_queried()}),
         })

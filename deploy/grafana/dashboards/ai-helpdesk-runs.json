@@ -1,0 +1,285 @@
+{
+  "uid": "ai-helpdesk-runs",
+  "title": "ai-helpdesk · 排队模式",
+  "schemaVersion": 39,
+  "version": 1,
+  "tags": [
+    "ai-helpdesk",
+    "runs"
+  ],
+  "timezone": "browser",
+  "refresh": "10s",
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "派发队列积压",
+      "type": "timeseries",
+      "description": "没被领走的加上领走了还没确认的。KEDA 按同一个数扩缩 worker；持续偏高看右边两张图找原因",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "max by (instance) (agent_run_backlog)",
+          "legendFormat": "{{instance}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "title": "提交：收下 / 去重 / 拒收",
+      "type": "timeseries",
+      "description": "rejected 是积压超过 AI_HELPDESK_RUN_QUEUE_MAX 回的 429；deduplicated 是同一个 Idempotency-Key 又来了一次",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(agent_runs_submitted_total[1m])) * 60",
+          "legendFormat": "{{outcome}} / 分钟",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "title": "排队时间 p50 / p95",
+      "type": "timeseries",
+      "description": "提交到第一次被 worker 领走",
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(agent_run_queue_wait_seconds_bucket[5m])))",
+          "legendFormat": "p50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(agent_run_queue_wait_seconds_bucket[5m])))",
+          "legendFormat": "p95",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "title": "首句延迟 p50 / p95（按模式）",
+      "type": "timeseries",
+      "description": "inline 从请求进来算，queued 从 run 提交算（含排队）",
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le, mode) (rate(chat_first_delta_seconds_bucket[5m])))",
+          "legendFormat": "p50 {{mode}}",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, mode) (rate(chat_first_delta_seconds_bucket[5m])))",
+          "legendFormat": "p95 {{mode}}",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "title": "结局",
+      "type": "timeseries",
+      "description": "succeeded 包括转人工、追问和\"模型服务不可用\"的回答；failed 是这一轮自己出错；dead 是反复失联进了死信",
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (status) (rate(agent_runs_finished_total[1m])) * 60",
+          "legendFormat": "{{status}} / 分钟",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "title": "执行次数与丢租约",
+      "type": "timeseries",
+      "description": "reclaimed 是原来的 worker 失联、别人接手；lease lost 是续不上租、那一遍作废",
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (kind) (rate(agent_run_attempts_total[1m])) * 60",
+          "legendFormat": "{{kind}} / 分钟",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(agent_run_lease_lost_total[1m])) * 60",
+          "legendFormat": "lease lost / 分钟",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    },
+    {
+      "id": 7,
+      "title": "降级档位",
+      "type": "timeseries",
+      "description": "1 关工具循环，2 不改写不重排，3 不委派查库，4 不出网（按\"模型服务不可用\"答）",
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (level) (rate(agent_run_degraded_total[1m])) * 60",
+          "legendFormat": "第 {{level}} 档 / 分钟",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    },
+    {
+      "id": 8,
+      "title": "模型准入：等令牌",
+      "type": "timeseries",
+      "description": "令牌桶（AI_HELPDESK_LLM_RPM / TPM）前等了多久；rejected 是等不起、本地判过载、没出网的调用",
+      "gridPos": {
+        "x": 12,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(llm_admission_wait_seconds_bucket[5m])))",
+          "legendFormat": "等待 p95 (s)",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(llm_admission_rejected_total[1m])) * 60",
+          "legendFormat": "rejected / 分钟",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    },
+    {
+      "id": 9,
+      "title": "每个 worker 手上的 run",
+      "type": "timeseries",
+      "description": "打满（等于 AI_HELPDESK_WORKER_CONCURRENCY）而积压还在涨：加 worker 有用；没打满而积压在涨：瓶颈在上游",
+      "gridPos": {
+        "x": 0,
+        "y": 32,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "agent_runs_in_flight",
+          "legendFormat": "{{job}} {{instance}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    }
+  ]
+}

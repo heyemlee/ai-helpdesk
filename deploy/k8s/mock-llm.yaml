@@ -1,0 +1,52 @@
+# 假的 OpenAI 兼容模型（scripts/mock_llm.py，后端镜像里就有）：压测和演练不花钱、可复现。
+# 延迟和 RPM 上限可以在运行中改：kubectl port-forward svc/mock-llm 39000:9000，
+# 再 POST /admin/config
+apiVersion: v1
+kind: Service
+metadata:
+  name: mock-llm
+  labels:
+    app.kubernetes.io/name: ai-helpdesk
+    app.kubernetes.io/component: mock-llm
+spec:
+  selector:
+    app.kubernetes.io/component: mock-llm
+  ports:
+    - name: http
+      port: 9000
+      targetPort: 9000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-llm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: mock-llm
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ai-helpdesk
+        app.kubernetes.io/component: mock-llm
+    spec:
+      containers:
+        - name: mock-llm
+          image: aihd/backend
+          command: ["python", "scripts/mock_llm.py", "--port", "9000"]
+          env:
+            - name: MOCK_LLM_LATENCY_MS
+              value: "800"
+            - name: MOCK_LLM_STRUCTURED_LATENCY_MS
+              value: "400"
+            - name: MOCK_LLM_HANDOFF_RATE
+              value: "0.3"
+          ports:
+            - containerPort: 9000
+          readinessProbe:
+            httpGet: {path: /health, port: 9000}
+            periodSeconds: 5
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {memory: 256Mi}

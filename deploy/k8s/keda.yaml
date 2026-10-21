@@ -1,0 +1,86 @@
+# worker 按派发队列的积压扩缩（KEDA 的 redis-streams 触发器）。
+#
+# 两个触发器取大：pending（领走了还没确认的，就是正在跑的）每 4 个一个副本，lag（还没人领的）
+# 每 4 个一个副本。只看 lag 的话，所有 run 都被领走、正在跑的那一刻积压是 0，HPA 会把
+# 正在干活的 worker 缩掉。4 是一个 worker 同时跑的 run 数（AI_HELPDESK_WORKER_CONCURRENCY）。
+#
+# 副本上限不拍脑袋，由模型的配额算出来：上游每分钟给 R 次调用，一轮平均花 c 次，全系统每分钟
+# 最多跑完 R/c 轮；一个 worker 同时跑 4 轮、一轮 d 秒，每分钟跑 4×60/d 轮。worker 多过
+# ⌈(R/c) ÷ (4×60/d)⌉ 个，多出来的只会一起在令牌桶前排队，或者一起吃 429——加机器解决不了
+# 上游限流。实测（docs/evaluation/load-test.md）：桶 255 RPM、每轮 2.6 次调用，天花板约 97 轮/分钟，
+# 一个 worker 能跑 79 轮/分钟，所以第 2 个之后吞吐不再涨（2 个 97、4 个 103.5）。这份清单里的
+# 假模型不限速、令牌桶也没开（config/backend.env），4 只是这台机器的资源上限；接真模型时按上面的
+# 算式改，并且把 AI_HELPDESK_LLM_RPM 配成供应商配额的八五折左右。
+#
+# 最少留一个：从零起一个 worker 要十几秒（连库、灌知识库），第一个客户白等这么久不值。
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: worker-staff
+spec:
+  scaleTargetRef:
+    name: worker-staff
+  minReplicaCount: 1
+  maxReplicaCount: 4
+  pollingInterval: 5
+  cooldownPeriod: 60
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 0
+          policies:
+            - type: Pods
+              value: 2
+              periodSeconds: 15
+        # 缩得慢一点：被缩掉的 worker 要排空，来回抖一次就是几十秒的排空
+        scaleDown:
+          stabilizationWindowSeconds: 60
+          policies:
+            - type: Pods
+              value: 1
+              periodSeconds: 30
+  triggers:
+    - type: redis-streams
+      name: running
+      metadata:
+        address: redis.aihd.svc.cluster.local:6379
+        stream: "ai-helpdesk:runs:staff"
+        consumerGroup: workers
+        pendingEntriesCount: "4"
+    - type: redis-streams
+      name: waiting
+      metadata:
+        address: redis.aihd.svc.cluster.local:6379
+        stream: "ai-helpdesk:runs:staff"
+        consumerGroup: workers
+        lagCount: "4"
+        activationLagCount: "0"
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: worker-customer
+spec:
+  scaleTargetRef:
+    name: worker-customer
+  minReplicaCount: 1
+  maxReplicaCount: 2
+  pollingInterval: 5
+  cooldownPeriod: 60
+  triggers:
+    - type: redis-streams
+      name: running
+      metadata:
+        address: redis.aihd.svc.cluster.local:6379
+        stream: "ai-helpdesk:runs:customer"
+        consumerGroup: workers
+        pendingEntriesCount: "4"
+    - type: redis-streams
+      name: waiting
+      metadata:
+        address: redis.aihd.svc.cluster.local:6379
+        stream: "ai-helpdesk:runs:customer"
+        consumerGroup: workers
+        lagCount: "4"
+        activationLagCount: "0"

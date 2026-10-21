@@ -19,6 +19,18 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+# Redis 连接的超时（基础设施这一路和工作记忆那一路都用它）。不设的话，Redis 的 pod 被删、
+# 节点没了，已经建好的连接上读不到回应也收不到 RST，一个请求能一直挂到 TCP 自己放弃
+# ——k8s 演练里 POST /runs 就这么挂满了客户端的 30 秒。读超时要比阻塞读的最长时间长：
+# worker 读派发队列一次最多阻塞 2 秒，续流读帧流一次最多 5 秒（app/runs/）
+REDIS_TIMEOUTS = {
+    "socket_connect_timeout": 3.0,
+    "socket_timeout": 10.0,
+    "socket_keepalive": True,
+    "health_check_interval": 15,
+}
+
+
 class SharedState:
     """Redis 优先、进程内兜底的异步 KV。所有方法不抛网络异常。"""
 

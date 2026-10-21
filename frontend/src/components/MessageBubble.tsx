@@ -10,6 +10,7 @@ import { agentIdentity, agentLabel } from '@/lib/format'
 import { href } from '@/lib/route'
 import { unauthorizedKey } from '@/lib/errors'
 import { llmReasonKey, llmRecovery } from '@/lib/llm'
+import { degradeSummary } from '@/lib/runs'
 import { useT } from '@/i18n'
 import { useTicket } from '@/api/hooks'
 import type { Key } from '@/i18n/catalog'
@@ -246,6 +247,26 @@ export function UnavailableNote({ reason }: { reason?: string | null }) {
   )
 }
 
+/**
+ * 排队模式（后端 app/runs/）下这一轮的处理情况：连接断了正在续流、处理它的实例失联由
+ * 另一个实例接手、高峰期精简处理。只转述后端报的（attempt 帧、meta / result 里的 run 和
+ * degrade），inline 模式的后端不报，这里什么都不显示。
+ */
+export function RunNote({ message }: { message: ChatMessage }) {
+  const { t } = useT()
+  const attempt = message.result?.run?.attempt ?? message.meta?.run?.attempt ?? message.attempt ?? 1
+  const degrade = message.result?.degrade ?? message.meta?.degrade ?? message.degrade
+  const what = degrade && degrade.level > 0 ? degradeSummary(degrade.off, t) : ''
+  if (!message.reconnecting && attempt <= 1 && !what) return null
+  return (
+    <div className="run-notes">
+      {message.reconnecting && <p className="note caution" role="status">{t('cw.run.reconnecting')}</p>}
+      {attempt > 1 && <p className="note caution">{t('cw.run.retried', { n: attempt })}</p>}
+      {what && <p className="note neutral">{t('cw.run.degraded', { what })}</p>}
+    </div>
+  )
+}
+
 /** 带实时状态的工单卡：别人把工单标成「已分配」后，这里跟着变。取不到就用当轮响应里的。 */
 function LiveTicketNote({ base, ticketId, initialStatus, initialNotification }: {
   base: string; ticketId: string; initialStatus?: string; initialNotification?: string
@@ -372,6 +393,7 @@ export function MessageBubble({ message, onInspect, explain, routingConfig, base
           </div>
         </div>
         <UnavailableNote reason={result.unavailable_reason} />
+        <RunNote message={message} />
         {explain && (
           <TurnExplanation message={message} routingConfig={routingConfig} onInspect={onInspect} />
         )}
@@ -388,6 +410,7 @@ export function MessageBubble({ message, onInspect, explain, routingConfig, base
     const steps = message.progress ?? []
     return (
       <article className="turn assistant" aria-live="polite">
+        <RunNote message={message} />
         {steps.length === 0 ? (
           <div className="thinking"><span className="pulse" />{t('cw.orchestrating')}</div>
         ) : (
@@ -444,6 +467,7 @@ export function MessageBubble({ message, onInspect, explain, routingConfig, base
         {message.streaming && <span className="caret" />}
       </div>
       {message.streaming && <ToolStatus progress={message.progress ?? []} />}
+      <RunNote message={message} />
 
       {fallback && (
         <p className="note caution">

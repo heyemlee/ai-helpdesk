@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, ApiError, streamChat, type Settings } from '@/api/client'
+import { api, ApiError, streamChat, streamRun, type Settings } from '@/api/client'
 import type {
-  ChatResponse, ConversationEntry, RoutingConfig, StreamEvent, StreamMetaEvent, StreamProgressEvent,
-  StreamRoutingEvent, Ticket, TurnProjection,
+  ChatResponse, ConversationEntry, DegradeInfo, RoutingConfig, StreamEvent, StreamMetaEvent,
+  StreamProgressEvent, StreamRoutingEvent, Ticket, TurnProjection,
 } from '@/api/types'
 
 export interface ChatMessage {
@@ -31,6 +31,14 @@ export interface ChatMessage {
   ticketId?: string
   /** 恢复的助手消息是哪一轮：按它取回这一轮的经过。老记录、老后端没有 */
   turnId?: string
+  /** 排队模式：这一轮的 run。断线之后按它续流 */
+  runId?: string
+  /** 排队模式：第几次执行。大于 1 说明处理它的 worker 中途失联，换了一个从头再来 */
+  attempt?: number
+  /** 排队模式：这一轮按哪一档降级（attempt 帧里先到，meta / result 里还会再带一次） */
+  degrade?: DegradeInfo
+  /** 连接断了，正在按 run 续流 */
+  reconnecting?: boolean
 }
 
 const newId = () =>
@@ -48,8 +56,35 @@ export function applyStreamEvent(m: ChatMessage, evt: StreamEvent): ChatMessage 
     case 'delta':   return { ...m, content: m.content + evt.data.text }
     case 'result':  return { ...m, result: evt.data, content: evt.data.response || m.content }
     case 'error':   return { ...m, error: evt.data.detail }
+    case 'run':     return { ...m, runId: evt.data.run_id }
+    // 换人重跑（后端 app/runs/worker.py）：上一遍已经发出来的半截作废，从头再收。
+    // 第 1 次执行只记下档位，什么都不清
+    case 'attempt':
+      return evt.data.attempt > 1
+        ? { ...m, attempt: evt.data.attempt, degrade: evt.data.degrade, content: '', progress: [],
+            meta: undefined, routing: undefined, result: undefined, error: undefined }
+        : { ...m, attempt: evt.data.attempt, degrade: evt.data.degrade }
   }
 }
+
+/** 续流最多试几次、每次等多久（毫秒）：网络抖一下通常一两秒就回来了 */
+const RECONNECT_DELAYS_MS = [500, 1000, 2000, 4000, 8000]
+
+/** 后端在流里报的错（error 事件）：这一轮的结局，不是断线，不续流 */
+class StreamFailure extends Error {}
+
+/**
+ * 续流时值得再试的 HTTP 状态：API 实例正在重启、发版，前面的代理（nginx、Vite）先回了网关错误。
+ * 404（run 不在了）、401（钥匙不对）这类再试也一样，照原样报出来。
+ */
+const RETRYABLE_STATUS = new Set([502, 503, 504])
+const retryable = (err: unknown) =>
+  !(err instanceof StreamFailure) && (!(err instanceof ApiError) || RETRYABLE_STATUS.has(err.status))
+
+const sleep = (ms: number, signal: AbortSignal) => new Promise<void>((resolve) => {
+  const timer = setTimeout(resolve, ms)
+  signal.addEventListener('abort', () => { clearTimeout(timer); resolve() }, { once: true })
+})
 
 /**
  * 非流式 /chat 的响应 → 助手消息。
@@ -216,10 +251,32 @@ export function useChatStream(
           const controller = new AbortController()
           abortRef.current = controller
 
-          for await (const evt of streamChat(settings.apiBaseUrl, body, controller.signal)) {
-            if (evt.event === 'meta') onConversationId(evt.data.conv_id)
-            if (evt.event === 'error') throw new Error(evt.data.detail)
-            patch(assistantId, (m) => applyStreamEvent(m, evt))
+          // 排队模式下流断了（网络抖动、代理超时、API 实例在发版）这一轮并没有停：
+          // 带着最后收到的那一帧的 id 去 /runs/{run_id}/events 接着读。inline 模式没有
+          // run 帧，断了就是断了，和原来一样
+          let runId: string | undefined
+          let lastEventId: string | undefined
+          let finished = false
+          let stream = streamChat(settings.apiBaseUrl, body, controller.signal, newId())
+          for (let retry = 0; ; retry += 1) {
+            try {
+              for await (const evt of stream) {
+                if (evt.id) lastEventId = evt.id
+                if (evt.event === 'run') runId = evt.data.run_id
+                if (evt.event === 'meta') onConversationId(evt.data.conv_id)
+                if (evt.event === 'error') throw new StreamFailure(evt.data.detail)
+                patch(assistantId, (m) => ({ ...applyStreamEvent(m, evt), reconnecting: false }))
+                if (evt.event === 'result') finished = true
+              }
+            } catch (err) {
+              if (!retryable(err) || controller.signal.aborted || !runId) throw err
+            }
+            if (finished || !runId || controller.signal.aborted) break
+            const delay = RECONNECT_DELAYS_MS[retry]
+            if (delay === undefined) throw new Error('与服务端的连接断开，重连几次都没有成功')
+            patch(assistantId, (m) => ({ ...m, reconnecting: true }))
+            await sleep(delay, controller.signal)
+            stream = streamRun(settings.apiBaseUrl, runId, lastEventId, controller.signal)
           }
         } else {
           const res = await api.chat(settings.apiBaseUrl, body)
@@ -234,7 +291,7 @@ export function useChatStream(
         patch(assistantId, (m) => ({ ...m, error: message, errorStatus }))
       } finally {
         abortRef.current = null
-        patch(assistantId, (m) => ({ ...m, streaming: false }))
+        patch(assistantId, (m) => ({ ...m, streaming: false, reconnecting: false }))
         setBusy(false)
       }
     },

@@ -34,6 +34,7 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlsplit
 
+from app.core import admission
 from app.events.model_calls import ModelCall, RecordedStream
 
 logger = logging.getLogger(__name__)
@@ -46,6 +47,9 @@ REASON_RATE_LIMIT = "rate_limited"          # 普通 429
 # 不是保护自己判出来的状态，是给调用方用的：模型这一步没答上来（超时、5xx 之类），
 # 原因不在凭证。和上面几个放在一起，是因为对外它们都叫"模型服务不可用"。
 REASON_MODEL_ERROR = "model_error"
+# 也不是凭证的事：本地准入控制判的"过载"（core/admission）——等令牌等不起，或者负载降级
+# 到最后一档、这一轮不许出网。一次都没出网，不动这份配置的状态
+REASON_OVERLOADED = admission.REASON_OVERLOADED
 
 # 等人处理的那一类：不设到期时间
 _UNTIL_RESET = frozenset({REASON_CREDENTIAL, REASON_PERMISSION, REASON_QUOTA})
@@ -218,6 +222,12 @@ class LLMGuard:
 
     def blocked_reason(self) -> str:
         """此刻不可用的原因，可用返回空串。有限退避到期后在这里自动放行。"""
+        # 负载降级的最后一档（core/admission.shed）：这一轮自己判了"不出网"。放在最前面，
+        # 编排器作答前的那道检查（_unavailable_before_answer）也就照"模型服务不可用"处理，
+        # 不调 Agent、不建工单——和停机时同一条路。只影响绑定了它的那一轮，不改这份配置的状态
+        shed = admission.shed_reason()
+        if shed:
+            return shed
         if not self._reason:
             return ""
         if self._until is not None and self._clock() >= self._until:
@@ -234,6 +244,11 @@ class LLMGuard:
             self.blocked_calls += 1
             raise LLMUnavailableError(
                 reason, status_code=self._status, retry_after_s=self._remaining(), sent=False)
+
+    @property
+    def bucket(self) -> str:
+        """令牌桶按什么分（core/admission）：和这份状态同一个粒度，供应商 @ 主机名，不含凭证。"""
+        return self.label.replace(" @ ", "@").replace(" ", "_")
 
     def record_success(self) -> None:
         if not self._reason:
@@ -343,6 +358,8 @@ class _GuardedStream:
     def __init__(self, factory: Callable[[], Any], guard: LLMGuard, kwargs: dict[str, Any]):
         self._factory = factory
         self._guard = guard
+        self._kwargs = kwargs
+        self._estimate = 0
         self._manager: Any = None
         self._call = ModelCall(guard.provider, kwargs, stream=True)
         self._stream: RecordedStream | None = None
@@ -350,6 +367,9 @@ class _GuardedStream:
     async def __aenter__(self) -> Any:
         try:
             self._guard.check()
+            # 准入控制（core/admission）：拿到令牌才出网，等不起就在本地判过载
+            self._estimate = admission.estimate_tokens(self._kwargs)
+            await admission.current().acquire(self._guard.bucket, self._estimate)
         except LLMUnavailableError as ex:
             self._call.finish(status="blocked", sent=False, error=ex, reason=ex.reason)
             raise
@@ -376,6 +396,8 @@ class _GuardedStream:
         finally:
             # 调用方没取最终消息（中途出错）时没有用量，照实记 null
             final = self._stream.final if self._stream is not None else None
+            await admission.current().settle(self._guard.bucket, self._estimate,
+                                             admission.usage_tokens(final))
             if exc is None:
                 self._call.finish(status="ok", sent=True, message=final)
             else:
@@ -396,8 +418,11 @@ class _GuardedMessages:
 
     async def _call(self, method: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         call = ModelCall(self._guard.provider, kwargs, stream=False)
+        estimate = admission.estimate_tokens(kwargs)
         try:
             self._guard.check()
+            # 准入控制（core/admission）：拿到令牌才出网，等不起就在本地判过载
+            await admission.current().acquire(self._guard.bucket, estimate)
         except LLMUnavailableError as ex:
             call.finish(status="blocked", sent=False, error=ex, reason=ex.reason)
             raise
@@ -414,6 +439,7 @@ class _GuardedMessages:
             raise
         self._guard.record_success()
         call.finish(status="ok", sent=True, message=result)
+        await admission.current().settle(self._guard.bucket, estimate, admission.usage_tokens(result))
         return result
 
     async def create(self, *args: Any, **kwargs: Any) -> Any:
