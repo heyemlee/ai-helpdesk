@@ -620,7 +620,7 @@ from app.runs.memo import RunScope, bind_run, current_run, deterministic_id  # n
 from app.runs.records import FAILED, SUCCEEDED, TERMINAL_FRAMES  # noqa: E402
 from app.runs.service import Backpressure, RunService  # noqa: E402
 from app.runs.store import IdempotencyConflict  # noqa: E402
-from app.runs.worker import RunContext, RunOutcome, RunWorker  # noqa: E402
+from app.runs.worker import RetryRun, RunContext, RunOutcome, RunWorker  # noqa: E402
 from app.tools.knowledge_base import UnknownCategory  # noqa: E402
 from app.tools.turn_tools import Prefetch, loop_tools  # noqa: E402
 
@@ -1511,10 +1511,35 @@ class _TurnState:
     routing: dict[str, Any] = dataclasses.field(default_factory=dict)
     # 被取消（客户端断开、停机交还、租约丢了）。排队模式下据此不补写审计
     cancelled: bool = False
+    # 排队模式：提交点写下了。之后再出错就不是这一轮的结局，交还重试（按提交点收尾）
+    committed: bool = False
 
 
 class _LeaseLost(Exception):
     """排队模式：写提交点时发现租约已经不在手上。这一遍不许再落副作用，直接放弃。"""
+
+
+def _transient(ex: BaseException) -> bool:
+    """
+    基础设施一时连不上（Redis、Postgres、网络断了或在重启）：换个时候再跑一遍多半就好了。
+
+    只认连接一类的错，顺着异常链找。别的异常（编排器的 bug、数据不对）重跑一遍还是一样，
+    照原来那样报给客户。
+    """
+    import socket
+
+    import asyncpg
+    import redis.exceptions as redis_errors
+
+    kinds = (ConnectionError, socket.gaierror, redis_errors.ConnectionError, redis_errors.TimeoutError,
+             redis_errors.BusyLoadingError, asyncpg.exceptions.PostgresConnectionError,
+             asyncpg.exceptions.InterfaceError)
+    seen = 0
+    while ex is not None and seen < 10:
+        if isinstance(ex, kinds):
+            return True
+        ex, seen = ex.__cause__ or ex.__context__, seen + 1
+    return False
 
 
 async def _turn_frames(
@@ -1608,11 +1633,13 @@ async def _turn_frames(
 
             # 提交点（排队模式）：回答定下来了，副作用还一样都没落。写不进去说明这个 run 已经
             # 被别人领走，这一遍到此为止——工单、记忆、审计都留给拿着租约的那一遍
-            if on_commit is not None and not await on_commit({
-                "turn_id": turn.turn_id, "meta": meta, "routing": state.routing,
-                "shown": "".join(state.shown), "final": encode_result(final),
-            }):
-                raise _LeaseLost()
+            if on_commit is not None:
+                if not await on_commit({
+                    "turn_id": turn.turn_id, "meta": meta, "routing": state.routing,
+                    "shown": "".join(state.shown), "final": encode_result(final),
+                }):
+                    raise _LeaseLost()
+                state.committed = True
             result = await _finish_turn(turn, state, req, conv_id, user_id, final, degrade=degrade)
             _shadow_check(turn, meta=meta, routing=state.routing, result=result)
             yield _sse("result", result)
@@ -1622,8 +1649,14 @@ async def _turn_frames(
             state.cancelled = True
             raise
         except Exception as ex:
-            logger.exception("流式对话失败")
             _fail_turn(turn, ex, state.stage)
+            if scope is not None and (state.committed or _transient(ex)):
+                # 排队模式：基础设施一时连不上，或者提交点之后出的错——都不是这一轮的结局，
+                # 交还给 worker 稍后重跑（提交点之后的按提交点收尾，不重新作答）。审计留给收尾那一遍
+                logger.warning("这一遍撞上故障，交还重试（%s）: %s", state.stage, ex)
+                state.cancelled = True
+                raise RetryRun(f"{type(ex).__name__}: {ex}") from ex
+            logger.exception("流式对话失败")
             yield _sse("error", {"detail": str(ex)})
         finally:
             _close_turn(turn, state, req, conv_id, user_id, request_id, scope)
@@ -1732,9 +1765,11 @@ async def _resume_frames(req: ChatRequest, conv_id: str, user_id: str, checkpoin
             state.cancelled = True
             raise
         except Exception as ex:
-            logger.exception("按提交点收尾失败")
+            # 按提交点收尾的那一遍出错，一律交还重试：回答早就定了，再收一次尾是安全的
             _fail_turn(turn, ex, state.stage)
-            yield _sse("error", {"detail": str(ex)})
+            state.cancelled = True
+            logger.warning("按提交点收尾失败，交还重试: %s", ex)
+            raise RetryRun(f"{type(ex).__name__}: {ex}") from ex
         finally:
             _close_turn(turn, state, req, conv_id, user_id, request_id, scope)
 

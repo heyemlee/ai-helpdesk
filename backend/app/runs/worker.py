@@ -91,6 +91,15 @@ class RunContext:
     commit: Callable[[dict[str, Any]], Awaitable[bool]]
 
 
+class RetryRun(Exception):
+    """
+    execute 抛它：这一遍撞上的是基础设施故障（Redis、Postgres 连不上），或者在提交点之后
+    出了错——都不是这一轮的结局，换个时候再跑一遍是安全的（提交点之后按提交点收尾，
+    不会重新作答）。worker 把 run 交还（outcome=retry），由清扫任务过一阵重新派发；
+    计入死信的次数，一直不好就进死信。
+    """
+
+
 Execute = Callable[[RunContext], Awaitable[RunOutcome]]
 # 进死信时调：建转人工的工单之类，返回给客户端看的结局（None 就只报错误）
 OnDead = Callable[[RunRecord, str], Awaitable[dict[str, Any] | None]]
@@ -353,6 +362,10 @@ class RunWorker:
             if job.lost or job.released:
                 return              # 租约丢了（结果作废），或者停机交还（_release 收尾）
             raise
+        except RetryRun as ex:
+            logger.warning("run %s 第 %d 次执行撞上故障，交还，稍后重试: %s", run.run_id, run.attempt, ex)
+            await self._release(job, outcome="retry", redispatch=False)
+            return
         except Exception as ex:
             logger.exception("run %s 执行时抛了异常", run.run_id)
             outcome = RunOutcome(status=FAILED, terminal=("error", {"detail": str(ex)}),
@@ -413,15 +426,21 @@ class RunWorker:
             except Exception:
                 logger.debug("摸派发消息失败（不影响租约）", exc_info=True)
 
-    async def _release(self, job: _Job) -> int:
-        """停机时主动交还：改回 queued、重新派发、确认原来的消息。"""
+    async def _release(self, job: _Job, outcome: str = "released", redispatch: bool = True) -> int:
+        """
+        交还：改回 queued、确认原来的消息。停机交还时马上重新派发，别的 worker 立刻接手；
+        撞上故障交还（retry）时不马上派发，等清扫任务过 AI_HELPDESK_RUN_REDISPATCH_S 再派——
+        故障多半还没好，立刻重跑只会把重试次数白白用掉。
+        """
         run = job.run
         try:
-            if not await self.store.release(run.run_id, self.owner, run.attempt):
+            if not await self.store.release(run.run_id, self.owner, run.attempt, outcome=outcome):
                 return 0
-            await self.broker.dispatch(run.run_id)
+            if redispatch:
+                await self.broker.dispatch(run.run_id)
             await self.broker.ack(job.message_id)
-            logger.info("停机：run %s 交还，别的 worker 会接着跑", run.run_id)
+            if outcome == "released":
+                logger.info("停机：run %s 交还，别的 worker 会接着跑", run.run_id)
             return 1
         except Exception:
             # 交还没成：租约过期之后照样会被接手，只是慢一点
@@ -430,7 +449,7 @@ class RunWorker:
 
     async def _bury(self, run: RunRecord, delivery, lost: int) -> None:
         """失联次数到了上限：进死信，转人工。"""
-        reason = f"处理这一轮的 worker 失联了 {lost} 次（上限 {self.config.max_attempts}）"
+        reason = f"处理这一轮的 worker 失联或重试了 {lost} 次（上限 {self.config.max_attempts}）"
         payload = None
         if self._on_dead is not None:
             try:

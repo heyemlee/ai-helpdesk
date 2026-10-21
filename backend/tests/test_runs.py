@@ -254,7 +254,7 @@ async def test_a_crash_looping_run_goes_to_the_dead_letter_and_is_handed_off():
     done = await desk.until(run.run_id, DEAD)
     await desk.stop()
 
-    assert handed and handed[0][0] == run.run_id and "失联了 2 次" in handed[0][1]
+    assert handed and handed[0][0] == run.run_id and "失联或重试了 2 次" in handed[0][1]
     assert done.result["handoff"] is True and "失联" in done.error
     assert desk.broker.dead == [(run.run_id, done.error)]
     assert desk.channel.frames(run.run_id)[-1].event == "result"

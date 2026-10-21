@@ -1,0 +1,73 @@
+# ai-helpdesk — 排队模式（AI_HELPDESK_RUN_MODE=queued）的叠加文件
+#
+#   docker compose -f docker-compose.yml -f docker-compose.queued.yml up -d --build
+#
+# 两个实例改成只收请求、续流（ROLE=api），各加一个 worker 领 run 执行（ROLE=worker）。
+# 一轮对话不再绑在 HTTP 连接上：客户刷新页面、员工实例发版，这一轮照样跑完，前端断线后
+# 按 run_id 续流。设计和取舍见 docs/design/durable-agent-runs.md。
+#
+# worker 和它的实例是同一个镜像、同一份配置（extends），只差角色——所以客户实例的 worker
+# 照样不接 ai-sql-agent、不用跨会话记忆，派发队列也按实例分开（ai-helpdesk:runs:customer），
+# 员工那边的 worker 领不到客户的问题。
+#
+# 不叠这个文件就是原来的 inline 模式，什么都不变。
+
+services:
+  ai-helpdesk:
+    environment:
+      - AI_HELPDESK_RUN_MODE=queued
+      - AI_HELPDESK_ROLE=api
+
+  ai-helpdesk-customer:
+    environment:
+      - AI_HELPDESK_RUN_MODE=queued
+      - AI_HELPDESK_ROLE=api
+
+  ai-helpdesk-worker:
+    extends:
+      file: docker-compose.yml
+      service: ai-helpdesk
+    container_name: ai-helpdesk-worker
+    # worker 不对外，也不对本机开端口：探针和指标走容器网络
+    ports: !reset []
+    environment:
+      - AI_HELPDESK_RUN_MODE=queued
+      - AI_HELPDESK_ROLE=worker
+      # 停机时等手上的 run 跑完，最多 90 秒；没跑完的交还给别的 worker。
+      # stop_grace_period 要比它长，不然 docker 先一步 SIGKILL
+      - AI_HELPDESK_RUN_DRAIN_S=90
+    stop_grace_period: 100s
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/readyz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+
+  ai-helpdesk-customer-worker:
+    extends:
+      file: docker-compose.yml
+      service: ai-helpdesk-customer
+    container_name: ai-helpdesk-customer-worker
+    ports: !reset []
+    environment:
+      - AI_HELPDESK_RUN_MODE=queued
+      - AI_HELPDESK_ROLE=worker
+      - AI_HELPDESK_RUN_DRAIN_S=90
+    stop_grace_period: 100s
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/readyz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s

@@ -19,6 +19,7 @@ from types import SimpleNamespace
 import pytest
 from conftest import ScriptedModel, text_step
 from fastapi import HTTPException
+from redis.exceptions import ConnectionError as RedisConnectionError
 
 from app.agents.agent_orchestrator import AgentOrchestrator, AgentType
 from app.core.intent_recognizer import IntentCategory, UrgencyLevel
@@ -29,7 +30,7 @@ from app.runs.channel import MemoryChannel
 from app.runs.config import RunConfig
 from app.runs.degrade import DegradePolicy
 from app.runs.memo import MemoryMemo
-from app.runs.records import DEAD, RUNNING, SUCCEEDED
+from app.runs.records import DEAD, FAILED, RUNNING, SUCCEEDED
 from app.runs.service import RunService
 from app.runs.store import MemoryRunStore
 from app.runs.worker import RunWorker
@@ -62,8 +63,14 @@ class _OnceMemory:
         self.turns: list[tuple[str, str]] = []
         self.keys: set[str] = set()
         self.block_first = None
+        # 接下来几次读、写记忆时 Redis 连不上
+        self.context_failures = 0
+        self.write_failures = 0
 
     async def get_context(self, user_id, conv_id, query=""):
+        if self.context_failures:
+            self.context_failures -= 1
+            raise RedisConnectionError("Connection refused")
         return MemoryContext(recent_messages=[], relevant_history=[], user_profile={}, summary="")
 
     async def add_message(self, user_id, conv_id, role, content):
@@ -73,6 +80,9 @@ class _OnceMemory:
         if self.block_first is not None:
             gate, self.block_first = self.block_first, None
             await gate.wait()
+        if self.write_failures:
+            self.write_failures -= 1
+            raise RedisConnectionError("Connection reset by peer")
         if dedup_key in self.keys:
             return False
         self.keys.add(dedup_key)
@@ -305,6 +315,61 @@ async def test_a_worker_dying_after_the_commit_point_does_not_answer_twice(monke
         after = frames[[k for k, _, _ in frames].index("attempt", 2):]
         assert "".join(d["text"] for k, d, _ in after if k == "delta") == done.result["response"]
         assert frames[-1][1]["run"]["resumed_from"] == done.checkpoint["turn_id"]
+    finally:
+        await _close(desk)
+
+
+async def test_a_redis_blip_after_the_commit_point_is_retried_from_the_checkpoint(monkeypatch, tmp_path):
+    """写记忆时 Redis 闪断：回答已经定了，交还重试，接手的那一遍按提交点收尾，不重新作答。"""
+    desk = await _queued(monkeypatch, tmp_path, steps=[text_step("定下来的回答。"), text_step("不该出现的。")])
+    try:
+        desk.memory.write_failures = 1
+        submitted = await desk.main.submit_run(_ask(desk.main, conv_id="c-blip"), None)
+        done = await _until(desk.store, submitted["run_id"], SUCCEEDED)
+        assert done.attempt == 2 and done.history[0]["outcome"] == "retry"
+        assert done.result["response"] == "定下来的回答。" and len(desk.model.requests) == 1
+        assert desk.memory.turns == [("补件到哪了", "定下来的回答。")]
+        assert await _audit(desk, "c-blip") == [("user", "补件到哪了"), ("assistant", "定下来的回答。")]
+    finally:
+        await _close(desk)
+
+
+async def test_a_redis_blip_before_the_answer_reruns_the_turn(monkeypatch, tmp_path):
+    desk = await _queued(monkeypatch, tmp_path)
+    try:
+        desk.memory.context_failures = 1
+        submitted = await desk.main.submit_run(_ask(desk.main, conv_id="c-early"), None)
+        done = await _until(desk.store, submitted["run_id"], SUCCEEDED)
+        assert done.attempt == 2 and done.checkpoint is not None and done.result["response"] == ANSWER
+        assert await _audit(desk, "c-early") == [("user", "补件到哪了"), ("assistant", ANSWER)]
+    finally:
+        await _close(desk)
+
+
+async def test_a_failure_that_does_not_go_away_ends_in_the_dead_letter(monkeypatch, tmp_path):
+    desk = await _queued(monkeypatch, tmp_path, max_attempts=2)
+    try:
+        desk.memory.write_failures = 10
+        submitted = await desk.main.submit_run(_ask(desk.main, conv_id="c-stuck"), None)
+        done = await _until(desk.store, submitted["run_id"], DEAD)
+        assert [h.get("outcome") for h in done.history] == ["retry", "retry", DEAD]
+        assert done.result["handoff"] is True
+    finally:
+        await _close(desk)
+
+
+async def test_an_error_in_the_turn_itself_is_still_final(monkeypatch, tmp_path):
+    desk = await _queued(monkeypatch, tmp_path)
+    try:
+        async def broken(req):
+            raise RuntimeError("编排器的 bug")
+            yield  # noqa: B901 - 让它成为异步生成器
+
+        monkeypatch.setattr(desk.main._orchestrator, "run_stream", broken)
+        submitted = await desk.main.submit_run(_ask(desk.main, conv_id="c-bug"), None)
+        done = await _until(desk.store, submitted["run_id"], FAILED)
+        assert done.attempt == 1 and "编排器的 bug" in done.error
+        assert await _audit(desk, "c-bug") == [("user", "补件到哪了")]
     finally:
         await _close(desk)
 

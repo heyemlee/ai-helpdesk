@@ -32,12 +32,14 @@ class IdempotencyConflict(Exception):
 
 def lost_attempts(run: RunRecord) -> int:
     """
-    之前有几次执行是"失联"的：领走了，却没有正常收场（没有 ended_at）。
+    之前有几次执行没成：领走了却没有正常收场（没有 ended_at，worker 失联），或者撞上
+    基础设施故障、交还重试（outcome=retry）。
 
     死信看的是这个数，不是 attempt：worker 停机时主动交还的那一次（outcome=released）
-    不算失联——不然连着发三次版，一个跑得久的 run 就进了死信。
+    不算——不然连着发三次版，一个跑得久的 run 就进了死信。
     """
-    return sum(1 for item in run.history[:-1] if "ended_at" not in item)
+    return sum(1 for item in run.history[:-1]
+               if "ended_at" not in item or item.get("outcome") == "retry")
 
 
 def same_request(a: RunRecord, b: RunRecord) -> bool:
@@ -155,7 +157,7 @@ class MemoryRunStore:
                 run.history[-1].update(ended_at=now, outcome=status)
             return self._copy(run)
 
-    async def release(self, run_id: str, owner: str, attempt: int) -> bool:
+    async def release(self, run_id: str, owner: str, attempt: int, outcome: str = "released") -> bool:
         async with self._lock:
             run = self._fenced(run_id, owner, attempt)
             if run is None:
@@ -164,7 +166,7 @@ class MemoryRunStore:
             run.status, run.lease_owner, run.lease_until = QUEUED, "", 0.0
             run.updated_at = run.dispatched_at = now
             if run.history:
-                run.history[-1].update(ended_at=now, outcome="released")
+                run.history[-1].update(ended_at=now, outcome=outcome)
             return True
 
     async def due_for_dispatch(self, *, idle_s: float, lease_grace_s: float, limit: int = 100) -> list[str]:
@@ -344,14 +346,15 @@ class PgRunStore:
         )
         return _record(row) if row is not None else None
 
-    async def release(self, run_id: str, owner: str, attempt: int) -> bool:
+    async def release(self, run_id: str, owner: str, attempt: int, outcome: str = "released") -> bool:
+        """交还：改回 queued。outcome 是 released（停机交还）或 retry（撞上基础设施故障，稍后重试）。"""
         status = await self._db.execute(
             f"UPDATE agent_runs SET status = 'queued', lease_owner = '', lease_until = 0,"
             f" updated_at = {_NOW}, dispatched_at = {_NOW},"
-            f" {_CLOSE_LAST.format(now=_NOW, outcome=repr('released'))}"
+            f" {_CLOSE_LAST.format(now=_NOW, outcome='$5')}"
             f" WHERE run_id = $1 AND instance = $4 AND lease_owner = $2 AND attempt = $3"
             f" AND status = 'running'",
-            run_id, owner, attempt, self.instance,
+            run_id, owner, attempt, self.instance, outcome,
         )
         return status.endswith(" 1")
 

@@ -1,0 +1,129 @@
+# 故障演练和压测用的独立一套（项目名 aihd-drill）：和日常那套 docker-compose.yml 不共用
+# 任何容器、数据卷和端口，在同一台机器上可以同时开着。
+#
+#   docker compose -f deploy/drill/docker-compose.yml build api
+#   docker compose -f deploy/drill/docker-compose.yml up -d
+#   backend/.venv/bin/python backend/scripts/chaos_drill.py           # 演练
+#   docker run --rm --network host -v "$PWD/loadtest:/scripts" grafana/k6 run /scripts/runs.js   # 压测
+#   docker compose -f deploy/drill/docker-compose.yml down -v
+#
+# 模型是假的（scripts/mock_llm.py）：不花钱，延迟、限流可配、可复现。没有观测那一整套
+# （Grafana、Tempo、Loki）——演练脚本直接读 Postgres、Redis 和各进程的 /metrics。
+# worker 默认三个、各跑 4 个 run；租约 10 秒（日常是 30 秒），被杀掉的 worker 手上的 run
+# 大约 15 秒后被接手，演练不用等太久。
+
+name: aihd-drill
+
+x-backend-env: &backend-env
+  APP_ENV: development
+  LOG_LEVEL: INFO
+  LOG_FORMAT: json
+  LLM_PROVIDER: openai
+  OPENAI_API_KEY: mock
+  OPENAI_BASE_URL: http://mock-llm:9000/v1
+  OPENAI_MODEL: mock-1
+  POSTGRES_DSN: postgresql://drill:drill@postgres:5432/drill
+  REDIS_URL: redis://redis:6379/0
+  AI_HELPDESK_INSTANCE: staff
+  AI_HELPDESK_EVENT_LOG: full
+  AI_HELPDESK_RUN_MODE: queued
+  AI_HELPDESK_RUN_LEASE_S: "10"
+  AI_HELPDESK_RUN_REDISPATCH_S: "15"
+  AI_HELPDESK_WORKER_CONCURRENCY: "4"
+  AI_HELPDESK_RUN_QUEUE_MAX: ${DRILL_QUEUE_MAX:-200}
+  AI_HELPDESK_DEGRADE_BACKLOG: ${DRILL_DEGRADE_BACKLOG:-20,40,80,160}
+  AI_HELPDESK_LLM_RPM: ${DRILL_LLM_RPM:-0}
+  AI_HELPDESK_LLM_TPM: ${DRILL_LLM_TPM:-0}
+  AI_HELPDESK_FRONTEND_DIST: /nonexistent
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: drill
+      POSTGRES_PASSWORD: drill
+      POSTGRES_DB: drill
+    ports:
+      - "127.0.0.1:${DRILL_PG_PORT:-25432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U drill -d drill"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    # 持久化开着：演练里重启 Redis，派发队列和帧流都还在。不持久化的情形另有一档
+    # （演练脚本 --flush-redis），验证 Redis 整个丢了 run 也不丢
+    command: redis-server --appendonly yes --appendfsync everysec
+    ports:
+      - "127.0.0.1:${DRILL_REDIS_PORT:-26379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  mock-llm:
+    image: aihd-drill/backend:dev
+    pull_policy: never
+    command: ["python", "scripts/mock_llm.py", "--port", "9000"]
+    environment:
+      MOCK_LLM_LATENCY_MS: ${MOCK_LLM_LATENCY_MS:-800}
+      MOCK_LLM_STRUCTURED_LATENCY_MS: ${MOCK_LLM_STRUCTURED_LATENCY_MS:-400}
+      MOCK_LLM_CHUNK_MS: ${MOCK_LLM_CHUNK_MS:-60}
+      MOCK_LLM_RPM: ${MOCK_LLM_RPM:-0}
+      MOCK_LLM_HANDOFF_RATE: ${MOCK_LLM_HANDOFF_RATE:-0.3}
+    ports:
+      - "127.0.0.1:${DRILL_MOCK_PORT:-29000}:9000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9000/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    image: aihd-drill/backend:dev
+    build:
+      context: ../../backend
+      target: production
+      args:
+        AI_HELPDESK_RELEASE: drill
+    environment:
+      <<: *backend-env
+      AI_HELPDESK_ROLE: api
+    ports:
+      - "127.0.0.1:${DRILL_API_PORT:-28080}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mock-llm:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/readyz || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  worker:
+    image: aihd-drill/backend:dev
+    pull_policy: never
+    environment:
+      <<: *backend-env
+      AI_HELPDESK_ROLE: worker
+      AI_HELPDESK_RUN_DRAIN_S: "45"
+    deploy:
+      replicas: ${DRILL_WORKERS:-3}
+    stop_grace_period: 60s
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/readyz || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
