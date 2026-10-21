@@ -431,3 +431,22 @@ async def test_a_submission_is_accepted_even_when_redis_is_unreachable():
     desk.broker.dispatch = down
     run = await desk.submit()
     assert (await desk.store.get(run.run_id)).status == QUEUED
+
+
+async def test_a_run_claimed_while_draining_is_handed_back_at_once():
+    """停机开始的那一刻刚读到一条消息：领到手的不跑，马上交还，不在停机时限之外偷偷跑完。"""
+    desk = Desk()
+    ran = []
+
+    async def execute(ctx):
+        ran.append(ctx.run.run_id)
+        return RunOutcome(status=SUCCEEDED, terminal=("result", {"response": "好"}), result={"response": "好"})
+
+    worker = desk.worker(execute, owner="leaving")
+    run = await desk.submit()
+    [delivery] = await desk.broker.receive("leaving", 1, 10)
+    worker._draining = True
+    await worker._handle(delivery, reclaimed=False)
+    released = await desk.store.get(run.run_id)
+    assert ran == [] and released.status == QUEUED and released.history[-1]["outcome"] == "released"
+    assert await desk.broker.backlog() == 1                       # 重新派发了一条，原来那条确认掉了

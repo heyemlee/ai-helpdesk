@@ -43,22 +43,30 @@ async def test_without_limits_nothing_waits():
 
 
 async def test_an_empty_bucket_makes_the_call_wait_or_rejects_it_locally():
-    strict = Admission(Limits(rpm=2, max_wait_s=0.0))
+    strict = Admission(Limits(rpm=12, max_wait_s=0.0))              # 容量是 10 秒的量：2 个
     await strict.acquire("p", 1)
     await strict.acquire("p", 1)
     with pytest.raises(LLMUnavailableError) as rejected:
         await strict.acquire("p", 1)
     assert rejected.value.reason == "overloaded" and rejected.value.sent is False
 
-    patient = Admission(Limits(rpm=1200, max_wait_s=1.0))           # 每 50ms 补一个
-    for _ in range(1200):
+    patient = Admission(Limits(rpm=1200, max_wait_s=1.0))           # 容量 200，每 50ms 补一个
+    for _ in range(200):
         await patient.acquire("p", 1)
     assert 0.0 < await patient.acquire("p", 1) < 0.5
 
 
+def test_the_bucket_holds_ten_seconds_of_quota_not_a_whole_minute():
+    """容量一整分钟的话，任意 60 秒里能放出将近两倍的配额，按更短窗口执行限流的供应商会回 429。"""
+    assert Admission(Limits(rpm=600))._capacity(600) == 100
+    assert Admission(Limits(rpm=600, burst_s=30))._capacity(600) == 300
+    assert Admission(Limits(rpm=3))._capacity(3) == 1                # 至少放得出一个
+    assert Limits.from_env({"AI_HELPDESK_LLM_BURST_S": "0"}).burst_s == 1.0
+
+
 async def test_a_bigger_than_bucket_call_is_charged_as_a_full_bucket():
     """单次估算比整桶还大时按整桶算：不然这次调用永远等不到令牌。"""
-    admission = Admission(Limits(tpm=100, max_wait_s=0.0))
+    admission = Admission(Limits(tpm=600, max_wait_s=0.0))           # 容量 100
     assert await admission.acquire("p", 5000) == 0.0
 
 

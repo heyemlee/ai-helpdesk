@@ -163,8 +163,8 @@ async def test_the_shared_bucket_admits_up_to_capacity_then_makes_callers_wait(r
     from app.core.admission import Admission, Limits
     from app.core.llm_guard import LLMUnavailableError
 
-    a = Admission(Limits(rpm=6, max_wait_s=0.0), redis, prefix=prefix)
-    b = Admission(Limits(rpm=6, max_wait_s=0.0), redis, prefix=prefix)     # 另一个副本，同一只桶
+    a = Admission(Limits(rpm=6, max_wait_s=0.0, burst_s=60), redis, prefix=prefix)
+    b = Admission(Limits(rpm=6, max_wait_s=0.0, burst_s=60), redis, prefix=prefix)   # 另一个副本，同一只桶
     for admission in (a, b, a, b, a, b):
         assert await admission.acquire("openai@relay", 10) == 0.0
     with pytest.raises(LLMUnavailableError) as rejected:
@@ -172,8 +172,8 @@ async def test_the_shared_bucket_admits_up_to_capacity_then_makes_callers_wait(r
     assert rejected.value.reason == "overloaded" and rejected.value.sent is False
 
     # 等得起的那一种：桶空了就睡到补上为止（每 100ms 补一个），不判过载
-    patient = Admission(Limits(rpm=600, max_wait_s=2.0), redis, prefix=f"{prefix}-fast")
-    waits = [await patient.acquire("openai@relay", 1) for _ in range(650)]
+    patient = Admission(Limits(rpm=600, max_wait_s=2.0), redis, prefix=f"{prefix}-fast")   # 容量 100
+    waits = [await patient.acquire("openai@relay", 1) for _ in range(130)]
     assert waits[0] == 0.0 and any(w > 0 for w in waits) and max(waits) < 1.0
 
 
@@ -182,7 +182,7 @@ async def test_two_buckets_are_charged_together_or_not_at_all(redis, prefix):
     from app.core.admission import Admission, Limits
     from app.core.llm_guard import LLMUnavailableError
 
-    admission = Admission(Limits(rpm=100, tpm=1000, max_wait_s=0.0), redis, prefix=prefix)
+    admission = Admission(Limits(rpm=100, tpm=1000, max_wait_s=0.0, burst_s=60), redis, prefix=prefix)
     await admission.acquire("p", 900)
     with pytest.raises(LLMUnavailableError):
         await admission.acquire("p", 500)                            # TPM 不够：RPM 也不扣

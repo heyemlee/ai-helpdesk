@@ -222,3 +222,52 @@ flowchart TD
 前端容器的 Nginx 用变量 + `resolver` **在请求时**解析后端地址而不是启动时：
 否则后端还没就绪，前端容器会直接 `[emerg] host not found` 起不来，
 后端重启换 IP 后又会一直打到旧地址。
+
+## 7. 排队模式（可恢复的运行）
+
+`AI_HELPDESK_RUN_MODE=queued` 时一轮对话不再跑在请求里：API 把它记成一个 run（Postgres），派发给 worker（Redis Streams），客户端从一条能续读的帧流里拿进度和回答。设计、取舍和故障处理见 [durable-agent-runs.md](design/durable-agent-runs.md)。
+
+```mermaid
+sequenceDiagram
+    participant C as 客户端
+    participant A as API（ROLE=api）
+    participant PG as Postgres agent_runs
+    participant RS as Redis Streams
+    participant W as Worker（ROLE=worker）
+    C->>A: POST /chat/stream（Idempotency-Key）
+    A->>PG: INSERT run（queued）
+    A->>RS: XADD ai-helpdesk:runs:{instance}
+    A-->>C: event: run（run_id）
+    W->>RS: XREADGROUP（消费组 workers）
+    W->>PG: 条件 UPDATE 抢租约（attempt+1）
+    W->>RS: XADD 帧 attempt / progress / meta / routing / delta
+    RS-->>A: XREAD（帧流）
+    A-->>C: 每帧带 id:，断线后带 Last-Event-ID 续读
+    W->>PG: 写提交点（回答已定）
+    W->>PG: 工单 / 审计（按 run 去重）
+    W->>RS: 工作记忆（按 run 只写一次）
+    W->>PG: 写结局（带栅栏）
+    W->>RS: XADD result，XACK
+    A-->>C: event: result
+```
+
+部署上，每个实例拆成 api 和 worker 两份，同一个镜像、只差 `AI_HELPDESK_ROLE`：
+
+```mermaid
+flowchart LR
+    subgraph k8s[deploy/k8s（kind 上验证）]
+        AS[api-staff ×2] & AC[api-customer]
+        WS[worker-staff 1..4] & WC[worker-customer 1..2]
+        K[KEDA<br/>按派发流的 pending + lag 扩缩]
+        R[(redis<br/>AOF)]
+        PG[(postgres<br/>pgvector)]
+    end
+    AS --> R & PG
+    WS --> R & PG
+    AC --> R & PG
+    WC --> R & PG
+    K -.->|ai-helpdesk:runs:staff| WS
+    K -.->|ai-helpdesk:runs:customer| WC
+```
+
+两个实例的派发流、run 存储（每条查询都带实例）和 worker 都是分开的：员工那边的 worker 能委派查订单，它领不到客户的问题。

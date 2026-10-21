@@ -108,6 +108,22 @@ services:
       retries: 30
       start_period: 30s
 
+  # inline 模式的 API（一轮跑在请求里，原来的样子），只用来和排队模式比首字延迟：
+  #   docker compose -f deploy/drill/docker-compose.yml --profile compare up -d api-inline
+  #   backend/.venv/bin/python loadtest/ttfe_probe.py
+  api-inline:
+    image: aihd-drill/backend:dev
+    pull_policy: never
+    profiles: ["compare"]
+    environment:
+      <<: *backend-env
+      AI_HELPDESK_RUN_MODE: inline
+    ports:
+      - "127.0.0.1:${DRILL_INLINE_PORT:-28081}:8000"
+    depends_on:
+      api:
+        condition: service_healthy
+
   worker:
     image: aihd-drill/backend:dev
     pull_policy: never

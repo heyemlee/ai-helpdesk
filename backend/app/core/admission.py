@@ -27,6 +27,12 @@
 | AI_HELPDESK_LLM_RPM | 0 | 每分钟请求数上限，0 不限 |
 | AI_HELPDESK_LLM_TPM | 0 | 每分钟 token 上限（输入 + 输出），0 不限 |
 | AI_HELPDESK_LLM_ADMISSION_WAIT_S | 20 | 一次调用最多等令牌多久 |
+| AI_HELPDESK_LLM_BURST_S | 10 | 桶的容量按几秒的配额算：最多一口气放出这么多 |
+
+**桶不装满一分钟。** 容量要是一整分钟的配额，桶满的时候一口气能放出一分钟的量，接着
+再按速率补，任意 60 秒里最多放出将近两倍的配额——而供应商的 RPM 往往按更短的窗口执行
+（每分钟 6 万次可能按每秒 1000 次卡）。容量取 10 秒的量，任意 60 秒里最多是配额的 1.17 倍；
+上限配成供应商配额的八五折，就落在配额以内。
 """
 from __future__ import annotations
 
@@ -101,6 +107,7 @@ class Limits:
     rpm: int = 0
     tpm: int = 0
     max_wait_s: float = 20.0
+    burst_s: float = 10.0
 
     @property
     def active(self) -> bool:
@@ -125,6 +132,7 @@ class Limits:
             rpm=int(_number("AI_HELPDESK_LLM_RPM", 0)),
             tpm=int(_number("AI_HELPDESK_LLM_TPM", 0)),
             max_wait_s=_number("AI_HELPDESK_LLM_ADMISSION_WAIT_S", 20.0),
+            burst_s=max(_number("AI_HELPDESK_LLM_BURST_S", 10.0), 1.0),
         )
 
 
@@ -215,16 +223,19 @@ class Admission:
     def active(self) -> bool:
         return self.limits.active
 
+    def _capacity(self, per_minute: int) -> float:
+        """桶的容量：burst_s 秒的配额，至少 1。"""
+        return max(per_minute * self.limits.burst_s / 60.0, 1.0)
+
     def _specs(self, label: str, cost_tokens: int) -> list[tuple[str, float, float, float]]:
         specs = []
         if self.limits.rpm > 0:
-            # 容量取一分钟的量：允许突发，但一分钟内总数不超
             specs.append((f"{self._prefix}:{label}:rpm", self.limits.rpm / 60000.0,
-                          float(self.limits.rpm), 1.0))
+                          self._capacity(self.limits.rpm), 1.0))
         if self.limits.tpm > 0:
-            cost = float(min(cost_tokens, self.limits.tpm))   # 单次比整桶还大时按整桶算，不然永远等不到
-            specs.append((f"{self._prefix}:{label}:tpm", self.limits.tpm / 60000.0,
-                          float(self.limits.tpm), cost))
+            capacity = self._capacity(self.limits.tpm)
+            cost = float(min(cost_tokens, capacity))   # 单次比整桶还大时按整桶算，不然永远等不到
+            specs.append((f"{self._prefix}:{label}:tpm", self.limits.tpm / 60000.0, capacity, cost))
         return specs
 
     async def _try(self, specs: list[tuple[str, float, float, float]]) -> int:
@@ -270,18 +281,18 @@ class Admission:
         """按实际用量结算 TPM 桶：估多了退回，估少了补扣。拿不到用量不结算。"""
         if self.limits.tpm <= 0 or actual is None:
             return
-        estimated = min(estimated, self.limits.tpm)
-        delta = float(estimated - actual)
+        capacity = self._capacity(self.limits.tpm)
+        delta = float(min(estimated, capacity) - actual)
         if not delta:
             return
         key = f"{self._prefix}:{label}:tpm"
         if self._settle_script is not None:
             try:
-                await self._settle_script(keys=[key], args=[float(self.limits.tpm), delta])
+                await self._settle_script(keys=[key], args=[capacity, delta])
                 return
             except Exception:
                 logger.debug("令牌桶结算失败，按估算算数", exc_info=True)
-        self._local.settle(key, float(self.limits.tpm), delta)
+        self._local.settle(key, capacity, delta)
 
 
 # 进程里只有一份准入：lifespan 按配置装上（install），没装时什么都不限

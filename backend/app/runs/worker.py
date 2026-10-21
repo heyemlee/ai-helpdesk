@@ -314,6 +314,11 @@ class RunWorker:
                 await self.broker.ack(delivery.message_id)
             # 否则还在别人手上、租约有效：消息留着，它自己会确认
             return
+        if self._draining:
+            # 停机已经开始：刚领到手、还没开跑的这一个马上交还（不算失联），别的 worker 接着跑。
+            # 不然它不在 drain 等的那张表里，会一直跑到停机时限之外
+            await self._release(_Job(run, delivery.message_id))
+            return
         lost = lost_attempts(run)
         if lost >= self.config.max_attempts:
             await self._bury(run, delivery, lost)

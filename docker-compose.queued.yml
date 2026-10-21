@@ -71,3 +71,8 @@ services:
       timeout: 10s
       retries: 3
       start_period: 90s
+
+  # worker 的指标：把抓取配置挂进 prometheus.yml 的 scrape_config_files 目录
+  prometheus:
+    volumes:
+      - ./deploy/prometheus/scrape.d-queued:/etc/prometheus/scrape.d:ro

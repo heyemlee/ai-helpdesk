@@ -37,3 +37,58 @@ groups:
         annotations:
           summary: "ai-helpdesk 实例失联"
           description: "Prometheus 已 1 分钟抓不到 {{ $labels.instance }} 的 /metrics。"
+
+  # 排队模式（AI_HELPDESK_RUN_MODE=queued，app/runs/）和模型准入控制（core/admission）。
+  # inline 模式下这些指标不出现，规则不会触发
+  - name: ai-helpdesk-runs
+    rules:
+      - alert: RunDeadLettered
+        expr: increase(agent_runs_finished_total{status="dead"}[10m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "有 run 进了死信（已转人工）"
+          description: "处理它的 worker 反复失联或反复撞上故障，超过 AI_HELPDESK_RUN_MAX_ATTEMPTS。看 worker 日志里那个 run_id 每一次是怎么断的；客户那边已经开了转人工的工单。"
+
+      - alert: RunBacklogHigh
+        expr: max by (instance) (agent_run_backlog) > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "派发队列积压持续超过 100"
+          description: "要么 worker 不够（看 agent_runs_in_flight 是不是打满了），要么上游限流（看 llm_admission_wait_seconds）。后一种加 worker 没用，见 docs/evaluation/load-test.md。"
+
+      - alert: RunQueueWaitHigh
+        expr: histogram_quantile(0.95, sum by (le) (rate(agent_run_queue_wait_seconds_bucket[5m]))) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "run 的排队时间 p95 超过 10 秒"
+          description: "客户在第一句话出来之前多等了这么久。和 RunBacklogHigh 一起看。"
+
+      - alert: RunLeasesLost
+        expr: increase(agent_run_lease_lost_total[10m]) > 5
+        labels:
+          severity: warning
+        annotations:
+          summary: "worker 频繁丢租约"
+          description: "worker 续不上租：卡住了一个租约那么久（事件循环被堵住），或者连不上 Postgres。丢了租约的那一遍作废、由别的 worker 重跑，结果不会错，但在白花模型调用。"
+
+      - alert: RunsDegraded
+        expr: sum(rate(agent_run_degraded_total[5m])) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "持续 10 分钟按降级档位处理"
+          description: "积压一直在降级阈值之上（AI_HELPDESK_DEGRADE_BACKLOG）：客户拿到的是精简过的回答。档位分布看 agent_run_degraded_total 的 level 标签。"
+
+      - alert: LlmAdmissionRejecting
+        expr: increase(llm_admission_rejected_total[5m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "模型调用等令牌等不起，在本地判了过载"
+          description: "令牌桶（AI_HELPDESK_LLM_RPM / TPM）一直不够用：要么配额太紧，要么流量超出了配额能承受的量。这些调用没有出网，客户收到的是\"暂时无法回答\"。"
