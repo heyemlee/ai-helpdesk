@@ -39,7 +39,7 @@ scripts/k8s-drill.sh --runs 80 --rate 3 --kills 0 --rollout --slow
 
 ## Results
 
-Five drills on the final code of this branch, three on Compose and two on kind, each run once. Every check passed in all five: 340 runs, all `succeeded`; 24 of them were taken over after their worker was killed, each on its second attempt; 92 clients dropped their connection on purpose and reconnected 170 times between them.
+Five drills, three on Compose and two on kind, each run once. The kind image was built at commit 9e0a62a; the Compose image a few minutes earlier, when schema setup still ran the whole script under the lock on every start. Nothing committed after them changes what the drills exercise. Every check passed in all five: 340 runs, all `succeeded`; 24 of them were taken over after their worker was killed, each on its second attempt; 92 clients dropped their connection on purpose and reconnected 170 times between them.
 
 | Drill | Faults | Runs | Taken over | Answered "unavailable" | Tickets | Queue wait p95 / max (s) | Submit → done p50 / p95 / max (s) | Checks |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
