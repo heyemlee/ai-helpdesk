@@ -267,9 +267,9 @@ async def chaos(drill: Drill, mock: httpx.AsyncClient) -> None:
             await mock.post("/admin/config", json={"storm_s": args.storm})
             drill.note(f"model answers 429 to everything for {args.storm:g} s")
         elif kind == "rollout":
-            drill.note("rolling restart of the workers (SIGTERM, drain)")
+            drill.note("restarting the workers as a deploy would (SIGTERM, drain)")
             await asyncio.to_thread(drill.driver.rollout)
-            drill.note("rolling restart issued")
+            drill.note("restart command returned")
     await asyncio.gather(*revive)
 
 
@@ -410,15 +410,17 @@ def report_markdown(drill: Drill, summary: dict[str, Any], mock_stats: dict[str,
         ("A fresh read of the frame stream ends with the stored result", "stream"),
         ("Clients that dropped and resumed with Last-Event-ID saw the final answer", "reconnect"),
     ]
+    faults = [
+        f"{a.kills} worker SIGKILLs every {a.kill_every:g} s (each back after {a.down_for:g} s)" if a.kills else "",
+        "Redis restarted once" if a.restart_redis else "",
+        f"a {a.storm:g} s storm of 429s from the model" if a.storm else "",
+        "the workers restarted as a deploy would (SIGTERM, drain)" if a.rollout else "",
+        "Redis flushed (data loss) once" if a.flush_redis else "",
+    ]
     lines = [
         f"### Drill {time.strftime('%Y-%m-%d %H:%M', time.localtime(drill.started))} ({a.driver})",
         "",
-        f"{summary['submitted']} runs at {a.rate:g}/s; {a.kills} worker SIGKILLs every {a.kill_every:g} s "
-        f"(each back after {a.down_for:g} s)"
-        + ("; Redis restarted once" if a.restart_redis else "")
-        + (f"; a {a.storm:g} s storm of 429s from the model" if a.storm else "")
-        + ("; a rolling restart of the workers" if a.rollout else "")
-        + ("; Redis flushed (data loss) once" if a.flush_redis else "") + ".",
+        f"{summary['submitted']} runs at {a.rate:g}/s; " + ("; ".join(f for f in faults if f) or "no faults injected") + ".",
         "",
         "| Invariant | Result |",
         "| --- | --- |",
