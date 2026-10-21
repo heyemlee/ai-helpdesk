@@ -33,6 +33,7 @@
 - **带自纠错回路的检索。** 改写成三个子查询，同时查 pgvector 和关键词索引，用 cross-encoder 或 LLM 重排并判断依据够不够，不够就针对缺的部分再检索一轮。单看融合检索这一步，108 道测试题里有 101 道把正确文档排进前 3。
 - **护栏与人工接管。** 每句话发出之前都要过检查，没有依据的价格或日期承诺会被替换。专家会声明是否需要人工，置信度低时建工单；模型停机时暂停调用，而不是建工单。
 - **一轮对话不跟着 worker 一起死。** 排队模式下一轮对话是 Postgres 里的一个 run，由拿着带栅栏租约的 worker 执行，回答在任何副作用之前先记下；工单、审计和记忆都按 run 去重，客户端断线后带 `Last-Event-ID` 续读。五次故障演练里，340 个 run 经历了杀 worker、重启和清空 Redis，没有多出一张工单、一条审计或一个回答。
+- **事件日志可以走 Kafka。** 每一轮的事件发进 Kafka，投影和评测采样两个消费者各记各的 offset；投影能从 topic 重建，删除请求在回放时照样作数；把两个消费者都杀掉、重启 broker 的演练，Kafka 里的每一条事件都在 Postgres 里对上了。
 
 ## 系统架构
 
@@ -55,10 +56,11 @@
 | 向量与重排     | OpenAI 兼容 `/embeddings` · 本地 n-gram 向量 · cross-encoder `/rerank` | 知识库、情景记忆和意图投票共用一个向量化入口，没配 API 时用本地向量；重排优先 cross-encoder，LLM 兜底                                                           |
 | 检索存储       | PostgreSQL 16 · pgvector · `tsvector` · asyncpg · SQLite               | 稠密和关键词两路按名次融合；本地兜底用 SQLite 加 BM25                                                                                                           |
 | 记忆与共享状态 | Redis 7                                                                | 24 小时工作记忆及其压缩锁、按用户限流，以及多实例共享的熔断状态和路由扣分；排队模式下还有 run 的派发和可续读的帧流（Streams）、模型调用的令牌桶（Lua）     |
+| 事件流         | Apache Kafka 4.3（KRaft）· aiokafka                                    | 事件日志的可选去处：每个实例一个 topic、按会话分区，投影和评测采样是两个消费组，坏消息进死信 topic，留 7 天可回放 |
 | 护栏与身份     | 纯规则的答案策略 · 置信度门槛 · HMAC 用户令牌                          | 逐句检查、转人工判定、签名的用户身份                                                                                                                            |
 | 工作台         | React 18 · TypeScript · Vite 6 · TanStack Query 5 · Tailwind CSS 4     | 从 `fetch` 流里读 SSE（EventSource 不支持 POST）、流式 Markdown 和学习模式，中英文界面                                                                          |
 | 可观测性       | OpenTelemetry · Prometheus · Grafana · Tempo · Loki                    | 每个请求的链路追踪、指标、日志和告警规则，另有监控的 Z-score 异常检测                                                                                           |
-| 交付与质量     | Docker Compose · Nginx · Kubernetes · KEDA · GitHub Actions · pytest · Ruff · Vitest · k6 | 一次部署 12 个服务，或者用 Kustomize 清单、worker 由 KEDA 扩缩；CI 连 pgvector 和 Redis 跑测试，并跑 A2A 契约用例和两个镜像的构建；排队模式另有 k6 压测和故障演练 |
+| 交付与质量     | Docker Compose · Nginx · Kubernetes · KEDA · GitHub Actions · pytest · Ruff · Vitest · k6 | 一次部署 12 个服务，或者用 Kustomize 清单、worker 由 KEDA 扩缩；CI 连 pgvector、Redis 和 Kafka 跑测试，并跑 A2A 契约用例和两个镜像的构建；排队模式另有 k6 压测和故障演练 |
 
 ## 功能
 
@@ -109,8 +111,9 @@
 - **回答只定一次，副作用只落一次。** 回答在任何副作用之前先记下，之后接手的那一遍不再调模型、直接发同一个回答。工单号由 run 推出来，审计和工作记忆按 run 只写一次，工具结果按 run 记下来，重跑时 40 秒的委派不再做第二遍。基础设施故障交还重试；一直不成的进死信、转人工。
 - **负载是放进来的，不是硬扛的。** Redis 里一只所有副本共用的令牌桶，按供应商的 RPM 和 TPM 放行模型调用；按积压逐档降级：关工具循环、不改写不重排、不委派、不调模型；超过上限 API 回 429 和 `Retry-After`。
 - **能上 Kubernetes。** 存活、就绪探针，SIGTERM 时排空；[清单](deploy/k8s)里 worker 由 KEDA 按派发流的积压扩缩，在 kind 上验证过。
+- **事件日志走 Kafka（可选）。** `AI_HELPDESK_EVENT_SINK=kafka` 时，每一轮的事件发进按实例分开、按会话分区的 topic。投影消费者写 `turn_events`，写成功才提交 offset；采样消费者挑出值得进评测集的轮次（转人工、被接手、降级、低置信，加 5% 固定抽样），offset 只提交到手上最早一个没结束的轮次。topic 只留 7 天，短于任何原文保留期；回放时跳过删除请求删过的会话。派发仍在 Redis：一轮 40 秒的任务会堵住整个 Kafka 分区。
 
-在 Compose 和 kind 上的五次故障演练（杀 worker、重启和清空 Redis、模型 429 风暴、发版）里，340 个 run 全部跑完，防重复工单、重复审计、重复回答的检查全部通过。被杀的 worker 手上的 run 都被接手跑完，从提交到结束最长 42 秒；发版时一个都不用接手。
+在 Compose 和 kind 上的五次故障演练（杀 worker、重启和清空 Redis、模型 429 风暴、发版）里，340 个 run 全部跑完，防重复工单、重复审计、重复回答的检查全部通过。被杀的 worker 手上的 run 都被接手跑完，从提交到结束最长 42 秒；发版时一个都不用接手。事件日志走 Kafka 的两次演练（两个消费者都被硬杀、broker 重启）里，Kafka 的每一条事件都和 `turn_events` 的一行对上，每一轮都结束了，采样结果和按规则重算的一模一样；从 topic 重建投影后，删除请求删过的会话没有回来。
 
 假模型的限额是每分钟 300 次请求：两个 worker 就已经到了限额允许的上限（每分钟 97 轮；四个 worker 是 103.5 轮）。不开令牌桶时，同样的过载看起来反而更快，只是因为上游回了 718 次 429，27% 的对话被答成"暂时答不了"；令牌桶设在限额的 85% 时，模型一次 429 都没回。低负载下排队几乎不增加耗时：首句 p50 inline 1.006 秒、排队 1.005 秒。这些都是在一台笔记本上、对着固定延迟的假模型测的，形状能推广，绝对数字不能。记录（英文）：[故障演练](docs/evaluation/chaos-drill.md)、[压测](docs/evaluation/load-test.md)。
 
@@ -195,10 +198,11 @@ cd backend && .venv/bin/python -m pytest    # 后端测试；设了 TEST_POSTGRE
 .venv/bin/python scripts/run_trajectory_eval.py  # 工具循环对规则组，40 条轨迹用例；加 --yes 才调用模型
 cd ../frontend && npm test                  # 工作台测试
 backend/.venv/bin/python backend/scripts/chaos_drill.py --kills 3 --restart-redis --storm 20 --slow  # 排队模式的故障演练
+backend/.venv/bin/python backend/scripts/chaos_drill.py --kafka --kill-projector 2 --kill-sampler 2 --restart-kafka --replay --slow  # Kafka 那一侧
 loadtest/run.sh <名字>                      # 用 k6 压演练那一套；WORKERS、LLM_RPM、DEGRADE、MOCK_RPM
 ```
 
-CI 跑 Ruff、连 pgvector 和 Redis 的 1,486 个后端用例、253 个工作台用例、生产构建、A2A 契约用例，以及两个 Docker 镜像的构建。端到端评测和轨迹评测要花模型调用，所以只在手动触发时运行。
+CI 跑 Ruff、连 pgvector、Redis 和 Kafka 的 1,531 个后端用例、255 个工作台用例、生产构建、A2A 契约用例，以及两个 Docker 镜像的构建。端到端评测和轨迹评测要花模型调用，所以只在手动触发时运行。
 
 ## 部署
 
@@ -207,7 +211,8 @@ docker compose up -d --build                    # 12 个服务；只有 80 端�
 scripts/docker-deploy.sh backup                 # 备份 Postgres、Redis、env 文件和 deploy/ 配置
 scripts/docker-deploy.sh restore backups/<dir>  # 恢复并重启；恢复演练用时 17 秒
 docker compose -f docker-compose.yml -f docker-compose.queued.yml up -d --build   # 排队模式：每个实例一个 api、一个 worker
-scripts/k8s-up.sh                               # kind 集群：清单、KEDA、假模型
+docker compose -f docker-compose.yml -f docker-compose.kafka.yml up -d --build    # 事件日志走 Kafka（排队模式再叠：见 docker-compose.queued-kafka.yml）
+scripts/k8s-up.sh                               # kind 集群：清单、KEDA、Kafka、假模型
 ```
 
 生产模式下，缺管理钥匙、用户签名密钥、对话保护或部署范围声明中的任何一项，服务都拒绝启动。系统按单租户设计，具体范围见[部署边界](docs/deployment-boundaries.zh-CN.md)。

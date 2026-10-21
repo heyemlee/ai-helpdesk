@@ -704,6 +704,10 @@ async def verify(drill: Drill, pg: asyncpg.Pool, redis: aioredis.Redis, client: 
     }
 
 
+def _times(n: int) -> str:
+    return "once" if n == 1 else f"{n} times"
+
+
 def report_markdown(drill: Drill, summary: dict[str, Any], mock_stats: dict[str, Any]) -> str:
     a = drill.args
 
@@ -724,8 +728,8 @@ def report_markdown(drill: Drill, summary: dict[str, Any], mock_stats: dict[str,
         f"a {a.storm:g} s storm of 429s from the model" if a.storm else "",
         "the workers restarted as a deploy would (SIGTERM, drain)" if a.rollout else "",
         "Redis flushed (data loss) once" if a.flush_redis else "",
-        f"the projector SIGKILLed {a.kill_projector} times" if a.kafka and a.kill_projector else "",
-        f"the sampler SIGKILLed {a.kill_sampler} times" if a.kafka and a.kill_sampler else "",
+        f"the projector SIGKILLed {_times(a.kill_projector)}" if a.kafka and a.kill_projector else "",
+        f"the sampler SIGKILLed {_times(a.kill_sampler)}" if a.kafka and a.kill_sampler else "",
         "the Kafka broker restarted once" if a.kafka and a.restart_kafka else "",
     ]
     if a.kafka:

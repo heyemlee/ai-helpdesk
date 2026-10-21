@@ -285,6 +285,163 @@ The drills use the mock model, the drill stack and kind. Afterwards queued mode 
 
 The killed worker was started again 10 s later; the run was taken over 41 s after the kill, mostly the 30 s lease. In attempt 2 the event log records the prefetch delegation at 1.1 ms and the knowledge search at 2.7 ms, against 12.7 s and 15.3 s for real calls in the same session: both came from the per-run memo, and ai-sql-agent was not asked again. Every turn had at most one ticket (the one its result names), one customer line and one answer in the audit equal to the result, and one turn in working memory. Each instance's runs were executed by its own worker, and the customer entry point answered 404 for a staff run id.
 
+## The event log on Kafka
+
+With `AI_HELPDESK_EVENT_SINK=kafka` the turn event log goes through Kafka to a projector (into `turn_events`) and an evaluation sampler ([design](../design/durable-agent-runs.md#the-event-log-on-kafka)). The same drill then also breaks the Kafka side: it SIGKILLs the projector and the sampler, restarts the broker, and after the runs end and both consumer groups have caught up it checks, for this drill's conversations only:
+
+- **K1** the events in the topic and the rows in `turn_events` match one to one;
+- **K2** every turn is closed, by its own terminal event or by a `turn_abandoned` written for it, with no gap in its own numbering;
+- **K3** the sampled candidates equal what the rules give when recomputed from the event log;
+- **K4** nothing new reached the dead-letter topic;
+- **K5** (`--replay`) after deleting the projection and forgetting three conversations, a new consumer group rebuilds exactly the rest, and the forgotten ones stay gone.
+
+```bash
+DRILL_EVENT_SINK=kafka docker compose -f deploy/drill/docker-compose.yml --profile kafka up -d --wait
+backend/.venv/bin/python backend/scripts/chaos_drill.py --runs 60 --rate 2 --kills 2 --kafka \
+  --kill-projector 2 --kill-sampler 2 --restart-kafka --replay --slow
+scripts/k8s-drill.sh --runs 80 --rate 3 --kills 2 --kafka --kill-projector 2 --kill-sampler 1 --restart-kafka --replay --slow
+```
+
+Kafka 4.3.1 in KRaft mode, one broker, 6 partitions per topic. On Compose a killed consumer comes back after 10 s; on kind the Deployment replaces it within seconds and the broker pod is deleted and recreated by its StatefulSet.
+
+| Drill | Faults | Runs (taken over) | Events in Kafka (duplicates) | Turns (closed by `turn_abandoned`) | Peak lag, projector / sampler | Caught up after the last run | Rebuild | Checks |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| Compose | 2 worker SIGKILLs, projector ×2, sampler ×2, broker restart | 60 (5) | 760 (0) | 65 (5) | 596 / 665 | 6.2 s | 725 rows, 1.1 s | 6 of 6, K1–K5 |
+| kind | 2 worker pods, projector ×2, sampler ×1, broker pod | 80 (8) | 1,034 (0) | 88 (8) | 234 / 978 | 15.7 s | 995 rows, 2.2 s | 6 of 6, K1–K5 |
+
+- **Killing a consumer costs time, not events.** The kills left backlogs of up to about a thousand events, and both groups were back to zero lag 6 to 16 s after the last run finished; the projector commits after writing, so a batch read twice is deduplicated by the primary key, and the sampler resumes from the first message of its oldest open turn.
+- **Every lost attempt was closed.** The 5 and 8 attempts lost to worker kills each got a `turn_abandoned` from the attempt that took over, so K2 holds for every turn and the sampler picked each such pair (`abandoned` and `taken_over`), as K3 confirms.
+- **The broker restart dropped nothing visible.** No duplicates reached the topic and every turn is complete. The producers' drop counters read `{}` on Compose, but a process that is SIGKILLed loses its counters; K2 is what would show a loss.
+- **KEDA did not need to scale the projector.** Its lag never stayed above the 500-per-replica threshold. Paused at zero replicas while 60 runs went through, it was 687 events behind; one projector cleared that within 8 seconds of being unpaused, before the HPA's next sync. The trigger reads the group's lag (READY); a scale-out was not exercised.
+- On kind the sampler's candidates include 71 `degraded` turns: the backlog crossed the degrade thresholds while the only worker was being killed, which the sampler is meant to surface.
+
+<details>
+<summary>The two reports as printed by <code>chaos_drill.py</code></summary>
+
+### Drill 2026-10-21 11:44 (compose)
+
+60 runs at 2/s; 2 worker SIGKILLs every 8 s (each back after 10 s); the projector SIGKILLed 2 times; the sampler SIGKILLed 2 times; the Kafka broker restarted once.
+
+| Invariant | Result |
+| --- | --- |
+| Every run reached a terminal state | pass |
+| At most one ticket per conversation, and it is the one the result names | pass |
+| Audit: one customer line, at most one answer, equal to the final answer | pass |
+| Working memory: exactly the two lines of the final answer | pass |
+| A fresh read of the frame stream ends with the stored result | pass |
+| Clients that dropped and resumed with Last-Event-ID saw the final answer | pass |
+| K1 Events in Kafka and rows in turn_events match one to one | pass |
+| K2 Every turn closed (own terminal event or turn_abandoned), no seq gaps | pass |
+| K3 Sampled candidates equal the rules recomputed from the event log | pass |
+| K4 Nothing new in the dead-letter topic | pass |
+| K5 A rebuild from Kafka matches, forgotten conversations stay gone | pass |
+
+| Number | Value |
+| --- | --- |
+| Terminal states | succeeded 60 |
+| Runs taken over after a worker was lost or a retry | 5 (resumed from the commit point: 0) |
+| Attempts per run | 1: 55, 2: 5 |
+| Attempt outcomes | lost 5, succeeded 60 |
+| Answered "model unavailable" (no ticket) | 0 |
+| Tickets | 17 |
+| Queue wait p50 / p95 / max (s) | 0.0 / 0.0 / 0.5 |
+| Submit → done p50 / p95 / max (s) | 4.2 / 28.6 / 35.1 |
+| Interrupted runs, submit → done p50 / max (s) | 31.4 / 35.1 |
+| Clients that dropped on purpose / reconnects | 16 / 31 |
+| Model requests by status | {'200': 183} |
+| Events in Kafka for these runs / duplicates | 760 / 0 |
+| Turns / closed by turn_abandoned | 65 / 5 |
+| Peak lag, projector / sampler (messages) | 596 / 665 |
+| Consumers caught up after the runs ended (s) | 6.2 |
+| Events dropped by producers | {} |
+| Eval candidates by reason | {'handoff': 17, 'abandoned': 5, 'random': 2, 'taken_over': 5} |
+| Rebuild: rows / forgotten conversations / seconds | 725 / 3 / 1.1 |
+
+Timeline:
+
+-   0.1 s: start: workers ['aihd-drill-worker-1', 'aihd-drill-worker-2', 'aihd-drill-worker-3']
+-   6.2 s: SIGKILL worker aihd-drill-worker-2
+-   8.2 s: SIGKILL projector aihd-drill-projector-1
+-  12.2 s: SIGKILL sampler aihd-drill-sampler-1
+-  14.2 s: SIGKILL worker aihd-drill-worker-3
+-  16.0 s: Kafka broker restarting
+-  16.3 s: worker aihd-drill-worker-2 back
+-  16.9 s: Kafka broker restart command returned
+-  18.4 s: projector back
+-  20.2 s: SIGKILL projector aihd-drill-projector-1
+-  22.3 s: sampler back
+-  24.2 s: SIGKILL sampler aihd-drill-sampler-1
+-  24.3 s: worker aihd-drill-worker-3 back
+-  30.3 s: projector back
+-  31.1 s: submitted 60 runs (0 submissions got 429 and were retried)
+-  34.3 s: sampler back
+-  45.0 s: terminal: {'succeeded': 60}
+-  51.4 s: both consumer groups caught up (lag 0)
+-  54.7 s: projection deleted; 3 conversations forgotten; rebuilding from Kafka
+-  55.8 s: projection rebuilt in 1.1 s: 725 rows
+
+### Drill 2026-10-21 11:50 (k8s)
+
+80 runs at 3/s; 2 worker SIGKILLs every 8 s (each back after 10 s); the projector SIGKILLed 2 times; the sampler SIGKILLed once; the Kafka broker restarted once.
+
+| Invariant | Result |
+| --- | --- |
+| Every run reached a terminal state | pass |
+| At most one ticket per conversation, and it is the one the result names | pass |
+| Audit: one customer line, at most one answer, equal to the final answer | pass |
+| Working memory: exactly the two lines of the final answer | pass |
+| A fresh read of the frame stream ends with the stored result | pass |
+| Clients that dropped and resumed with Last-Event-ID saw the final answer | pass |
+| K1 Events in Kafka and rows in turn_events match one to one | pass |
+| K2 Every turn closed (own terminal event or turn_abandoned), no seq gaps | pass |
+| K3 Sampled candidates equal the rules recomputed from the event log | pass |
+| K4 Nothing new in the dead-letter topic | pass |
+| K5 A rebuild from Kafka matches, forgotten conversations stay gone | pass |
+
+| Number | Value |
+| --- | --- |
+| Terminal states | succeeded 80 |
+| Runs taken over after a worker was lost or a retry | 8 (resumed from the commit point: 0) |
+| Attempts per run | 1: 72, 2: 8 |
+| Attempt outcomes | lost 8, succeeded 80 |
+| Answered "model unavailable" (no ticket) | 0 |
+| Tickets | 35 |
+| Queue wait p50 / p95 / max (s) | 4.2 / 6.6 / 7.6 |
+| Submit → done p50 / p95 / max (s) | 8.0 / 33.8 / 39.5 |
+| Interrupted runs, submit → done p50 / max (s) | 36.4 / 39.5 |
+| Clients that dropped on purpose / reconnects | 25 / 60 |
+| Model requests by status | {'200': 216} |
+| Events in Kafka for these runs / duplicates | 1034 / 0 |
+| Turns / closed by turn_abandoned | 88 / 8 |
+| Peak lag, projector / sampler (messages) | 234 / 978 |
+| Consumers caught up after the runs ended (s) | 15.7 |
+| Events dropped by producers | not collected |
+| Eval candidates by reason | {'handoff': 35, 'degraded': 71, 'abandoned': 8, 'taken_over': 8, 'random': 2} |
+| Rebuild: rows / forgotten conversations / seconds | 995 / 3 / 2.2 |
+
+Timeline:
+
+-   0.1 s: start: workers ['worker-staff-6c7c4758fc-scfn5']
+-   6.1 s: SIGKILL worker worker-staff-6c7c4758fc-scfn5
+-   8.1 s: SIGKILL projector projector-staff-74d79bd577-gk5n8
+-  12.1 s: SIGKILL sampler sampler-staff-54fcf48cb6-5l5g5
+-  14.1 s: SIGKILL worker worker-staff-6c7c4758fc-8lxbp
+-  16.0 s: Kafka broker restarting
+-  16.0 s: Kafka broker restart command returned
+-  16.1 s: worker worker-staff-6c7c4758fc-scfn5 back
+-  18.1 s: projector back
+-  20.1 s: SIGKILL projector projector-staff-74d79bd577-nw6sg
+-  22.1 s: sampler back
+-  24.1 s: worker worker-staff-6c7c4758fc-8lxbp back
+-  27.8 s: submitted 80 runs (0 submissions got 429 and were retried)
+-  30.1 s: projector back
+-  47.2 s: terminal: {'succeeded': 80}
+-  63.4 s: both consumer groups caught up (lag 0)
+-  66.5 s: projection deleted; 3 conversations forgotten; rebuilding from Kafka
+-  68.7 s: projection rebuilt in 2.2 s: 995 rows
+
+</details>
+
 ## What the drills found
 
 Deploying to Kubernetes and running the drill there found four real defects before any run failed a check, each fixed in the same branch:
@@ -299,3 +456,10 @@ One more gap was found while preparing the first drill rather than by it: a Redi
 Checking the console by hand against the drill stack found the last one: when the API container restarted in the middle of an answer, the dev proxy and Docker Desktop's port forwarding kept the browser's connection open without sending anything, so the console waited forever instead of resuming. It now treats 45 s without a byte, three missed heartbeats, as a dropped connection and resumes from `Last-Event-ID`. The drill never restarts the API, so it could not have caught this.
 
 Switching the main stack back to inline mode found one more, older than this branch: nginx resolved `ai-helpdesk-customer` once at startup, so when the customer container was recreated with a new IP it kept connecting to the old one and answered 502 until reloaded. The upstream now re-resolves through Docker's DNS (`resolve`, valid 10 s); with throwaway containers, a backend recreated on a new IP was served again within 6 s, where the old configuration kept timing out.
+
+The Kafka work found four more, each fixed before the results above were recorded:
+
+- **A turn left open by a takeover.** The day after the main-stack check, the daily event-log check reported the attempt killed there as a turn with no terminal event: its process was gone, and nothing would ever close it. The attempt that takes over, or the dead-letter path, now writes `turn_abandoned` for every earlier attempt that never ended, on a reserved sequence number so that writing it twice stores it once.
+- **The end of a successful turn lost with its worker.** In the first Kafka drill a worker was SIGKILLed a fraction of a second after a run succeeded; `turn_completed` was still in the writer's 250 ms batch window, so the turn of a successful run stayed open for good. A turn-ending event now goes out at once, and a worker waits (up to a second) for the log to deliver a turn before it marks the run finished.
+- **Phantom turns in the sampler.** Restarted mid-stream, the sampler read the tails of turns it had already handled (the profile update's model call after `turn_completed`), opened them as new turns that would never end, and held its commit point behind them, so its lag never went back to zero. Only `turn_started` opens a turn now; a turn open for more than 2 minutes stops holding the commit point.
+- **KEDA could not resolve the broker.** The broker advertised itself as `kafka`, a name that resolves only inside its own namespace; KEDA runs in another, so its Kafka triggers stayed not ready. The in-cluster listener now advertises the namespace-qualified name.
