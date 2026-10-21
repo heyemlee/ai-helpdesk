@@ -243,6 +243,20 @@ async def test_a_queued_stream_carries_the_run_and_event_ids(monkeypatch, tmp_pa
         await _close(desk)
 
 
+async def test_a_restored_turn_still_says_which_run_and_degrade_level_it_was(monkeypatch, tmp_path):
+    """刷新之后工作台从事件日志重建这一轮：run 和降级档位要和当轮发出去的一样，不然重建出来的少了这两条说明。"""
+    desk = await _queued(monkeypatch, tmp_path, policy=DegradePolicy(thresholds=(1, 99, 99, 99)))
+    try:
+        frames = await _read(await desk.main.chat_stream(_ask(desk.main), None))
+        meta = next(data for kind, data, _ in frames if kind == "meta")
+        result = frames[-1][1]
+        projected = await desk.main.get_turn(result["turn_id"])
+        assert projected["meta"]["run"] == meta["run"] and projected["meta"]["degrade"] == meta["degrade"]
+        assert projected["result"]["run"] == result["run"] and projected["result"]["degrade"]["level"] == 1
+    finally:
+        await _close(desk)
+
+
 async def test_a_client_that_drops_reconnects_with_the_last_event_id(monkeypatch, tmp_path):
     desk = await _queued(monkeypatch, tmp_path)
     try:

@@ -18,6 +18,8 @@ const BASE = __ENV.API || 'http://api:8000'
 const PROFILE = (__ENV.PROFILE || '15,30,60,60').split(',').map(Number)
 const STAGE = __ENV.STAGE || '1m'
 const WAIT_S = Number(__ENV.WAIT_S || 240)
+// 轮询间隔：几百个 run 同时在等时，轮询本身不能变成 API 的负载大头
+const POLL_S = Number(__ENV.POLL_S || 3)
 const TERMINAL = new Set(['succeeded', 'failed', 'dead'])
 
 export const options = {
@@ -27,7 +29,7 @@ export const options = {
       startRate: PROFILE[0],
       timeUnit: '1m',
       preAllocatedVUs: 50,
-      maxVUs: 500,
+      maxVUs: 900,
       stages: PROFILE.map((target) => ({ target, duration: STAGE })),
       gracefulStop: `${WAIT_S}s`,
     },
@@ -71,7 +73,7 @@ export default function () {
   const id = res.json('run_id')
   const t0 = Date.now()
   while ((Date.now() - t0) / 1000 < WAIT_S) {
-    sleep(2)
+    sleep(POLL_S)
     const r = http.get(`${BASE}/runs/${id}`, { tags: { name: 'GET /runs/{id}' } })
     if (r.status !== 200) continue
     const run = r.json()
@@ -100,6 +102,7 @@ export function handleSummary(data) {
     `submit to done s: med ${v('run_total_s', 'med').toFixed(2)} p95 ${v('run_total_s', 'p(95)').toFixed(2)} ` +
       `max ${v('run_total_s', 'max').toFixed(2)}`,
     `degrade level: avg ${v('run_degrade_level', 'avg').toFixed(2)} max ${v('run_degrade_level', 'max')}`,
+    `iterations k6 could not start (VUs exhausted): ${v('dropped_iterations')}`,
   ]
   return {
     stdout: lines.join('\n') + '\n',

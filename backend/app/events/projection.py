@@ -66,6 +66,13 @@ def project_turn(events) -> dict[str, Any]:
     meta = _meta(evs, turn_id, conv_id)
     routing = _routing(evs)
     result = _result(evs, turn_id, conv_id, routing, started)
+    # 排队模式（app/runs/）：这一轮是哪个 run 的第几次执行、按哪一档降级。turn_started 里记着，
+    # meta 和 result 里各带一份，和当轮发出去的一样；inline 的轮次没有这两项
+    started_data = (started or {}).get("data") or {}
+    run_fields = {key: started_data[key] for key in ("run", "degrade") if key in started_data}
+    meta.update(run_fields)
+    if "response" in result:
+        result.update(run_fields)
     return {"turn_id": turn_id, "complete": complete, "redacted": redacted,
             "meta": meta, "routing": routing, "result": result}
 
