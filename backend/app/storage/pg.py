@@ -247,14 +247,22 @@ _COLUMNS = re.compile(r"^ALTER TABLE ([a-z_][a-z0-9_]*) ADD COLUMN IF NOT EXISTS
 
 
 async def _schema_complete(conn: asyncpg.Connection, schema: str) -> bool:
-    """schema 声明的东西库里都有了没有。按当前 search_path 找（scripts/eval_retrieval.py 用临时 schema）。"""
+    """
+    schema 声明的东西库里都有了没有。
+
+    只在 current_schema() 里找：不带 schema 名的 CREATE TABLE 建在那里，而 to_regclass(名字)
+    会沿整条 search_path 找。临时 schema 排在 public 前面时（scripts/eval_retrieval.py、测试），
+    public 里现成的表会被当成"都在了"，建表被跳过，之后的读写全落到 public 的表上。
+    """
     relations = _TABLES.findall(schema) + _INDEXES.findall(schema)
     columns = _COLUMNS.findall(schema)
     row = await conn.fetchrow(
         "SELECT"
-        " (SELECT count(*) FROM unnest($1::text[]) AS r(name) WHERE to_regclass(r.name) IS NULL) AS relations,"
+        " (SELECT count(*) FROM unnest($1::text[]) AS r(name)"
+        "   WHERE to_regclass(format('%I.%I', current_schema(), r.name)) IS NULL) AS relations,"
         " (SELECT count(*) FROM unnest($2::text[], $3::text[]) AS c(tbl, col) WHERE NOT EXISTS ("
-        "   SELECT 1 FROM pg_attribute a WHERE a.attrelid = to_regclass(c.tbl) AND a.attname = c.col"
+        "   SELECT 1 FROM pg_attribute a"
+        "   WHERE a.attrelid = to_regclass(format('%I.%I', current_schema(), c.tbl)) AND a.attname = c.col"
         "   AND NOT a.attisdropped)) AS columns,"
         " (SELECT count(*) FROM pg_extension WHERE extname = 'vector') AS vector",
         relations, [t for t, _ in columns], [c for _, c in columns],

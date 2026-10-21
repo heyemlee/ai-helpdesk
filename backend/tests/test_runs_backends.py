@@ -413,3 +413,36 @@ async def test_a_dropped_table_is_created_again_on_the_next_start():
     finally:
         await admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
         await admin.close()
+
+
+@needs_pg
+async def test_a_schema_in_front_of_public_gets_its_own_tables():
+    """
+    search_path 是 "临时 schema, public"、public 里已经有全套表：临时 schema 里照样要建一套。
+
+    以前查目录时沿整条 search_path 找，public 的表被当成"都在了"，建表跳过，
+    scripts/eval_retrieval.py 和测试的临时 schema 就把数据写进了 public 的表里。
+    """
+    import asyncpg
+
+    from app.core.embedder import Embedder
+    from app.storage.pg import Database
+
+    name = f"scoped_{uuid.uuid4().hex[:8]}"
+    admin = await asyncpg.connect(TEST_PG_DSN)
+    await admin.execute(f'CREATE DATABASE "{name}"')
+    try:
+        dsn = TEST_PG_DSN.rsplit("/", 1)[0] + f"/{name}"
+        db = Database(dsn)
+        await db.connect(embedding_dim=Embedder().dim)                # public 里一整套
+        await db.execute('CREATE SCHEMA "scratch"')
+        await db.close()
+        db = Database(f"{dsn}?search_path=scratch%2Cpublic")
+        await db.connect(embedding_dim=Embedder().dim)
+        for table in ("kb_chunks", "agent_runs", "conversation_log_dedup"):
+            row = await db.fetchrow("SELECT to_regclass('scratch.' || $1) IS NOT NULL AS ok", table)
+            assert row["ok"], table
+        await db.close()
+    finally:
+        await admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
+        await admin.close()
