@@ -9,6 +9,9 @@
 | AI_HELPDESK_EVENT_LOG_BODY_DAYS | 30 | 多少天后清空原文；0 不清 |
 | AI_HELPDESK_EVENT_LOG_DAYS | 180 | 多少天后删除整行；0 不删 |
 | AI_HELPDESK_EVENT_LOG_READ | on | 读接口开不开；客户实例设 off |
+| AI_HELPDESK_EVENT_SINK | postgres | kafka：发进 Kafka，由投影消费者写 `turn_events`（events/kafka.py） |
+| AI_HELPDESK_KAFKA_BOOTSTRAP | 不设 | broker 地址，sink=kafka 时必须有，没有就按 postgres 写 |
+| AI_HELPDESK_KAFKA_TOPIC_PREFIX | ai-helpdesk.turn-events | topic 是 `<前缀>.<实例>`，死信加 `.dlq` |
 """
 from __future__ import annotations
 
@@ -17,8 +20,10 @@ import logging
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Any
 
 from app.core.metrics import TURNS_CONCURRENT
+from app.events.kafka import KafkaPublisher, KafkaSettings
 from app.events.recorder import (
     EventLogStats,
     TurnRecorder,
@@ -28,11 +33,13 @@ from app.events.recorder import (
 )
 from app.events.retention import Retention
 from app.events.store import MemoryEventStore, PgEventStore
+from app.events.types import ABANDONED_SEQ
 from app.events.writer import EventWriter
 
 logger = logging.getLogger(__name__)
 
 INSTANCES = ("staff", "customer")
+SINKS = ("postgres", "kafka")
 
 _FULL_ALIASES = {"on", "true", "1", "yes"}
 _OFF_VALUES = {"off", "false", "0", "no", ""}
@@ -66,6 +73,10 @@ class EventLogConfig:
     body_days: int = 30
     row_days: int = 180
     read: bool = True
+    # 事件写到哪：postgres（直接写 turn_events），或者 kafka（发进 topic，由投影消费者写库，
+    # 见 events/kafka.py）。读接口和保留期两种情况都对着 Postgres
+    sink: str = "postgres"
+    kafka: KafkaSettings = KafkaSettings()
     # 配了要开、却开不了的原因（实例没设、取值不认识）。启动日志和 /health 照着说
     disabled_reason: str = ""
     warnings: tuple[str, ...] = ()
@@ -104,12 +115,23 @@ class EventLogConfig:
         if instance == "customer" and read:
             warnings.append("客户实例的读接口开着：应当设 AI_HELPDESK_EVENT_LOG_READ=off")
 
+        kafka = KafkaSettings.from_env(env)
+        raw_sink = env.get("AI_HELPDESK_EVENT_SINK", "postgres").strip().lower() or "postgres"
+        sink = raw_sink if raw_sink in SINKS else "postgres"
+        if raw_sink not in SINKS:
+            warnings.append(f"AI_HELPDESK_EVENT_SINK={raw_sink!r} 不认识（postgres / kafka），按 postgres 写")
+        if sink == "kafka" and not kafka.bootstrap:
+            warnings.append("AI_HELPDESK_EVENT_SINK=kafka 但没设 AI_HELPDESK_KAFKA_BOOTSTRAP，按 postgres 写")
+            sink = "postgres"
+
         return cls(
             mode=mode,
             instance=instance,
             body_days=_days(env, "AI_HELPDESK_EVENT_LOG_BODY_DAYS", 30, warnings),
             row_days=_days(env, "AI_HELPDESK_EVENT_LOG_DAYS", 180, warnings),
             read=read,
+            sink=sink,
+            kafka=kafka,
             disabled_reason=reason,
             warnings=tuple(warnings),
         )
@@ -132,11 +154,13 @@ class EventLog:
         writer: EventWriter | None = None,
         retention: Retention | None = None,
         stats: EventLogStats | None = None,
+        publisher: KafkaPublisher | None = None,
     ):
         self.config = config
         self.store = store
         self._sink = sink
         self._writer = writer
+        self._publisher = publisher
         self.retention = retention
         self.stats = stats if stats is not None else EventLogStats()
         self._retention_task: asyncio.Task | None = None
@@ -150,8 +174,9 @@ class EventLog:
         """
         按配置装配。要在事件循环里调：写入器和保留任务是后台任务。
 
-        有 Postgres 就写 `turn_events`；没有就存进程内最近 200 轮。日志关着、但实例设了
-        又有库的时候，保留任务照样跑：之前开着时记下的原文，到期也得清。
+        有 Postgres 就写 `turn_events`（sink=kafka 时发进 topic，由投影消费者写库）；没有就存
+        进程内最近 200 轮。日志关着、但实例设了又有库的时候，保留任务照样跑：之前开着时记下的
+        原文，到期也得清。
         """
         stats = EventLogStats()
         for warning in config.warnings:
@@ -163,18 +188,26 @@ class EventLog:
                 logger.info("事件日志关着（AI_HELPDESK_EVENT_LOG=off）")
             return cls(config, stats=stats)
 
-        writer = retention = None
+        writer = retention = publisher = None
         if db is not None:
             store = PgEventStore(db, config.instance)
             if config.mode != "off":
-                writer = EventWriter(store, stats)
+                if config.sink == "kafka":
+                    # 连不上不挡启动：第一次发的时候才连；broker 重启的十几秒靠多退避几次扛过去
+                    publisher = KafkaPublisher(config.kafka, config.instance, stats)
+                    writer = EventWriter(publisher, stats, retries=5, error_reason="kafka_error")
+                else:
+                    writer = EventWriter(store, stats)
             sink = writer
             retention = Retention(store, body_days=config.body_days, row_days=config.row_days,
                                   stats=stats)
         else:
+            if config.sink == "kafka":
+                logger.warning("事件日志: 没有 Postgres，Kafka 的投影没有地方写，按进程内存放")
             store = MemoryEventStore(config.instance, stats=stats)
             sink = store if config.mode != "off" else None
-        log = cls(config, store=store, sink=sink, writer=writer, retention=retention, stats=stats)
+        log = cls(config, store=store, sink=sink, writer=writer, retention=retention, stats=stats,
+                  publisher=publisher)
         log._start()
         if config.mode == "off":
             logger.info("事件日志关着（AI_HELPDESK_EVENT_LOG=off），实例 %s", config.instance)
@@ -183,7 +216,8 @@ class EventLog:
                 "事件日志已打开：%s，实例 %s，%s；原文 %s，整行 %s；读接口%s",
                 "结构和原文" if config.mode == "full" else "只记结构",
                 config.instance,
-                "写进 Postgres" if db is not None else "存进程内最近 200 轮（没有 Postgres，重启就没了）",
+                (f"发进 Kafka（{publisher.topic}），投影消费者写库" if publisher is not None
+                 else "写进 Postgres" if db is not None else "存进程内最近 200 轮（没有 Postgres，重启就没了）"),
                 f"{config.body_days} 天后清空" if config.body_days else "不清",
                 f"{config.row_days} 天后删除" if config.row_days else "不删",
                 "开着" if config.read else "关着",
@@ -219,6 +253,22 @@ class EventLog:
         turn.on_close(lambda: unregister_in_flight(instance, conv_id, turn.turn_id))
         return turn
 
+    def close_abandoned(self, turn_id: str, *, conv_id: str, request_id: str = "",
+                        data: dict[str, Any] | None = None) -> None:
+        """
+        替一轮补上 turn_abandoned：跑它的进程没了，这一轮再也等不到自己的终结事件。
+
+        排队模式下由接手的那一遍（或者送进死信的那一次）调，data 说明后来怎么样了。写在固定的
+        保留号上（types.ABANDONED_SEQ），补两次只留一条。只有结构、没有原文。同步、不抛。
+        """
+        if not turn_id:
+            return
+        closer = TurnRecorder(
+            turn_id, instance=self.config.instance, conv_id=conv_id, request_id=request_id,
+            mode=self.config.mode, sink=self._sink, stats=self.stats, first_seq=ABANDONED_SEQ,
+        )
+        closer.emit("turn_abandoned", data)
+
     def health(self) -> dict:
         config = self.config
         retention = (self.retention.health() if self.retention is not None else
@@ -228,6 +278,7 @@ class EventLog:
             "instance": config.instance,
             "read": self.readable,
             "store": getattr(self.store, "backend", None),
+            "sink": "kafka" if self._publisher is not None else getattr(self.store, "backend", None),
             "queue_depth": self._writer.depth if self._writer is not None else 0,
             "written": self.stats.written,
             "dropped": sum(self.stats.dropped.values()),
@@ -235,9 +286,25 @@ class EventLog:
             "last_error": self.stats.last_error,
             "retention": retention,
         }
+        if self._publisher is not None:
+            out["kafka"] = self._publisher.health()
         if config.disabled_reason:
             out["disabled_reason"] = config.disabled_reason
         return out
+
+    async def flush(self, timeout_s: float = 1.0) -> bool:
+        """
+        等这一刻之前记下的事件都送到（库，或者 Kafka 确认收下）。排队模式下 worker 在把 run 记成
+        跑完之前调：跑完的 run，它那一轮在日志里一定是结束了的。超时返回 False，不抛——日志
+        不可用时不拖住 run。没有写入器（进程内存储、日志关着）时立刻返回 True。
+        """
+        if self._writer is None:
+            return True
+        try:
+            return await self._writer.flush(timeout_s)
+        except Exception:
+            logger.debug("等事件日志送达时出错", exc_info=True)
+            return False
 
     async def close(self, timeout_s: float = 10.0) -> None:
         """停机：停保留任务，限时把没写的写完。"""
@@ -250,3 +317,5 @@ class EventLog:
             self._retention_task = None
         if self._writer is not None:
             await self._writer.close(timeout_s)
+        if self._publisher is not None:
+            await self._publisher.close()

@@ -147,6 +147,7 @@
     "instance": "",
     "read": false,
     "store": null,
+    "sink": null,
     "queue_depth": 0,
     "written": 0,
     "dropped": 0,

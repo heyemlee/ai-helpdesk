@@ -23,7 +23,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.events.shapes import agent_type_of, record_from_event
-from app.events.types import TERMINAL_TYPES, Event
+from app.events.types import TERMINAL_TYPES, Event, own_seq
 
 # 这一轮没检索知识库时，响应里 knowledge 报的样子（tools/turn_tools.Prefetch.knowledge_context
 # 开头那一句）。有一条测试守着两边一致
@@ -51,16 +51,26 @@ def project_turn(events) -> dict[str, Any]:
 
     complete 为假有两种可能：seq 有缺口（中间丢过），或者没有终结事件（没写完，或者进程在
     这一轮中间挂了）。读的一方照实显示"不完整"，不假装完整。
+
+    abandoned：跑这一轮的进程没了，别人替它补了 turn_abandoned（排队模式下 worker 被杀）。
+    这时 complete 仍然为假——缺的那一截是真丢了——但读的一方能说清后来怎么样了：
+    {"reason": "superseded", "by_attempt": 2} 是第 2 次执行接了手，"dead_letter" 是进了死信。
+    缺口和终结事件都只看进程自己发的那一段（types.RESERVED_SEQ 以下）。
     """
     evs = _decoded(events)
     if not evs:
-        return {"turn_id": "", "complete": False, "redacted": False, "meta": {}, "routing": {}, "result": {}}
+        return {"turn_id": "", "complete": False, "redacted": False, "abandoned": None,
+                "meta": {}, "routing": {}, "result": {}}
     head = evs[0]
     turn_id, conv_id = head["turn_id"], head["conv_id"]
     started = _first(evs, "turn_started")
-    terminal = next((e for e in evs if e["type"] in TERMINAL_TYPES), None)
+    own = [e for e in evs if own_seq(e["seq"])]
+    terminal = next((e for e in own if e["type"] in TERMINAL_TYPES), None)
     complete = (started is not None and terminal is not None
-                and [e["seq"] for e in evs] == list(range(len(evs))))
+                and [e["seq"] for e in own] == list(range(len(own))))
+    closed = _first(evs, "turn_abandoned")
+    abandoned = ({k: closed["data"][k] for k in ("reason", "attempt", "by_attempt") if k in closed["data"]}
+                 if closed is not None else None)
     redacted = started is not None and started["body"] is None
 
     meta = _meta(evs, turn_id, conv_id)
@@ -73,7 +83,7 @@ def project_turn(events) -> dict[str, Any]:
     meta.update(run_fields)
     if "response" in result:
         result.update(run_fields)
-    return {"turn_id": turn_id, "complete": complete, "redacted": redacted,
+    return {"turn_id": turn_id, "complete": complete, "redacted": redacted, "abandoned": abandoned,
             "meta": meta, "routing": routing, "result": result}
 
 
@@ -240,15 +250,22 @@ def summarize_turn(events) -> dict[str, Any]:
     一轮的摘要：列一个会话的各轮用（GET /conversations/{conv_id}/turns）。
 
     outcome 取终结事件：turn_completed 里记的结局（answered / handoff / clarification /
-    unavailable），turn_failed 记 failed，turn_aborted 记 aborted，没有终结事件记 incomplete。
+    unavailable），turn_failed 记 failed，turn_aborted 记 aborted；没有终结事件、但别人替它补了
+    turn_abandoned 的记 abandoned，什么都没有的记 incomplete。
     """
     evs = _decoded(events)
     projected = project_turn(evs)
     started = _first(evs, "turn_started")
-    terminal = next((e for e in evs if e["type"] in TERMINAL_TYPES), None)
+    terminal = next((e for e in evs if own_seq(e["seq"]) and e["type"] in TERMINAL_TYPES), None)
+    closed = _first(evs, "turn_abandoned")
     completed = (terminal or {}).get("data", {}) if (terminal or {}).get("type") == "turn_completed" else {}
-    outcome = (completed.get("outcome") if completed
-               else {"turn_failed": "failed", "turn_aborted": "aborted"}.get((terminal or {}).get("type"), "incomplete"))
+    if completed:
+        outcome = completed.get("outcome")
+    elif terminal is not None:
+        outcome = {"turn_failed": "failed", "turn_aborted": "aborted"}.get(terminal["type"], "incomplete")
+    else:
+        outcome = "abandoned" if closed is not None else "incomplete"
+    terminal = terminal or closed
     return {
         "turn_id": projected["turn_id"],
         "request_id": evs[0]["request_id"] if evs else "",

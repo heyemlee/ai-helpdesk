@@ -92,3 +92,40 @@ groups:
         annotations:
           summary: "模型调用等令牌等不起，在本地判了过载"
           description: "令牌桶（AI_HELPDESK_LLM_RPM / TPM）一直不够用：要么配额太紧，要么流量超出了配额能承受的量。这些调用没有出网，客户收到的是\"暂时无法回答\"。"
+
+  # 事件日志（app/events/）：写入有没有丢、Kafka 那一侧的消费者跟不跟得上（AI_HELPDESK_EVENT_SINK=kafka）。
+  # 没开 Kafka 时消费者的指标不出现，后三条不会触发
+  - name: ai-helpdesk-event-log
+    rules:
+      - alert: TurnEventsDropped
+        expr: sum by (reason) (increase(turn_events_dropped_total{reason=~"db_error|kafka_error|queue_full"}[10m])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "事件日志在丢事件（{{ $labels.reason }}）"
+          description: "库或 Kafka 写不进去，重试之后整批丢掉了（db_error / kafka_error），或者写入器的队列满了（queue_full）。回答不受影响，丢的是工程数据：turn_events.py check 会看到 seq 缺口或没有终结事件的轮次。"
+
+      - alert: TurnEventsConsumerLagging
+        expr: sum by (consumer, instance) (turn_events_consumer_lag) > 1000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }} 的 {{ $labels.consumer }} 积压 10 分钟没退下去"
+          description: "投影积压时控制台取回刚结束的那几轮会取不到；它连不上库时一直重试、不跳过，积压就会一直涨。采样积压时先看 turn_events_sampler_open_turns：有轮次迟迟不结束，它的提交点会被压住最多 2 分钟。topic 只留 7 天，积压超过这个时间的会被 Kafka 删掉。"
+
+      - alert: TurnEventsDeadLettered
+        expr: sum by (consumer, instance) (increase(turn_events_consumer_skipped_total{reason=~"bad_message|bad_row"}[15m])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }} 的事件进了死信 topic"
+          description: "有消息解不开、实例不对，或者库因为数据本身拒收了它（SQLSTATE 22 / 23 / 54 类）。消费者已经跳过、分区照常往前走；原样的消息和原因在 ai-helpdesk.turn-events.<实例>.dlq 的消息头里。"
+
+      - alert: TurnEventsSamplerLettingTurnsGo
+        expr: sum by (instance) (increase(turn_events_consumer_skipped_total{consumer="sampler", reason="expired_open"}[30m])) > 0
+        labels:
+          severity: info
+        annotations:
+          summary: "采样消费者丢掉了迟迟不结束的轮次"
+          description: "有轮次开着超过 10 分钟都没等到终结事件或 turn_abandoned：它的尾巴在写入那一侧丢了（看 TurnEventsDropped），或者跑它的进程被杀、又没有别的执行接手。这些轮次没有进评测候选。"

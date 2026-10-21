@@ -39,7 +39,7 @@ from app.events.recorder import (
 )
 from app.events.retention import DAY_S, Retention
 from app.events.store import MemoryEventStore, PgEventStore
-from app.events.types import Event
+from app.events.types import ABANDONED_SEQ, CLOSING_TYPES, Event
 from app.events.writer import EventWriter
 from app.memory.conversation_memory import MemoryContext
 from app.storage.conversation_log import ConversationLog
@@ -73,9 +73,34 @@ def test_the_event_types_are_a_fixed_list():
         "turn_started", "memory_loaded", "intent_voted", "prefetch_planned", "tool_started",
         "tool_call", "model_call", "routed", "agent_started", "agent_fallback",
         "preamble_discarded", "loop_ended", "loop_fallback", "guard_replaced", "agent_answered",
-        "handoff", "ticket_created", "turn_completed", "turn_failed", "turn_aborted",
+        "handoff", "ticket_created", "turn_completed", "turn_failed", "turn_aborted", "turn_abandoned",
     }
     assert TERMINAL_TYPES == {"turn_completed", "turn_failed", "turn_aborted"} <= EVENT_TYPES
+    # turn_abandoned 不是终结事件（不是跑这一轮的进程自己发的），但这一轮也算结束了
+    assert CLOSING_TYPES == TERMINAL_TYPES | {"turn_abandoned"}
+
+
+async def test_a_turn_closed_by_someone_else_is_written_once_on_the_reserved_seq():
+    """
+    排队模式下 worker 被杀，它那一轮由接手的一方补 turn_abandoned：写在保留号上，不接着编号
+    （接手的不知道原来记到了第几条），补两次只留一条，只有结构没有原文。
+    """
+    log = await EventLog.open(EventLogConfig(mode="full", instance="staff"))
+    turn = log.open_turn(conv_id="c1", request_id="r1")
+    turn.emit("turn_started", {"transport": "queued"}, {"user_id": "u1", "message": "补件到哪了"})
+    turn.close()                                      # 同会话在途表是进程级的，别留给后面的用例
+    data = {"run_id": "run1", "attempt": 1, "reason": "superseded", "by_attempt": 2}
+    log.close_abandoned(turn.turn_id, conv_id="c1", request_id="r1", data=data)
+    log.close_abandoned(turn.turn_id, conv_id="c1", request_id="r1", data={**data, "by_attempt": 3})
+
+    events = await log.store.events_of(turn.turn_id)
+    assert [(e.seq, e.type) for e in events] == [(0, "turn_started"), (ABANDONED_SEQ, "turn_abandoned")]
+    assert json.loads(events[1].data) == data and events[1].body is None
+    assert (events[1].instance, events[1].conv_id, events[1].request_id) == ("staff", "c1", "r1")
+
+    off = await EventLog.open(EventLogConfig(mode="off", instance="staff"))
+    off.close_abandoned(turn.turn_id, conv_id="c1", data=data)                # 日志关着：什么都不写
+    assert await off.store.events_of(turn.turn_id) == []
 
 
 # ── 记录器 ────────────────────────────────────────────────────────────────────
@@ -326,6 +351,51 @@ async def test_events_are_written_in_batches_and_flushed_on_close():
     assert sum(len(b) for b in store.batches) == len(store.rows) == 450
     assert max(len(b) for b in store.batches) <= 200 and len(store.batches) >= 3
     assert (stats.written, stats.dropped) == (450, {})
+
+
+async def test_the_event_that_ends_a_turn_is_sent_without_waiting_for_the_batch():
+    """攒批窗口开得很长也一样：一轮结束的事件到了就发，进程这时候被杀，丢的不会是它。"""
+    store = _Store()
+    stats = EventLogStats()
+    writer = EventWriter(store, stats, flush_s=30.0)
+    turn = TurnRecorder(new_turn_id(), instance="staff", conv_id="c1", mode="full", sink=writer, stats=stats)
+    writer.start()
+    try:
+        turn.emit("turn_started", {"transport": "queued"})
+        turn.emit("turn_completed", {"outcome": "answered"})
+        for _ in range(100):
+            if store.batches:
+                break
+            await asyncio.sleep(0.01)
+        assert [[e.type for e in b] for b in store.batches] == [["turn_started", "turn_completed"]]
+    finally:
+        await writer.close(timeout_s=1)
+
+
+async def test_flush_waits_for_what_came_before_it_and_not_for_what_came_after():
+    store = _Store()
+    writer, turn, stats = _writer_turn(store)
+    writer.start()
+    try:
+        for _ in range(5):
+            turn.emit("model_call", {"purpose": "answer"})
+        flushed = asyncio.create_task(writer.flush(timeout_s=2))
+        turn.emit("model_call", {"purpose": "answer"})               # 之后进来的，不在等的范围里
+        assert await flushed is True
+        assert len(store.rows) >= 5
+        assert await writer.flush(timeout_s=2) is True and len(store.rows) == 6
+    finally:
+        await writer.close(timeout_s=1)
+
+    stuck = _Store()
+    stuck.hang = True
+    writer, turn, _ = _writer_turn(stuck)
+    writer.start()
+    turn.emit("turn_started", {})
+    started = time.monotonic()
+    assert await writer.flush(timeout_s=0.2) is False                 # 库卡住了：等到点就放手，不抛
+    assert time.monotonic() - started < 1.0
+    await writer.close(timeout_s=0.1)
 
 
 async def test_a_full_queue_drops_and_counts():

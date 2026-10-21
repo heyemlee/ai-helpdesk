@@ -8,8 +8,8 @@
 # 把 config/backend.env 里的 LLM_PROVIDER / OPENAI_BASE_URL / OPENAI_MODEL 和 secret 换掉，
 # 再按供应商给的 RPM 定 KEDA 的副本上限（keda.yaml 开头的算式）。
 #
-# Postgres 和 Redis 各是一个单副本 StatefulSet：够验证排队、续租、接手、扩缩这些行为，
-# 不是生产形态（生产用托管的 Postgres 和 Redis，或者带复制的 operator）。
+# Postgres、Redis 和 Kafka 各是一个单副本 StatefulSet：够验证排队、续租、接手、扩缩、投影和
+# 重放这些行为，不是生产形态（生产用托管的服务，或者带复制的 operator）。
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: aihd
@@ -22,6 +22,10 @@ resources:
   - api.yaml
   - worker.yaml
   - keda.yaml
+  # 事件日志走 Kafka（config/backend.env 的 AI_HELPDESK_EVENT_SINK=kafka）：broker、建 topic 的 Job、
+  # 每个实例的投影和采样消费者
+  - kafka.yaml
+  - event-consumers.yaml
 
 configMapGenerator:
   - name: backend-config

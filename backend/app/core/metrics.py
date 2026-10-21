@@ -282,3 +282,40 @@ LLM_ADMISSION_REJECTED = Counter(
     "llm_admission_rejected_total",
     "等令牌超过上限、在本地判过载、没有出网的模型调用次数",
 )
+
+
+# ── 事件日志的 Kafka 消费者（app/events/consumers.py）────────────────────────────
+#
+# AI_HELPDESK_EVENT_SINK=kafka 时事件发进 Kafka，投影和采样两个消费组各读各的。consumer 是
+# projector / sampler，固定集合；积压按分区报，单位是条（还没处理完、没提交的消息数）。
+TURN_EVENTS_CONSUMED = Counter(
+    "turn_events_consumed_total",
+    "消费者从 Kafka 读到并处理完的事件数",
+    ["consumer", "instance"],
+)
+
+TURN_EVENTS_CONSUMER_SKIPPED = Counter(
+    "turn_events_consumer_skipped_total",
+    "消费者没有按常规处理的事件：bad_message（解不开，进死信）、bad_row（库拒收，进死信）、"
+    "forgotten（删除请求删过的会话）、expired（整行已过保留期）、stripped（原文已过保留期，去掉原文再写）、"
+    "late（所属轮次已经处理过，或者它的开头不在读到的范围里）、expired_open（轮次迟迟不结束，丢掉不采）",
+    ["consumer", "instance", "reason"],
+)
+
+TURN_EVENTS_CONSUMER_LAG = Gauge(
+    "turn_events_consumer_lag",
+    "每个分区上还没提交的消息数（topic 末尾减去消费组已提交的 offset）",
+    ["consumer", "instance", "partition"],
+)
+
+SAMPLER_OPEN_TURNS = Gauge(
+    "turn_events_sampler_open_turns",
+    "采样消费者手上还没结束的轮次数（它们的第一条消息之后的 offset 都还不能提交）",
+    ["instance"],
+)
+
+EVAL_CANDIDATES = Counter(
+    "eval_candidates_total",
+    "采样消费者挑出的评测候选，按理由计（一轮可能有几个理由）",
+    ["instance", "reason"],
+)

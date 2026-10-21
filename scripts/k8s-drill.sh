@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # 在 kind 集群上跑故障演练（scripts/k8s-up.sh 起的那一套）：worker 用 kubectl delete --force
 # 杀掉（不给宽限期，等同于节点掉电），Redis 的 pod 删掉重建；同时每 5 秒记一行 KEDA 管着的
-# worker 副本数，看积压上来时它怎么扩、退下去时怎么缩。
+# worker 和投影消费者的副本数，看积压上来时它怎么扩、退下去时怎么缩。
 #
 #   scripts/k8s-drill.sh --runs 80 --rate 3 --kills 3 --restart-redis
+#   scripts/k8s-drill.sh --runs 80 --rate 3 --kills 2 --kafka --kill-projector 2 --kill-sampler 1 --restart-kafka --replay
 #
 # 参数原样交给 backend/scripts/chaos_drill.py。副本数的记录写到 $DRILL_OUT（默认临时目录）。
 set -euo pipefail
@@ -31,17 +32,21 @@ forward api-staff 38080:8000
 forward postgres 35432:5432
 forward redis 36379:6379
 forward mock-llm 39000:9000
+# Kafka 的第二个监听（报给客户端的地址是 127.0.0.1:29092，见 deploy/k8s/kafka.yaml）
+forward kafka 29092:29092
 for _ in $(seq 30); do curl -sf http://127.0.0.1:38080/readyz >/dev/null && break; sleep 1; done
 
 ( while true; do
-    echo "$(date +%s) $(kubectl -n "$NS" get deploy worker-staff -o jsonpath='{.spec.replicas} {.status.readyReplicas}')"
+    echo "$(date +%s) $(kubectl -n "$NS" get deploy worker-staff -o jsonpath='{.spec.replicas} {.status.readyReplicas}')" \
+      "$(kubectl -n "$NS" get deploy projector-staff -o jsonpath='{.spec.replicas} {.status.readyReplicas}')"
     sleep 5
   done ) > "$OUT/replicas.log" &
 PIDS+=($!)
 
 "$ROOT/backend/.venv/bin/python" "$ROOT/backend/scripts/chaos_drill.py" --driver k8s --namespace "$NS" \
   --api http://127.0.0.1:38080 --mock http://127.0.0.1:39000 \
-  --pg postgresql://aihd:aihd@127.0.0.1:35432/aihd --redis redis://127.0.0.1:36379/0 "$@"
+  --pg postgresql://aihd:aihd@127.0.0.1:35432/aihd --redis redis://127.0.0.1:36379/0 \
+  --kafka-bootstrap 127.0.0.1:29092 "$@"
 status=$?
-echo "worker 副本数（时间戳 期望 就绪）：$OUT/replicas.log"
+echo "副本数（时间戳 worker期望 worker就绪 投影期望 投影就绪）：$OUT/replicas.log"
 exit $status

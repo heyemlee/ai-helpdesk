@@ -1,0 +1,19 @@
+# ai-helpdesk — 排队模式和 Kafka 一起叠时的补丁（单独用没有意义）
+#
+#   docker compose -f docker-compose.yml -f docker-compose.queued.yml \
+#     -f docker-compose.kafka.yml -f docker-compose.queued-kafka.yml up -d --build
+#
+# 排队模式下一轮对话在 worker 上跑，事件也是 worker 发的。worker 用 extends 从
+# docker-compose.yml 抄配置，extends 只读原文件、看不到 docker-compose.kafka.yml 给服务加的
+# 那两项变量——不叠这个文件，事件会一半进 Kafka（API）、一半直接写库（worker）。
+
+services:
+  ai-helpdesk-worker:
+    environment:
+      AI_HELPDESK_EVENT_SINK: kafka
+      AI_HELPDESK_KAFKA_BOOTSTRAP: kafka:9092
+
+  ai-helpdesk-customer-worker:
+    environment:
+      AI_HELPDESK_EVENT_SINK: kafka
+      AI_HELPDESK_KAFKA_BOOTSTRAP: kafka:9092

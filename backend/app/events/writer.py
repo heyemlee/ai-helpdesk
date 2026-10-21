@@ -1,5 +1,6 @@
 """
-Postgres 那一种写入器：在回答路径之外攒批写。
+写入器：在回答路径之外攒批写。写到哪由 store 定：Postgres（PgEventStore），或者 Kafka
+（events/kafka.py 的 KafkaPublisher，AI_HELPDESK_EVENT_SINK=kafka），下面的图两边一样。
 
 ```
 请求路径（同步、不 await、不抛）     后台（每个进程一个）
@@ -9,9 +10,9 @@ TurnRecorder.emit ──put_nowait──→ 有界队列 ──→ EventWriter�
                                                  停机：限时写完
 ```
 
-写入口径是"最多一次"：进程崩溃会丢最后 250 毫秒，库挂了会丢重试之后的批次。这份日志是
-工程数据，合规留档是 conversation_log，不受影响。丢了看得出来：seq 有缺口，或者没有
-终结事件。
+写入口径是"最多一次"：进程崩溃会丢最后 250 毫秒，库（或 Kafka）挂了会丢重试之后的批次。
+这份日志是工程数据，合规留档是 conversation_log，不受影响。丢了看得出来：seq 有缺口，或者
+没有终结事件。
 """
 from __future__ import annotations
 
@@ -21,7 +22,7 @@ import time
 
 from app.core.metrics import TURN_EVENTS_QUEUE_DEPTH, TURN_EVENTS_WRITE_SECONDS
 from app.events.recorder import EventLogStats
-from app.events.types import Event
+from app.events.types import CLOSING_TYPES, Event
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,15 @@ def _bad_row(ex: BaseException) -> bool:
 
 
 class EventWriter:
-    """把事件攒批写进 store（PgEventStore）。`put` 给记录器用，同步、O(1)、不抛。"""
+    """
+    把事件攒批写进 store（PgEventStore 或 KafkaPublisher）。`put` 给记录器用，同步、O(1)、不抛。
+
+    store.insert 可以返回真正写进去的条数（Kafka 那边一条太大只丢它自己）；不返回就按整批算。
+    重试之后仍然写不进去的整批，按 error_reason 计数丢弃。
+
+    一轮结束的事件（终结事件、turn_abandoned）不等攒批的那 250 毫秒，到了就发：进程在这时候被杀，
+    丢的才不会恰好是"这一轮结束了"这一条。要确定某一刻之前的都送到了，调 flush。
+    """
 
     def __init__(
         self,
@@ -48,8 +57,10 @@ class EventWriter:
         flush_s: float = 0.25,
         retries: int = 3,
         backoff_s: float = 0.5,
+        error_reason: str = "db_error",
     ):
         self._store = store
+        self._error_reason = error_reason
         self._stats = stats
         self._queue: asyncio.Queue[Event] = asyncio.Queue(maxsize=max_queue)
         self._batch_size = batch_size
@@ -60,6 +71,10 @@ class EventWriter:
         self._closed = False
         # 已经从队列里取出、还没写完的那一批。停机超时时它也算丢掉的
         self._holding: list[Event] = []
+        # 收下了多少条、处理完了多少条（写进去或者计数丢掉）：flush 按它们判断
+        self._accepted = 0
+        self._processed = 0
+        self._waiters: list[tuple[int, asyncio.Future]] = []
 
     @property
     def depth(self) -> int:
@@ -75,16 +90,46 @@ class EventWriter:
             return
         try:
             self._queue.put_nowait(event)
+            self._accepted += 1
         except asyncio.QueueFull:
             self._stats.drop("queue_full")
         TURN_EVENTS_QUEUE_DEPTH.set(self._queue.qsize())
 
+    async def flush(self, timeout_s: float) -> bool:
+        """
+        等这一刻之前收下的事件都处理完（写进去，或者重试之后计数丢掉）。之后再进来的不等——
+        别的轮次一直在写，等队列空可能永远等不到。超时返回 False，不抛。
+        """
+        target = self._accepted
+        if self._processed >= target:
+            return True
+        if self._task is None:
+            return False
+        future = asyncio.get_running_loop().create_future()
+        self._waiters.append((target, future))
+        try:
+            await asyncio.wait_for(asyncio.shield(future), timeout=timeout_s)
+            return True
+        except TimeoutError:
+            return False
+
+    def _processed_up_to(self, n: int) -> None:
+        self._processed += n
+        ready = [(target, future) for target, future in self._waiters if target <= self._processed]
+        self._waiters = [(target, future) for target, future in self._waiters if target > self._processed]
+        for _, future in ready:
+            if not future.done():
+                future.set_result(None)
+
     async def _next_batch(self) -> None:
-        """等到第一条，再最多等 flush_s 把后面的攒进来，满 batch_size 就不等了。"""
+        """
+        等到第一条，再最多等 flush_s 把后面的攒进来，满 batch_size 就不等了；攒到一轮结束的事件
+        也不等了（见类的说明）。
+        """
         self._holding.append(await self._queue.get())
         loop = asyncio.get_running_loop()
         until = loop.time() + self._flush_s
-        while len(self._holding) < self._batch_size:
+        while len(self._holding) < self._batch_size and self._holding[-1].type not in CLOSING_TYPES:
             try:
                 self._holding.append(self._queue.get_nowait())
                 continue
@@ -105,13 +150,14 @@ class EventWriter:
                 self._holding = []
                 for _ in batch:
                     self._queue.task_done()
+                self._processed_up_to(len(batch))
                 TURN_EVENTS_QUEUE_DEPTH.set(self._queue.qsize())
 
     async def _write(self, batch: list[Event]) -> None:
         for attempt in range(self._retries + 1):
             started = time.monotonic()
             try:
-                await self._store.insert(batch)
+                written = await self._store.insert(batch)
             except asyncio.CancelledError:
                 raise
             except Exception as ex:
@@ -123,12 +169,12 @@ class EventWriter:
                     return
                 if attempt == self._retries:
                     logger.warning("事件日志写入失败，丢掉 %d 条（%s）", len(batch), ex)
-                    self._stats.drop("db_error", len(batch))
+                    self._stats.drop(self._error_reason, len(batch))
                     return
                 await asyncio.sleep(self._backoff_s * (2 ** attempt))
                 continue
             TURN_EVENTS_WRITE_SECONDS.observe(time.monotonic() - started)
-            self._stats.wrote(len(batch))
+            self._stats.wrote(written if isinstance(written, int) else len(batch))
             return
 
     async def _write_rows(self, batch: list[Event]) -> None:

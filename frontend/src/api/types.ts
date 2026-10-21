@@ -214,12 +214,24 @@ export interface ConversationEntry {
 // ── 一轮的经过（GET /turns/{turn_id}）──────────────────────────────────────
 // 后端从事件投影出来的三个对象，和当轮 /chat/stream 的 meta、routing、result 同一个形状。
 
+/**
+ * 跑这一轮的进程没了，别人替它补了一条记录（排队模式下 worker 被杀）：superseded 是第
+ * by_attempt 次执行接了手，dead_letter 是这个 run 进了死信、转了人工。
+ */
+export interface TurnAbandoned {
+  reason: 'superseded' | 'dead_letter' | string
+  attempt?: number
+  by_attempt?: number
+}
+
 export interface TurnProjection {
   turn_id: string
   /** 为假：中间丢过事件，或者这一轮没写完 */
   complete: boolean
   /** 原文已按保留期清空（或当时只记结构）：要原文的字段是空的 */
   redacted: boolean
+  /** 这一轮没写完、但去向清楚（见 TurnAbandoned）。老后端没有这一项 */
+  abandoned?: TurnAbandoned | null
   meta: Partial<StreamMetaEvent>
   routing: Partial<StreamRoutingEvent>
   result: Partial<ChatResponse>

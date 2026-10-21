@@ -93,6 +93,27 @@ describe('编排检查器', () => {
     expect(screen.getByText('missing_part')).toBeInTheDocument()
   })
 
+  it('worker 中途失联的那一遍：说清楚是第几次执行接的手，不只说"不完整"', async () => {
+    mocks.turn.mockResolvedValue({
+      ...answered, complete: false, abandoned: { reason: 'superseded', attempt: 1, by_attempt: 2 },
+    })
+    withQueries(<RoutingInspector message={reply} base={BASE} />)
+    expect(await screen.findByText(/第 1 次执行的 worker 在中途失联，由第 2 次执行接了手/)).toBeInTheDocument()
+    expect(screen.queryByText(/中间丢过事件/)).toBeNull()
+  })
+
+  it('进了死信的那一遍说进了死信；老后端没有 abandoned 时照旧说不完整', async () => {
+    mocks.turn.mockResolvedValueOnce({ ...answered, complete: false, abandoned: { reason: 'dead_letter', attempt: 2 } })
+    const first = withQueries(<RoutingInspector message={reply} base={BASE} />)
+    expect(await screen.findByText(/第 2 次执行的 worker 在中途失联，这个 run 进了死信/)).toBeInTheDocument()
+    first.unmount()
+
+    const { abandoned: _dropped, ...older } = answered
+    mocks.turn.mockResolvedValueOnce({ ...older, complete: false })
+    withQueries(<RoutingInspector message={reply} base={BASE} />)
+    expect(await screen.findByText(/中间丢过事件/)).toBeInTheDocument()
+  })
+
   it('没有 turn_id 的老记录照旧说没有，也不去请求', () => {
     // 不包 QueryClientProvider：这条路径不该用到它
     render(<RoutingInspector message={{ ...reply, turnId: undefined }} base={BASE} />)

@@ -280,6 +280,142 @@
         "defaults": {},
         "overrides": []
       }
+    },
+    {
+      "id": 10,
+      "type": "row",
+      "title": "事件日志与 Kafka（AI_HELPDESK_EVENT_SINK=kafka）",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 40,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 11,
+      "title": "消费积压（条）",
+      "type": "timeseries",
+      "description": "每个消费组在各分区上还没提交的消息之和。投影积压时控制台取回刚结束的轮次会取不到；采样积压先看手上没结束的轮次",
+      "gridPos": {
+        "x": 0,
+        "y": 41,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (consumer, instance) (turn_events_consumer_lag)",
+          "legendFormat": "{{consumer}} · {{instance}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    },
+    {
+      "id": 12,
+      "title": "写入和消费（条 / 分钟）",
+      "type": "timeseries",
+      "description": "written 是服务和 worker 写进 Kafka（或库）的，consumed 是两个消费者处理完的；稳定时三条线贴在一起",
+      "gridPos": {
+        "x": 12,
+        "y": 41,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(turn_events_written_total[1m])) * 60",
+          "legendFormat": "written",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (consumer) (rate(turn_events_consumed_total[1m])) * 60",
+          "legendFormat": "consumed · {{consumer}}",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    },
+    {
+      "id": 13,
+      "title": "丢掉和跳过的事件",
+      "type": "timeseries",
+      "description": "dropped 是写入那一侧丢的（库或 Kafka 写不进去、队列满）；skipped 是消费者没按常规处理的：进死信、删除请求删过的会话、过了保留期的、结束过的轮次的尾巴",
+      "gridPos": {
+        "x": 0,
+        "y": 49,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (reason) (increase(turn_events_dropped_total[5m]))",
+          "legendFormat": "dropped · {{reason}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (consumer, reason) (increase(turn_events_consumer_skipped_total[5m]))",
+          "legendFormat": "skipped · {{consumer}} · {{reason}}",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    },
+    {
+      "id": 14,
+      "title": "评测候选（按理由，每小时）",
+      "type": "timeseries",
+      "description": "采样消费者挑出来的轮次，一轮可能有几个理由；random 是对所有轮次一视同仁的 5% 基线",
+      "gridPos": {
+        "x": 12,
+        "y": 49,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (reason) (increase(eval_candidates_total[1h]))",
+          "legendFormat": "{{reason}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (instance) (turn_events_sampler_open_turns)",
+          "legendFormat": "采样手上没结束的轮次 · {{instance}}",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
     }
   ]
 }

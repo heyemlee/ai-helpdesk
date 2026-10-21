@@ -1,0 +1,167 @@
+# ai-helpdesk — 事件日志走 Kafka 的叠加文件（AI_HELPDESK_EVENT_SINK=kafka）
+#
+#   docker compose -f docker-compose.yml -f docker-compose.kafka.yml up -d --build
+#
+# 排队模式再叠 Kafka 时多给一个文件：worker 是用 extends 从 docker-compose.yml 抄来的，
+# extends 只读原文件、看不到这个叠加层，worker 的两项变量要另给（docker-compose.queued-kafka.yml）：
+#
+#   docker compose -f docker-compose.yml -f docker-compose.queued.yml \
+#     -f docker-compose.kafka.yml -f docker-compose.queued-kafka.yml up -d --build
+#
+# 两个实例的事件各进各的 topic（ai-helpdesk.turn-events.staff / .customer），每个实例一个投影
+# 消费者（写 turn_events，读接口和保留期照旧对着 Postgres）、一个采样消费者（挑评测候选）。
+# 消费者和服务是同一个镜像、同一份配置（extends），所以各自实例的原文保留期也一样。
+# 设计和取舍见 docs/design/durable-agent-runs.md 的"事件日志走 Kafka"。
+#
+# 不叠这个文件，事件照旧直接写 Postgres，什么都不变。
+
+x-kafka-env: &kafka-env
+  AI_HELPDESK_KAFKA_BOOTSTRAP: kafka:9092
+  AI_HELPDESK_CONSUMER_METRICS_PORT: "9102"
+
+x-consumer-health: &consumer-health
+  test: ["CMD-SHELL", "curl -sf http://localhost:9102/metrics >/dev/null || exit 1"]
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 30s
+
+services:
+  ai-helpdesk:
+    environment:
+      AI_HELPDESK_EVENT_SINK: kafka
+      AI_HELPDESK_KAFKA_BOOTSTRAP: kafka:9092
+
+  ai-helpdesk-customer:
+    environment:
+      AI_HELPDESK_EVENT_SINK: kafka
+      AI_HELPDESK_KAFKA_BOOTSTRAP: kafka:9092
+
+  # 单节点 KRaft：broker 和 controller 一个进程，不要 ZooKeeper。只在容器网络里开 9092；
+  # 本机的脚本、kcat 连 127.0.0.1:19092。不自动建 topic（分区数和保留期由 kafka-topics 定）。
+  # 生产上要三个节点、副本数 3、min.insync.replicas=2，这里写明是单机
+  kafka:
+    image: apache/kafka:4.3.1
+    container_name: ai-helpdesk-kafka
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: INTERNAL://:9092,HOST://:19092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,HOST://127.0.0.1:19092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,HOST:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    ports:
+      - "127.0.0.1:19092:19092"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    restart: unless-stopped
+    networks:
+      - ai-helpdesk-network
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+
+  # 建 topic（6 个分区、留 7 天）和死信 topic，跑完就退出；已经有了只改保留期
+  kafka-topics:
+    extends:
+      file: docker-compose.yml
+      service: ai-helpdesk
+    container_name: ai-helpdesk-kafka-topics
+    command: ["python", "-m", "app.events", "topics", "--instance", "staff", "--instance", "customer"]
+    ports: !reset []
+    environment:
+      <<: *kafka-env
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: "no"
+    healthcheck:
+      disable: true
+
+  projector-staff:
+    extends:
+      file: docker-compose.yml
+      service: ai-helpdesk
+    container_name: ai-helpdesk-projector-staff
+    command: ["python", "-m", "app.events", "project", "--instance", "staff"]
+    ports: !reset []
+    environment:
+      <<: *kafka-env
+    depends_on:
+      kafka-topics:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    stop_grace_period: 30s
+    healthcheck: *consumer-health
+
+  projector-customer:
+    extends:
+      file: docker-compose.yml
+      service: ai-helpdesk-customer
+    container_name: ai-helpdesk-projector-customer
+    command: ["python", "-m", "app.events", "project", "--instance", "customer"]
+    ports: !reset []
+    environment:
+      <<: *kafka-env
+    depends_on:
+      kafka-topics:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    stop_grace_period: 30s
+    healthcheck: *consumer-health
+
+  sampler-staff:
+    extends:
+      file: docker-compose.yml
+      service: ai-helpdesk
+    container_name: ai-helpdesk-sampler-staff
+    command: ["python", "-m", "app.events", "sample", "--instance", "staff"]
+    ports: !reset []
+    environment:
+      <<: *kafka-env
+    depends_on:
+      kafka-topics:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    stop_grace_period: 30s
+    healthcheck: *consumer-health
+
+  sampler-customer:
+    extends:
+      file: docker-compose.yml
+      service: ai-helpdesk-customer
+    container_name: ai-helpdesk-sampler-customer
+    command: ["python", "-m", "app.events", "sample", "--instance", "customer"]
+    ports: !reset []
+    environment:
+      <<: *kafka-env
+    depends_on:
+      kafka-topics:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    stop_grace_period: 30s
+    healthcheck: *consumer-health
+
+  # 消费者的指标（积压、跳过、评测候选）：抓取配置挂进 prometheus.yml 的第二个目录
+  prometheus:
+    volumes:
+      - ./deploy/prometheus/scrape.d-kafka:/etc/prometheus/scrape.kafka.d:ro
+
+volumes:
+  kafka-data:
+    driver: local

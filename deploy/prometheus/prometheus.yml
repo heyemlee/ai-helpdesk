@@ -7,10 +7,12 @@ global:
     cluster: 'ai-helpdesk'
     environment: 'production'
 
-# 别的抓取配置从这里叠进来：排队模式（docker-compose.queued.yml）把 worker 那一份挂进这个目录。
-# inline 模式下这里是空的，不会多出一排抓不到的目标
+# 别的抓取配置从这里叠进来：排队模式（docker-compose.queued.yml）把 worker 那一份挂进第一个目录，
+# 事件日志走 Kafka（docker-compose.kafka.yml）把消费者那一份挂进第二个。没叠的时候目录是空的，
+# 不会多出一排抓不到的目标
 scrape_config_files:
   - "/etc/prometheus/scrape.d/*.yml"
+  - "/etc/prometheus/scrape.kafka.d/*.yml"
 
 rule_files:
   - "alerts/*.yml"

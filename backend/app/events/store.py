@@ -15,6 +15,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import logging
+import time
 from collections import OrderedDict
 
 from app.events.recorder import EventLogStats
@@ -31,6 +32,16 @@ _INSERT = (
     # 主键是 (turn_id, seq)：重试同一批时，第一次其实已经写进去的那些不会写出重复行
     " ON CONFLICT (turn_id, seq) DO NOTHING"
 )
+# 投影消费者用的那一种（events/consumers.py）：删除请求删掉的会话不写。Kafka 里的副本删不掉，
+# 要等 topic 保留期到了才没；重置 offset 回放时，靠这一句不把删掉的写回来。判断和写入是同一条
+# 语句，回放和删除谁先谁后都一样
+_INSERT_UNLESS_FORGOTTEN = (
+    f"INSERT INTO turn_events ({', '.join(COLUMNS)})"
+    " SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14::jsonb"
+    " WHERE NOT EXISTS (SELECT 1 FROM forgotten_conversations f WHERE f.instance = $3 AND f.conv_id = $4)"
+    " ON CONFLICT (turn_id, seq) DO NOTHING"
+)
+
 _SELECT = f"SELECT {', '.join(COLUMNS)} FROM turn_events"
 
 
@@ -53,6 +64,17 @@ class PgEventStore:
 
     async def insert(self, events: list[Event]) -> None:
         await self._db.executemany(_INSERT, [e.row() for e in events])
+
+    async def insert_unless_forgotten(self, events: list[Event]) -> None:
+        """投影消费者写库：同 insert，但删除请求删掉的会话不写。"""
+        await self._db.executemany(_INSERT_UNLESS_FORGOTTEN, [e.row() for e in events])
+
+    async def forgotten_among(self, conv_ids: list[str]) -> set[str]:
+        """这些会话里哪些被删除请求删过（投影消费者计数用；写不写由 insert_unless_forgotten 自己判断）。"""
+        rows = await self._db.fetch(
+            "SELECT conv_id FROM forgotten_conversations WHERE instance = $1 AND conv_id = ANY($2::text[])",
+            self.instance, list(set(conv_ids)))
+        return {r["conv_id"] for r in rows}
 
     async def events_of(self, turn_id: str) -> list[Event]:
         rows = await self._db.fetch(
@@ -104,9 +126,20 @@ class PgEventStore:
         return [r["conv_id"] for r in rows]
 
     async def delete_conversation(self, conv_id: str) -> int:
-        """删掉本实例这个会话的全部事件（删除请求）。返回删了多少行。"""
-        return _affected(await self._db.execute(
-            "DELETE FROM turn_events WHERE instance = $1 AND conv_id = $2", self.instance, conv_id))
+        """
+        删掉本实例这个会话的全部事件（删除请求），连同评测候选。返回删了多少行事件。
+
+        先记进 forgotten_conversations 再删：sink=kafka 时 topic 里还有副本，投影消费者回放时
+        靠这张表跳过。只记会话 id，不记是谁、为什么。
+        """
+        async with self._db.transaction() as conn:
+            await conn.execute(
+                "INSERT INTO forgotten_conversations (instance, conv_id, forgotten_at) VALUES ($1, $2, $3)"
+                " ON CONFLICT (instance, conv_id) DO NOTHING", self.instance, conv_id, time.time())
+            await conn.execute("DELETE FROM eval_candidates WHERE instance = $1 AND conv_id = $2",
+                               self.instance, conv_id)
+            return _affected(await conn.execute(
+                "DELETE FROM turn_events WHERE instance = $1 AND conv_id = $2", self.instance, conv_id))
 
     async def purge_bodies(self, before_ts: float, batch: int = PURGE_BATCH) -> int:
         """把 before_ts 之前的原文清空成 NULL，结构留着。分批，返回清了多少行。"""
@@ -123,7 +156,7 @@ class PgEventStore:
                 return total
 
     async def delete_rows(self, before_ts: float, batch: int = PURGE_BATCH) -> int:
-        """删掉 before_ts 之前的整行。分批，返回删了多少行。"""
+        """删掉 before_ts 之前的整行，和那些轮次的评测候选。分批，返回删了多少行事件。"""
         total = 0
         while True:
             n = _affected(await self._db.execute(
@@ -134,7 +167,10 @@ class PgEventStore:
             ))
             total += n
             if n < batch:
-                return total
+                break
+        await self._db.execute("DELETE FROM eval_candidates WHERE instance = $1 AND turn_ts < $2",
+                               self.instance, before_ts)
+        return total
 
 
 class MemoryEventStore:
@@ -147,6 +183,8 @@ class MemoryEventStore:
         self._max = max_turns
         self._turns: OrderedDict[str, list[Event]] = OrderedDict()
         self._stats = stats if stats is not None else EventLogStats()
+        # 删除请求删过的会话（同 forgotten_conversations）
+        self.forgotten: set[str] = set()
 
     @property
     def depth(self) -> int:
@@ -158,6 +196,8 @@ class MemoryEventStore:
             turn = self._turns[event.turn_id] = []
             while len(self._turns) > self._max:
                 self._turns.popitem(last=False)
+        if any(e.seq == event.seq for e in turn):
+            return              # 和 Postgres 的主键一样：同一轮同一个 seq 只留第一条（补事件会补两次）
         turn.append(event)
         self._stats.wrote(1)
 
@@ -200,7 +240,14 @@ class MemoryEventStore:
                     found.append(e.conv_id)
         return found
 
+    async def insert_unless_forgotten(self, events: list[Event]) -> None:
+        await self.insert([e for e in events if e.conv_id not in self.forgotten])
+
+    async def forgotten_among(self, conv_ids: list[str]) -> set[str]:
+        return self.forgotten & set(conv_ids)
+
     async def delete_conversation(self, conv_id: str) -> int:
+        self.forgotten.add(conv_id)
         total = 0
         for turn_id in list(self._turns):
             turn = self._turns[turn_id]

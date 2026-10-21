@@ -3,6 +3,7 @@ import { Chip, Empty, KV, MeterRow, SectionLabel } from './ui'
 import { agentLabel, confidenceTone, ms, num } from '@/lib/format'
 import { llmReasonKey } from '@/lib/llm'
 import { useT } from '@/i18n'
+import type { TurnAbandoned } from '@/api/types'
 import type { ChatMessage } from '@/hooks/useChatStream'
 import { useRestoredTurn, type RestoredTurn } from '@/hooks/useRestoredTurn'
 
@@ -193,7 +194,7 @@ function RestoredInspector({ message, base, thresholds }: {
   if (turn.state !== 'ready') return <TurnPending turn={turn} />
   return (
     <>
-      <TurnNotes redacted={turn.redacted} complete={turn.complete} />
+      <TurnNotes redacted={turn.redacted} complete={turn.complete} abandoned={turn.abandoned} />
       <RoutingInspector message={turn.message} thresholds={thresholds} />
     </>
   )
@@ -215,13 +216,26 @@ export function TurnPending({ turn }: { turn: RestoredTurn }) {
   return <div className="thinking"><span className="pulse" />{t('in.turn.loading')}</div>
 }
 
-/** 取回来的这一轮，原文删了、或者记录不全时先说一句：下面空着的地方不是"什么都没有"。 */
-export function TurnNotes({ redacted, complete }: { redacted: boolean; complete: boolean }) {
+/**
+ * 取回来的这一轮，原文删了、或者记录不全时先说一句：下面空着的地方不是"什么都没有"。
+ * 不全、但去向清楚的（worker 被杀，后面接了手或者进了死信）说清楚后来怎么样了。
+ */
+export function TurnNotes({ redacted, complete, abandoned }: {
+  redacted: boolean
+  complete: boolean
+  abandoned?: TurnAbandoned | null
+}) {
   const { t } = useT()
+  const missing = !complete && (
+    abandoned?.reason === 'superseded' && abandoned.by_attempt
+      ? t('in.turn.superseded', { attempt: abandoned.attempt ?? '?', by: abandoned.by_attempt })
+      : abandoned?.reason === 'dead_letter'
+        ? t('in.turn.deadLetter', { attempt: abandoned.attempt ?? '?' })
+        : t('in.turn.incomplete'))
   return (
     <>
       {redacted && <p className="note neutral" style={{ marginBottom: 12 }}>{t('in.turn.redacted')}</p>}
-      {!complete && <p className="note caution" style={{ marginBottom: 12 }}>{t('in.turn.incomplete')}</p>}
+      {missing && <p className="note caution" style={{ marginBottom: 12 }}>{missing}</p>}
     </>
   )
 }

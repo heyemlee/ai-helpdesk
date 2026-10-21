@@ -35,6 +35,7 @@ python-multipart==0.0.32    # FastAPI 文件上传支持。0.0.12 有两个 DoS
 
 # ── 数据存储 ──────────────────────────────────────────────────────────────────
 redis==5.2.1
+aiokafka==0.14.0           # 事件日志接 Kafka（AI_HELPDESK_EVENT_SINK=kafka）：生产者、投影和采样消费者
 asyncpg==0.30.0            # Postgres：工单/审计/KB 向量/记忆统一落库
                            # 向量检索走 pgvector（<=> 余弦距离），未配置
                            # POSTGRES_DSN 时退化为 SQLite 本地兜底

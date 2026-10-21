@@ -29,8 +29,9 @@ from app.agents.agent_orchestrator import AgentOrchestrator, AgentType
 from app.core.intent_recognizer import IntentCategory, UrgencyLevel
 from app.core.llm_guard import GuardedLLMClient, LLMGuard
 from app.events import EventLog, EventLogConfig
-from app.events.projection import KNOWLEDGE_NOT_SEARCHED, mismatches, project_turn
+from app.events.projection import KNOWLEDGE_NOT_SEARCHED, mismatches, project_turn, summarize_turn
 from app.events.recorder import MAX_ID_CHARS
+from app.events.types import ABANDONED_SEQ
 from app.memory.conversation_memory import MemoryContext
 from app.tickets.ticket_store import TicketStore
 from app.tools.sql_agent_client import SQLAgentClient
@@ -444,6 +445,27 @@ def test_an_empty_or_unfinished_turn_is_reported_as_incomplete():
     completed = {**started, "seq": 2, "type": "turn_completed"}
     assert project_turn([started, completed])["complete"] is False              # seq 有缺口
     assert project_turn([started, {**completed, "seq": 1}])["complete"] is True
+
+
+def test_a_turn_closed_by_a_later_attempt_says_what_happened_to_it():
+    """
+    补的 turn_abandoned 不让这一轮变完整（缺的那一截是真丢了），但说清了去向；
+    保留号不算缺口：自己收了场、又被补过的那一轮仍然完整，结局按自己的终结事件算。
+    """
+    started = {"turn_id": "t", "seq": 0, "conv_id": "c", "request_id": "r", "type": "turn_started",
+               "agent": "", "step": None, "call_id": "", "data": {}, "body": {}, "ts": 1.0}
+    closed = {**started, "seq": ABANDONED_SEQ, "type": "turn_abandoned", "body": None, "ts": 9.0,
+              "data": {"run_id": "run1", "attempt": 1, "reason": "superseded", "by_attempt": 2}}
+    projected = project_turn([started, closed])
+    assert projected["complete"] is False
+    assert projected["abandoned"] == {"reason": "superseded", "attempt": 1, "by_attempt": 2}
+    summary = summarize_turn([started, closed])
+    assert (summary["outcome"], summary["ended_at"]) == ("abandoned", 9.0)
+    assert project_turn([started])["abandoned"] is None and summarize_turn([started])["outcome"] == "incomplete"
+
+    aborted = {**started, "seq": 1, "type": "turn_aborted", "ts": 5.0}
+    assert project_turn([started, aborted, closed])["complete"] is True
+    assert summarize_turn([started, aborted, closed])["outcome"] == "aborted"
 
 
 async def test_the_shadow_check_notices_when_the_response_and_the_events_drift(monkeypatch):
