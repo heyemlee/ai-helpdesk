@@ -1,0 +1,12 @@
+# 事件日志的 Kafka 消费者（docker-compose.kafka.yml 挂进 /etc/prometheus/scrape.kafka.d/）。
+# 消费积压、跳过的事件、评测候选都在这里；生产那一侧（写进 Kafka 的、丢掉的）照旧在服务和 worker 上
+scrape_configs:
+  - job_name: 'ai-helpdesk-event-consumers'
+    static_configs:
+      - targets: ['projector-staff:9102', 'sampler-staff:9102']
+        labels:
+          instance_name: 'staff'
+      - targets: ['projector-customer:9102', 'sampler-customer:9102']
+        labels:
+          instance_name: 'customer'
+    scrape_interval: 15s
