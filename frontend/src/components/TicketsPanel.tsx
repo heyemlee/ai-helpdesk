@@ -175,7 +175,7 @@ function TicketTurn({ base, turnId }: { base: string; turnId: string }) {
         <button className="btn btn-secondary" onClick={() => setOpen(true)}>{t('tk.turn.show')}</button>
       ) : turn.state === 'ready' ? (
         <div className="ticket-turn">
-          <TurnNotes redacted={turn.redacted} complete={turn.complete} />
+          <TurnNotes redacted={turn.redacted} complete={turn.complete} abandoned={turn.abandoned} />
           <RoutingInspector message={turn.message} />
         </div>
       ) : <TurnPending turn={turn} />}

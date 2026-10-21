@@ -61,7 +61,7 @@ Execution is **at least once**; every effect is **applied once**; and once an an
 | Audit (customer line, answer) | `run:{instance}:{run}:audit:{role}` | Dedup row inserted in the same transaction as the audit row (side table, so old images reading `SELECT *` are unaffected) |
 | Working memory | `run:{instance}:{run}:memory` | One Lua script: `SET NX` the marker and `LPUSH` both lines, or do nothing |
 | Tool results | sha256 of tool and normalised arguments | Per-run hash in Redis, read only on attempts after the first; failures are not recorded |
-| Event log | per attempt | Each attempt is its own turn; `turn_started.run` names the run and attempt, `resumed_from` points at the turn that answered |
+| Event log | per attempt | Each attempt is its own turn; `turn_started.run` names the run and attempt, `resumed_from` points at the turn that answered. A lost attempt never writes its own terminal event, so the attempt that takes over (or the dead-letter path) closes that turn with `turn_abandoned` on a reserved seq: written twice, stored once |
 
 Exactly-once *execution* is not on offer from any component here; the design makes duplicate execution harmless instead. The commit point closes the one gap idempotency alone leaves: a worker that dies after writing the audit but before recording the result would otherwise make the retry answer again, so the customer and the audit would see different answers.
 

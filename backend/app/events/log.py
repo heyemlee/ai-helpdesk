@@ -17,6 +17,7 @@ import logging
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Any
 
 from app.core.metrics import TURNS_CONCURRENT
 from app.events.recorder import (
@@ -28,6 +29,7 @@ from app.events.recorder import (
 )
 from app.events.retention import Retention
 from app.events.store import MemoryEventStore, PgEventStore
+from app.events.types import ABANDONED_SEQ
 from app.events.writer import EventWriter
 
 logger = logging.getLogger(__name__)
@@ -218,6 +220,22 @@ class EventLog:
             TURNS_CONCURRENT.inc()
         turn.on_close(lambda: unregister_in_flight(instance, conv_id, turn.turn_id))
         return turn
+
+    def close_abandoned(self, turn_id: str, *, conv_id: str, request_id: str = "",
+                        data: dict[str, Any] | None = None) -> None:
+        """
+        替一轮补上 turn_abandoned：跑它的进程没了，这一轮再也等不到自己的终结事件。
+
+        排队模式下由接手的那一遍（或者送进死信的那一次）调，data 说明后来怎么样了。写在固定的
+        保留号上（types.ABANDONED_SEQ），补两次只留一条。只有结构、没有原文。同步、不抛。
+        """
+        if not turn_id:
+            return
+        closer = TurnRecorder(
+            turn_id, instance=self.config.instance, conv_id=conv_id, request_id=request_id,
+            mode=self.config.mode, sink=self._sink, stats=self.stats, first_seq=ABANDONED_SEQ,
+        )
+        closer.emit("turn_abandoned", data)
 
     def health(self) -> dict:
         config = self.config

@@ -2,6 +2,7 @@
   "turn_id": "00000000000000000000000001",
   "complete": true,
   "redacted": true,
+  "abandoned": null,
   "meta": {
     "conv_id": "conv-turns",
     "turn_id": "00000000000000000000000001",

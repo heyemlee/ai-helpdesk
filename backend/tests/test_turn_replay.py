@@ -30,7 +30,7 @@ from app.events.ops import check_turns, forget
 from app.events.recorder import new_turn_id
 from app.events.replay import ReplayError, export_case, rebuild_loop_state, rebuild_request, replay_guard, replay_route
 from app.events.store import MemoryEventStore
-from app.events.types import Event
+from app.events.types import ABANDONED_SEQ, Event
 
 SCRIPTS = pathlib.Path(__file__).resolve().parents[1] / "scripts"
 
@@ -199,6 +199,25 @@ async def test_check_reports_unfinished_turns_and_gaps():
     report = await check_turns(store, since=0)
     assert (report["turns"], report["complete"], report["events"]) == (3, 1, 5)
     assert report["no_terminal"] == [unfinished] and report["seq_gaps"] == [gapped]
+    assert report["abandoned"] == []
+
+
+async def test_check_lists_turns_closed_by_a_later_attempt_apart_from_problems():
+    """
+    worker 被杀的那一轮：自己的事件停在半截，接手的一方在保留号上补了 turn_abandoned。
+    它不算"没有终结事件"，保留号也不算 seq 的缺口；自己发了终结事件、又被补过的，算完整。
+    """
+    store = MemoryEventStore("staff")
+    lost, finished_late = new_turn_id(), new_turn_id()
+    for event in (_event(lost, 0, "turn_started"), _event(lost, 1, "routed"),
+                  _event(lost, ABANDONED_SEQ, "turn_abandoned"),
+                  _event(finished_late, 0, "turn_started"), _event(finished_late, 1, "turn_aborted"),
+                  _event(finished_late, ABANDONED_SEQ, "turn_abandoned")):
+        store.put(event)
+
+    report = await check_turns(store, since=0)
+    assert report["abandoned"] == [lost] and report["no_terminal"] == [] and report["seq_gaps"] == []
+    assert report["complete"] == 1
 
 
 async def test_forget_deletes_only_this_instance_and_only_with_yes():

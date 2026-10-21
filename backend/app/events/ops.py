@@ -10,22 +10,31 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from app.events.types import TERMINAL_TYPES
+from app.events.types import TERMINAL_TYPES, own_seq
 
 
 async def check_turns(store, since: float, until: float | None = None, limit: int = 5000) -> dict[str, Any]:
-    """上线后观察期每天看一次：没有终结事件、seq 有缺口的轮次都应该是 0。"""
+    """
+    上线后观察期每天看一次：没有终结事件、seq 有缺口的轮次都应该是 0。
+
+    abandoned 单列、不算问题：跑那一轮的进程没了（排队模式下 worker 被杀），接手的那一遍或者
+    死信替它补了 turn_abandoned。它们缺的那一截是真丢了，但去向是清楚的——run 换了一遍执行。
+    缺口只看进程自己编号的那一段（types.RESERVED_SEQ 以下）。
+    """
     turn_ids = await store.turn_ids_between(since, until, limit)
     by_turn = await store.events_of_turns(turn_ids)
     report: dict[str, Any] = {"turns": len(turn_ids), "complete": 0, "no_terminal": [], "seq_gaps": [],
-                              "unknown_purpose": [], "events": 0}
+                              "unknown_purpose": [], "abandoned": [], "events": 0}
     for turn_id in turn_ids:
         events = by_turn.get(turn_id, [])
         report["events"] += len(events)
-        seqs = [e.seq for e in events]
-        terminal = any(e.type in TERMINAL_TYPES for e in events)
+        own = [e for e in events if own_seq(e.seq)]
+        seqs = [e.seq for e in own]
+        terminal = any(e.type in TERMINAL_TYPES for e in own)
         gap = seqs != list(range(len(seqs)))
-        if not terminal:
+        if not terminal and any(e.type == "turn_abandoned" for e in events):
+            report["abandoned"].append(turn_id)
+        elif not terminal:
             report["no_terminal"].append(turn_id)
         if gap:
             report["seq_gaps"].append(turn_id)

@@ -239,6 +239,7 @@ class TurnRecorder:
         mode: str = "off",
         sink: EventSink | None = None,
         stats: EventLogStats | None = None,
+        first_seq: int = 0,
     ):
         self.turn_id = turn_id
         self.instance = instance
@@ -248,7 +249,8 @@ class TurnRecorder:
         self.mode = mode if sink is not None and mode in MODES else "off"
         self._sink = sink
         self._stats = stats if stats is not None else EventLogStats()
-        self._seq = itertools.count()
+        # 从 0 连续编号；替别的进程补事件时从保留号开始（types.RESERVED_SEQ）
+        self._seq = itertools.count(first_seq)
         self._t0 = time.monotonic()
         self._body_bytes = 0
         self._totals = {"model_calls": 0, "input_tokens": 0, "output_tokens": 0, "tool_calls": 0}

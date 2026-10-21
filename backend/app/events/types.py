@@ -30,11 +30,30 @@ EVENT_TYPES = frozenset({
     "routed", "agent_started", "agent_fallback", "preamble_discarded",
     "loop_ended", "loop_fallback", "guard_replaced", "agent_answered",
     "handoff", "ticket_created",
+    # 别人替这一轮补的：跑它的进程没了（排队模式下 worker 失联），见 RESERVED_SEQ
+    "turn_abandoned",
 })
 
-# 终结事件：三者之一。没有终结事件的轮次，说明没写完或进程在这一轮中间挂了。
-# 终结事件不一定是最后一行：轮次之后的后台任务（画像更新）的模型调用排在它后面。
+# 终结事件：三者之一，由跑这一轮的进程自己发。没有终结事件的轮次，说明没写完或进程在这一轮
+# 中间挂了。终结事件不一定是最后一行：轮次之后的后台任务（画像更新）的模型调用排在它后面。
 TERMINAL_TYPES = frozenset({"turn_completed", "turn_failed", "turn_aborted"})
+
+# 从这个 seq 起是别人替这一轮写的事件，不是跑这一轮的进程自己发的。
+#
+# 排队模式下 worker 被杀，它那一轮的终结事件永远不会来了：进程没了，后面的事件也跟着缓冲一起
+# 丢了，接手的那一遍不知道它记到了第几条。所以补的事件不接着编号，而是放在一个固定的保留号上：
+# 同一轮补两次撞同一个主键，只留一条（补事件是幂等的）。查 seq 有没有缺口只看保留号以下的。
+RESERVED_SEQ = 1_000_000
+ABANDONED_SEQ = RESERVED_SEQ
+
+# 这一轮结束了：自己发了终结事件，或者别人替它补了 turn_abandoned（再也等不到终结事件）。
+# 等一轮结束再处理的一方（消费者、检查）看这个；"这一轮完整不完整"仍然只看 TERMINAL_TYPES
+CLOSING_TYPES = TERMINAL_TYPES | {"turn_abandoned"}
+
+
+def own_seq(seq: int) -> bool:
+    """这条事件是跑这一轮的进程自己发的（seq 连续编号的那一段）。"""
+    return seq < RESERVED_SEQ
 
 
 @dataclass(frozen=True, slots=True)

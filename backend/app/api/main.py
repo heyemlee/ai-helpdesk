@@ -1788,12 +1788,39 @@ def _parse_sse(frame: str) -> tuple[str, dict[str, Any]] | None:
     return head[len("event: "):], json.loads(rest[len("data: "):].strip())
 
 
+def _close_lost_turns(run, reason: str) -> None:
+    """
+    这个 run 之前失联的那几遍执行（领走了、没有正常收场），各自那一轮在事件日志里没有终结事件：
+    进程没了，谁也补不上。由后来的人替它们补一条 turn_abandoned——接手的这一遍（superseded，
+    记下是第几次执行接的手），或者把 run 送进死信的那一次（dead_letter）。
+
+    正常收场的（有 ended_at：跑完、停机交还、撞故障交还重试）自己发过终结事件，不用补。补的
+    事件写在固定的保留号上，同一轮补两次只留一条：死信那次会把之前每一遍再补一次，不会多出来。
+    """
+    previous = run.history[:-1]             # 最后一条是这一次领取自己
+    for index, item in enumerate(previous):
+        turn_id = item.get("turn_id")
+        if not turn_id or "ended_at" in item:
+            continue                         # 没开始一轮，或者自己收了场
+        data: dict[str, Any] = {"run_id": run.run_id, "attempt": item.get("attempt")}
+        later = previous[index + 1] if index + 1 < len(previous) else None
+        if later is not None:
+            data.update(reason="superseded", by_attempt=later.get("attempt"))
+        elif reason == "superseded":
+            data.update(reason="superseded", by_attempt=run.attempt)
+        else:
+            data["reason"] = reason
+        _event_log.close_abandoned(turn_id, conv_id=run.conv_id, request_id=run.request_id, data=data)
+
+
 async def _execute_run(ctx: RunContext) -> RunOutcome:
     """
     worker 执行一个 run（app/runs/worker.py 调）：在这个 run 的上下文里跑完整的一轮，帧转进
     帧流，返回结局。有提交点的（上一遍答完了、落副作用时失联）按提交点收尾，不再作答。
     """
     run = ctx.run
+    if run.attempt > 1:
+        _close_lost_turns(run, "superseded")
     req = ChatRequest(message=run.message, user_id=run.user_id, conv_id=run.conv_id)
     token = request_id_var.set(run.request_id or new_request_id())
     meta: dict[str, Any] = {}
@@ -1908,6 +1935,7 @@ async def _handoff_dead_run(run, reason: str) -> dict[str, Any]:
     """
     from app.agents.agent_orchestrator import customer_text
 
+    _close_lost_turns(run, "dead_letter")
     scope = RunScope(run.run_id, run.attempt, instance=_INSTANCE)
     token = request_id_var.set(run.request_id or new_request_id())
     ticket = None

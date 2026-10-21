@@ -304,7 +304,7 @@ function RestoredExplanation({ message, base, routingConfig, onInspect }: {
   if (turn.state !== 'ready') return <TurnPending turn={turn} />
   return (
     <>
-      <TurnNotes redacted={turn.redacted} complete={turn.complete} />
+      <TurnNotes redacted={turn.redacted} complete={turn.complete} abandoned={turn.abandoned} />
       <TurnExplanation message={turn.message} routingConfig={routingConfig} onInspect={onInspect} />
     </>
   )

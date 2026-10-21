@@ -38,6 +38,11 @@
    docker exec ai-helpdesk-app python scripts/turn_events.py check --instance staff --hours 24
    ```
 
+   排队模式下还会有一列 `abandoned`，不算问题：跑那一轮的 worker 被杀了，接手的那一遍（或者把 run
+   送进死信的那一次）替它补了一条 `turn_abandoned`。这些轮次缺的那一截是真丢了，但去向是清楚的；
+   数量不会超过接手的次数（`agent_run_attempts_total{kind="reclaimed"}`）加上进死信的次数
+   （`agent_runs_finished_total{status="dead"}`）：停机交还、撞故障交还重试的那几遍自己收了场，不会出现在这里。
+
 4. 表的增长：每轮十几到二十几条事件，结构每轮几 KB，原文每轮一二十 KB。
 
 `turns_concurrent_total` 是同一会话两轮重叠的次数。后端没有串行化同一会话，这个数两周后再看：
@@ -97,6 +102,10 @@ docker exec ai-helpdesk-app python scripts/replay_turns.py --instance staff --mo
 ## 已知限制
 
 - 写入口径是"最多一次"：进程崩溃会丢最后约 250 毫秒，库挂了会丢重试之后的批次。看得出来：seq 有缺口，或者没有终结事件。
+- `turn_abandoned` 不是跑这一轮的进程发的，所以不接着编号，固定写在保留号 1,000,000 上（`RESERVED_SEQ`）：
+  接手的一方不知道原来那一轮记到了第几条，补两次也只留一条。查缺口只看保留号以下的那一段；"完整"仍然只认
+  进程自己发的三种终结事件，补过的轮次在 `GET /turns/{turn_id}` 里是 `complete: false`，`abandoned` 说明后来
+  怎么样了（`superseded` 加接手的是第几次执行，或 `dead_letter`）。
 - 同一会话在途的检测在进程内做，只在单进程时准；以后开多 worker 要换成 Redis 计数。
 - 流式中途断开、出异常的轮次，事件日志会记（`turn_aborted`、`turn_failed`），审计和记忆仍然不写——要不要补是另一个决定。
 - 客户端送来的 `conv_id`、`user_id` 含 NUL、控制字符、孤立代理字符或超过 200 字的，`/chat` 和 `/chat/stream`

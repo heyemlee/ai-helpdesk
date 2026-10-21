@@ -1,5 +1,6 @@
 import { ApiError } from '@/api/client'
 import { useTurn } from '@/api/hooks'
+import type { TurnAbandoned } from '@/api/types'
 import { withTurn, type ChatMessage } from './useChatStream'
 
 /**
@@ -16,14 +17,15 @@ export type RestoredTurn =
   | { state: 'loading' }
   | { state: 'expired' }
   | { state: 'error'; error: unknown }
-  | { state: 'ready'; message: ChatMessage; redacted: boolean; complete: boolean }
+  | { state: 'ready'; message: ChatMessage; redacted: boolean; complete: boolean; abandoned: TurnAbandoned | null }
 
 export function useRestoredTurn(base: string, message: ChatMessage, enabled = true): RestoredTurn {
   const query = useTurn(base, message.turnId, enabled)
   if (!message.turnId) return { state: 'none' }
   if (query.data) {
     return { state: 'ready', message: withTurn(message, query.data),
-             redacted: query.data.redacted, complete: query.data.complete }
+             redacted: query.data.redacted, complete: query.data.complete,
+             abandoned: query.data.abandoned ?? null }
   }
   if (query.isError) {
     return query.error instanceof ApiError && query.error.status === 404

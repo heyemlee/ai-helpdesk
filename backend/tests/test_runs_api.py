@@ -24,6 +24,8 @@ from redis.exceptions import ConnectionError as RedisConnectionError
 from app.agents.agent_orchestrator import AgentOrchestrator, AgentType
 from app.core.intent_recognizer import IntentCategory, UrgencyLevel
 from app.events import EventLog, EventLogConfig
+from app.events.ops import check_turns
+from app.events.types import ABANDONED_SEQ
 from app.memory.conversation_memory import MemoryContext
 from app.runs.broker import MemoryBroker
 from app.runs.channel import MemoryChannel
@@ -473,6 +475,63 @@ async def test_a_dead_run_is_handed_to_a_person(monkeypatch, tmp_path):
         assert ticket.id == done.result["ticket_id"] and "失联" in ticket.reason
         assert await _audit(desk, "c-dead") == [("user", "补件到哪了")]
         assert "人工" in done.result["response"]
+    finally:
+        await _close(desk)
+
+
+async def test_a_turn_whose_worker_was_lost_is_closed_by_the_attempt_that_takes_over(monkeypatch, tmp_path):
+    """
+    第一遍开了一轮、记了一条事件，进程就没了：那一轮永远等不到自己的终结事件。接手的第二遍
+    替它补 turn_abandoned（被第 2 次执行取代），每天的检查不再把它报成"没有终结事件"。
+    """
+    desk = await _queued(monkeypatch, tmp_path, start_worker=False)
+    try:
+        submitted = await desk.main.submit_run(_ask(desk.main, conv_id="c-lost"), None)
+        run_id = submitted["run_id"]
+        claimed = await desk.store.claim(run_id, "crashed", 0.01)
+        lost = desk.log.open_turn(conv_id="c-lost", request_id=claimed.request_id)
+        lost.emit("turn_started", {"transport": "queued"})
+        lost.close()
+        await desk.store.set_turn(run_id, "crashed", claimed.attempt, lost.turn_id, 0)
+        await asyncio.sleep(0.02)                                     # 租约过期，进程再也没回来
+        await desk.new_worker("w2").start()
+        done = await _until(desk.store, run_id, SUCCEEDED)
+        assert done.attempt == 2
+
+        events = await desk.log.store.events_of(lost.turn_id)
+        assert [(e.seq, e.type) for e in events] == [(0, "turn_started"), (ABANDONED_SEQ, "turn_abandoned")]
+        assert json.loads(events[-1].data) == {"run_id": run_id, "attempt": 1, "reason": "superseded",
+                                               "by_attempt": 2}
+        report = await check_turns(desk.log.store, since=0)
+        assert report["no_terminal"] == [] and report["abandoned"] == [lost.turn_id]
+        assert report["complete"] == 1                                # 第二遍自己那一轮
+    finally:
+        await _close(desk)
+
+
+async def test_the_last_lost_turn_of_a_dead_run_is_closed_as_dead_letter(monkeypatch, tmp_path):
+    """两遍都失联、进了死信：第一遍那一轮记"被第 2 次取代"，第二遍那一轮记"进了死信"。"""
+    desk = await _queued(monkeypatch, tmp_path, start_worker=False, max_attempts=2)
+    try:
+        submitted = await desk.main.submit_run(_ask(desk.main, conv_id="c-dead2"), None)
+        run_id = submitted["run_id"]
+        turns = []
+        for owner in ("crashed-1", "crashed-2"):
+            claimed = await desk.store.claim(run_id, owner, 0.01)
+            turn = desk.log.open_turn(conv_id="c-dead2", request_id=claimed.request_id)
+            turn.emit("turn_started", {"transport": "queued"})
+            turn.close()
+            await desk.store.set_turn(run_id, owner, claimed.attempt, turn.turn_id, 0)
+            turns.append(turn.turn_id)
+            await asyncio.sleep(0.02)
+        await desk.new_worker("w3").start()
+        await _until(desk.store, run_id, DEAD)
+
+        closed = [json.loads((await desk.log.store.events_of(t))[-1].data) for t in turns]
+        assert closed == [{"run_id": run_id, "attempt": 1, "reason": "superseded", "by_attempt": 2},
+                          {"run_id": run_id, "attempt": 2, "reason": "dead_letter"}]
+        report = await check_turns(desk.log.store, since=0)
+        assert report["no_terminal"] == [] and sorted(report["abandoned"]) == sorted(turns)
     finally:
         await _close(desk)
 

@@ -158,6 +158,8 @@ class MemoryEventStore:
             turn = self._turns[event.turn_id] = []
             while len(self._turns) > self._max:
                 self._turns.popitem(last=False)
+        if any(e.seq == event.seq for e in turn):
+            return              # 和 Postgres 的主键一样：同一轮同一个 seq 只留第一条（补事件会补两次）
         turn.append(event)
         self._stats.wrote(1)
 
