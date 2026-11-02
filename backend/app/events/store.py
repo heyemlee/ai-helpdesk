@@ -119,9 +119,9 @@ class PgEventStore:
     async def conv_ids_of_user(self, user_id: str) -> list[str]:
         """这个用户的会话（按 turn_started 原文里的 user_id 找）。原文清空之后就找不到了。"""
         rows = await self._db.fetch(
-            "SELECT DISTINCT conv_id FROM turn_events WHERE instance = $1 AND type = 'turn_started'"
-            " AND body->>'user_id' = $2",
-            self.instance, user_id,
+            "SELECT DISTINCT conv_id FROM turn_events WHERE type = 'turn_started'"
+            " AND body->>'user_id' = $1",
+            user_id,
         )
         return [r["conv_id"] for r in rows]
 

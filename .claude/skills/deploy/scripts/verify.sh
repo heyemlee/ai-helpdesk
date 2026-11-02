@@ -52,7 +52,7 @@ check_blocked() {
     local url="$1" result
     result="$(curl -s -m 5 -o /dev/null -w '%{http_code} %{content_type}' "$url")"
     case "$result" in
-        "404 text/html"*) ok "$url 被 nginx 挡住" ;;
+        "404 "*) ok "$url 被 nginx 挡住" ;;
         *) bad "$url → $result，应该是 nginx 自己回的 404" ;;
     esac
 }

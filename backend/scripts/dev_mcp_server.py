@@ -58,6 +58,7 @@ _DRILL_UP = "docker compose -f deploy/drill/docker-compose.yml up -d --build --w
 _RECENT_SCAN = 5000
 # 按结局筛要先算出每一轮的摘要，只在最近这么多轮里找
 _OUTCOME_SCAN = 200
+_MAX_LISTED = 100
 
 mcp = FastMCP(
     "helpdesk-dev",
@@ -145,7 +146,7 @@ async def list_turns(instance: str = "staff", hours: float = 24, conv_id: str = 
     answered / handoff / clarification / unavailable / failed / aborted / abandoned / incomplete，
     只在最近 200 轮里找。limit 最大 100。
     """
-    limit = max(1, min(limit, 100))
+    limit = max(1, min(limit, _MAX_LISTED))
     scan = _OUTCOME_SCAN if outcome else limit
     async with _connected() as db:
         store = PgEventStore(db, instance)
