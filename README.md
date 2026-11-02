@@ -14,7 +14,7 @@ A FastAPI agent service: a router votes on each question's intent, tools run con
 
 **English** · [简体中文](README.zh-CN.md)
 
-[Highlights](#highlights) · [Architecture](#architecture) · [Tech stack](#tech-stack) · [Features](#features) · [Develop](#develop)
+[Highlights](#highlights) · [Architecture](#architecture) · [Tech stack](#tech-stack) · [Features](#features) · [Develop](#develop) · [AI-assisted development](#ai-assisted-development)
 
 </div>
 
@@ -216,3 +216,12 @@ scripts/k8s-up.sh                               # kind cluster: manifests, KEDA,
 ```
 
 In production mode the service refuses to start without the admin key, the user-signing secret, chat protection and a declared deployment scope. It is single-tenant by design; [deployment boundaries](docs/deployment-boundaries.md) explains what that covers.
+
+## AI-assisted development
+
+This repository is developed with Claude Code, with these controls and tools around it:
+
+- **Branch protection on `main`.** Changes arrive only through pull requests, and the four jobs in [ci.yml](.github/workflows/ci.yml) (backend, frontend, A2A contract fixtures, Docker images) must pass. Admins can't bypass it.
+- **Project skills.** [`test-backend`](.claude/skills/test-backend/SKILL.md) runs Ruff and pytest in a throwaway copy, so the real `backend/.env` and production databases can't reach the tests. [`deploy`](.claude/skills/deploy/SKILL.md) runs only when a person invokes it; it hasn't done a real deployment, and its build, recreate and rollback steps haven't been exercised.
+- **A read-only development MCP server.** `helpdesk-dev` ([.mcp.json](.mcp.json), [dev_mcp_server.py](backend/scripts/dev_mcp_server.py)) lets an agent read recorded turns and the knowledge base from a development database, and it refuses the production one. See [Inspect turns from Claude Code](docs/setup.md#inspect-turns-from-claude-code).
+- **An advisory Claude review.** [claude-review.yml](.github/workflows/claude-review.yml) comments on pull requests but can't approve or block them; the CI checks are what block a merge. In its one trial so far, a throwaway PR, it caught two seeded bugs that passed every test and left a harmless refactor alone. That is a single sample, not a hit rate. See [Review pull requests with Claude](docs/setup.md#review-pull-requests-with-claude).
