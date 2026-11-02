@@ -535,7 +535,12 @@ async def _store_contract(staff, customer, write):
     mine, others = new_turn_id(), new_turn_id()
     await write(staff, [_event(mine, 0, staff.instance, forget_conv, now, {"user_id": user, "message": "删掉我"})])
     await write(customer, [_event(others, 0, customer.instance, forget_conv, now, {"user_id": user})])
+    # 同一个人在另一个实例的会话不算：找到的会话接下来按本实例删，conv_id 又是客户端带来的，
+    # 混进来就可能删掉本实例里碰巧同名、属于别人的会话
+    customer_only = f"conv-customer-{uuid.uuid4().hex[:8]}"
+    await write(customer, [_event(new_turn_id(), 0, customer.instance, customer_only, now, {"user_id": user})])
     assert await staff.conv_ids_of_user(user) == [forget_conv]
+    assert sorted(await customer.conv_ids_of_user(user)) == sorted([forget_conv, customer_only])
     assert await staff.delete_conversation(forget_conv) == 1
     assert await staff.events_of(mine) == [] and len(await customer.events_of(others)) == 1
 
