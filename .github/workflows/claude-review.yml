@@ -95,4 +95,4 @@ jobs:
         run: |
           file="$RUNNER_TEMP/claude-execution-output.json"
           [ -f "$file" ] || { echo "No execution output: the review failed before Claude started."; exit 0; }
-          jq -r '[.[] | select(.type == "result")] | last | ((.errors // []) + [.result // empty]) | .[]' "$file" | cut -c1-500
+          jq -r '[.[] | select(.type == "result")] | last | ((.errors // []) + [.result // empty]) | .[]' "$file" | head -c 500
