@@ -14,7 +14,7 @@
 
 [English](README.md) · **简体中文**
 
-[技术亮点](#技术亮点) · [系统架构](#系统架构) · [技术栈](#技术栈) · [功能](#功能) · [本地开发](#本地开发)
+[技术亮点](#技术亮点) · [系统架构](#系统架构) · [技术栈](#技术栈) · [功能](#功能) · [本地开发](#本地开发) · [AI 辅助开发](#ai-辅助开发)
 
 </div>
 
@@ -216,3 +216,12 @@ scripts/k8s-up.sh                               # kind 集群：清单、KEDA、
 ```
 
 生产模式下，缺管理钥匙、用户签名密钥、对话保护或部署范围声明中的任何一项，服务都拒绝启动。系统按单租户设计，具体范围见[部署边界](docs/deployment-boundaries.zh-CN.md)。
+
+## AI 辅助开发
+
+这个仓库用 Claude Code 开发，配套的管控和工具如下（下面链接的 setup.md 是英文）：
+
+- **`main` 的分支保护。** 改动只能走 PR，且 [ci.yml](.github/workflows/ci.yml) 里的四个任务（后端、前端、A2A 契约用例、Docker 镜像）必须通过。管理员也绕不过去。
+- **项目 skill。** [`test-backend`](.claude/skills/test-backend/SKILL.md) 在一次性副本里跑 Ruff 和 pytest，真实的 `backend/.env` 和生产数据库碰不到测试。[`deploy`](.claude/skills/deploy/SKILL.md) 只有人手动调用才会运行；它还没做过真实部署，其中的构建、重建容器和回滚步骤都没实际跑过。
+- **只读的开发 MCP server。** `helpdesk-dev`（[.mcp.json](.mcp.json)、[dev_mcp_server.py](backend/scripts/dev_mcp_server.py)）让 Agent 能从开发库读取轮次记录和知识库，并拒绝连接生产库。详见 [Inspect turns from Claude Code](docs/setup.md#inspect-turns-from-claude-code)。
+- **只提意见的 Claude 审查。** [claude-review.yml](.github/workflows/claude-review.yml) 在 PR 上留评论，但不能批准或拦下 PR；真正拦合并的是 CI 检查。目前只在一个一次性 PR 上试过一次：它抓到了两个能通过全部测试的预埋 bug，也没有误报那处无害的重构。这只是一次样本，不代表命中率。详见 [Review pull requests with Claude](docs/setup.md#review-pull-requests-with-claude)。
