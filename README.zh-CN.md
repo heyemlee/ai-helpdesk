@@ -191,7 +191,7 @@ docker compose -f deploy/drill/docker-compose.yml up -d --build --wait   # API �
 ## 测试
 
 ```bash
-scripts/ci-local.sh                         # 在本机跑一遍 CI；--with-images 连镜像一起构建
+scripts/ci-local.sh                         # 在一次性副本里跑一遍 CI；--full 连上 Postgres、Redis 和 Kafka；--with-images 连镜像一起构建
 cd backend && .venv/bin/python -m pytest    # 后端测试；设了 TEST_POSTGRES_DSN 才跑 pgvector 用例
 .venv/bin/python scripts/eval_retrieval.py  # 检索的 hit@3 和 MRR，不调用模型
 .venv/bin/python scripts/run_eval.py        # 端到端评测；会调用模型

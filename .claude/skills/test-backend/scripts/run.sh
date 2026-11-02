@@ -64,7 +64,8 @@ if git -C "$CONTRACT_REPO" rev-parse -q --verify "refs/tags/$TAG" >/dev/null 2>&
     mkdir "$COPY/.contract"
     git -C "$CONTRACT_REPO" archive "$TAG" | tar -xf - -C "$COPY/.contract"
     RUN_ENV+=("A2A_CONTRACT_DIR=$COPY/.contract" A2A_CONTRACT_REQUIRED=1)
-elif [ "$FULL" = 1 ]; then
+# 离线模式下没有契约仓库也能跑。scripts/ci-local.sh 是门禁，它设 A2A_CONTRACT_REQUIRED=1，不许跳过
+elif [ "$FULL" = 1 ] || [ "${A2A_CONTRACT_REQUIRED:-}" = 1 ]; then
     fail "$CONTRACT_REPO 里找不到 tag $TAG。用 A2A_CONTRACT_DIR 指向契约仓库"
 fi
 

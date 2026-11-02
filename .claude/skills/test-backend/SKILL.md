@@ -33,4 +33,4 @@ Use the offline mode while iterating. Use `--full` when a change touches a store
 - The Frontend and Docker images jobs aren't covered. CI runs them on the PR.
 - The tests get a placeholder key and make no real model calls. If a test seems to need real credentials, the test is wrong. Don't pass them in.
 - Never point these tests at production's Postgres (5433) or Redis (6379). They create and drop their own data.
-- `scripts/ci-local.sh` runs in place, so it reads the real `.env`, and its `npm run build` rewrites `frontend/dist`. Use this skill for the backend instead.
+- `scripts/ci-local.sh` calls this script for its backend and contract steps (`--full` passes through), then runs the Frontend job, and with `--with-images` the Docker images job, in throwaway copies of its own. Use it when you want every job checked locally before pushing.
