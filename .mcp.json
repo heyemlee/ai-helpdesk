@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "helpdesk-dev": {
+      "command": "sh",
+      "args": ["-c", "exec \"$(git rev-parse --show-toplevel)/scripts/dev-mcp.sh\""],
+      "env": {
+        "AIHD_DEV_DSN": "${AIHD_DEV_DSN:-postgresql://drill:drill@127.0.0.1:25432/drill}"
+      }
+    }
+  }
+}

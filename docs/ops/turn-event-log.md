@@ -63,6 +63,8 @@
 - 客户实例（读接口关着）：在本机跑
   `docker exec ai-helpdesk-customer python scripts/turn_events.py show --instance customer --turn <turn_id>`，
   加 `--raw` 看原始事件。
+- 开发库（演练栈）：在 Claude Code 里用 `helpdesk-dev` 这个 MCP server 的 `list_turns`、`get_turn`，
+  见 [setup.md](../setup.md#inspect-turns-from-claude-code)。它连不到生产库。
 - 客户拿着响应头里的 `X-Request-ID` 来报障时：先在审计日志或工单里按 request_id 找到那一轮的 `turn_id`。
 
 ## 删除请求
