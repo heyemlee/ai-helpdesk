@@ -124,6 +124,21 @@ curl -s http://127.0.0.1:28080/chat -H 'Content-Type: application/json' -d '{"me
 
 Then ask Claude Code why the last turn went the way it did. `docker compose -f deploy/drill/docker-compose.yml down -v` removes the stack and its data.
 
+## Review pull requests with Claude
+
+[claude-review.yml](../.github/workflows/claude-review.yml) has Claude review each pull request from a branch in this repository and leave comments. It only advises: the required checks are the four CI jobs, so a model outage can't block a merge. Drafts and changes limited to `docs/` or the READMEs are skipped.
+
+It stays off until a credential exists, and after that every run spends model usage, limited per run by `--max-budget-usd`. Add one of these as a repository secret:
+
+- `CLAUDE_CODE_OAUTH_TOKEN`, from `claude setup-token`, which draws on a Pro or Max plan
+- `ANTHROPIC_API_KEY`, billed per token
+
+```bash
+gh secret set CLAUDE_CODE_OAUTH_TOKEN
+```
+
+Claude can read the checked-out code, read the diff with `gh pr diff` and post comments. It isn't given a way to edit files, push, approve, browse the web or read a pull request's comments, which anyone can write on a public repository. The action is pinned to a commit and needs no GitHub App. The workflow's prompt lists the failures this repository has been bitten by; add to it when a new kind turns up.
+
 ## Add your business knowledge
 
 Upload `.txt`, `.md` or JSON document lists in the knowledge page, or use the API:
