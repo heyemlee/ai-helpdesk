@@ -100,6 +100,45 @@ Two scripts run on the host against `POSTGRES_DSN`:
 - [turn_events.py](../backend/scripts/turn_events.py) `show`, `check` and `forget` read one instance's turns, report turns with missing events, and delete a conversation's or a user's events (with `--yes`). A user's conversations are found in the turn log's text and in the audit log, so turns whose text has already expired are still found; the audit log itself is left alone.
 - [replay_turns.py](../backend/scripts/replay_turns.py) replays recorded turns through the current routing (`route`) or answer guard (`guard`) and exports them as trajectory cases (`export`), all without a model call. `answer` re-answers with the current model and only runs with `--yes`.
 
+## Inspect turns from Claude Code
+
+[.mcp.json](../.mcp.json) registers a read-only MCP server, [dev_mcp_server.py](../backend/scripts/dev_mcp_server.py), so an agent debugging a turn can read what happened without writing SQL. Claude Code asks you to approve it the first time you open the project.
+
+| Tool               | Returns                                                                                                 |
+| ------------------ | ------------------------------------------------------------------------------------------------------- |
+| `list_turns`       | Recent turns, or one conversation's: outcome, intent, agent, handoff, ticket and the start of the message |
+| `get_turn`         | One turn as `meta`, `routing` and `result`, the same shape as `GET /turns/{turn_id}`                    |
+| `get_turn_events`  | One turn's raw events, optionally only some types, with long text clipped                               |
+| `check_turns`      | Turns with no terminal event, gaps in `seq`, or model calls with no purpose                             |
+| `search_knowledge` | Knowledge chunks that match a query by keywords, with no embedding call                                 |
+
+It reads only the database named by `AIHD_DEV_DSN`, which defaults to the drill stack's Postgres. It ignores `backend/.env` and `POSTGRES_DSN`, refuses the production database, opens every connection with `default_transaction_read_only=on`, and has no tool for arbitrary SQL. The event log holds what customers wrote and tool results go into the model's context, so production stays out of reach.
+
+To try it, install the development dependencies once (the backend tests need them too), start the drill stack, whose model is a mock, and send it a message:
+
+```bash
+backend/.venv/bin/pip install -r backend/requirements-dev.txt
+docker compose -f deploy/drill/docker-compose.yml up -d --build --wait
+curl -s http://127.0.0.1:28080/chat -H 'Content-Type: application/json' -d '{"message": "门板破损了要怎么处理"}'
+```
+
+Then ask Claude Code why the last turn went the way it did. `docker compose -f deploy/drill/docker-compose.yml down -v` removes the stack and its data.
+
+## Review pull requests with Claude
+
+[claude-review.yml](../.github/workflows/claude-review.yml) has Claude review each pull request from a branch in this repository and leave comments. It only advises: the required checks are the four CI jobs, so a model outage can't block a merge. Drafts and changes limited to `docs/` or the READMEs are skipped.
+
+It stays off until a credential exists, and after that every run spends model usage, limited per run by `--max-budget-usd`. Add one of these as a repository secret:
+
+- `CLAUDE_CODE_OAUTH_TOKEN`, from `claude setup-token`, which draws on a Pro or Max plan
+- `ANTHROPIC_API_KEY`, billed per token
+
+```bash
+gh secret set CLAUDE_CODE_OAUTH_TOKEN
+```
+
+Claude can read the checked-out code, read the diff with `gh pr diff` and post comments. It isn't given a way to edit files, push, approve, browse the web or read a pull request's comments, which anyone can write on a public repository. The action is pinned to a commit and needs no GitHub App. The workflow's prompt lists the failures this repository has been bitten by; add to it when a new kind turns up.
+
 ## Add your business knowledge
 
 Upload `.txt`, `.md` or JSON document lists in the knowledge page, or use the API:
@@ -179,6 +218,7 @@ backend/tests/ · scripts/  Tests, retrieval evaluation, re-embedding, load test
 frontend/src/              The staff console
 deploy/                    Nginx, metrics, logs, tracing and alert configuration
 scripts/                   Local development, local CI, deployment, backup and restore
+.claude/ · .mcp.json       Claude Code skills and the read-only development MCP server
 docs/                      Architecture, integration, evaluation and operations records
 ```
 
