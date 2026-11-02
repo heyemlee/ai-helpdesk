@@ -77,12 +77,13 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: backend/requirements.txt
+          cache-dependency-path: backend/requirements*.txt
 
       - name: Install dependencies
+        # requirements-dev.txt 带着 requirements.txt 一起解析，钉版不会被开发依赖升上去
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
           pip install ruff
 
       - name: Lint

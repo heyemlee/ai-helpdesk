@@ -1,0 +1,11 @@
+# 开发工具的依赖，不进生产镜像。装在后端的 venv 里（venv 是 uv 建的、没有 pip 时用
+# uv pip install --python backend/.venv/bin/python -r backend/requirements-dev.txt）：
+#   backend/.venv/bin/pip install -r backend/requirements-dev.txt
+#
+# 必须带上 -r requirements.txt，一次解析：分两次装时第二次不知道第一次的钉版，
+# 会为了新包把 starlette 这样的钉版升上去，测试环境就和生产镜像不一样了。
+-r requirements.txt
+
+# MCP SDK，scripts/dev_mcp_server.py 用，只走 stdio。
+# 停在 1.x：2.0 要求 pydantic>=2.12，这里钉的是 2.10.3，不为开发工具升生产依赖。
+mcp==1.12.4
