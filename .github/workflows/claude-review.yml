@@ -87,3 +87,12 @@ jobs:
             --max-budget-usd 5
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*)"
             --disallowedTools "Edit,Write,NotebookEdit,WebFetch,WebSearch"
+
+      # action 默认不打印结果：公开仓库的日志谁都能看。可失败时日志里只有 is_error:true，
+      # 看不出是凭证、模型还是额度的问题，所以只在失败时打印错误原文
+      - name: Show why the review failed
+        if: failure() && steps.credential.outputs.configured == 'true'
+        run: |
+          file="$RUNNER_TEMP/claude-execution-output.json"
+          [ -f "$file" ] || { echo "No execution output: the review failed before Claude started."; exit 0; }
+          jq -r '[.[] | select(.type == "result")] | last | ((.errors // []) + [.result // empty]) | .[]' "$file" | cut -c1-500
