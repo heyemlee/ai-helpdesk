@@ -191,7 +191,7 @@ docker compose -f deploy/drill/docker-compose.yml up -d --build --wait   # API :
 ## Test
 
 ```bash
-scripts/ci-local.sh                         # the CI checks; --with-images adds both image builds
+scripts/ci-local.sh                         # the CI checks in throwaway copies; --full adds Postgres, Redis and Kafka; --with-images adds both image builds
 cd backend && .venv/bin/python -m pytest    # backend tests; TEST_POSTGRES_DSN adds the pgvector ones
 .venv/bin/python scripts/eval_retrieval.py  # retrieval hit@3 and MRR, no model calls
 .venv/bin/python scripts/run_eval.py        # end-to-end evaluation; calls the model

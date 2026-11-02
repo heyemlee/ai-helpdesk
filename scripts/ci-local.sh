@@ -1,99 +1,113 @@
 #!/usr/bin/env bash
 #
-# 在本机跑一遍 CI 的必过门禁。
+# 推之前在本机跑一遍 CI 的必过门禁。
 #
-# **为什么需要这个脚本。** GitHub Actions 上这个仓库**一次都没跑过**。
-# 用 API 逐条核过，workflow 文件这边没有问题：
+# 算数的是 GitHub Actions：每个 PR 和 main 上都跑，main 开了分支保护，改动要走 PR，
+# 下面四个 job 都过了才能合。这个脚本让你不用推就能提前看到结果。
 #
-#   gh api repos/heyemlee/ai-helpdesk/actions/permissions
-#     → {"enabled": true, "allowed_actions": "all"}          仓库级 Actions 开着
-#   gh api repos/heyemlee/ai-helpdesk/actions/workflows
-#     → total_count 1，"CI"，path .github/workflows/ci.yml，state "active"
-#        但 updated_at 仍是创建时的时间——**文件后来改过（ed6d621 加了
-#        workflow_dispatch），GitHub 却从没重新读过它**
-#   gh api repos/heyemlee/ai-helpdesk/actions/runs   → total_count 0
-#   gh api .../commits/cae9715/check-runs            → total_count 0
-#   提交确实推上去了：origin/main = cae9715，pushed_at 也已更新
+# 它不碰工作区。生产的 Docker Compose 和练习环境共用这个工作区，从它起的后端还挂着
+# frontend/dist，所以每一步都在一次性副本里跑：副本只有 git 认识的文件（包括没提交的改动），
+# 环境变量从空开始。真实的 backend/.env、frontend/node_modules 和 frontend/dist 都用不到，
+# 跑完 git status 不变。
 #
-# 文件本身也查过：UTF-8 无 BOM、无 CRLF、路径正确、YAML 合法、
-# `on:` 是 push[main,master] + pull_request + workflow_dispatch，没有路径过滤。
+# 步骤和 .github/workflows/ci.yml 的 job 一一对应，改了那边这边也要跟着改：
 #
-# 也就是说原因在**仓库之外**（账号级 Actions 策略 / 计费 / 账号被限），
-# 本仓库改不动，要用户去 GitHub 上处理。在它修好之前，
-# **门禁的内容修好了却一次没跑过，等于没有门禁**——所以至少要有一条命令
-# 能在本机把同一组检查跑完。
+#   backend   .claude/skills/test-backend/scripts/run.sh：ruff + pytest。默认离线，
+#             要 Postgres、Redis、Kafka 的用例跳过；--full 起一次性容器真跑（要 Docker，沙箱外跑）
+#   contract  和 backend 是同一次 run.sh、同一次 pytest：契约用例从钉住的 tag 导出
+#             （tests/test_contract_fixtures.py 的 PINNED_TAG），找不到 tag 就失败
+#   frontend  npm ci → typecheck → test → build
+#   images    在另一份副本里构建两个镜像。默认跳过，--with-images 打开（要 Docker 引擎在跑）
 #
-# 步骤与 .github/workflows/ci.yml 一一对应，改了那边这边也要跟着改。
-# 唯一的差别是 Docker 镜像那两条：默认跳过（需要 Docker 引擎在跑），
-# 用 `--with-images` 打开。
+# 还有一处和 CI 不同：Python 和 Node 用本机的（backend/.venv、PATH 上的 node），
+# CI 钉在 Python 3.12、Node 24。
 #
-#     scripts/ci-local.sh                # 后端 + 前端 + 契约
+#     scripts/ci-local.sh                # 后端（离线）+ 契约 + 前端
+#     scripts/ci-local.sh --full         # 后端连上一次性的 pgvector、Redis、Kafka
 #     scripts/ci-local.sh --with-images  # 再加两个镜像构建
 #
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BACKEND="$ROOT/backend"
-FRONTEND="$ROOT/frontend"
-
-# 契约仓库钉在这个 tag 上。三处必须一致：这里、ci.yml 的 `ref:`、
-# tests/test_contract_fixtures.py 的 PINNED_TAG。
-CONTRACT_TAG="v1.13"
-CONTRACT_DIR="${A2A_CONTRACT_DIR:-$ROOT/../a2a-contract}"
-
-WITH_IMAGES=0
-[ "${1:-}" = "--with-images" ] && WITH_IMAGES=1
 
 step() { printf '\n\033[1;34m── %s\033[0m\n' "$1"; }
 fail() { printf '\n\033[1;31m✗ %s\033[0m\n' "$1"; exit 1; }
 
-PY="$BACKEND/.venv/bin/python"
-[ -x "$PY" ] || fail "找不到 $PY —— 先建后端 venv 并装 requirements.txt"
+FULL=""
+WITH_IMAGES=0
+for arg in "$@"; do
+    case "$arg" in
+        --full) FULL=1 ;;
+        --with-images) WITH_IMAGES=1 ;;
+        # 打错参数要报错：悄悄忽略的话，跑的是缩水的门禁，结果还是绿的
+        *) fail "不认识的参数：$arg（可用 --full、--with-images）" ;;
+    esac
+done
 
-# 后端测试不发真实网络请求，占位 key 只是满足启动期配置校验。
-# `env -u ANTHROPIC_BASE_URL`：从带网关配置的 shell 里跑时，那个变量会把
-# 测试指向真实网关，本地一跑就产生费用。
-BACKEND_ENV=(env -u ANTHROPIC_BASE_URL ANTHROPIC_API_KEY=test-key)
+COPY="$(mktemp -d "${TMPDIR:-/tmp}/aihd-ci.XXXXXX")"
+trap 'rm -rf "$COPY"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
-step "后端 lint（ruff）"
-(cd "$BACKEND" && "$PY" -m ruff check .) || fail "ruff"
+# 把 git 认识的文件拷到 $1，做法和 run.sh 一样：
+# 工作区里删掉还没提交的文件 ls-files 仍会列出来，tar 碰到会报错，所以先滤掉
+copy_git_files() {
+    mkdir "$1"
+    git -C "$ROOT" ls-files -co --exclude-standard -z |
+        while IFS= read -r -d '' file; do
+            if [ -e "$ROOT/$file" ] || [ -L "$ROOT/$file" ]; then
+                printf '%s\0' "$file"
+            fi
+        done |
+        tar -C "$ROOT" --null -T - -cf - | tar -xf - -C "$1"
+}
 
-step "后端测试（pytest）"
-(cd "$BACKEND" && "${BACKEND_ENV[@]}" "$PY" -m pytest -q) || fail "后端测试"
+step "后端 + 契约（test-backend/scripts/run.sh）"
+# A2A_CONTRACT_REQUIRED=1：契约仓库找不到时**失败**而不是跳过。
+# 一个会自动跳过的门禁等于没有门禁，而且它坏掉的时候报告是绿的。
+A2A_CONTRACT_REQUIRED=1 "$ROOT/.claude/skills/test-backend/scripts/run.sh" ${FULL:+--full} ||
+    fail "后端门禁（ruff、pytest 或契约用例）"
 
-step "契约用例（a2a-contract $CONTRACT_TAG）"
-if [ -f "$CONTRACT_DIR/fixtures/index.json" ]; then
-    # A2A_CONTRACT_REQUIRED=1：契约仓库找不到时**失败**而不是跳过。
-    # 一个会自动跳过的门禁等于没有门禁，而且它坏掉的时候报告是绿的。
-    (cd "$BACKEND" && "${BACKEND_ENV[@]}" \
-        A2A_CONTRACT_DIR="$CONTRACT_DIR" A2A_CONTRACT_REQUIRED=1 \
-        "$PY" -m pytest -q tests/test_contract_fixtures.py) || fail "契约用例"
-else
-    fail "找不到 a2a-contract（$CONTRACT_DIR）。checkout 到 tag $CONTRACT_TAG，
-或用 A2A_CONTRACT_DIR 指过去：
-    git clone --depth 1 --branch $CONTRACT_TAG <a2a-contract> ../a2a-contract"
-fi
+step "拷一次性副本（只含 git 认识的文件）"
+copy_git_files "$COPY/frontend-steps"
+cd "$COPY/frontend-steps/frontend"
+
+# 环境也从空开始：VITE_API_BASE_URL 会被打进产物，NODE_ENV=production 会让 npm ci 漏装
+# devDependencies。AI_HELPDESK_DESIGN_DIR 指向不存在的目录，和 CI 一样跳过 sync:css：
+# 本机有设计工程时，prebuild 会把 src/console.css 换成那边的版本，测的就不是 git 里这份了。
+NPM_ENV=(env -i "HOME=$HOME" "PATH=$PATH" "TMPDIR=${TMPDIR:-/tmp}" LANG=en_US.UTF-8
+    "AI_HELPDESK_DESIGN_DIR=$COPY/no-design-dir")
+# npm ci 要联网、要写缓存，只放行代理、证书、registry 和缓存位置。
+# 沙箱里 ~/.npm 不可写，缓存不命中时报 EPERM，这时用 npm_config_cache 指到 $TMPDIR 下
+for name in HTTP_PROXY HTTPS_PROXY NO_PROXY http_proxy https_proxy no_proxy \
+    NODE_EXTRA_CA_CERTS NODE_USE_SYSTEM_CA npm_config_registry npm_config_cache; do
+    if [ -n "${!name:-}" ]; then
+        NPM_ENV+=("$name=${!name}")
+    fi
+done
 
 step "前端干净依赖安装（npm ci）"
 # 不是 npm install：lock 与 package.json 对不上时必须在这里失败，
 # 那说明 lock 该更新了，是一次要进提交的改动。
-(cd "$FRONTEND" && npm ci) || fail "npm ci —— lock 与 package.json 对不上？"
+"${NPM_ENV[@]}" npm ci || fail "npm ci —— lock 与 package.json 对不上？"
 
 step "前端类型检查（tsc）"
-(cd "$FRONTEND" && npm run typecheck) || fail "typecheck"
+"${NPM_ENV[@]}" npm run typecheck || fail "typecheck"
 
 step "前端测试（vitest）"
-(cd "$FRONTEND" && npm test) || fail "前端测试"
+"${NPM_ENV[@]}" npm test || fail "前端测试"
 
 step "前端生产构建"
 # 单测挡不住构建：有一次少一个类型导入，48 个单测全绿、构建是挂的。
-(cd "$FRONTEND" && npm run build) || fail "前端构建"
+"${NPM_ENV[@]}" npm run build || fail "前端构建"
 
 if [ "$WITH_IMAGES" = "1" ]; then
+    # 再拷一份：上面 npm 的产物不能进构建上下文，CI 是从干净的 checkout 构建的
+    copy_git_files "$COPY/images"
     step "镜像构建：frontend"
-    docker build -t ai-helpdesk-frontend:ci "$FRONTEND" || fail "前端镜像"
+    docker build -t ai-helpdesk-frontend:ci "$COPY/images/frontend" || fail "前端镜像"
     step "镜像构建：backend"
-    docker build -t ai-helpdesk:ci --target production "$BACKEND" || fail "后端镜像"
+    docker build -t ai-helpdesk:ci --target production "$COPY/images/backend" || fail "后端镜像"
 else
     printf '\n\033[1;33m跳过两个镜像构建（加 --with-images 打开，需要 Docker 引擎在跑）\033[0m\n'
 fi
