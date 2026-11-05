@@ -899,12 +899,14 @@ class SelfCheckIsMarkedHonestlyTest(unittest.TestCase):
                                row_count=1, risk_findings=findings)
         self.assertEqual(step.risk_findings[0]["anomaly"], "self_check_not_run")
 
-        # 控制台（仓库里的 frontend/）对这个标记有中英两份说明；只拷了 ai-sql-agent/ 时没有它，不查
-        strings = Path(__file__).resolve().parents[2] / "frontend" / "src" / "i18n" / "sq-ask.ts"
-        if strings.is_file():
-            text = strings.read_text(encoding="utf-8")
-            self.assertEqual(text.count("'sq.ask.anomaly.self_check_not_run'"), 2)
-            self.assertEqual(text.count("'sq.ask.anomaly.self_check_not_run.help'"), 2)
+        # 控制台（仓库里的 frontend/）对这个标记有中英两份说明。只拷了 ai-sql-agent/ 时没有 frontend/，
+        # 跳过并在报告里看得见；有 frontend/ 时文件一定要在——挪走或改名了就是这条检查该失败的时候
+        frontend = Path(__file__).resolve().parents[2] / "frontend"
+        if not frontend.is_dir():
+            self.skipTest("没有 frontend/（只拷了 ai-sql-agent/）")
+        text = (frontend / "src" / "i18n" / "sq-ask.ts").read_text(encoding="utf-8")
+        self.assertEqual(text.count("'sq.ask.anomaly.self_check_not_run'"), 2)
+        self.assertEqual(text.count("'sq.ask.anomaly.self_check_not_run.help'"), 2)
 
 
 BLOCK = [{"scope": "credential", "reason": "credential_rejected", "permanent": True, "model": "",
