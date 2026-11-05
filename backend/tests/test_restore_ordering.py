@@ -40,13 +40,16 @@ echo "$@" >> "$CMDLOG"
 # psql 那一步脚本会重定向 stdin，读掉免得管道破裂
 if [[ "$*" == *psql* ]]; then cat > /dev/null; fi
 # `docker inspect … --format` 要能给出卷名，否则脚本会判定"找不到 /data 卷"。
-# FAKE_SQL_AGENT_RUNNING 非空时，问容器在不在跑（.State.Running .State.Restarting）回 "true false"；
+# FAKE_SQL_AGENT_RUNNING 非空时，问容器在不在跑（.State.Running .State.Restarting）回 "true false"，
+# FAKE_SQL_AGENT_RESTARTING 非空时回 "true true"（反复重启中）；
 # FAKE_NO_SQL_AGENT 非空时，SQL Agent 的容器不存在（inspect 失败）；
 # FAKE_EXEC_REFUSED 非空时，docker exec 被拒（容器在反复重启时就是这样）。
 if [[ "$1" == "inspect" && "$*" == *ai-helpdesk-sql-agent* && -n "$FAKE_NO_SQL_AGENT" ]]; then exit 1; fi
 if [[ "$1" == "exec" && "$*" == *ai-helpdesk-sql-agent* && -n "$FAKE_EXEC_REFUSED" ]]; then cat > /dev/null; exit 1; fi
 if [[ "$1" == "inspect" ]]; then
-    if [[ "$*" == *State.Running* && -n "$FAKE_SQL_AGENT_RUNNING" ]]; then echo "true false"; else echo "fake_redis_volume"; fi
+    if [[ "$*" == *State.Running* && -n "$FAKE_SQL_AGENT_RUNNING" ]]; then echo "true false"
+    elif [[ "$*" == *State.Running* && -n "$FAKE_SQL_AGENT_RESTARTING" ]]; then echo "true true"
+    else echo "fake_redis_volume"; fi
 fi
 # 健康检查：redis-cli ping 要回 PONG；FAKE_PG_DOWN 非空时 pg_isready 报"没有响应"。
 if [[ "$*" == *redis-cli*ping ]]; then echo PONG; fi
@@ -360,10 +363,27 @@ class TestSqlAgentState:
         cmds = fake_repo["cmdlog"].read_text().splitlines()
         assert _index_of(cmds, "start", "ai-helpdesk-customer"), "其余服务照样要拉起来"
 
-    def test_a_refused_exec_falls_back_to_the_volume_instead_of_aborting(self, fake_repo):
+    def test_a_restart_looping_sql_agent_is_copied_from_its_volume(self, fake_repo):
         """
-        反复重启中的容器会报 Running=true，exec 却进不去。备份不能因此在 set -e 下整个停掉，
-        退到直接拷卷，而且照样走到"备份完成"。
+        反复重启中的容器 Running 也是 true，要看 Restarting：这时 exec 进不去，进程也没在正常写，
+        直接拷卷，照样走到"备份完成"。
+        """
+        env = dict(os.environ)
+        env["PATH"] = f"{fake_repo['bin']}:{env['PATH']}"
+        env["CMDLOG"] = str(fake_repo["cmdlog"])
+        env["FAKE_SQL_AGENT_RESTARTING"] = "1"
+        proc = subprocess.run(["bash", str(fake_repo["script"]), "backup"],
+                              capture_output=True, text=True, env=env, timeout=120)
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        assert "备份完成" in proc.stdout
+        cmds = fake_repo["cmdlog"].read_text().splitlines()
+        assert _index_of(cmds, "cp", "ai-helpdesk-sql-agent:/app/state/.")
+        assert not any(cmd.startswith("exec -i ai-helpdesk-sql-agent") for cmd in cmds)
+
+    def test_a_failed_online_backup_is_reported_not_papered_over(self, fake_repo):
+        """
+        在跑的时候在线备份没成功，不能退回去拷正在写的文件、再报"备份完成"——拷到的可能是半截，
+        备份却看起来是完整的。
         """
         env = dict(os.environ)
         env["PATH"] = f"{fake_repo['bin']}:{env['PATH']}"
@@ -372,10 +392,11 @@ class TestSqlAgentState:
         env["FAKE_EXEC_REFUSED"] = "1"
         proc = subprocess.run(["bash", str(fake_repo["script"]), "backup"],
                               capture_output=True, text=True, env=env, timeout=120)
-        assert proc.returncode == 0, proc.stdout + proc.stderr
-        assert "备份完成" in proc.stdout
+        assert proc.returncode != 0
+        assert "备份完成" not in proc.stdout
+        assert "在线备份却没成功" in proc.stdout + proc.stderr
         cmds = fake_repo["cmdlog"].read_text().splitlines()
-        assert _index_of(cmds, "cp", "ai-helpdesk-sql-agent:/app/state/.")
+        assert not any("ai-helpdesk-sql-agent:/app/state" in cmd for cmd in cmds)
 
     def test_sql_agent_files_missing_from_an_old_backup_survive_the_deploy_swap(self, fake_repo):
         """
@@ -402,7 +423,9 @@ class TestSqlAgentState:
         # 备份里的配置照样整体换上，别的旧文件照样不留
         assert (deploy / "prometheus" / "prometheus.yml").read_text() == "restored: true\n"
         assert not (deploy / "nginx").exists()
+        # 暂存目录在被 git 忽略的 backups/ 下，用完就删
         assert not list(fake_repo["root"].glob(".restore-keep.*"))
+        assert not list((fake_repo["root"] / "backups").glob(".restore-keep.*"))
         assert "SQL_AGENT_API_KEY" in proc.stdout, "恢复出来的 backend/.env 里没有员工那一把 Key，要提醒"
 
     def test_an_old_backup_without_it_leaves_the_state_alone(self, fake_repo):
