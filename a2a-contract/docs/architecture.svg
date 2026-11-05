@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 588" width="960" height="588" role="img" aria-labelledby="title desc">
   <title id="title">A2A Contract architecture</title>
-  <desc id="desc">ai-helpdesk, the support agent, reads ai-sql-agent's Agent Card and calls POST /a2a with message/stream. While the SQL agent's loop calls the model and runs read-only SQL on four databases, it streams back over JSON-RPC 2.0 and SSE a task, a status update for each stage, one artifact with the data part and exactly one final event. The helpdesk's A2A client watches for 20 s of silence and a 90 s cap, judges the data part with assess() and streams progress and the answer to the console. The a2a-contract repository, version 1.13, defines every frame with the contract, five JSON Schemas, 30 golden fixtures and a self-check, and both repositories' CI pin its tag. Pulses travel each connection in that order.</desc>
+  <desc id="desc">ai-helpdesk, the support agent, reads ai-sql-agent's Agent Card and calls POST /a2a with message/stream. While the SQL agent's loop calls the model and runs read-only SQL on four databases, it streams back over JSON-RPC 2.0 and SSE a task, a status update for each stage, one artifact with the data part and exactly one final event. The helpdesk's A2A client watches for 20 s of silence and a 90 s cap, judges the data part with assess() and streams progress and the answer to the console. The a2a-contract directory, version 1.13, defines every frame with the contract, five JSON Schemas, 30 golden fixtures and a self-check, and both agents' tests read it from the same commit in one CI. Pulses travel each connection in that order.</desc>
   <style>
     text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif; }
     .eyebrow { font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; fill: #8e8e93; }
@@ -90,8 +90,8 @@
   <text class="edge" x="708" y="440">model calls</text>
   <text class="edge" x="858" y="440">read-only SQL</text>
   <text class="edge" x="408" y="428">defines every frame on this wire</text>
-  <text class="edge" x="168" y="444">CI pins v1.13 · pytest</text>
-  <text class="edge" x="530" y="452" text-anchor="end">CI pins v1.13 · unittest</text>
+  <text class="edge" x="168" y="444">same commit · pytest</text>
+  <text class="edge" x="530" y="452" text-anchor="end">same commit · unittest</text>
   <!-- Pulses: one delegated question, in order -->
   <path class="pulse data" pathLength="1" filter="url(#glow)" d="M100,144 V200" style="animation-delay: 0.0s" />
   <path class="pulse event" pathLength="1" filter="url(#glow)" d="M284,212 H316 Q328,212 328,200 V126 Q328,114 340,114 H676" style="animation-delay: 0.5s" />
@@ -172,7 +172,7 @@
   <text class="title big" x="80" y="496">a2a-contract</text>
   <rect x="178" y="483" width="46" height="18" rx="9" fill="#efebfb" />
   <text class="ver" x="201" y="496" text-anchor="middle">v1.13</text>
-  <text class="sub" x="80" y="515">one versioned contract · both repos pin its tag in CI</text>
+  <text class="sub" x="80" y="515">one versioned contract · both agents test it in CI</text>
   <rect class="pill" x="36" y="530" width="184" height="24" rx="12" />
   <text class="pilltext mono" x="128.0" y="546" text-anchor="middle">a2a-streaming-contract.md</text>
   <rect class="pill" x="228" y="530" width="109" height="24" rx="12" />

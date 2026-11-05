@@ -280,8 +280,11 @@ def check_links() -> None:
 _VER_RE = re.compile(r"v\d+\.\d+")
 _CHANGELOG_ROW_RE = re.compile(r"^\|\s*(v\d+\.\d+)\s*\|")     # 契约附录 A 的变更记录表
 _README_ROW_RE = re.compile(r"^\|\s*`(v\d+\.\d+)`\s*\|")      # README 的版本表
-_PIN_RE = re.compile(r"--branch\s+(v\d+\.\d+)")               # 「钉在这个 tag 上」的示例
+# 「钉在这个 tag 上」的示例。tag 带不带 a2a-contract/ 前缀都认：契约并进 ai-helpdesk 仓库以后，
+# 它的 tag 叫 a2a-contract/vX.Y，和整个仓库的发布 tag 分开
+_PIN_RE = re.compile(r"--branch\s+(?:a2a-contract/)?(v\d+\.\d+)")
 _COMPANION_RE = re.compile(r"配套：[^\n]*?（(v\d+\.\d+)）")     # 「配套：…（vX.Y）」
+_TAG_PREFIX = "a2a-contract/"                                  # 契约版本 tag 的前缀
 
 
 def _vkey(v: str) -> tuple[int, ...]:
@@ -361,6 +364,11 @@ def check_versions() -> None:
     地方——版本表最新行、`contract_version`、`--branch`、「配套：…」——一律与
     状态行比。往后新加的文档只要沿用同样的写法，就自动被这条检查覆盖。
     这正是附录 B 自检表第 5 条要求的：机器能校验的部分交给机器。
+
+    **契约并进 ai-helpdesk 仓库以后（2026-11）**，两侧在同一个提交上读它，文档里不再有
+    「克隆某个 tag」的命令，所以 `--branch` 示例允许一处都没有；还写的话照样要和状态行一致。
+    「配套：」声明必须至少有一处，它一处都扫不到才说明写法变了、这条检查失效了。
+    tag 的名字也改成了 `a2a-contract/vX.Y`。
     """
     print("[4/4] 版本号一致性")
     contract = CONTRACT.read_text(encoding="utf-8")
@@ -405,13 +413,13 @@ def check_versions() -> None:
         ok(f"fixtures/index.json contract_version = {index_version}")
 
     # ③ 所有「让人钉哪一版」的写法
-    checked = 0
+    pins = companions = 0
     for doc in _version_docs():
         text = doc.read_text(encoding="utf-8")
         rel = doc.relative_to(ROOT)
-        # 「钉在这个 tag 上」的命令：只看会被照着敲的那些行
+        # 「钉在这个 tag 上」的命令：只看会被照着敲的那些行。允许一处都没有
         for pinned in sorted(set(_PIN_RE.findall("\n".join(_live_lines(doc, text))))):
-            checked += 1
+            pins += 1
             if pinned != truth:
                 fail(f"{rel}: 示例让人钉 --branch {pinned}，当前是 {truth}")
         # 「配套：…（vX.Y）」是文档抬头的写法，只在 Markdown 的引用行上成立
@@ -420,25 +428,25 @@ def check_versions() -> None:
                 if not ln.lstrip().startswith("> 配套："):
                     continue
                 for companion in _COMPANION_RE.findall(ln):
-                    checked += 1
+                    companions += 1
                     if companion != truth:
                         fail(f"{rel}: 抬头写着「配套：…（{companion}）」，当前是 {truth}")
-    if checked:
-        ok(f"钉版本的示例与「配套：」声明共 {checked} 处")
+    if companions:
+        ok(f"「配套：」声明 {companions} 处，钉版本的 --branch 示例 {pins} 处")
     else:
-        fail("一处 --branch / 「配套：」都没扫到——写法变了，这条检查已经失效")
+        fail("一处「配套：」声明都没扫到——写法变了，这条检查已经失效")
 
     # ④ tag 存在与否**不作为失败判据**：发布提交总是先于打 tag，在发布分支上跑
     #    自检时它本来就还不存在。但值得打印一行——v1.11 这一版的起因正是
     #    「三处文档都在让下游钉 v1.11，而那个 tag 一直没有被创建」。
-    exists = _tag_exists(truth)
+    tag = f"{_TAG_PREFIX}{truth}"
+    exists = _tag_exists(tag)
     if exists is None:
-        print(f"  · tag {truth}：取不到 git 信息，跳过（不影响判定）")
+        print(f"  · tag {tag}：取不到 git 信息，跳过（不影响判定）")
     elif exists:
-        ok(f"tag {truth} 本地已存在")
+        ok(f"tag {tag} 本地已存在")
     else:
-        print(f"  · tag {truth} 还没打，而文档已经在让下游钉它了。"
-              f"合入 main 后补 `git tag {truth}` 并推送（不作为失败判据）")
+        print(f"  · tag {tag} 还没打。合入 main 后补 `git tag -a {tag}` 并推送（不作为失败判据）")
 
 
 def main() -> int:

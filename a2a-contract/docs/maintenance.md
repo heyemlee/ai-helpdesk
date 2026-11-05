@@ -4,71 +4,69 @@
 
 保留版本升级、路径兼容与历史修正的完整说明。本文由原 README 的维护章节迁入；契约、schema、fixtures 与工具入口的位置不变。
 
+2026-11 起，契约和两侧代码在同一个仓库里：`a2a-contract/`（本目录）、`backend/`（客服）、`ai-sql-agent/`（SQL Agent）。两侧测试读同一个提交上的契约，原 a2a-contract 仓库的历史和提交号都原样保留在这里。
+
 ## 目录结构：**这几个路径是被下游硬编码的，不要重排**
 
-这个仓库看起来像"文档太多、该整理一下"，但它的布局是**接口的一部分**。
-两个实现仓库不是读这份 README，是直接按路径读文件：
+这个目录看起来像"文档太多、该整理一下"，但它的布局是**接口的一部分**。
+两侧不是读这份 README，是直接按路径读文件（路径都相对仓库根目录）：
 
-| 下游位置 | 它按死路径读的东西 |
+| 读它的地方 | 它按死路径读的东西 |
 | --- | --- |
-| `ai-sql-agent/tests/test_contract_fixtures.py` | `schema/*.schema.json`、`fixtures/index.json`、`schema/database-id.schema.json`、`schema/stage.schema.json`。仓库位置按 `A2A_CONTRACT_DIR` → `./.contract` → **同级目录** `../a2a-contract` 的顺序找 |
-| `ai-helpdesk/backend/tests/test_contract_fixtures.py` | 同上；同样退到同级目录 `../a2a-contract`，找不到就 skip（设 `A2A_CONTRACT_REQUIRED=1` 才报错） |
-| `ai-helpdesk/scripts/ci-local.sh` | 本机复现 CI 的入口，同样读 `../a2a-contract`，并自带一个 `CONTRACT_TAG` |
-| 两侧 `.github/workflows/ci.yml` | `clone --branch <tag>` 之后读 `.contract/fixtures/index.json` |
-| 两侧代码注释 | "见 a2a-contract 仓库 `a2a-streaming-contract.md`" |
+| `ai-sql-agent/tests/test_contract_fixtures.py` | `schema/*.schema.json`、`fixtures/index.json`、`schema/database-id.schema.json`、`schema/stage.schema.json`。位置按 `A2A_CONTRACT_DIR` → 本仓库的 `a2a-contract/` 的顺序找；设了 `A2A_CONTRACT_REQUIRED=1` 时找不到就报错 |
+| `backend/tests/test_contract_fixtures.py` | 同上；没设 `A2A_CONTRACT_DIR` 就读本仓库的 `a2a-contract/`，找不到就 skip（设 `A2A_CONTRACT_REQUIRED=1` 才报错） |
+| `backend/app/evaluation/trajectory.py` | `fixtures/data-part/`，找法同上 |
+| `.claude/skills/test-backend/scripts/` 的 `run.sh`、`run-sql-agent.sh` | 本机复现 CI 的入口，读一次性副本里的 `a2a-contract/`，`run.sh` 还跑 `tools/check_contract.py` |
+| 根目录 `.github/workflows/ci.yml` | `A2A contract` job 跑 `a2a-contract/tools/check_contract.py`；三个 job 用 `A2A_CONTRACT_DIR` 指向 `a2a-contract/` |
+| 两侧代码注释 | "见本仓库 `a2a-contract/` 的 `a2a-streaming-contract.md`" |
 
 所以：
 
 - **`schema/`、`fixtures/`、`tools/`、`a2a-streaming-contract.md` 的位置不能动。**
-  把它们收进 `src/` 或 `docs/` 会让两侧在**下一次升 pin 时**整片变红——
-  而且红的地方在别人的仓库里，不在这里。
+  把它们收进 `src/` 或 `docs/` 会让两侧的测试整片变红。
 - 已经打出去的 tag 里是旧布局。重排之后，钉旧 tag 的引用与钉新 tag 的引用
-  **不再同构**，附录 B 那句"钉住的引用必须一直取得到当时那一份"就废了。
-- 真要重排，那是一次**三仓库同步变更**，按 §6 的双边流程走，不是一次整理。
+  **不再同构**，附录 B 那句"钉住的引用必须一直取得到当时那一份"就废了；
+  仓库之外按 tag 取契约的调用方会第一个踩到。
+- 真要重排，在同一个 PR 里改契约和两侧的测试，按 §6 的流程走，不是一次整理。
 
-**这个仓库为"引用取不到 / 副本漂了"翻过四次车。重排目录是这个仓库能做的
+**这份契约为"引用取不到 / 副本漂了"翻过四次车。重排目录是能对它做的
 风险最高的操作，因为它一次性把所有引用都动了。**
 
 ## 规矩
 
-- 契约变更 = **双边事件**。任何一侧不得单方面修改后直接实现。
-- 两个仓库都不再各存一份副本，只引用这里，避免副本漂移。
+- 契约变更 = **双边事件**：在同一个 PR 里改契约和两侧，任何一侧不得单方面修改后直接实现。
+- 两侧都不各存一份副本，只读 `a2a-contract/`，避免副本漂移。
 - 文档顶部的**状态行**（草案 / vX.Y）就是当前生效版本，也是判别权威副本的第一道判据。
 - **状态行里关于"做没做"的每一句话都要附可复核证据**：文件路径:行号 / 测试文件名 /
   可重跑的命令。写不出证据的写成"待核实"，不要写成事实。这个仓库为此翻过两次车
   （v1.2、v1.4），第三次的教训见契约附录 B 的自检表。
 
-## 两侧怎么引用（**带 tag 或 commit，不要跟 main**）
+## 两侧怎么引用（**在同一个仓库里读，不要拷贝**）
+
+两侧和契约在同一个仓库里，测试读同一个提交上的 `a2a-contract/`：不用克隆，不用钉 tag，
+也不用 submodule。改协议的 PR 同时改契约和两侧，CI 在同一次运行里把三者一起验。
 
 在代码注释或文档里引用时，写清楚**引的是哪一版**：
 
 ```python
-# 契约见 a2a-contract 仓库的 a2a-streaming-contract.md（v1.12，tag v1.12 / commit <sha>）
+# 契约见 a2a-contract/a2a-streaming-contract.md（v1.13，tag a2a-contract/v1.13 / commit <sha>）
 ```
 
 **只写版本号不够，只写 `main` 更不行。** 版本号会被下一版顶掉，`main` 会动；
 读注释的人需要能取到**当时那一份**。
 
-CI 里取 fixtures / schema 时钉在 tag 上：
+仓库之外的调用方（按 A2A 调 SQL Agent 的其他 agent）按 tag 钉版本，不要跟 `main`。
+tag 名是 `a2a-contract/vX.Y`，和整个仓库的发布 tag 分开。合并之前原 a2a-contract 仓库的
+九个 tag（`v1.5`–`v1.13`）按新名字导入，指向同一个提交，tag 消息、打 tag 的人和时间都没变。
 
-```bash
-git clone --depth 1 --branch v1.13 https://github.com/heyemlee/a2a-contract.git .contract
-```
-
-或加成 submodule（submodule 天然钉在 commit 上，最省心）：
-
-```bash
-git submodule add https://github.com/heyemlee/a2a-contract.git .contract
-```
-
-**不要把 `schema/` 或 `fixtures/` 拷进实现仓库。** 拷贝就是副本，副本会漂——
+**不要把 `schema/` 或 `fixtures/` 拷进 `backend/` 或 `ai-sql-agent/`。** 拷贝就是副本，副本会漂——
 这正是这份契约当初被挪出来单独放的原因。
 
 ### 升版本的时候
 
-改契约 = 两侧都要跟着改引用。顺序是：
+改契约在一个 PR 里做完：契约、两侧代码和两侧用例一起改，CI 一起验。顺序是：
 
-1. 本仓库改文档。**版本号要一次改齐五处**，`python3 tools/check_contract.py version`
+1. 改契约文档。**版本号要一次改齐**，`python3 tools/check_contract.py version`
    会逐处核对，改漏哪一处它会点名：
 
    | # | 在哪 |
@@ -77,26 +75,25 @@ git submodule add https://github.com/heyemlee/a2a-contract.git .contract
    | 2 | 契约附录 A 变更记录的新增行 |
    | 3 | `README.md` 版本表的新增行（本文件下方） |
    | 4 | `fixtures/index.json` 的 `contract_version` —— **下游真正读的是这个** |
-   | 5 | 所有 `--branch vX.Y` 示例，以及 `CONSUMER-TESTS.md` 抬头的「配套：…」 |
+   | 5 | `CONSUMER-TESTS.md` 抬头的「配套：…」，以及文档里还留着的 `--branch` 示例（可以一处都没有） |
 
-2. `python3 tools/check_contract.py` 全绿 → 合入 `main`；
-3. **打 tag（`vX.Y`）——这必须是这一版的最后一个动作。**
-   tag 消息里写清这一版改了什么、哪些条款还是缺口；
-4. 两侧各自把引用里的版本号和 commit 换掉，并把新增/变更的用例接进自己的 CI。
-   pin 一共五处，漏一处就会在那一侧红一条版本断言：
+2. 同一个 PR 里改两侧：两侧代码各声明一处自己实现的版本，测试断言它等于 `contract_version`，
+   漏一处那一侧就红一条版本断言。再把新增/变更的用例接进两侧的测试：
 
-   | 仓库 | 在哪 |
+   | 哪一侧 | 在哪 |
    | --- | --- |
-   | ai-sql-agent | `tests/test_contract_fixtures.py` 的 `CONTRACT_TAG`；`.github/workflows/ci.yml` 的 `A2A_CONTRACT_TAG` |
-   | ai-helpdesk | `backend/tests/test_contract_fixtures.py` 的 `PINNED_TAG`；`.github/workflows/ci.yml` 的 `ref`；`scripts/ci-local.sh` 的 `CONTRACT_TAG` |
+   | SQL Agent | `ai-sql-agent/src/ai_sql_agent/a2a/server.py` 的 `CONTRACT_VERSION` |
+   | 客服 | `backend/app/tools/a2a_client.py` 的 `CONTRACT_VERSION` |
 
-   改完怎么验，见契约状态行下方的「怎么重新验一遍」——三条命令加三个实测踩过的坑
-   （尤其是 ai-sql-agent 必须在没有 `.env` 的环境里跑）。
+3. CI 全绿 → 合入 `main`。`A2A contract`、`Backend (pytest + ruff)`、`SQL Agent (tests + gate smoke)`
+   三个必需检查都会读到契约；本机复现用仓库根目录的 `scripts/ci-local.sh`。
+4. **打 tag（`a2a-contract/vX.Y`）——这必须是这一版的最后一个动作。**
+   tag 消息里写清这一版改了什么、哪些条款还是缺口。
 
-第 4 步没做完之前，**不要在状态行里声称"两侧已实现"**——那正是 v1.2 和 v1.4
-各自栽过的地方。
+两侧的实现没合进来之前，**不要在状态行里声称"两侧已实现"**——那正是 v1.2 和 v1.4
+各自栽过的地方。契约状态行下方的「怎么重新验一遍」是三个仓库分开时（v1.10）的做法，留作历史。
 
-> **第 3 步为什么要强调"最后一个动作"。** v1.10 就是打完 tag 之后又补了三笔提交
+> **第 4 步为什么要强调"最后一个动作"。** v1.10 就是打完 tag 之后又补了三笔提交
 > （`70fb56d`、`77cadca`、`75eafe8`），于是 tag `v1.10` 里的 `contract_version`
 > 永远停在 `v1.9`，下游钉它会红一条版本断言。而已经推送的 tag **不能移动**
 > （附录 B：钉住的引用必须一直取得到当时那一份），只能再补一个自洽的 tag ——
@@ -129,8 +126,10 @@ python3 tools/check_contract.py version
 （`fixtures/index.json` 的 `contract_version`），而真正漂掉的是它没看的地方：
 `CONSUMER-TESTS.md` 抬头那句「配套：…（v1.5）」**活过了 v1.6–v1.10 五个版本**，
 调用方早在 v1.6 就把它写进交回契约的反馈清单，**写了也没人改**。
-原因不是谁不认真——**没有任何机器在看那一行**。现在它按形态收全五处：
+原因不是谁不认真——**没有任何机器在看那一行**。现在它按形态收全：
 两张版本表的最新行、`contract_version`、`--branch` 示例、文档抬头的「配套：」。
+合进同一个仓库以后文档里不再有「克隆某个 tag」的命令，`--branch` 示例允许一处都没有
+（写了就照样要和状态行一致，带不带 `a2a-contract/` 前缀都认），「配套：」至少要有一处。
 
 > 为了不给下一个人挖坑，`version` 段**只看会被复制粘贴去执行的行**：
 > Markdown 里 ``` 围栏内的行、YAML 里的非注释行。附录 A 的变更记录可以放心
@@ -141,19 +140,20 @@ python3 tools/check_contract.py version
 就等于没有一个地方知道判据的全集，v1.10 那次漂移漏掉的正是当时写在 workflow 里
 那段 bash 没覆盖的两处。
 
-**这条 workflow 现在在 GitHub 上会跑，但它拦不住任何东西。** 推送 `main`
-和推 tag 都会触发；可 `main`
-没有分支保护、ruleset 为空，提交直接推上去，CI 在推送之后才跑——红了也已经在 `main` 上，
-打 tag 也不等它。**所以真正的门禁仍然只有一道：合 `main` 之前、打 tag 之前，本机把
-`python3 tools/check_contract.py` 跑到全绿。** 不要在任何地方写"CI 会拦住"。
+**`A2A contract` 是 `main` 分支保护的必需检查**：改动只能走 PR，这项不过合不进去，
+管理员也不豁免。打 tag 仍然不等 CI，所以 tag 只打在已经合进 `main` 的提交上。
 
-> CI 恢复之前这里写的是「**这条 workflow 在 GitHub 上一次都没跑过**」：2026-05-05 查证时
+> 合并之前，原 a2a-contract 仓库的 `main` 没有分支保护，这里写的是「这条 workflow 会跑，
+> 但它拦不住任何东西」，真正的门禁是本机把自检跑到全绿。
+> 再早，CI 恢复之前写的是「**这条 workflow 在 GitHub 上一次都没跑过**」：2026-05-05 查证时
 > 三个仓库的 Actions 都是账号级停用（`Actions has been disabled for this user`，run 数全是 0，
 > 仓库里改不动）。查证过程见契约状态行下方的降级声明。
 
 ## 版本
 
-| tag | 状态行 |
+合并之后的 tag 名是 `a2a-contract/` 加下表的版本号，例如 `a2a-contract/v1.13`。
+
+| 版本 | 状态行 |
 | --- | --- |
 | `v1.13` | **服务端在调用方断开后停下（§5.4）、新增传输终态 `canceled`（§4.4）、429 的错误码改为 `-32029`（§3.2 / §5.5）。**这是一次 §6 契约变更：新增 `schema/terminal-event.schema.json` 和 `fixtures/terminal-event/` 五个用例（F 组有了 fixture）；服务端实现三处，调用方不改代码，只改 pin 并补消费用例 |
 | `v1.12` | **§4.4 的最后一步：`execution_status` 由可选提级为 `required`**——七条缺口到这一版才是真的全关。**这是一次 §6 契约变更**，两侧必须跟着动。十五份 fixture 补了该字段；**`dp-trust-01` 故意不补并由 C 组改判 B 组**，它从「缺字段会被静默推导」的样本变成「缺字段会被挡住」的反例（v1.9 的 C 组设计与它自己定的关闭判据在这一点上是打架的，本版做了取舍，理由见附录 A）。六个既有反例逐条重验过拒绝理由没被污染，`tools/check_contract.py` 新增两条断言守这件事 |

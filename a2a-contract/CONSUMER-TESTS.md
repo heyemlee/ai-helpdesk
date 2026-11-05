@@ -13,7 +13,7 @@
 v1.2 虚报、v1.3 推翻、v1.4 的证据表证错了东西——三次都不是因为谁不认真，
 是因为"契约有没有被兑现"这件事**当时没有任何机器在检查**。
 
-所以形状类的断言全部搬到 `schema/` + `fixtures/` 里，两侧 CI 各自跑同一组。
+所以形状类的断言全部搬到 `schema/` + `fixtures/` 里，两侧的测试跑同一组。
 用例分叉就是副本漂移换个地方复发，所以**清单只有一份**：`fixtures/index.json`。
 
 ## 一条硬规则：**三个**承载者用同一组用例（v1.8：由两条改为三条）
@@ -69,7 +69,7 @@ v1.2 虚报、v1.3 推翻、v1.4 的证据表证错了东西——三次都不�
 > **`dp-trust-01` 为什么在这一组，而文件却还在 `trust-negative/` 下。**
 > v1.12 把 `execution_status` 提级为 `required` 之后，这份不带该字段的载荷
 > **不再合法**，唯一的拒绝理由就是缺它——所以它按性质属于 B 组。
-> **文件没有跟着挪目录**：两侧都按字面路径读它，挪一次就会红在别人仓库里。
+> **文件没有跟着挪目录**：两侧都按字面路径读它，挪目录就得同时改两侧的测试。
 > 分组看 `fixtures/index.json` 的 `group`，不要按目录名推断。
 
 **服务端断言：** 自己产出的 data part 永远不长成这六种样子。
@@ -247,23 +247,30 @@ schema 拦不住，只能靠业务判据。
 
 ## 怎么跑
 
-契约仓库自己：
+契约自己（在 `a2a-contract/` 下）：
 
 ```bash
 pip install jsonschema referencing
 python3 tools/check_contract.py
 ```
 
-两侧仓库：把本仓库作为 submodule 或在 CI 里 checkout 到固定 tag，
-然后读 `fixtures/index.json`（`expect` = `valid` / `invalid`，`trust` = 期望的信任判定），
-把 `file` 指向的载荷喂进自己的消费路径。**不要把 fixture 拷进自己仓库**——
+两侧：契约和两侧代码在同一个仓库里（`a2a-contract/`、`backend/`、`ai-sql-agent/`），
+两侧测试读同一个提交上的 `a2a-contract/fixtures/index.json`（`expect` = `valid` / `invalid`，
+`trust` = 期望的信任判定），把 `file` 指向的载荷喂进自己的消费路径。不用克隆，也不用钉 tag：
+改协议的那个 PR 同时改契约和两侧，CI 一起跑。**不要把 fixture 拷进 `backend/` 或 `ai-sql-agent/`**——
 拷贝就是副本，副本会漂，这份契约已经为此翻过一次车（附录 B）。
 
-引用时钉在 tag 上，不要跟 `main`：
+两侧各在代码里声明自己实现的契约版本（客服 `backend/app/tools/a2a_client.py`、
+SQL Agent `ai-sql-agent/src/ai_sql_agent/a2a/server.py` 的 `CONTRACT_VERSION`），
+测试断言它等于 `fixtures/index.json` 的 `contract_version`。CI 里设 `A2A_CONTRACT_REQUIRED=1`：
+找不到契约时失败，不跳过。
 
 ```bash
-git clone --depth 1 --branch v1.13 https://github.com/heyemlee/a2a-contract.git .contract
+.claude/skills/test-backend/scripts/run.sh            # 契约自检 + 客服这一侧（从仓库根目录跑）
+.claude/skills/test-backend/scripts/run-sql-agent.sh  # SQL Agent 这一侧
 ```
+
+仓库之外的调用方按 tag 钉版本，tag 名是 `a2a-contract/vX.Y`，不要跟 `main`。
 
 ## 这份文件没有覆盖什么
 
