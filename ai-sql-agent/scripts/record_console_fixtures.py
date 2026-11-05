@@ -151,6 +151,18 @@ def main() -> None:
             _save("schema-status.json", _ok(client.get("/admin/schema/status", headers=auth)).json())
             _save("unauthorized.json", client.get("/history").json())
             _save("run-not-found.json", client.get("/runs/0000000000000000", headers=auth).json())
+
+            # 模型连接的现状（只 GET，不碰 /test、/models：那两个会去连模型服务）。上面几次提问时
+            # 页面保存关着；这里打开、指到临时目录里一个还不存在的文件，才是"能改、用的是服务端配置"
+            # 的样子。模型凭据仍然是空的
+            os.environ.update({
+                "AI_SQL_MODEL_SETTINGS_ENABLED": "true",
+                "AI_SQL_MODEL_SETTINGS_PATH": str(tmp / "model_settings.json"),
+            })
+            from ai_sql_agent.core import reload_settings
+
+            reload_settings()
+            _save("model-status.json", _ok(client.get("/admin/model", headers=auth)).json())
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
