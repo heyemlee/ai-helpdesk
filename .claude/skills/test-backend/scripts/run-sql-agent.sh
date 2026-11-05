@@ -88,7 +88,9 @@ if [ "$FULL" = 1 ]; then
     done
     docker exec "$PG_NAME" pg_isready -h 127.0.0.1 -U ai_sql -d ai_sql >/dev/null 2>&1 ||
         fail "pgvector 60 秒内没起来"
-    RUN_ENV+=("AI_SQL_PGVECTOR_DSN=postgresql://ai_sql:$PG_PASSWORD@127.0.0.1:$PG_PORT/ai_sql")
+    # AI_SQL_PG_PORT：tests/test_ops_readonly.py 拿它和 localhost 拼只读账号的 DSN，不设就是 5432
+    RUN_ENV+=("AI_SQL_PGVECTOR_DSN=postgresql://ai_sql:$PG_PASSWORD@127.0.0.1:$PG_PORT/ai_sql"
+        "AI_SQL_PG_PORT=$PG_PORT")
 fi
 
 cd "$APP"
