@@ -454,7 +454,7 @@ class GoldSqlIsNotRefusedTest(unittest.TestCase):
         import json
 
         directory = Path(__file__).resolve().parents[1] / "benchmark"
-        for name in ("dataset.json", "holdout.json", "bilingual_cases.json"):
+        for name in ("dataset.json", "holdout.json", "bilingual_cases.json", "customer_cases.json"):
             path = directory / name
             if not path.exists():
                 continue
