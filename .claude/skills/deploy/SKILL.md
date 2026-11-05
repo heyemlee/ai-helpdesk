@@ -2,7 +2,7 @@
 name: deploy
 description: Deploy ai-helpdesk to production, the Docker Compose stack on this machine. Rebuilds only the named services from a clean export of a commit on main, keeps a rollback tag, and verifies that port 80 still reaches the customer instance. Only runs when the user invokes it.
 disable-model-invocation: true
-argument-hint: "<staff|customer|frontend ...> [commit, default origin/main]"
+argument-hint: "<staff|customer|frontend|sql-agent ...> [commit, default origin/main]"
 ---
 
 # Deploy to production
@@ -20,6 +20,9 @@ Docker and the loopback ports aren't reachable from the sandbox, so run these co
 | staff | `ai-helpdesk` | `ai-helpdesk-app` | `ai-helpdesk-ai-helpdesk` | 127.0.0.1:8080 |
 | customer | `ai-helpdesk-customer` | `ai-helpdesk-customer` | `ai-helpdesk-ai-helpdesk-customer` | 127.0.0.1:8081, and :80 through nginx |
 | frontend | `frontend` | `ai-helpdesk-frontend` | `ai-helpdesk-frontend` | 127.0.0.1:5174 |
+| sql-agent | `sql-agent` | `ai-helpdesk-sql-agent` | `ai-helpdesk-sql-agent` | none: only on `sql-net`, reached as `http://sql-agent:8000` |
+
+The SQL Agent publishes no host port on purpose. A published port would let any container reach it through `host.docker.internal`, which undoes the network isolation. Reach it with `docker exec ai-helpdesk-sql-agent …`. Its state (audit, runs, conversation memory, the model connection saved from the console) lives in the `sql-agent-state` volume, and an image rollback leaves that volume as it is.
 
 ## 1. Check before touching anything
 
@@ -53,6 +56,7 @@ Tag first, because the build moves `:latest`. Only tag and build the services in
 docker tag ai-helpdesk-ai-helpdesk:latest "ai-helpdesk-ai-helpdesk:before-$SHA"                     # staff
 docker tag ai-helpdesk-ai-helpdesk-customer:latest "ai-helpdesk-ai-helpdesk-customer:before-$SHA"   # customer
 docker tag ai-helpdesk-frontend:latest "ai-helpdesk-frontend:before-$SHA"                           # frontend
+docker tag ai-helpdesk-sql-agent:latest "ai-helpdesk-sql-agent:before-$SHA"                         # sql-agent
 
 EXPORT="$(mktemp -d "$TMPDIR/aihd-deploy.XXXXXX")"
 git -C "$ROOT" archive "$SHA" | tar -xf - -C "$EXPORT"
@@ -62,9 +66,12 @@ docker build --target production --build-arg AI_HELPDESK_RELEASE="$SHA" \
   -t ai-helpdesk-ai-helpdesk:latest -t ai-helpdesk-ai-helpdesk-customer:latest "$EXPORT/backend"
 
 docker build --target production -t ai-helpdesk-frontend:latest "$EXPORT/frontend"
+
+docker build -f "$EXPORT/ai-sql-agent/deploy/Dockerfile" --build-arg AI_SQL_RELEASE="$SHA" \
+  -t ai-helpdesk-sql-agent:latest "$EXPORT/ai-sql-agent"
 ```
 
-Build with `docker build`, not `docker compose build`, from the export. The export has no env files, and `AI_HELPDESK_RELEASE` records which commit is running in the event log.
+Build with `docker build`, not `docker compose build`, from the export. The export has no env files, and `AI_HELPDESK_RELEASE` (`AI_SQL_RELEASE` for the SQL Agent) records which commit is running.
 
 ## 3. Recreate only the named services
 
@@ -80,6 +87,11 @@ docker compose --project-directory "$ROOT" -f "$ROOT/docker-compose.yml" -p ai-h
 
 Always name the services. A bare `up -d` also recreates any other service whose definition has drifted, which restarts it for no reason. For the same reason, don't use `scripts/docker-deploy.sh build`, `start` or `restart` on production: they build from the checkout and act on every service.
 
+Two things about the SQL Agent's network, `sql-net`:
+
+- The console is only on `sql-net`, and it finds the staff instance there. If the staff instance isn't on `sql-net` yet, recreate it before the frontend, or the console can't reach it.
+- If the repository-root `.env` sets `AI_HELPDESK_SQL_AGENT_URL`, the staff instance delegates to that address instead of `http://sql-agent:8000`. That's only for a switch-over; outside one it should be unset.
+
 ## 4. Verify
 
 Don't skip this, and don't stop at `--wait` succeeding. Containers can be healthy while traffic goes to the wrong one.
@@ -93,8 +105,8 @@ diff "$TMPDIR/env-before.txt" "$TMPDIR/env-after.txt"
 docker logs --since 10m <container> 2>&1 | grep -E 'Traceback|ERROR'
 ```
 
-- `verify.sh` must pass, and it must print the new release for the backends you deployed. Its first check is that :80 reaches the customer instance. If only that fails, wait 15 seconds and run it again, since nginx re-resolves the container's address every 10 seconds. If it still fails, check that the checkout is on `main`, then run `docker restart ai-helpdesk-nginx`. `nginx -s reload` isn't enough, because the bind-mounted config can be stale.
-- The env diff should show only `AI_HELPDESK_RELEASE`, on the backends you deployed. Anything else is a config change nobody asked for, so report it.
+- `verify.sh` must pass, and it must print the new release for the services you deployed. Besides the instances, it checks the SQL Agent's `/readyz` and that it rejects a request without a key, and the network isolation: no published port on the SQL Agent, which containers sit on `sql-net`, and that a throwaway container on the customer instance's network can't reach `sql-agent:8000` or `host.docker.internal:8000`. It never execs into the customer container. Its first check is that :80 reaches the customer instance. If only that fails, wait 15 seconds and run it again, since nginx re-resolves the container's address every 10 seconds. If it still fails, check that the checkout is on `main`, then run `docker restart ai-helpdesk-nginx`. `nginx -s reload` isn't enough, because the bind-mounted config can be stale.
+- The env diff should show only `AI_HELPDESK_RELEASE` on the backends you deployed, and `AI_SQL_RELEASE` on the SQL Agent. Anything else is a config change nobody asked for, so report it.
 - The logs should have no `Traceback` or `ERROR` from this startup.
 
 `verify.sh` makes no model calls. A real chat smoke test spends money and writes to production's logs, so run one only if the user asks.
@@ -109,12 +121,15 @@ If verification fails and a quick look doesn't explain it, roll back first and i
 docker tag "ai-helpdesk-ai-helpdesk:before-$SHA" ai-helpdesk-ai-helpdesk:latest
 docker tag "ai-helpdesk-ai-helpdesk-customer:before-$SHA" ai-helpdesk-ai-helpdesk-customer:latest
 docker tag "ai-helpdesk-frontend:before-$SHA" ai-helpdesk-frontend:latest
+docker tag "ai-helpdesk-sql-agent:before-$SHA" ai-helpdesk-sql-agent:latest
 
 docker compose --project-directory "$ROOT" -f "$ROOT/docker-compose.yml" -p ai-helpdesk \
   up -d --no-deps --no-build --wait <services>
 
 "$SCRIPTS/verify.sh"
 ```
+
+Rolling back the SQL Agent's image keeps its state volume as it is.
 
 Keep rollback tags until the user says to remove them.
 

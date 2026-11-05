@@ -1,0 +1,148 @@
+# SQL Agent（ai-sql-agent/）：员工实例委派过来的订单、生产、库存、账款查询。和 docker-compose.yml 的
+# sql-agent 是同一套：生产模式（就绪检查不过就不启动）、只认 API Key、状态存 SQLite。
+#
+# 只开 1 副本，更新时先停旧的再起新的（Recreate）：状态（audit.db、runs.db、memory.db）和页面保存的
+# 模型连接都是每个副本各一份，两个副本就是两份互不相通的历史。要多副本得先把状态移进一个
+# 它自己的 Postgres，另议。
+#
+# 谁连得到它由下面的 NetworkPolicy 定：只有员工实例的 api 和 worker。**NetworkPolicy 要集群的网络插件
+# 支持才生效**，不支持的插件会照单全收、什么也不拦，而且没有任何报错——第二道还有 API Key。
+#
+# 语义层和四个业务库是生成出来的，不在 git 里：放进 sql-agent-data 卷（semantic/、simple/，和 compose 的
+# deploy/sql-agent/data 一样），scripts/k8s-up.sh 会从本机的 deploy/sql-agent/data 拷进去。
+apiVersion: v1
+kind: Service
+metadata:
+  name: sql-agent
+  labels:
+    app.kubernetes.io/name: ai-helpdesk
+    app.kubernetes.io/component: sql-agent
+spec:
+  selector:
+    app.kubernetes.io/component: sql-agent
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sql-agent-state
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sql-agent-data
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sql-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: sql-agent
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ai-helpdesk
+        app.kubernetes.io/component: sql-agent
+    spec:
+      # 镜像里的用户是 ai_sql（uid 10001）。fsGroup 让它写得了状态卷
+      securityContext:
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: sql-agent
+          image: aihd/sql-agent
+          envFrom:
+            - configMapRef:
+                name: sql-agent-config
+            - secretRef:
+                name: sql-agent-secrets
+          ports:
+            - containerPort: 8000
+              name: http
+          volumeMounts:
+            - name: keys
+              mountPath: /run/secrets
+              readOnly: true
+            - name: state
+              mountPath: /app/state
+            - name: data
+              mountPath: /app/semantic
+              subPath: semantic
+              readOnly: true
+            # 语义层里的 db_path 是相对路径 runtime_data/simple/*.db，按工作目录 /app 解析
+            - name: data
+              mountPath: /app/runtime_data/simple
+              subPath: simple
+              readOnly: true
+          # 启动要读语义层、建检索索引；之后存活只问进程，就绪还要问依赖（记忆库、审计库、模型凭据）
+          startupProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 2
+            failureThreshold: 60
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {memory: 1Gi}
+      volumes:
+        - name: keys
+          secret:
+            secretName: sql-agent-keys
+        - name: state
+          persistentVolumeClaim:
+            claimName: sql-agent-state
+        - name: data
+          persistentVolumeClaim:
+            claimName: sql-agent-data
+---
+# 只放行员工实例的 api 和 worker。客户实例、事件消费者、Postgres 都连不到它。
+# 出站不限：它要连模型（这里是 mock-llm，真部署是外面的模型服务）。
+# 管的是直连：api-customer 还能调 api-staff 的 Service，经员工实例间接委派（员工实例没开 Key），
+# 和 compose 那边一样这次不堵
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sql-agent
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: sql-agent
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values: ["api-staff", "worker-staff"]
+      ports:
+        - port: 8000
+          protocol: TCP

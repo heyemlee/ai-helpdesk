@@ -1,0 +1,24 @@
+# SQL Agent 的告警规则。prometheus.yml 的 rule_files 指向本目录。
+#
+# 它挂了或者熔断打开时，员工实例的订单类问题照样有回答：委派失败走熔断，退回知识库和 SOP，
+# 回答里明说"这次没能查到系统记录"。所以这两条是"查不了数了"，不是"客服挂了"。
+groups:
+  - name: ai-sql-agent
+    rules:
+      - alert: SqlAgentDown
+        expr: up{job="ai-sql-agent"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "SQL Agent 失联"
+          description: "Prometheus 已 1 分钟抓不到 sql-agent:8000/metrics。员工实例查不了订单、生产、库存、账款。先看 docker logs ai-helpdesk-sql-agent：生产就绪检查不过时进程起不来（production_readiness.failed）。"
+
+      - alert: SqlAgentCircuitOpen
+        expr: max by (component) (ai_sql_circuit_state) == 2
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "SQL Agent 的模型熔断打开（{{ $labels.component }}）"
+          description: "连续的超时、连接失败、5xx 或限流把熔断打开了：查询走降级链路，可能重放历史 SQL。先看模型中转站。恢复后会自动放一次试探请求，也可以用管理员 Key 调 POST /admin/circuit/reset。"

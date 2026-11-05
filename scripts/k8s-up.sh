@@ -24,9 +24,12 @@ kubectl config use-context "kind-$CLUSTER" >/dev/null
 
 RELEASE=$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo dev)
 docker build -t aihd/backend:dev --target production --build-arg AI_HELPDESK_RELEASE="$RELEASE" "$ROOT/backend"
+docker build -t aihd/sql-agent:dev -f "$ROOT/ai-sql-agent/deploy/Dockerfile" \
+  --build-arg AI_SQL_RELEASE="$RELEASE" "$ROOT/ai-sql-agent"
 # 自己的镜像本地构建、直接装进节点。pgvector 和 redis 由节点自己去 Docker Hub 拉：
 # Docker Desktop 的 containerd 镜像库里它们是多平台镜像，kind load 会报 content digest not found
 kind load docker-image aihd/backend:dev --name "$CLUSTER"
+kind load docker-image aihd/sql-agent:dev --name "$CLUSTER"
 
 kubectl apply --server-side -f \
   "https://github.com/kedacore/keda/releases/download/v${KEDA_VERSION}/keda-${KEDA_VERSION}.yaml" >/dev/null
@@ -41,9 +44,30 @@ kubectl -n aihd rollout status statefulset/postgres --timeout=180s
 kubectl -n aihd rollout status statefulset/redis --timeout=180s
 kubectl -n aihd rollout status statefulset/kafka --timeout=300s
 kubectl -n aihd wait --for=condition=complete job/kafka-topics --timeout=300s
+
+# SQL Agent 的语义层和四个业务库不在 git 里：从本机的 deploy/sql-agent/data（semantic/、simple/，
+# 和 docker-compose 用的是同一份）拷进 sql-agent-data 卷。没有这份数据时 SQL Agent 起不来
+# （生产就绪检查），其余照常；生成方法见 ai-sql-agent/tools/simple_erp/README.md
+DATA="$ROOT/deploy/sql-agent/data"
+SQL_AGENT=sql-agent
+if [ -d "$DATA/semantic" ] && [ -d "$DATA/simple" ]; then
+  kubectl -n aihd delete pod sql-agent-data-loader --ignore-not-found >/dev/null
+  kubectl -n aihd run sql-agent-data-loader --image=aihd/sql-agent:dev --restart=Never \
+    --overrides='{"spec":{"securityContext":{"runAsUser":10001,"fsGroup":10001},"containers":[{"name":"loader","image":"aihd/sql-agent:dev","command":["sleep","600"],"volumeMounts":[{"name":"data","mountPath":"/data"}]}],"volumes":[{"name":"data","persistentVolumeClaim":{"claimName":"sql-agent-data"}}]}}' \
+    >/dev/null
+  kubectl -n aihd wait --for=condition=Ready pod/sql-agent-data-loader --timeout=120s
+  kubectl -n aihd exec sql-agent-data-loader -- rm -rf /data/semantic /data/simple
+  kubectl -n aihd cp "$DATA/semantic" sql-agent-data-loader:/data/semantic
+  kubectl -n aihd cp "$DATA/simple" sql-agent-data-loader:/data/simple
+  kubectl -n aihd delete pod sql-agent-data-loader --wait=false >/dev/null
+else
+  echo "没有 $DATA/semantic 和 simple：SQL Agent 起不来，员工实例的订单类问题退回知识库" >&2
+  SQL_AGENT=
+fi
+
 # 镜像换了标签没变（都是 :dev）：重启一下才会用上刚装进去的那一个
 DEPLOYS="mock-llm api-staff api-customer worker-staff worker-customer
-         projector-staff projector-customer sampler-staff sampler-customer"
+         projector-staff projector-customer sampler-staff sampler-customer $SQL_AGENT"
 for deploy in $DEPLOYS; do kubectl -n aihd rollout restart "deploy/$deploy" >/dev/null; done
 for deploy in $DEPLOYS; do
   kubectl -n aihd rollout status "deploy/$deploy" --timeout=300s

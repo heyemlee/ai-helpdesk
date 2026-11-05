@@ -1,0 +1,249 @@
+{
+  "uid": "ai-sql-agent",
+  "title": "SQL Agent 运行面板",
+  "tags": [
+    "ai-helpdesk",
+    "ai-sql-agent"
+  ],
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "请求量（按接口、状态码）",
+      "type": "timeseries",
+      "description": "每秒请求数，/metrics 和探针剔除。/a2a 是员工实例的委派，/query 是直连",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (path, status) (rate(ai_sql_requests_total{path!~\"/metrics|/health|/readyz\"}[5m]))",
+          "legendFormat": "{{path}} {{status}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "title": "请求耗时 p50 / p95（/a2a、/query）",
+      "type": "timeseries",
+      "description": "A2A 流式是整条流的时长；员工实例那边流式总长 90 秒硬顶、send 45 秒",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(ai_sql_request_duration_seconds_bucket{path=~\"/a2a|/query\"}[5m])))",
+          "legendFormat": "p95",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(ai_sql_request_duration_seconds_bucket{path=~\"/a2a|/query\"}[5m])))",
+          "legendFormat": "p50",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "title": "各阶段耗时 p95",
+      "type": "timeseries",
+      "description": "路由、检索、规划、生成、执行、修复、校验。慢在哪一段，再到 Tempo 里看那一条链路",
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, stage) (rate(ai_sql_stage_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{stage}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "title": "SQL 执行和修复",
+      "type": "timeseries",
+      "description": "执行按结果分（denied 是被数据权限拦下）；修复回路按结果分",
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (status) (rate(ai_sql_sql_executions_total[5m]))",
+          "legendFormat": "执行 {{status}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (result) (rate(ai_sql_sql_repairs_total[5m]))",
+          "legendFormat": "修复 {{result}}",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "title": "模型熔断状态",
+      "type": "timeseries",
+      "description": "0 闭合、1 半开、2 断开。断开时查询走降级链路（SqlAgentCircuitOpen 告警）",
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "max by (component) (ai_sql_circuit_state)",
+          "legendFormat": "{{component}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 2,
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "闭合"
+                },
+                "1": {
+                  "text": "半开"
+                },
+                "2": {
+                  "text": "断开"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "title": "权限拒绝（按库）",
+      "type": "timeseries",
+      "description": "Key 的策略不允许碰的表或列。持续出现说明策略和语义层对不上，或者有人在试探",
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (database) (increase(ai_sql_access_denied_total[5m]))",
+          "legendFormat": "{{database}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    },
+    {
+      "id": 7,
+      "title": "SQL Agent 日志（点 otel_trace_id 跳转 Tempo trace）",
+      "type": "logs",
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 24,
+        "h": 10
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "expr": "{container=\"ai-helpdesk-sql-agent\"}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "enableLogDetails": true
+      }
+    }
+  ],
+  "annotations": {
+    "list": []
+  },
+  "templating": {
+    "list": []
+  },
+  "schemaVersion": 39,
+  "version": 1
+}

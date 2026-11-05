@@ -40,7 +40,14 @@ echo "$@" >> "$CMDLOG"
 # psql 那一步脚本会重定向 stdin，读掉免得管道破裂
 if [[ "$*" == *psql* ]]; then cat > /dev/null; fi
 # `docker inspect … --format` 要能给出卷名，否则脚本会判定"找不到 /data 卷"。
-if [[ "$1" == "inspect" ]]; then echo "fake_redis_volume"; fi
+# FAKE_SQL_AGENT_RUNNING 非空时，问容器在不在跑（.State.Running .State.Restarting）回 "true false"；
+# FAKE_NO_SQL_AGENT 非空时，SQL Agent 的容器不存在（inspect 失败）；
+# FAKE_EXEC_REFUSED 非空时，docker exec 被拒（容器在反复重启时就是这样）。
+if [[ "$1" == "inspect" && "$*" == *ai-helpdesk-sql-agent* && -n "$FAKE_NO_SQL_AGENT" ]]; then exit 1; fi
+if [[ "$1" == "exec" && "$*" == *ai-helpdesk-sql-agent* && -n "$FAKE_EXEC_REFUSED" ]]; then cat > /dev/null; exit 1; fi
+if [[ "$1" == "inspect" ]]; then
+    if [[ "$*" == *State.Running* && -n "$FAKE_SQL_AGENT_RUNNING" ]]; then echo "true false"; else echo "fake_redis_volume"; fi
+fi
 # 健康检查：redis-cli ping 要回 PONG；FAKE_PG_DOWN 非空时 pg_isready 报"没有响应"。
 if [[ "$*" == *redis-cli*ping ]]; then echo PONG; fi
 if [[ "$*" == *pg_isready* && -n "$FAKE_PG_DOWN" ]]; then exit 2; fi
@@ -295,6 +302,129 @@ class TestRedisIsBackedUpAsAWholeDirectory:
             input="y\n", capture_output=True, text=True, env=env, timeout=120,
         )
         assert "不会" in proc.stdout and "Redis" in proc.stdout
+
+
+class TestSqlAgentState:
+    """
+    SQL Agent 的状态（audit.db、runs.db、memory.db 都是 WAL 模式，外加 model_settings.json）。
+    进程一直在写，直接拷文件拿到的可能缺着还在 -wal 里的那部分，而且拷的时候不会报错。
+    """
+
+    def test_a_running_sql_agent_is_backed_up_through_the_sqlite_online_backup(self, fake_repo):
+        """
+        在跑的时候不能直接拷文件（WAL 里还有没合进去的）。走 SQLite 的在线备份——和 sqlite3
+        命令行的 .backup 是同一个接口，镜像里没有命令行，用 Python 的——在容器里备好再拷出来。
+        """
+        assert "source.backup(target)" in _script_code()
+        env = dict(os.environ)
+        env["PATH"] = f"{fake_repo['bin']}:{env['PATH']}"
+        env["CMDLOG"] = str(fake_repo["cmdlog"])
+        env["FAKE_SQL_AGENT_RUNNING"] = "1"
+        proc = subprocess.run(["bash", str(fake_repo["script"]), "backup"],
+                              capture_output=True, text=True, env=env, timeout=120)
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        cmds = fake_repo["cmdlog"].read_text().splitlines()
+        online = _index_of(cmds, "exec -i ai-helpdesk-sql-agent python -")
+        copy_out = _index_of(cmds, "cp", "ai-helpdesk-sql-agent:/tmp/sql-agent-backup/.")
+        assert online < copy_out
+        assert not any("ai-helpdesk-sql-agent:/app/state" in cmd for cmd in cmds)
+
+    def test_state_is_replaced_while_the_sql_agent_is_stopped(self, fake_repo):
+        """停着换（跑着的进程会接着往旧库和旧 WAL 里写），换完再起；起之前配置已经恢复好。"""
+        state = fake_repo["backup"] / "sql-agent-state"
+        state.mkdir()
+        (state / "audit.db").write_bytes(b"sqlite")
+        cmds = _run_restore(fake_repo)
+        stop = _index_of(cmds, "stop", "sql-agent")
+        replace = _index_of(cmds, "run --rm", "fake_redis_volume:/state")
+        start = _index_of(cmds, "start", "sql-agent")
+        assert stop < replace < start
+        assert "chown -R 10001:10001" in cmds[replace], "拷进去的文件要归镜像里的 ai_sql，不然它写不了自己的库"
+
+    def test_state_that_cannot_be_put_back_is_not_reported_as_restored(self, fake_repo):
+        """备份里有 SQL Agent 的状态、这边却没有它的卷：其余照常恢复、拉起，但不能报"恢复完成"。"""
+        state = fake_repo["backup"] / "sql-agent-state"
+        state.mkdir()
+        (state / "audit.db").write_bytes(b"sqlite")
+        env = dict(os.environ)
+        env["PATH"] = f"{fake_repo['bin']}:{env['PATH']}"
+        env["CMDLOG"] = str(fake_repo["cmdlog"])
+        env["FAKE_NO_SQL_AGENT"] = "1"
+        proc = subprocess.run(
+            ["bash", str(fake_repo["script"]), "restore", str(fake_repo["backup"])],
+            input="y\n", capture_output=True, text=True, env=env, timeout=120,
+        )
+        assert proc.returncode != 0
+        assert "恢复完成" not in proc.stdout
+        assert "恢复没有全部完成" in proc.stdout + proc.stderr
+        cmds = fake_repo["cmdlog"].read_text().splitlines()
+        assert _index_of(cmds, "start", "ai-helpdesk-customer"), "其余服务照样要拉起来"
+
+    def test_a_refused_exec_falls_back_to_the_volume_instead_of_aborting(self, fake_repo):
+        """
+        反复重启中的容器会报 Running=true，exec 却进不去。备份不能因此在 set -e 下整个停掉，
+        退到直接拷卷，而且照样走到"备份完成"。
+        """
+        env = dict(os.environ)
+        env["PATH"] = f"{fake_repo['bin']}:{env['PATH']}"
+        env["CMDLOG"] = str(fake_repo["cmdlog"])
+        env["FAKE_SQL_AGENT_RUNNING"] = "1"
+        env["FAKE_EXEC_REFUSED"] = "1"
+        proc = subprocess.run(["bash", str(fake_repo["script"]), "backup"],
+                              capture_output=True, text=True, env=env, timeout=120)
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        assert "备份完成" in proc.stdout
+        cmds = fake_repo["cmdlog"].read_text().splitlines()
+        assert _index_of(cmds, "cp", "ai-helpdesk-sql-agent:/app/state/.")
+
+    def test_sql_agent_files_missing_from_an_old_backup_survive_the_deploy_swap(self, fake_repo):
+        """
+        deploy/ 是整体替换的，而 SQL Agent 的 Key、env 文件、语义层和业务库都在 deploy/ 下、不进 git。
+        用它进 compose 之前的备份恢复时，这几样不能跟着删掉——删了就再也找不回来。
+        """
+        deploy = fake_repo["root"] / "deploy"
+        (deploy / "secrets").mkdir(parents=True)
+        (deploy / "secrets" / "sql_agent_keys.json").write_text("{}")
+        (deploy / "sql-agent" / "data" / "simple").mkdir(parents=True)
+        (deploy / "sql-agent" / "data" / "simple" / "erp.db").write_bytes(b"sqlite")
+        (deploy / "sql-agent" / "sql-agent.env").write_text("AI_SQL_MODEL_PROVIDER=openai\n")
+        env = dict(os.environ)
+        env["PATH"] = f"{fake_repo['bin']}:{env['PATH']}"
+        env["CMDLOG"] = str(fake_repo["cmdlog"])
+        proc = subprocess.run(
+            ["bash", str(fake_repo["script"]), "restore", str(fake_repo["backup"])],
+            input="y\n", capture_output=True, text=True, env=env, timeout=120,
+        )
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        assert (deploy / "secrets" / "sql_agent_keys.json").read_text() == "{}"
+        assert (deploy / "sql-agent" / "data" / "simple" / "erp.db").read_bytes() == b"sqlite"
+        assert (deploy / "sql-agent" / "sql-agent.env").is_file()
+        # 备份里的配置照样整体换上，别的旧文件照样不留
+        assert (deploy / "prometheus" / "prometheus.yml").read_text() == "restored: true\n"
+        assert not (deploy / "nginx").exists()
+        assert not list(fake_repo["root"].glob(".restore-keep.*"))
+        assert "SQL_AGENT_API_KEY" in proc.stdout, "恢复出来的 backend/.env 里没有员工那一把 Key，要提醒"
+
+    def test_an_old_backup_without_it_leaves_the_state_alone(self, fake_repo):
+        cmds = _run_restore(fake_repo)
+        assert not any(":/state" in cmd for cmd in cmds)
+
+    def test_a_stopped_sql_agent_is_still_backed_up_from_its_volume(self, fake_repo):
+        """
+        停着的时候（比如 env 改坏了、就绪检查不过在反复重启）不能只打一句警告就跳过：
+        那份备份里就没有审计和对话记忆了。没有进程在写，直接拷卷里的文件是一致的。
+        假 docker 的 inspect 回不出 "true"，正好是"容器在、没在跑"。
+        """
+        env = dict(os.environ)
+        env["PATH"] = f"{fake_repo['bin']}:{env['PATH']}"
+        env["CMDLOG"] = str(fake_repo["cmdlog"])
+        proc = subprocess.run(["bash", str(fake_repo["script"]), "backup"],
+                              capture_output=True, text=True, env=env, timeout=120)
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        cmds = fake_repo["cmdlog"].read_text().splitlines()
+        copy = cmds[_index_of(cmds, "cp", "ai-helpdesk-sql-agent:/app/state/.")]
+        assert copy.rstrip().endswith("sql-agent-state")
+        assert not any(cmd.startswith("exec -i ai-helpdesk-sql-agent") for cmd in cmds)
 
 
 class TestRestoreStopsOnFailure:

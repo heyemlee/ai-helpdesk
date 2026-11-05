@@ -26,6 +26,8 @@ resources:
   # 每个实例的投影和采样消费者
   - kafka.yaml
   - event-consumers.yaml
+  # SQL Agent：1 副本、状态卷、业务数据卷，以及只放行员工 api 和 worker 的 NetworkPolicy
+  - sql-agent.yaml
 
 configMapGenerator:
   - name: backend-config
@@ -38,15 +40,31 @@ configMapGenerator:
   - name: customer-config
     envs:
       - config/customer.env
+  - name: sql-agent-config
+    envs:
+      - config/sql-agent.env
 
 secretGenerator:
   # 本地集群用的固定值。真部署用 sealed-secrets / external-secrets 之类，不进仓库
   - name: backend-secrets
     envs:
       - config/secrets.env
+  # SQL Agent 的模型 Key，以及它认的 API Key 和数据权限（挂成 /run/secrets/sql_agent_keys.json）
+  - name: sql-agent-secrets
+    envs:
+      - config/sql-agent-secrets.env
+  - name: sql-agent-keys
+    files:
+      - sql_agent_keys.json=config/sql_agent_keys.json
+  # 员工实例调 SQL Agent 的 Key：只给员工的 api 和 worker，客户实例那边没有
+  - name: sql-agent-client
+    envs:
+      - config/sql-agent-client.env
 
 images:
   - name: aihd/backend
+    newTag: dev
+  - name: aihd/sql-agent
     newTag: dev
 
 labels:

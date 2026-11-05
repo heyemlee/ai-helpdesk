@@ -36,3 +36,21 @@ scrape_configs:
                   logger: logger
             - labels:
                 level:
+      # SQL Agent（ai_sql_agent.core.logging_setup.JsonFormatter）：单行 JSON，时间在 ts 里。
+      # trace_id 是它自己的 16 位 id（审计、run 都按它查）；otel_trace_id 是调用方那条链路，
+      # Grafana 的 Loki 数据源按它跳 Tempo
+      - match:
+          selector: '{container="ai-helpdesk-sql-agent"}'
+          stages:
+            - json:
+                expressions:
+                  ts: ts
+                  level: level
+                  logger: logger
+                  trace_id: trace_id
+                  event: event
+            - timestamp:
+                source: ts
+                format: RFC3339Nano
+            - labels:
+                level:

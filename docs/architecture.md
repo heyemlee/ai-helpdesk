@@ -191,20 +191,24 @@ flowchart TD
         LK[loki]
         PT[promtail]
         GF[grafana<br/>:3000]
+        SQL[ai-helpdesk-sql-agent<br/>只在 sql-net，无宿主机端口]
     end
-    FE -->|/api/ 走内网| APP
+    FE -->|/api/ 走 sql-net| APP
     NG --> CUS
     APP & CUS --> R
     APP & CUS --> PG
     APP & CUS --> OC --> TP
-    APP -.->|host.docker.internal:8000| SQL[SQL Agent<br/>同机另一个进程]
+    APP -->|sql-net，带 API Key| SQL
+    SQL --> OC
     PT --> LK
     P & TP & LK --> GF
 ```
 
-SQL Agent 的代码在本仓库的 `ai-sql-agent/`，部署上还不在这套 compose 里：它是同机的另一个进程，监听 8000，员工实例经 `host.docker.internal:8000` 连它（地址由 `AI_HELPDESK_SQL_AGENT_URL` 决定）。
+SQL Agent（代码在 `ai-sql-agent/`）是这套 compose 里的 `sql-agent` 服务，按生产模式启动（就绪检查不过就不起来），只认 API Key。它只挂自己的网络 `sql-net`，**不发布宿主机端口**：发布了的话，任何容器都能经 `host.docker.internal` 连到它。`sql-net` 上还有员工实例（排队模式下连同它的 worker）、工作台、Prometheus 和 OTel Collector；客户实例、Nginx 和 Postgres 不在上面——Postgres 用超级用户连，挂上来就成了从客户实例进 `sql-net` 的跳板。工作台只挂 `sql-net`。所以客户实例到 SQL Agent 有两道：网络连不到，手里也没有 Key。
 
-共 12 个服务。只有 Nginx 的 80 端口对外，其余端口只绑本机：员工实例和工作台背后没有 API key，不能直接开放给其他机器。两个实例共用 Redis 和 PostgreSQL，并挂同一个模型设置目录：员工工作台保存模型连接后，客户实例几秒内跟上。观测栈（Collector / Tempo / Loki / Promtail / Grafana）与业务无耦合，不需要时删掉对应 service 即可，应用侧只是少了 trace 上报目标。
+它的状态（审计和反馈、运行记录、对话记忆、页面保存的模型连接）是 SQLite，在 `sql-agent-state` 卷里，不放进客服的 Postgres；只开一个副本。模型配置在它自己的 `deploy/sql-agent/sql-agent.env`，不和 `backend/.env` 共用（它也认不带前缀的 `OPENAI_API_KEY`）。语义层和四个业务库在 `deploy/sql-agent/data/`，只读挂载。
+
+共 13 个服务。只有 Nginx 的 80 端口对外，其余端口只绑本机：员工实例和工作台背后没有 API key，不能直接开放给其他机器。两个实例共用 Redis 和 PostgreSQL，并挂同一个模型设置目录：员工工作台保存模型连接后，客户实例几秒内跟上。观测栈（Collector / Tempo / Loki / Promtail / Grafana）与业务无耦合，不需要时删掉对应 service 即可，应用侧只是少了 trace 上报目标。
 
 两个后端实例是同一个镜像、同一套 Redis 和 Postgres，区别在配置：
 
@@ -213,7 +217,7 @@ SQL Agent 的代码在本仓库的 `ai-sql-agent/`，部署上还不在这套 co
 | 入口 | `127.0.0.1:8080`；工作台 `127.0.0.1:5174` 经 Docker 内网转发到它 | Nginx 的 80（`127.0.0.1:8081` 只给本机排障） |
 | 模型设置 | 本机控制台可改 | 只读（`AI_HELPDESK_MODEL_SETTINGS_EDITABLE=false`），几秒内跟上员工实例保存的设置 |
 | 跨会话记忆 | 开：读写 `memory_episodic` / `memory_profile` | 关（`ENABLE_CROSS_SESSION_MEMORY=false`），只留当前会话记忆 |
-| SQL Agent | 订单类问题委派给同机的 SQL Agent | 不接（`SQL_AGENT_URL` 留空），订单类问题只走知识库 |
+| SQL Agent | 订单类问题委派给 `http://sql-agent:8000`（经 `sql-net`，Key 是 `backend/.env` 的 `SQL_AGENT_API_KEY`） | 不接（`SQL_AGENT_URL`、`SQL_AGENT_API_KEY` 都留空，也不在 `sql-net` 上），订单类问题只走知识库 |
 | 工具循环 | 看 `backend/.env` 里的 `AI_HELPDESK_TOOL_LOOP` | 写死关（`AI_HELPDESK_TOOL_LOOP=off`） |
 | 事件日志 | 原文默认留 30 天，读接口开 | 原文留 14 天，读接口关（`AI_HELPDESK_EVENT_LOG_READ=off`） |
 | API key | 无（只绑本机） | `backend/.env.customer` 里配了 `AI_HELPDESK_API_KEY` 后，工单、对话、知识库等端点要 `X-API-Key`，`/chat` 开放 |

@@ -35,6 +35,15 @@ scrape_configs:
     scrape_interval: 10s
     metrics_path: '/metrics'
 
+  # SQL Agent（只挂 sql-net，Prometheus 两个网络都挂）。/metrics 不要 Key：只有 sql-net 上的服务连得到它
+  - job_name: 'ai-sql-agent'
+    static_configs:
+      - targets: ['sql-agent:8000']
+        labels:
+          service: 'ai-sql-agent'
+    scrape_interval: 15s
+    metrics_path: '/metrics'
+
   # Prometheus 自监控
   - job_name: 'prometheus'
     static_configs:

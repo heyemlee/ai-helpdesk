@@ -1,0 +1,29 @@
+{
+  "$comment": "SQL Agent 的 Key 和数据权限策略（docker-compose.yml 的 sql_agent_keys secret）。复制成 deploy/secrets/sql_agent_keys.json，把两个 REPLACE_ME 换成随机值：python3 -c \"import secrets; print(secrets.token_urlsafe(32))\"。不进 git。ai-helpdesk 那一把同时写进 backend/.env 的 SQL_AGENT_API_KEY。部署范围是 internal_single_tenant：Key 不能带 can_impersonate（生产就绪检查不过就不启动），所有 Key 看到的数据范围相同。策略只能提语义层里有的库（erp_db、prod_db、svc_db、wms_db），写错库名的话那把 Key 什么都查不到，启动检查会拦下。",
+  "keys": [
+    {
+      "$comment": "员工实例（ai-helpdesk 的 SQL_AGENT_API_KEY）。它调的时候 user_id 填 ai-helpdesk（SQL_AGENT_USER_ID 的默认值），和这里绑定的一致",
+      "key": "REPLACE_ME",
+      "caller": "ai-helpdesk",
+      "user_id": "ai-helpdesk",
+      "roles": ["support"]
+    },
+    {
+      "$comment": "控制台的 nginx 在服务端替浏览器带上的管理员 Key（统一控制台那一步才用上），浏览器拿不到",
+      "key": "REPLACE_ME",
+      "caller": "console",
+      "user_id": "console",
+      "roles": ["admin"],
+      "is_admin": true
+    }
+  ],
+  "policies": {
+    "support": {
+      "comment": "四个库只读，和接入 Key 之前一样。精简后的语义层里没有成本、毛利这类列（单位成本在精简时已去掉）",
+      "allow_tables": ["erp_db.*", "prod_db.*", "svc_db.*", "wms_db.*"]
+    },
+    "admin": {
+      "allow_tables": ["erp_db.*", "prod_db.*", "svc_db.*", "wms_db.*"]
+    }
+  }
+}

@@ -19,6 +19,12 @@ x-kafka-env: &kafka-env
   AI_HELPDESK_KAFKA_BOOTSTRAP: kafka:9092
   AI_HELPDESK_CONSUMER_METRICS_PORT: "9102"
 
+# 从员工实例 extends 来的消费者不委派查询，也不该连得到 SQL Agent：extends 会把员工实例的
+# 两个网络和 SQL_AGENT_URL 一起抄过来，这里显式改回只挂 ai-helpdesk-network、地址清空
+x-staff-consumer-env: &staff-consumer-env
+  <<: *kafka-env
+  SQL_AGENT_URL: ""
+
 x-consumer-health: &consumer-health
   test: ["CMD-SHELL", "curl -sf http://localhost:9102/metrics >/dev/null || exit 1"]
   interval: 30s
@@ -80,8 +86,10 @@ services:
     container_name: ai-helpdesk-kafka-topics
     command: ["python", "-m", "app.events", "topics", "--instance", "staff", "--instance", "customer"]
     ports: !reset []
+    networks: !override
+      - ai-helpdesk-network
     environment:
-      <<: *kafka-env
+      <<: *staff-consumer-env
     depends_on:
       kafka:
         condition: service_healthy
@@ -96,8 +104,10 @@ services:
     container_name: ai-helpdesk-projector-staff
     command: ["python", "-m", "app.events", "project", "--instance", "staff"]
     ports: !reset []
+    networks: !override
+      - ai-helpdesk-network
     environment:
-      <<: *kafka-env
+      <<: *staff-consumer-env
     depends_on:
       kafka-topics:
         condition: service_completed_successfully
@@ -130,8 +140,10 @@ services:
     container_name: ai-helpdesk-sampler-staff
     command: ["python", "-m", "app.events", "sample", "--instance", "staff"]
     ports: !reset []
+    networks: !override
+      - ai-helpdesk-network
     environment:
-      <<: *kafka-env
+      <<: *staff-consumer-env
     depends_on:
       kafka-topics:
         condition: service_completed_successfully

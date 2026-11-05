@@ -1,5 +1,7 @@
 # Grafana 数据源自动装配：Prometheus（指标）+ Tempo（trace）+ Loki（日志）。
-# Loki 的 derivedFields 把日志里的 trace_id 变成可点击链接，直接跳 Tempo。
+# Loki 的 derivedFields 把日志里的 trace id 变成可点击链接，直接跳 Tempo。
+# 只认 32 位十六进制（OTel 的 trace id）：SQL Agent 日志里的 trace_id 是它自己的 16 位 id，
+# 跳过去什么也查不到；它那一行里能跳的是 otel_trace_id。
 apiVersion: 1
 
 datasources:
@@ -24,6 +26,10 @@ datasources:
     jsonData:
       derivedFields:
         - name: trace_id
-          matcherRegex: '"trace_id":"(\w+)"'
+          matcherRegex: '"trace_id":"([0-9a-f]{32})"'
+          url: "$${__value.raw}"
+          datasourceUid: tempo
+        - name: otel_trace_id
+          matcherRegex: '"otel_trace_id":"([0-9a-f]{32})"'
           url: "$${__value.raw}"
           datasourceUid: tempo
