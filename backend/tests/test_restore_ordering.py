@@ -40,7 +40,9 @@ echo "$@" >> "$CMDLOG"
 # psql 那一步脚本会重定向 stdin，读掉免得管道破裂
 if [[ "$*" == *psql* ]]; then cat > /dev/null; fi
 # `docker inspect … --format` 要能给出卷名，否则脚本会判定"找不到 /data 卷"。
-# FAKE_SQL_AGENT_RUNNING 非空时，问容器在不在跑（.State.Running）回 true。
+# FAKE_SQL_AGENT_RUNNING 非空时，问容器在不在跑（.State.Running）回 true；
+# FAKE_NO_SQL_AGENT 非空时，SQL Agent 的容器不存在（inspect 失败）。
+if [[ "$1" == "inspect" && "$*" == *ai-helpdesk-sql-agent* && -n "$FAKE_NO_SQL_AGENT" ]]; then exit 1; fi
 if [[ "$1" == "inspect" ]]; then
     if [[ "$*" == *State.Running* && -n "$FAKE_SQL_AGENT_RUNNING" ]]; then echo true; else echo "fake_redis_volume"; fi
 fi
@@ -336,6 +338,25 @@ class TestSqlAgentState:
         start = _index_of(cmds, "start", "sql-agent")
         assert stop < replace < start
         assert "chown -R 10001:10001" in cmds[replace], "拷进去的文件要归镜像里的 ai_sql，不然它写不了自己的库"
+
+    def test_state_that_cannot_be_put_back_is_not_reported_as_restored(self, fake_repo):
+        """备份里有 SQL Agent 的状态、这边却没有它的卷：其余照常恢复、拉起，但不能报"恢复完成"。"""
+        state = fake_repo["backup"] / "sql-agent-state"
+        state.mkdir()
+        (state / "audit.db").write_bytes(b"sqlite")
+        env = dict(os.environ)
+        env["PATH"] = f"{fake_repo['bin']}:{env['PATH']}"
+        env["CMDLOG"] = str(fake_repo["cmdlog"])
+        env["FAKE_NO_SQL_AGENT"] = "1"
+        proc = subprocess.run(
+            ["bash", str(fake_repo["script"]), "restore", str(fake_repo["backup"])],
+            input="y\n", capture_output=True, text=True, env=env, timeout=120,
+        )
+        assert proc.returncode != 0
+        assert "恢复完成" not in proc.stdout
+        assert "恢复没有全部完成" in proc.stdout + proc.stderr
+        cmds = fake_repo["cmdlog"].read_text().splitlines()
+        assert _index_of(cmds, "start", "ai-helpdesk-customer"), "其余服务照样要拉起来"
 
     def test_an_old_backup_without_it_leaves_the_state_alone(self, fake_repo):
         cmds = _run_restore(fake_repo)

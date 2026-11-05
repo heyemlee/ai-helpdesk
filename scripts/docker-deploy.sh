@@ -483,8 +483,9 @@ restore_sql_agent_state() {
     volume="$(docker inspect ai-helpdesk-sql-agent \
         --format '{{range .Mounts}}{{if eq .Destination "/app/state"}}{{.Name}}{{end}}{{end}}' 2>/dev/null)"
     if [ -z "$volume" ]; then
-        print_warn "找不到 SQL Agent 的状态卷（容器还没建过），它的状态没有恢复：先起一次 sql-agent 再恢复"
-        return 0
+        # 备份里有这一份却放不回去：算没恢复完（调用方会明说），不能报"恢复完成"
+        print_error "找不到 SQL Agent 的状态卷（容器还没建过），它的状态没有恢复：先起一次 sql-agent 再恢复"
+        return 1
     fi
     if ! docker run --rm -v "$volume:/state" -v "$backup_dir/sql-agent-state:/backup:ro" alpine:3.20 \
             sh -c 'rm -f /state/*.db /state/*.db-wal /state/*.db-shm /state/model_settings.json && cp -a /backup/. /state/ && chown -R 10001:10001 /state && { [ ! -f /state/model_settings.json ] || chmod 600 /state/model_settings.json; }'; then
