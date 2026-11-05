@@ -463,6 +463,47 @@ for the evaluation set. `tests/test_bilingual_cases.py` locks that every gold SQ
 returns rows on the built-in demo data; those tests check the fixture only and are no
 substitute for a model run.
 
+### Questions forwarded from customer service (customer_cases.json)
+
+When a customer asks the helpdesk about an order, the helpdesk forwards the customer's
+own words to this agent, and the rows that come back count as a source for the answer.
+If the agent looks up the wrong order or the wrong field, the helpdesk repeats it. The
+150 evaluation cases are all phrased like an analyst ("list the … of …"); none is phrased
+like a customer. `customer_cases.json` fills that gap: 24 questions (19 Chinese, 5
+English) in the words customers use, such as "where is my order", "how much longer",
+"why hasn't it shipped", "when did it arrive", "has the replacement part gone out".
+Every question names its order number.
+
+```bash
+python -m benchmark.run_benchmark --customer --output runtime_data/customer_report.json
+```
+
+It differs from the evaluation set in three ways:
+
+- **It runs on the simplified business databases production uses** (`tools/simple_erp`:
+  orders, production, warehouse, delivery and after-sales). `--customer` builds them
+  from the fixed seed in a temp directory. The generator is deterministic: order
+  statuses, dates, amounts and line items match production's copy, only the customer
+  and supplier names are spelled differently, so every question is asked by order
+  number.
+- **It records the routing decision too.** Production's entry point first decides
+  "query the database or answer from the conversation"; questions routed to the second
+  path never reach a database. Each item records how production would route it
+  (`route`), but the pipeline still runs and is still scored against the gold SQL.
+- **It is not part of the gate.** The report shows it on its own line (`customer`).
+  It is not folded into single-database accuracy, and `gate.py` and `thresholds.json`
+  never read it.
+
+Judging is the same as for the evaluation set. The report also says why each wrong
+answer is wrong (`mismatch`): empty result, wrong row count, wrong values, or right
+values with too many columns. Only the first three can be repeated to a customer as a
+wrong fact, so the line counts silent errors with wrong values or row counts
+separately. Without model credentials the run uses the mock model and rule routing:
+that only shows the set runs and gets its own line, and the score means nothing.
+`tests/test_customer_cases.py` locks the fixture (every order exists, every gold SQL
+returns rows from one database, gold outputs only the facts asked for) and the offline
+run.
+
 ## Regenerating the dataset
 
 ```bash

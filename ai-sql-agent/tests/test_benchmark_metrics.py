@@ -323,3 +323,87 @@ class ResultMatchingTest(unittest.TestCase):
         self.assertTrue(
             result_matches([{"x": 1.0000000001}], [{"x": 1.0}])
         )
+
+
+class MismatchExplanationTest(unittest.TestCase):
+    """
+    答错时错在哪。**只用来看错因，不改判分**：判分仍然只看 result_matches。
+
+    要分开的是「多输出了列」和「取值不对」——前者取值全对，调用方照着说不会说错；
+    后者才是会被当成事实转述出去的那种。混在一个数里，看不出该修哪一头。
+    """
+
+    GOLD = [{"order_status": "配送中"}]
+
+    def _why(self, gold, predicted):
+        from benchmark.runner import explain_mismatch, result_matches
+
+        reason = explain_mismatch(gold, predicted)
+        # 解释和判分不许打架：答对就没有错因，答错就一定有
+        self.assertEqual(reason == "", result_matches(gold, predicted))
+        return reason
+
+    def test_correct_answer_has_no_reason(self):
+        self.assertEqual(self._why(self.GOLD, [{"order_no": "J26-00084", "order_status": "配送中"}]), "")
+
+    def test_right_values_with_too_many_columns(self):
+        predicted = [{"order_no": "J26-00084", "order_status": "配送中", "delivery_date": "2026-11-09"}]
+        self.assertEqual(self._why(self.GOLD, predicted), "extra_columns")
+
+    def test_wrong_value_is_not_mistaken_for_shape(self):
+        self.assertEqual(self._why(self.GOLD, [{"order_status": "生产中"}]), "wrong_values")
+
+    def test_wrong_value_with_extra_columns_is_still_wrong_values(self):
+        predicted = [{"order_no": "J26-00084", "order_status": "生产中", "delivery_date": "2026-11-09"}]
+        self.assertEqual(self._why(self.GOLD, predicted), "wrong_values")
+
+    def test_empty_and_row_count(self):
+        self.assertEqual(self._why(self.GOLD, []), "empty")
+        self.assertEqual(
+            self._why(self.GOLD, [{"order_status": "配送中"}, {"order_status": "配送中"}]), "row_count"
+        )
+
+    def test_every_reason_has_a_label(self):
+        from benchmark.runner import MISMATCH_LABELS
+
+        self.assertEqual(set(MISMATCH_LABELS), {"empty", "row_count", "wrong_values", "extra_columns"})
+
+
+class CustomerGroupStaysOutOfGateTest(unittest.TestCase):
+    """客服转来的问法单独一组：不并进 single_db，门禁的线一条都不碰它。"""
+
+    @staticmethod
+    def _report(categories):
+        report = BenchmarkReport(total=0, correct=0)
+        for category, (total, correct) in categories.items():
+            report.category_totals[category] = total
+            report.category_correct[category] = correct
+            report.total += total
+            report.correct += correct
+        return report
+
+    def test_customer_is_its_own_group(self):
+        from benchmark.runner import CUSTOMER_CATEGORY
+
+        gate_only = self._report({"single_table": (10, 9), "cross_db": (5, 4)})
+        mixed = self._report({"single_table": (10, 9), "cross_db": (5, 4), CUSTOMER_CATEGORY: (24, 3)})
+        grouped = mixed.grouped_accuracy()
+        self.assertEqual(grouped["single_db"], gate_only.grouped_accuracy()["single_db"])
+        self.assertEqual(grouped["cross_db"], gate_only.grouped_accuracy()["cross_db"])
+        self.assertEqual(grouped[CUSTOMER_CATEGORY], 3 / 24)
+
+    def test_customer_alone_does_not_report_a_single_db_number(self):
+        from benchmark.runner import CUSTOMER_CATEGORY
+
+        grouped = self._report({CUSTOMER_CATEGORY: (24, 20)}).grouped_accuracy()
+        self.assertEqual(list(grouped), [CUSTOMER_CATEGORY])
+
+    def test_gate_has_no_customer_line(self):
+        from benchmark.runner import CUSTOMER_CATEGORY
+
+        config = json.loads(THRESHOLDS.read_text(encoding="utf-8"))
+        for mode in ("full", "smoke"):
+            self.assertNotIn(CUSTOMER_CATEGORY, config[mode])
+        # 门禁跑的评测集里也不许混进这一类
+        dataset = json.loads((THRESHOLDS.parent / "dataset.json").read_text(encoding="utf-8"))
+        self.assertNotIn(CUSTOMER_CATEGORY, {item["category"] for item in dataset})

@@ -358,6 +358,34 @@ python -m benchmark.run_benchmark --dataset benchmark/bilingual_cases.json --rep
 判定口径与评测集相同。gold SQL 在内置演示数据上的结果非空由
 `tests/test_bilingual_cases.py` 锁住；那组测试只检查夹具本身，不替代模型回归。
 
+### 客服转来的问法（customer_cases.json）
+
+客户在客服那边问订单时，客服把客户原话直接转给 SQL Agent，查回来的数据算作回答的出处——
+SQL Agent 查错了单、拿错了字段，客服会照着说。150 条评测集全是分析员问法（「查询…的…」），
+客户问法一道也没有。`customer_cases.json` 补的就是这一段：24 道（中文 19、英文 5），用客户
+自己的说法问，比如「到哪了」「还要多久」「怎么还没发货」「哪天送到的」「补发的件寄出来没有」，
+每道都带单号。
+
+```bash
+python -m benchmark.run_benchmark --customer --output runtime_data/customer_report.json
+```
+
+和评测集有三处不同：
+
+- **库是生产在用的精简业务库**（`tools/simple_erp`：订单、生产、仓储、配送与售后）。
+  `--customer` 在临时目录里按固定种子现建。生成器是确定的，按单号查到的状态、日期、金额、
+  明细和生产那份一致，只有客户名、供应商名的写法不同，所以题目一律按单号问。
+- **路由也记。** 生产入口先判「查库还是对话问答」，判成对话问答的根本不查库。每一题都记下
+  生产入口会怎么判（`route`），但流水线照样跑、照样按标准答案打分。
+- **不进门禁。** 报告里单独一行（`customer`），不并进单库准确率，`gate.py` 和
+  `thresholds.json` 不读它。
+
+判定口径与评测集相同。报告还会写出每道错题错在哪（`mismatch`）：查出来是空的、行数不对、
+取值不对、取值都对只是多输出了列。前三种才会被客服当成事实转述给客户，所以静默答错里
+「取值或行数不对」的单独数一遍。没有模型凭证时走 Mock 模型和规则路由，只能说明这一类跑得通、
+能单独出一行，分数没有意义。题集本身（单号都在库里、gold SQL 只读一个库且结果非空、
+gold 只输出问到的事实）和离线跑通由 `tests/test_customer_cases.py` 锁住。
+
 ## 重新生成数据集
 
 ```bash

@@ -34,6 +34,23 @@ EXIT_INCOMPLETE = 3
 2 是「压根没法跑」（没配凭证）；3 是「跑到一半停了，已完成的部分存下来了，没有结论」。
 """
 
+CUSTOMER_CATEGORY = "customer"
+"""
+客服转来的问法（`customer_cases.json`）。
+
+客服问订单时，把客户的原话直接转给 SQL Agent；150 条评测集全是分析员问法。这一类在
+报告里单独成一组，**不并进 single_db，也不进任何一条门禁线**——题目对着的是精简业务库，
+和门禁用的内置演示库不是一套结构，两边的数字不能放在一起比。
+"""
+
+MISMATCH_LABELS = {
+    "empty": "查出来是空的",
+    "row_count": "行数不对",
+    "wrong_values": "取值不对",
+    "extra_columns": "取值都对，多输出了列",
+}
+"""答错时错在哪（`explain_mismatch`）。只用来看错因，不参与判分。"""
+
 
 def save_incomplete(payload: Dict[str, Any], output: Optional[str], prefix: str) -> Path:
     """
@@ -185,6 +202,21 @@ class BenchmarkItemResult:
     看上去像是步骤 2 写错了。缺了这一段，每次定位都要重跑一次评测。
     """
 
+    mismatch: str = ""
+    """查成功了但答错时错在哪，取值见 MISMATCH_LABELS；答对、没查成时为空。不参与判分。"""
+
+    route: str = ""
+    """
+    生产入口（/query、A2A）这一题会走哪条路：`database_query` 查库，`data_qa` 对话问答、不查库。
+
+    空串表示这次没看路由——150 条评测集直接调流水线，不看。客服转来的问法要看：生产上
+    客户原话先过这一道，判成 `data_qa` 的根本不会查库，客服那边收到的是「不需要查」。
+    这一项只记录，不改判分：流水线照样跑、照样按标准答案打分。
+    """
+
+    route_signals: List[str] = field(default_factory=list)
+    """路由的依据。模型判的带 `model_classifier`；没有它就是规则判的（没配模型，或模型调用失败退回了规则）。"""
+
     @property
     def silent_error(self) -> bool:
         """
@@ -321,24 +353,27 @@ class BenchmarkReport:
         """
         汇总口径：cross_db 单独一桶，其余五类合并为 single_db。
 
-        与文档的「单库 / 多库执行准确率」两个指标对齐。
+        与文档的「单库 / 多库执行准确率」两个指标对齐。客服转来的问法（customer）
+        另成一桶，不算进 single_db——它不是门禁线，见 CUSTOMER_CATEGORY。
         """
+        separate = ("cross_db", CUSTOMER_CATEGORY)
         single_total = sum(
             total
             for category, total in self.category_totals.items()
-            if category != "cross_db"
+            if category not in separate
         )
         single_correct = sum(
             correct
             for category, correct in self.category_correct.items()
-            if category != "cross_db"
+            if category not in separate
         )
 
         grouped = {}
         if single_total:
             grouped["single_db"] = single_correct / single_total
-        if self.category_totals.get("cross_db"):
-            grouped["cross_db"] = self.category_accuracy("cross_db")
+        for category in separate:
+            if self.category_totals.get(category):
+                grouped[category] = self.category_accuracy(category)
         return grouped
 
     def to_dict(self) -> Dict[str, Any]:
@@ -382,6 +417,9 @@ class BenchmarkReport:
                     "degrade_reason": item.degrade_reason,
                     "silent_error": item.silent_error,
                     "flag_reasons": item.flag_reasons,
+                    "mismatch": item.mismatch,
+                    "route": item.route,
+                    "route_signals": item.route_signals,
                     "steps": item.steps,
                 }
                 for item in self.items
@@ -411,9 +449,21 @@ class GoldExecutor:
     那会造出两个和现有库业务重复的库，语义检索选库时直接打架，而跨库准确率
     本来就只有 16%。夹具要跟着语义层重写，那是一件独立的数据工作；在它做完
     之前，这里的正确行为是**拒绝出分**。
+
+    `prod` / `svc` 两个别名给客服转来的问法（`customer_cases.json`）用：那份题对着的是
+    生产在用的精简业务库（`tools/simple_erp`，erp_db / prod_db / svc_db / wms_db），
+    由 `benchmark.customer` 现建。150 条评测集在精简库上照样 ATTACH 不上 `pm` / `mes`，
+    照样拒绝出分；客服问法在内置演示库上 ATTACH 不上 `prod` / `svc`，也一样。
     """
 
-    ALIASES = {"erp_db": "erp", "pm_db": "pm", "mes_db": "mes", "wms_db": "wms"}
+    ALIASES = {
+        "erp_db": "erp",
+        "pm_db": "pm",
+        "mes_db": "mes",
+        "wms_db": "wms",
+        "prod_db": "prod",
+        "svc_db": "svc",
+    }
 
     def __init__(self, db_paths: Dict[str, str], required_aliases=None):
         self.conn = sqlite3.connect(":memory:")
@@ -433,8 +483,9 @@ class GoldExecutor:
                 f"但当前语义层只提供 {'、'.join(available) or '（空）'}。\n"
                 "这不是配置问题，是夹具与语义层对不上——继续跑只会给出一个"
                 "看起来正常、实际毫无意义的准确率。\n"
-                "要么把 AI_SQL_SEMANTIC_DIR 切回内置演示元数据（留空），"
-                "要么按新语义层重写 benchmark/dataset.json。"
+                "150 条评测集要用内置演示元数据（AI_SQL_SEMANTIC_DIR 留空），"
+                "或者按新语义层重写 benchmark/dataset.json；"
+                "客服转来的问法用 `run_benchmark --customer`，它自己现建精简业务库。"
             )
 
     def execute(self, sql: str) -> List[Dict[str, Any]]:
@@ -495,6 +546,11 @@ def result_matches(gold_rows: List[Dict[str, Any]], predicted_rows: List[Dict[st
     if predicted_width > gold_width + MAX_EXTRA_COLUMNS:
         return False
 
+    return _rows_cover(gold_rows, predicted_rows)
+
+
+def _rows_cover(gold_rows: List[Dict[str, Any]], predicted_rows: List[Dict[str, Any]]) -> bool:
+    """gold 的每一行都能一一对应到模型的某一行，且值多重集是它的子集（不看列数）。"""
     pool = [Counter(_normalize_values(row)) for row in predicted_rows]
     for row in gold_rows:
         wanted = Counter(_normalize_values(row))
@@ -506,6 +562,25 @@ def result_matches(gold_rows: List[Dict[str, Any]], predicted_rows: List[Dict[st
             return False
         pool.pop(index)
     return True
+
+
+def explain_mismatch(gold_rows: List[Dict[str, Any]], predicted_rows: List[Dict[str, Any]]) -> str:
+    """
+    答错时错在哪，取值见 MISMATCH_LABELS；答对返回空串。**只用来看错因，不改判分**。
+
+    分开看的理由：静默错误里有一类只是「多输出了列」——取值全对，行数也对，只是超过了
+    MAX_EXTRA_COLUMNS。对调用方（比如客服照着结果回答客户）这一类不会说错话；取值不对、
+    行数不对才是会被当成事实转述出去的那种。混在一个数里，看不出该修哪一头。
+    """
+    if result_matches(gold_rows, predicted_rows):
+        return ""
+    if gold_rows and not predicted_rows:
+        return "empty"
+    if len(gold_rows) != len(predicted_rows):
+        return "row_count"
+    if _rows_cover(gold_rows, predicted_rows):
+        return "extra_columns"
+    return "wrong_values"
 
 
 def _normalize_values(row: Dict[str, Any]) -> List[str]:
@@ -532,6 +607,7 @@ class BenchmarkRunner:
         dataset_path: Optional[str | Path] = None,
         enable_repair: Optional[bool] = None,
         access_check: Optional[Callable[[], List[Dict[str, Any]]]] = None,
+        router=None,
     ):
         """
         enable_repair 显式传 False 时关闭回溯回路，用于测「回溯增益」：
@@ -539,8 +615,12 @@ class BenchmarkRunner:
 
         access_check 返回当前已知的模型访问故障，非空就停止评测；默认读本进程的
         模型访问状态表（不发请求）。测试里可以换成自己的。
+
+        router（`ai_sql_agent.pipeline.DynamicIntentRouter`）给了的话，每一题先问一遍生产入口
+        会不会查库，记进 `route`；不给就不看（150 条评测集不看）。只记录，不改判分。
         """
         self.access_check = access_check or model_access_blocks
+        self.router = router
         if pipeline is None:
             from ai_sql_agent.pipeline import Text2SQLPipeline
             from ai_sql_agent.pipeline.objects import PipelineConfig
@@ -700,8 +780,25 @@ class BenchmarkRunner:
             len(in_prompt),
         )
 
+    def _route(self, query: str) -> tuple:
+        """
+        生产入口对这句话的路由：(route, signals)；没给 router 时是 ("", [])。
+
+        上下文是空的会话——客服每次委派带的是这一轮的原话，这里按会话里的第一句算。
+        """
+        if self.router is None:
+            return "", []
+        from ai_sql_agent.memory import ConversationMemoryContext, ShortTermContext
+
+        context = ConversationMemoryContext(
+            short_term=ShortTermContext(session_id="benchmark", user_id="benchmark")
+        )
+        decision = self.router.route(query, context)
+        return decision.route.value, list(decision.signals)
+
     def _run_item(self, item: Dict) -> BenchmarkItemResult:
         gold_rows = self.gold_executor.execute(item["gold_sql"])
+        route, route_signals = self._route(item["query"])
 
         try:
             pipeline_result = self.pipeline.run(item["query"])
@@ -712,6 +809,8 @@ class BenchmarkRunner:
                 query=item["query"],
                 correct=False,
                 error=f"pipeline异常：{exc}",
+                route=route,
+                route_signals=route_signals,
             )
 
         # 每个分支都把降级带出去：run() 靠它认出「这一题是在模型故障里跑的」。
@@ -728,6 +827,8 @@ class BenchmarkRunner:
                 error="未生成执行步骤",
                 degraded=degraded,
                 degrade_reason=degrade_reason,
+                route=route,
+                route_signals=route_signals,
             )
 
         final_log = pipeline_result.step_logs[-1]
@@ -750,10 +851,13 @@ class BenchmarkRunner:
                 retrieved_columns=retrieved_count,
                 degraded=degraded,
                 degrade_reason=degrade_reason,
+                route=route,
+                route_signals=route_signals,
             )
 
         predicted_rows = list(execution.get("rows") or [])
         correct = result_matches(gold_rows, predicted_rows)
+        mismatch = "" if correct else explain_mismatch(gold_rows, predicted_rows)
         recall_hit, retrieval_hit, retrieved_count = self._score_recall(
             item, pipeline_result
         )
@@ -775,6 +879,9 @@ class BenchmarkRunner:
             degrade_reason=degrade_reason,
             flag_reasons=flag_reasons,
             steps=self._step_trace(pipeline_result),
+            mismatch=mismatch,
+            route=route,
+            route_signals=route_signals,
         )
 
 
