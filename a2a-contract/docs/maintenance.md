@@ -136,7 +136,7 @@ python3 tools/check_contract.py version
 > Markdown 里 ``` 围栏内的行、YAML 里的非注释行。附录 A 的变更记录可以放心
 > 写"把 `--branch v1.12` 改成 `--branch v1.13`"，那是叙述，不会误报。
 
-[`.github/workflows/contract.yml`](../.github/workflows/contract.yml) 在 push / PR / 打 tag 时
+仓库根目录 CI（[`.github/workflows/ci.yml`](../../.github/workflows/ci.yml)）的 `A2A contract` job
 调的就是不带参数的那一条。**workflow 里不再写第二份断言**——判据分散在两个地方，
 就等于没有一个地方知道判据的全集，v1.10 那次漂移漏掉的正是当时写在 workflow 里
 那段 bash 没覆盖的两处。
