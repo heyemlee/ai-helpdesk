@@ -1,18 +1,17 @@
 """
-跨仓库契约用例：把 a2a-contract 的 golden fixtures 喂进本仓库的消费路径。
+契约用例：把 a2a-contract 的 golden fixtures 喂进客服这一侧的消费路径。
 
 **为什么用例不放在这里维护。** 契约同时约束两侧，用例分叉就是副本漂移换个
 地方复发——这份契约已经为此翻过一次车。所以清单只有一份
-（`fixtures/index.json`），CI 把契约仓库 checkout 到固定 tag，两侧各读同一份。
-**不要把 fixture 拷进本仓库**：拷贝就是副本，副本会漂。
+（`a2a-contract/fixtures/index.json`），客服和 SQL Agent 各读同一份。
+**不要把 fixture 拷进 backend/**：拷贝就是副本，副本会漂。
 
-跑之前需要契约仓库在本地。CI 里 checkout 到 `A2A_CONTRACT_DIR`；本地开发时
-自动找同级目录的 `../a2a-contract`。找不到就 skip——除非设了
-`A2A_CONTRACT_REQUIRED=1`，那时候 skip 变成 fail。CI 必须设它：
-一个"契约仓库没拉下来就自动跳过"的门禁等于没有门禁，而且它坏掉的时候
+契约就在本仓库的 `a2a-contract/` 下，默认读它；`A2A_CONTRACT_DIR` 可以显式指到
+别处。找不到就 skip——除非设了 `A2A_CONTRACT_REQUIRED=1`，那时候 skip 变成 fail。
+CI 必须设它：一个"找不到契约就自动跳过"的门禁等于没有门禁，而且它坏掉的时候
 测试报告是绿的。
 
-组别与断言口径见契约仓库的 `CONSUMER-TESTS.md`。对调用方最关键的是：
+组别与断言口径见 `a2a-contract/CONSUMER-TESTS.md`。对调用方最关键的是：
 
 - **B 组**（schema 反例）：缺字段 / 字符串布尔必须被拒，且**回落方向必须是
   "不可信"**。第二条比第一条更重要——校验失败之后走哪条分支才是真正的安全属性。
@@ -34,21 +33,17 @@ import pathlib
 import pytest
 
 from app.core.evidence import assess, normalize_delegation_result
-from app.tools.a2a_client import A2AClient, progress_label
+from app.tools.a2a_client import CONTRACT_VERSION, A2AClient, progress_label
 
-# ── 定位契约仓库 ─────────────────────────────────────────────────────────────
+# ── 定位契约 ─────────────────────────────────────────────────────────────────
 
 _TRUE = {"1", "true", "yes", "on"}
 REQUIRED = os.getenv("A2A_CONTRACT_REQUIRED", "").strip().lower() in _TRUE
 
-# 契约仓库钉在 tag 上，不跟 main（附录 B）。CI 里 checkout 哪个 tag 见
-# .github/workflows/ci.yml 的 contract job；改 tag 是一次要过评审的改动。
-PINNED_TAG = "v1.13"
-
 
 def _contract_dir() -> pathlib.Path | None:
     """
-    找契约仓库。**显式配置了就只认它**，不回退。
+    找契约目录。**显式配置了就只认它**，不回退。
 
     回退在这里是有害的：`A2A_CONTRACT_DIR` 指错时悄悄换成另一个副本，
     测试照样绿，而绿的是别的东西。宁可找不到就报错。
@@ -57,9 +52,9 @@ def _contract_dir() -> pathlib.Path | None:
     if explicit:
         path = pathlib.Path(explicit)
         return path if (path / "fixtures" / "index.json").is_file() else None
-    # 没配就按本地开发的惯例找：两个仓库并排放在同一个 Projects 目录下
-    sibling = pathlib.Path(__file__).resolve().parents[3] / "a2a-contract"
-    return sibling if (sibling / "fixtures" / "index.json").is_file() else None
+    # 没配就读本仓库的 a2a-contract/：和这份代码在同一个提交上
+    in_repo = pathlib.Path(__file__).resolve().parents[2] / "a2a-contract"
+    return in_repo if (in_repo / "fixtures" / "index.json").is_file() else None
 
 
 CONTRACT = _contract_dir()
@@ -67,12 +62,12 @@ CONTRACT = _contract_dir()
 if CONTRACT is None and REQUIRED:
     raise RuntimeError(
         "A2A_CONTRACT_REQUIRED=1 但找不到 a2a-contract。"
-        f"把它 checkout 到 tag {PINNED_TAG} 并用 A2A_CONTRACT_DIR 指过去。"
+        "它应该在本仓库的 a2a-contract/ 下；设了 A2A_CONTRACT_DIR 的话，看它指得对不对。"
     )
 
 pytestmark = pytest.mark.skipif(
     CONTRACT is None,
-    reason=f"找不到 a2a-contract（设 A2A_CONTRACT_DIR 指向 tag {PINNED_TAG} 的检出）",
+    reason="找不到 a2a-contract（本仓库的 a2a-contract/，或 A2A_CONTRACT_DIR 指的目录）",
 )
 
 
@@ -102,7 +97,7 @@ def _validator_for(schema_rel: str):
     """
     jsonschema = pytest.importorskip(
         "jsonschema",
-        reason="pip install jsonschema referencing（CI 里在 contract job 装）",
+        reason="pip install jsonschema referencing（CI 的 Backend 和 A2A contract 两个 job 都装）",
     )
     from referencing import Registry, Resource
 
@@ -191,19 +186,22 @@ VALID_DATA_PARTS = [c for c in DATA_PART_CASES if c["expect"] == "valid"]
 INVALID_DATA_PARTS = [c for c in DATA_PART_CASES if c["expect"] == "invalid"]
 
 
-def test_contract_version_is_the_one_we_pinned():
+def test_contract_version_matches_the_client():
     """
-    拉到的契约必须就是 `PINNED_TAG` 那一版。
+    客户端声明实现的契约版本（`a2a_client.CONTRACT_VERSION`）必须等于契约的
+    `contract_version`。
 
-    **这条断言是 v1.12 补的，此前一直缺。** `PINNED_TAG` 之前只出现在报错文案里，
-    没有任何机器在比对——契约仓库升了版本而这边没跟，本文件照样全绿，
-    跑的却是另一组用例。对面仓库（ai-sql-agent）一直有这条断言，而且正是它在
-    v1.10 抓出了 `contract_version` 停在 v1.9 的漂移。同一个洞在这边一直开着，
-    只是没人踩到。
+    契约和两侧代码在同一个仓库里，不再按 tag 拉取；这条断言接替原来的
+    「拉到的就是钉的那一版」。契约升了版本而客户端没跟，这里会红——升版本时
+    这里、SQL Agent 的 `CONTRACT_VERSION`、`fixtures/index.json` 三处在同一个 PR 里改。
+
+    这条断言 v1.12 才补上。在那之前，钉的版本号只出现在报错文案里，没有任何机器
+    在比对。SQL Agent 那边一直有同样的断言，v1.10 抓出 `contract_version` 停在
+    v1.9 的漂移的正是它。
     """
-    assert CONTRACT_INDEX["contract_version"] == PINNED_TAG, (
-        f"契约仓库是 {CONTRACT_INDEX['contract_version']}，这边钉的是 {PINNED_TAG}。"
-        "两侧不再跑同一组用例——要么改 PINNED_TAG，要么 checkout 对的 tag。"
+    assert CONTRACT_INDEX["contract_version"] == CONTRACT_VERSION, (
+        f"契约是 {CONTRACT_INDEX['contract_version']}，客户端声明的是 {CONTRACT_VERSION}。"
+        "升契约版本时要同时改 app/tools/a2a_client.py 的 CONTRACT_VERSION。"
     )
 
 

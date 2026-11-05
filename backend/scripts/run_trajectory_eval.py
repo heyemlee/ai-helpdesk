@@ -12,8 +12,8 @@
     .venv/bin/python scripts/run_trajectory_eval.py --pilot --yes      # 试跑：每类 1 条，各 1 次
     .venv/bin/python scripts/run_trajectory_eval.py --yes              # 正式：B、C 各 3 次，其余各 1 次
 
-订单查询走桩，读 a2a-contract 的 fixtures/data-part/：设 A2A_CONTRACT_DIR，或把那个仓库放在
-本仓库同级目录。报告默认写到 data/runtime/trajectory/<时间>/（不进版本库）。
+订单查询走桩，读本仓库 a2a-contract/fixtures/data-part/ 下的夹具（A2A_CONTRACT_DIR 可以指到别处）。
+报告默认写到 data/runtime/trajectory/<时间>/（不进版本库）。
 """
 import argparse
 import asyncio

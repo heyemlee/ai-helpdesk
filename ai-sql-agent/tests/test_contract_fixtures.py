@@ -1,12 +1,13 @@
 """
-跨仓库契约用例（CONSUMER-TESTS.md 的 A/B/C/D/E/F 六组）。
+契约用例（CONSUMER-TESTS.md 的 A/B/C/D/E/F 六组）。
 
-**fixtures 不拷进本仓库。** 拷贝就是副本，副本会漂，这份契约已经为此翻过一次车
-（契约附录 B）。CI 把 a2a-contract checkout 到固定 tag，这里按
-`fixtures/index.json` 消费——用例清单只有一份，在契约仓库里。
+**fixtures 不拷进 ai-sql-agent/。** 拷贝就是副本，副本会漂，这份契约已经为此翻过一次车
+（契约附录 B）。契约和这份代码在同一个仓库里，这里按 `a2a-contract/fixtures/index.json`
+消费——用例清单只有一份。
 
-契约仓库位置按这个顺序找：`A2A_CONTRACT_DIR` → `./.contract` → `../a2a-contract`。
-一个都没有就整组跳过（本地开发不必 clone 契约仓库），CI 里那一步是必跑的。
+契约位置按这个顺序找：`A2A_CONTRACT_DIR` → 本仓库的 `a2a-contract/`。
+都找不到就整组跳过，除非设了 `A2A_CONTRACT_REQUIRED=1`，那时导入就失败。CI 设了它：
+一个找不到契约就自动跳过的门禁等于没有门禁。
 """
 from __future__ import annotations
 
@@ -19,17 +20,16 @@ from typing import Any, Dict, List, Optional
 
 from fastapi.testclient import TestClient
 
+from ai_sql_agent.a2a.server import CONTRACT_VERSION
 from ai_sql_agent.api.trust import assess, execution_status_of
 from ai_sql_agent.core import get_settings
 
-CONTRACT_TAG = "v1.13"
-"""CI 钉在这个 tag 上。契约仓库改了版本，这里也要跟着改——那是一次有意的动作。"""
+REQUIRED = os.environ.get("A2A_CONTRACT_REQUIRED", "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _find_contract() -> Optional[Path]:
     candidates = [
         os.environ.get("A2A_CONTRACT_DIR", ""),
-        ".contract",
         str(Path(__file__).resolve().parents[2] / "a2a-contract"),
     ]
     for item in candidates:
@@ -42,10 +42,10 @@ def _find_contract() -> Optional[Path]:
 
 
 CONTRACT = _find_contract()
-SKIP_REASON = (
-    "找不到 a2a-contract。设 A2A_CONTRACT_DIR，或 "
-    f"git clone --depth 1 --branch {CONTRACT_TAG} <repo> .contract"
-)
+SKIP_REASON = "找不到 a2a-contract（本仓库的 a2a-contract/，或 A2A_CONTRACT_DIR 指的目录）"
+
+if CONTRACT is None and REQUIRED:
+    raise RuntimeError(f"A2A_CONTRACT_REQUIRED=1，但{SKIP_REASON}")
 
 
 def _index() -> dict:
@@ -98,9 +98,11 @@ class FixtureSchemaTest(unittest.TestCase):
                 f"{'valid' if valid else 'invalid'}",
             )
 
-    def test_contract_version_is_the_one_we_pinned(self):
-        # 契约仓库升了版本而这边没跟，属于「两侧不再跑同一组用例」，要显式发现
-        self.assertEqual(_index()["contract_version"], CONTRACT_TAG)
+    def test_contract_version_matches_the_server(self):
+        # 服务端声明实现的版本必须等于契约的 contract_version。契约升了版本而这边没跟，
+        # 属于「两侧不再跑同一组用例」，要显式发现。升版本时这里的 CONTRACT_VERSION、
+        # 客服的 CONTRACT_VERSION、index.json 三处在同一个 PR 里改
+        self.assertEqual(_index()["contract_version"], CONTRACT_VERSION)
 
 
 @unittest.skipIf(CONTRACT is None, SKIP_REASON)
