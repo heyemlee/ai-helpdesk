@@ -1,0 +1,16 @@
+{
+  "ready": true,
+  "checks": {
+    "memory_store": "ok",
+    "audit_store": "ok",
+    "pgvector": "not_configured (内存向量索引)",
+    "model_credentials": "missing (模型走 Mock)",
+    "model_provider": "openai (gpt-5.6-luna)",
+    "auth_mode": "api_key",
+    "model_circuits": {
+      "coder": "closed",
+      "rerank": "closed",
+      "thinking": "closed"
+    }
+  }
+}

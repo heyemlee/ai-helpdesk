@@ -1,0 +1,1771 @@
+{
+  "components": {
+    "schemas": {
+      "FeedbackRequest": {
+        "description": "用户对一次回答的判定。\n\n只收 trace_id 与判定本身：问题原文与实际执行的 SQL 从审计记录回填，\n不接受客户端传。否则「这条 SQL 是对的」就成了客户端说了算，\n而认证 SQL 会被注入后续查询的生成 Prompt。",
+        "properties": {
+          "comment": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Comment",
+            "type": "string"
+          },
+          "trace_id": {
+            "minLength": 1,
+            "title": "Trace Id",
+            "type": "string"
+          },
+          "verdict": {
+            "enum": [
+              "correct",
+              "wrong",
+              "unsure"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "trace_id",
+          "verdict"
+        ],
+        "title": "FeedbackRequest",
+        "type": "object"
+      },
+      "FeedbackResponse": {
+        "properties": {
+          "certified": {
+            "default": false,
+            "title": "Certified",
+            "type": "boolean"
+          },
+          "message": {
+            "default": "",
+            "title": "Message",
+            "type": "string"
+          },
+          "recorded": {
+            "title": "Recorded",
+            "type": "boolean"
+          },
+          "trace_id": {
+            "title": "Trace Id",
+            "type": "string"
+          },
+          "verdict": {
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "recorded",
+          "trace_id",
+          "verdict"
+        ],
+        "title": "FeedbackResponse",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HistoryItem": {
+        "description": "一条历史查询（不含结果集，结果不落审计）。",
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "databases": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Databases",
+            "type": "array"
+          },
+          "degraded": {
+            "default": false,
+            "title": "Degraded",
+            "type": "boolean"
+          },
+          "duration_ms": {
+            "default": 0.0,
+            "title": "Duration Ms",
+            "type": "number"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "execution_status": {
+            "default": "",
+            "title": "Execution Status",
+            "type": "string"
+          },
+          "failed_steps": {
+            "default": 0,
+            "title": "Failed Steps",
+            "type": "integer"
+          },
+          "has_risk": {
+            "default": false,
+            "title": "Has Risk",
+            "type": "boolean"
+          },
+          "query": {
+            "title": "Query",
+            "type": "string"
+          },
+          "repaired_steps": {
+            "default": 0,
+            "title": "Repaired Steps",
+            "type": "integer"
+          },
+          "route": {
+            "default": "",
+            "title": "Route",
+            "type": "string"
+          },
+          "run_id": {
+            "default": "",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "session_id": {
+            "default": "",
+            "title": "Session Id",
+            "type": "string"
+          },
+          "sqls": {
+            "default": [],
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "title": "Sqls",
+            "type": "array"
+          },
+          "status_code": {
+            "default": 200,
+            "title": "Status Code",
+            "type": "integer"
+          },
+          "success": {
+            "default": true,
+            "title": "Success",
+            "type": "boolean"
+          },
+          "tables": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Tables",
+            "type": "array"
+          },
+          "total_tokens": {
+            "default": 0,
+            "title": "Total Tokens",
+            "type": "integer"
+          },
+          "trace_id": {
+            "title": "Trace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "trace_id",
+          "created_at",
+          "query"
+        ],
+        "title": "HistoryItem",
+        "type": "object"
+      },
+      "HistoryResponse": {
+        "properties": {
+          "items": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/HistoryItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id"
+        ],
+        "title": "HistoryResponse",
+        "type": "object"
+      },
+      "PreviewFilterModel": {
+        "additionalProperties": false,
+        "properties": {
+          "column": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Column",
+            "type": "string"
+          },
+          "op": {
+            "enum": [
+              "eq",
+              "ne",
+              "contains",
+              "starts_with",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "is_empty",
+              "not_empty"
+            ],
+            "title": "Op",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": "",
+            "title": "Value"
+          }
+        },
+        "required": [
+          "column",
+          "op"
+        ],
+        "title": "PreviewFilterModel",
+        "type": "object"
+      },
+      "PreviewRequest": {
+        "additionalProperties": false,
+        "description": "一页预览。**没有 SQL 字段，也不会有**：能表达的只有「哪几行、怎么排」。\n\n多余的字段直接 422（`extra=\"forbid\"`），不是悄悄忽略——有人往这里塞\n`sql` 时，应该得到一个明确的「这个接口不收这个」，而不是一次看似成功的调用。",
+        "properties": {
+          "filters": {
+            "items": {
+              "$ref": "#/components/schemas/PreviewFilterModel"
+            },
+            "maxItems": 5,
+            "title": "Filters",
+            "type": "array"
+          },
+          "page": {
+            "default": 1,
+            "maximum": 1000000.0,
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "default": 25,
+            "maximum": 500.0,
+            "minimum": 1.0,
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "search": {
+            "default": "",
+            "maxLength": 100,
+            "title": "Search",
+            "type": "string"
+          },
+          "sort": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PreviewSortModel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "user_id": {
+            "default": "",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "title": "PreviewRequest",
+        "type": "object"
+      },
+      "PreviewSortModel": {
+        "additionalProperties": false,
+        "properties": {
+          "column": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Column",
+            "type": "string"
+          },
+          "direction": {
+            "default": "asc",
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "title": "Direction",
+            "type": "string"
+          }
+        },
+        "required": [
+          "column"
+        ],
+        "title": "PreviewSortModel",
+        "type": "object"
+      },
+      "ProfileRequest": {
+        "additionalProperties": false,
+        "description": "一张表的概况。和预览一样只收「看哪些行」：搜索词与筛选条件，同义、同上限。\n没有页码和排序——聚合结果与它们无关。",
+        "properties": {
+          "breakdowns": {
+            "default": true,
+            "title": "Breakdowns",
+            "type": "boolean"
+          },
+          "filters": {
+            "items": {
+              "$ref": "#/components/schemas/PreviewFilterModel"
+            },
+            "maxItems": 5,
+            "title": "Filters",
+            "type": "array"
+          },
+          "search": {
+            "default": "",
+            "maxLength": 100,
+            "title": "Search",
+            "type": "string"
+          },
+          "user_id": {
+            "default": "",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "title": "ProfileRequest",
+        "type": "object"
+      },
+      "QueryRequest": {
+        "description": "自然语言查询请求。",
+        "properties": {
+          "enable_long_term": {
+            "default": false,
+            "title": "Enable Long Term",
+            "type": "boolean"
+          },
+          "query": {
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          },
+          "session_id": {
+            "minLength": 1,
+            "title": "Session Id",
+            "type": "string"
+          },
+          "user_id": {
+            "minLength": 1,
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "session_id",
+          "query"
+        ],
+        "title": "QueryRequest",
+        "type": "object"
+      },
+      "QueryResponse": {
+        "properties": {
+          "answer": {
+            "title": "Answer",
+            "type": "string"
+          },
+          "as_of": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "as_of_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of Source"
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "degrade_reason": {
+            "default": "",
+            "title": "Degrade Reason",
+            "type": "string"
+          },
+          "degraded": {
+            "default": false,
+            "title": "Degraded",
+            "type": "boolean"
+          },
+          "execution_status": {
+            "default": "failed",
+            "title": "Execution Status",
+            "type": "string"
+          },
+          "failed_steps": {
+            "default": 0,
+            "title": "Failed Steps",
+            "type": "integer"
+          },
+          "has_risk": {
+            "default": false,
+            "title": "Has Risk",
+            "type": "boolean"
+          },
+          "queried_database": {
+            "title": "Queried Database",
+            "type": "boolean"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "repaired_steps": {
+            "default": 0,
+            "title": "Repaired Steps",
+            "type": "integer"
+          },
+          "result_truncated": {
+            "default": false,
+            "title": "Result Truncated",
+            "type": "boolean"
+          },
+          "route": {
+            "title": "Route",
+            "type": "string"
+          },
+          "selected_databases": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Selected Databases",
+            "type": "array"
+          },
+          "step_logs": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/StepLogResponse"
+            },
+            "title": "Step Logs",
+            "type": "array"
+          },
+          "steps": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/StepLogResponse"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "succeeded_steps": {
+            "default": 0,
+            "title": "Succeeded Steps",
+            "type": "integer"
+          },
+          "trace_id": {
+            "default": "",
+            "title": "Trace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "route",
+          "confidence",
+          "reason",
+          "answer",
+          "queried_database"
+        ],
+        "title": "QueryResponse",
+        "type": "object"
+      },
+      "SaveMemoryRequest": {
+        "description": "用户主动保存结构化结果到个人知识库。",
+        "properties": {
+          "columns": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "database": {
+            "default": "",
+            "title": "Database",
+            "type": "string"
+          },
+          "query": {
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          },
+          "result": {
+            "additionalProperties": true,
+            "title": "Result",
+            "type": "object"
+          },
+          "sql": {
+            "default": "",
+            "title": "Sql",
+            "type": "string"
+          },
+          "tables": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Tables",
+            "type": "array"
+          },
+          "user_id": {
+            "minLength": 1,
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "query",
+          "result"
+        ],
+        "title": "SaveMemoryRequest",
+        "type": "object"
+      },
+      "StepLogResponse": {
+        "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "as_of_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of Source"
+          },
+          "column_units": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "default": {},
+            "title": "Column Units",
+            "type": "object"
+          },
+          "database": {
+            "title": "Database",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "final_sql": {
+            "title": "Final Sql",
+            "type": "string"
+          },
+          "repair_attempts": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Repair Attempts",
+            "type": "array"
+          },
+          "risk_findings": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Risk Findings",
+            "type": "array"
+          },
+          "row_count": {
+            "title": "Row Count",
+            "type": "integer"
+          },
+          "row_limit": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Row Limit"
+          },
+          "rows": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "source_records": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Source Records",
+            "type": "array"
+          },
+          "sql": {
+            "title": "Sql",
+            "type": "string"
+          },
+          "success": {
+            "title": "Success",
+            "type": "boolean"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "database",
+          "sql",
+          "final_sql",
+          "success",
+          "row_count"
+        ],
+        "title": "StepLogResponse",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "自然语言数据查询 Agent：动态路由 + 三层 Schema 检索 + CoT 规划 + SQL 生成 + MCP 路由执行 + 长短期记忆。",
+    "title": "AI SQL Agent API",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/a2a": {
+      "post": {
+        "operationId": "a2a_endpoint_a2a_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "A2A Endpoint"
+      }
+    },
+    "/a2a/databases": {
+      "get": {
+        "description": "生效中的业务库清单（契约 §4.5）。\n\nAgent Card 里已经带了同一份，这个端点是给「只想拉清单、不想解析整张 Card」\n的调用方用的。两处同源，不会各说各话。",
+        "operationId": "database_manifest_a2a_databases_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Database Manifest A2A Databases Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Database Manifest"
+      }
+    },
+    "/admin/circuit/reset": {
+      "post": {
+        "description": "手动复位模型熔断器，并清掉已记下的模型访问故障（凭证被拒 / 额度耗尽 / 模型无权限）。\n\n模型侧确认恢复后不想等冷却、或者凭证 / 额度在服务端修好了又不想重启时用。\n（换一把 Key 不用来这里：在页面上保存模型连接时会自动清一遍，见 `/admin/model`。）\n这里**不验证**凭证是不是真的好了：清掉之后，下一个真实请求会再去试一次，\n还是被拒就重新记下。需要管理员身份；没有、也不打算有匿名的复位入口。",
+        "operationId": "reset_circuits_admin_circuit_reset_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Reset Circuits Admin Circuit Reset Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Reset Circuits"
+      }
+    },
+    "/admin/model": {
+      "delete": {
+        "description": "丢掉页面保存的模型连接，回到环境变量和 `.env` 给出的那一份，立刻生效。",
+        "operationId": "clear_model_admin_model_delete",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Clear Model Admin Model Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Clear Model"
+      },
+      "get": {
+        "description": "现在用的模型连接（主链路和 Embedding），以及这个请求能不能改它。",
+        "operationId": "model_status_admin_model_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Model Status Admin Model Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Model Status"
+      },
+      "put": {
+        "description": "保存模型连接并立刻生效。之后它压过环境变量和 `.env`，直到有人调 DELETE。\n\n这里不验证连接能不能用——先调 `/admin/model/test`。保存一份不通的连接不会让服务挂掉：\n问答会照「模型不可用」降级，直到换成一份能用的。",
+        "operationId": "save_model_admin_model_put",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Save Model Admin Model Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Save Model"
+      }
+    },
+    "/admin/model/embedding": {
+      "delete": {
+        "description": "丢掉页面保存的 Embedding，回到服务端配置的那一种，并按它重建检索索引。\n\n服务端配的是远端、而它调不通时，和启动时一样退回本地哈希向量（状态里的 `fallback`）。",
+        "operationId": "clear_embedding_model_admin_model_embedding_delete",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Clear Embedding Model Admin Model Embedding Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Clear Embedding Model"
+      },
+      "put": {
+        "description": "换 Embedding：测试 → 用新模型把 Schema 检索索引整个建好 → 保存 → 换上。\n\n要几秒到几十秒（Schema 里每张表、每个字段都要算一次向量）。测试没通过、索引建不出来、\n文件写不了，都在换上之前停下：正在用的索引和保存的文件都不动。",
+        "operationId": "save_embedding_model_admin_model_embedding_put",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Save Embedding Model Admin Model Embedding Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Save Embedding Model"
+      }
+    },
+    "/admin/model/embedding/models": {
+      "post": {
+        "description": "这个 Embedding 接口提供哪些向量模型。Key 留空的规则和 Embedding 的连接测试一样。",
+        "operationId": "list_embedding_models_admin_model_embedding_models_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Embedding Models Admin Model Embedding Models Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Embedding Models"
+      }
+    },
+    "/admin/model/embedding/test": {
+      "post": {
+        "description": "拿提交的 Embedding 连接算一段文本的向量，不保存。Key 留空的规则和保存时一样。",
+        "operationId": "test_embedding_admin_model_embedding_test_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Test Embedding Admin Model Embedding Test Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Test Embedding"
+      }
+    },
+    "/admin/model/models": {
+      "post": {
+        "description": "这个连接的接口提供哪些模型（`GET /models`），给页面的下拉框用。不调模型、不保存。\n\nKey 留空的规则和连接测试一样：接口地址换了主机就必须填。",
+        "operationId": "list_chat_models_admin_model_models_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Chat Models Admin Model Models Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Chat Models"
+      }
+    },
+    "/admin/model/test": {
+      "post": {
+        "description": "拿提交的连接试一下，不保存。会真的调用模型（每个模型名一条极短的请求）。\n\nKey 留空 = 用现有的那把，规则和保存时一样：接口地址换了主机就必须填。",
+        "operationId": "test_model_admin_model_test_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Test Model Admin Model Test Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Test Model"
+      }
+    },
+    "/admin/schema/reload": {
+      "post": {
+        "description": "手动重建 Schema 索引。\n\n业务库改了结构又不想等下一个轮询周期时用；\n定时轮询由 SchemaWatcher 负责（AI_SQL_SCHEMA_REFRESH_SECONDS）。",
+        "operationId": "reload_schema_admin_schema_reload_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Reload Schema Admin Schema Reload Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Reload Schema"
+      }
+    },
+    "/admin/schema/status": {
+      "get": {
+        "description": "查看各库当前指纹与是否有未生效的变更。",
+        "operationId": "schema_status_admin_schema_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Schema Status Admin Schema Status Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Schema Status"
+      }
+    },
+    "/catalog": {
+      "get": {
+        "description": "当前身份能看到的业务数据目录：数据域 → 表 → 字段，带业务说明与单位。\n\n内容来自语义层与业务库真实表结构，按表列权限裁剪。库连不上时那个域带\n`status=unavailable`，不返回空清单。`refresh=true` 跳过表结构的短缓存\n（几秒内刚读过的不重读）。\n\n顺带返回本次请求解析出的身份与页面要用的服务能力（与 `/whoami` 相同），\n页面打开时一次请求就够。",
+        "operationId": "catalog_catalog_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "user_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "refresh",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Refresh",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Catalog Catalog Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Catalog"
+      }
+    },
+    "/catalog/{database}/{table}": {
+      "get": {
+        "description": "单张表的字段说明。表很多的部署里 `/catalog` 不带字段，按表从这里取。",
+        "operationId": "catalog_table_catalog__database___table__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "database",
+            "required": true,
+            "schema": {
+              "title": "Database",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "table",
+            "required": true,
+            "schema": {
+              "title": "Table",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "user_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Catalog Table Catalog  Database   Table  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Catalog Table"
+      }
+    },
+    "/catalog/{database}/{table}/profile": {
+      "post": {
+        "description": "一张表的概况：总行数、各字段填了多少、取值分布、按月的记录数。\n\n**只有聚合结果，没有任何一行记录。** 能统计的字段就是预览里看得到的那些，\n筛选条件与预览同义，走同一个执行器（授权关卡、只读校验、超时照旧）。\n一个字段的分布不受它自己的筛选条件影响（`own_filters_excluded`），\n所以页面上点了一个取值之后还能换成另一个。算不出来的分布记在 `skipped` 里。",
+        "operationId": "catalog_profile_catalog__database___table__profile_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "database",
+            "required": true,
+            "schema": {
+              "title": "Database",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "table",
+            "required": true,
+            "schema": {
+              "title": "Table",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Catalog Profile Catalog  Database   Table  Profile Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Catalog Profile"
+      }
+    },
+    "/catalog/{database}/{table}/rows": {
+      "post": {
+        "description": "只读预览一页真实数据，支持搜索、按列筛选、排序与翻页。\n\n走问答同一个执行器：表列权限在执行器入口再判一次，只读、行数上限与超时\n同样生效。返回里的 `as_of` 是**读库的时刻**，不是业务数据的日期；\n业务日期看 `date_ranges`（这批记录里日期列的最早与最晚值）。",
+        "operationId": "catalog_rows_catalog__database___table__rows_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "database",
+            "required": true,
+            "schema": {
+              "title": "Database",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "table",
+            "required": true,
+            "schema": {
+              "title": "Table",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Catalog Rows Catalog  Database   Table  Rows Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Catalog Rows"
+      }
+    },
+    "/feedback": {
+      "post": {
+        "description": "记录用户对一次回答的判定（对 / 错 / 说不准）。\n\n这是让工具越用越准的那条回路：\n\n- 标记「错」的问题进反面教材清单，用 `python -m ai_sql_agent.feedback export-dataset`\n  导进评测集——评测集原本全是我们自己出的模板题，真实用户问法与它的差距，\n  正是线上准确率与评测跑分的差距；\n- 标记「对」的查询成为认证范例，注入后续同类问题的生成 Prompt。\n\n问题原文与 SQL 都按 trace_id 从审计记录回填，不接受客户端传。",
+        "operationId": "submit_feedback_feedback_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeedbackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit Feedback"
+      }
+    },
+    "/feedback/stats": {
+      "get": {
+        "description": "线上反馈汇总：真实用户口径的准确率与静默错误率。\n\n与 benchmark 的区别是题目来自真实用户，不是我们自己出的。\n两个数差得远时，以这个为准——评测集只代表我们想到的问法。",
+        "operationId": "feedback_stats_feedback_stats_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Feedback Stats Feedback Stats Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Feedback Stats"
+      }
+    },
+    "/health": {
+      "get": {
+        "description": "存活探针：只回答“进程还在不在”，不查任何外部依赖。\n\n依赖抖动不应该让编排系统重启进程，那是就绪探针的职责。",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Health Health Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health"
+      }
+    },
+    "/history": {
+      "get": {
+        "description": "最近查询记录。\n\n默认只返回调用方自己的记录；管理员可以用 user_id 查他人，\n普通 Key 传别人的 user_id 会被拒绝——历史里有问题原文和 SQL，\n等同于数据访问面。",
+        "operationId": "history_history_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "user_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "History"
+      }
+    },
+    "/memory/save": {
+      "post": {
+        "description": "响应用户“保存到个人知识库”动作。",
+        "operationId": "save_memory_memory_save_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveMemoryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Save Memory Memory Save Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Memory"
+      }
+    },
+    "/metrics": {
+      "get": {
+        "description": "Prometheus 抓取端点（免鉴权，按内网访问设计）。",
+        "operationId": "metrics_metrics_get",
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Metrics"
+      }
+    },
+    "/query": {
+      "post": {
+        "description": "自然语言查询入口。\n\n动态路由决定进入 Text2SQL 链路还是对话问答链路。\n每次调用都会落一条审计记录（含 trace_id、SQL、命中表、token 用量），\n和一条 run 记录（响应头 `X-Run-Id`，事件日志见 `GET /runs/{run_id}/events`）。\n\n主体仍是同步的，放在线程池里跑（和以前 `def` 端点一样）；这一层只多做一件事：\n开着 `AI_SQL_CANCEL_ON_DISCONNECT`（默认开，契约 v1.13 §5.4）时盯着客户端，断开就取消这次 run。",
+        "operationId": "query_query_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Query"
+      }
+    },
+    "/readyz": {
+      "get": {
+        "description": "就绪探针：检查外部依赖，任一不可用就摘流量但不重启。\n\n检查项：记忆库可读写、向量后端可用（配置了 pgvector 时真连一次）、\n审计存储可写、模型凭证是否配置（缺失只降级为 Mock，不算不就绪）。",
+        "operationId": "readyz_readyz_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Readyz Readyz Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Readyz"
+      }
+    },
+    "/runs/{run_id}": {
+      "get": {
+        "description": "一次 run 的状态、入口、起止时间、用量和业务结论。",
+        "operationId": "get_run_runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "user_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Run Runs  Run Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Run"
+      }
+    },
+    "/runs/{run_id}/cancel": {
+      "post": {
+        "description": "取消一次正在跑的 run。生效在下一个检查点：SQL 立即中断，正在进行的那一次模型调用\n要等它返回（≤ 模型超时），结果丢弃，不再发新的调用。审计照写，配额照计。",
+        "operationId": "cancel_run_runs__run_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "user_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Cancel Run Runs  Run Id  Cancel Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Run"
+      }
+    },
+    "/runs/{run_id}/events": {
+      "get": {
+        "description": "按序号返回事件；`after` 是上一页最后一条的 seq，`limit` 最多 1000。",
+        "operationId": "get_run_events_runs__run_id__events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "title": "After",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 500,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "user_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Run Events Runs  Run Id  Events Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Run Events"
+      }
+    },
+    "/whoami": {
+      "get": {
+        "description": "本次请求解析出的身份，以及页面要用到的服务能力。\n\n`/query` 要求请求体里带 user_id，而绑定了用户的 Key 只接受它自己的那个 user_id。\n页面不该让员工去记这个值——从这里取。身份解析与 `/query` 是同一段代码，\n所以这里说你是谁，`/query` 就认你是谁。不查库、不调模型、不受数据浏览开关影响。",
+        "operationId": "whoami_whoami_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "user_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Whoami Whoami Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Whoami"
+      }
+    }
+  }
+}

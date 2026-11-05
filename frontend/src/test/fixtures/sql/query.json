@@ -1,0 +1,85 @@
+{
+  "run_id": "234e32cff5c5483b96e1a941cc2464a7",
+  "response": {
+    "trace_id": "eb9bae566ffc4b6b",
+    "degraded": false,
+    "degrade_reason": "",
+    "route": "database_query",
+    "confidence": 0.9,
+    "reason": "问题包含查询、统计、筛选或指标计算意图",
+    "answer": "已完成数据库查询。查询结果：[{\"database\": \"erp_db\", \"sql\": \"SELECT supplier_name\\nFROM supplier\\nWHERE on_time_rate < 0.9;\", \"success\": true, \"columns\": [\"supplier_name\"], \"rows\": [{\"supplier_name\": \"东顺五金\"}, {\"supplier_name\": \"杰森石英石\"}, {\"supplier_name\": \"广辉玻璃\"}], \"row_count\": 3, \"error\": null, \"truncated\": false, \"row_limit\": 1000, \"as_of\": \"2026-11-05T21:31:21.791Z\", \"as_of_source\": \"query_time\"}]",
+    "queried_database": true,
+    "selected_databases": [
+      "erp_db",
+      "wms_db",
+      "pm_db"
+    ],
+    "steps": [
+      {
+        "database": "erp_db",
+        "sql": "SELECT supplier_name\nFROM supplier\nWHERE on_time_rate < 0.9;",
+        "final_sql": "SELECT supplier_name\nFROM supplier\nWHERE on_time_rate < 0.9;",
+        "success": true,
+        "row_count": 3,
+        "truncated": false,
+        "rows": [
+          {
+            "supplier_name": "东顺五金"
+          },
+          {
+            "supplier_name": "杰森石英石"
+          },
+          {
+            "supplier_name": "广辉玻璃"
+          }
+        ],
+        "error": null,
+        "repair_attempts": [],
+        "risk_findings": [],
+        "row_limit": 1000,
+        "as_of": "2026-11-05T21:31:21.791Z",
+        "as_of_source": "query_time",
+        "column_units": {},
+        "source_records": []
+      }
+    ],
+    "step_logs": [
+      {
+        "database": "erp_db",
+        "sql": "SELECT supplier_name\nFROM supplier\nWHERE on_time_rate < 0.9;",
+        "final_sql": "SELECT supplier_name\nFROM supplier\nWHERE on_time_rate < 0.9;",
+        "success": true,
+        "row_count": 3,
+        "truncated": false,
+        "rows": [
+          {
+            "supplier_name": "东顺五金"
+          },
+          {
+            "supplier_name": "杰森石英石"
+          },
+          {
+            "supplier_name": "广辉玻璃"
+          }
+        ],
+        "error": null,
+        "repair_attempts": [],
+        "risk_findings": [],
+        "row_limit": 1000,
+        "as_of": "2026-11-05T21:31:21.791Z",
+        "as_of_source": "query_time",
+        "column_units": {},
+        "source_records": []
+      }
+    ],
+    "has_risk": false,
+    "execution_status": "success",
+    "succeeded_steps": 1,
+    "failed_steps": 0,
+    "repaired_steps": 0,
+    "result_truncated": false,
+    "as_of": "2026-11-05T21:31:21.791Z",
+    "as_of_source": "query_time",
+    "currency": null
+  }
+}

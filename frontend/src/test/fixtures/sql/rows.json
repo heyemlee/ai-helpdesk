@@ -1,0 +1,126 @@
+{
+  "database": "erp_db",
+  "table": "sales_order",
+  "columns": [
+    {
+      "name": "order_no",
+      "kind": "text",
+      "sortable": true
+    },
+    {
+      "name": "job_no",
+      "kind": "text",
+      "sortable": true
+    },
+    {
+      "name": "customer_name",
+      "kind": "text",
+      "sortable": true
+    },
+    {
+      "name": "order_amt",
+      "kind": "number",
+      "sortable": true
+    },
+    {
+      "name": "sign_date",
+      "kind": "date",
+      "sortable": true
+    },
+    {
+      "name": "order_status",
+      "kind": "text",
+      "sortable": true
+    }
+  ],
+  "rows": [
+    [
+      "SO-2024-001",
+      "J24001",
+      "万科精装1号楼",
+      1412500.0,
+      "2024-01-20",
+      "in_production"
+    ],
+    [
+      "SO-2024-002",
+      "J24002",
+      "绿城样板房",
+      429400.0,
+      "2024-02-11",
+      "delivered"
+    ],
+    [
+      "SO-2024-003",
+      "J24003",
+      "城建安置房",
+      2373000.0,
+      "2024-03-28",
+      "in_production"
+    ],
+    [
+      "SO-2024-004",
+      "J24004",
+      "李先生别墅",
+      171760.0,
+      "2024-03-15",
+      "in_production"
+    ],
+    [
+      "SO-2024-005",
+      "J24005",
+      "陈女士住宅",
+      97180.0,
+      "2024-03-02",
+      "delivered"
+    ],
+    [
+      "SO-2024-006",
+      "J24006",
+      "周先生公寓",
+      110740.0,
+      "2024-04-20",
+      "in_production"
+    ],
+    [
+      "SO-2024-007",
+      "J24007",
+      "消防改造项目",
+      680000.0,
+      "2024-04-05",
+      "signed"
+    ],
+    [
+      "SO-2024-008",
+      "J24008",
+      "孙女士住宅",
+      151420.0,
+      "2024-04-01",
+      "delivered"
+    ]
+  ],
+  "page": 1,
+  "page_size": 25,
+  "offset": 0,
+  "has_more": false,
+  "total_rows": 8,
+  "date_ranges": [
+    {
+      "column": "sign_date",
+      "min": "2024-01-20",
+      "max": "2024-04-20"
+    }
+  ],
+  "columns_hidden": false,
+  "columns_unsupported": [],
+  "cells_truncated": false,
+  "cell_limit": 2000,
+  "stable_order": true,
+  "search_columns": [],
+  "search_columns_limited": false,
+  "as_of": "2026-11-05T21:31:21.756Z",
+  "as_of_source": "query_time",
+  "dialect": "sqlite",
+  "sql": "SELECT SUBSTR(\"order_no\", 1, 2001) AS \"order_no\", SUBSTR(\"job_no\", 1, 2001) AS \"job_no\", SUBSTR(\"customer_name\", 1, 2001) AS \"customer_name\", \"order_amt\", \"sign_date\", SUBSTR(\"order_status\", 1, 2001) AS \"order_status\" FROM \"sales_order\" ORDER BY \"sales_order\".\"order_no\" ASC LIMIT ? OFFSET ?",
+  "trace_id": "5ea39d5eb7b64964"
+}

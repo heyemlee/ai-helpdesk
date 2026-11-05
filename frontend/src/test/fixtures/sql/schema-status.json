@@ -1,0 +1,11 @@
+{
+  "watcher_enabled": false,
+  "interval_seconds": 0.0,
+  "pending_changes": [],
+  "fingerprints": {
+    "erp_db": "7dd8e8bd8cb4",
+    "pm_db": "643a17032a33",
+    "mes_db": "d418fa3e07dc",
+    "wms_db": "4d3ad2067370"
+  }
+}

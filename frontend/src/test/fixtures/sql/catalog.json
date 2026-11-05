@@ -1,0 +1,2312 @@
+{
+  "source": "demo",
+  "domains": [
+    {
+      "database": "erp_db",
+      "kind": "erp",
+      "title": {
+        "en": "Orders & Purchasing",
+        "zh": "订单与采购"
+      },
+      "title_source": "preset",
+      "aliases": [
+        "ERP",
+        "ERP库",
+        "订单库",
+        "采购库"
+      ],
+      "description": "ERP 系统：订单与采购域。记录销售订单、采购单、供应商与付款，覆盖含税订单金额、采购金额、供应商准时率、付款状态等。",
+      "description_en": "",
+      "description_zh": "",
+      "dialect": "sqlite",
+      "documented": true,
+      "preview_supported": true,
+      "status": "available",
+      "status_reason": "",
+      "tables": [
+        {
+          "name": "sales_order",
+          "status": "available",
+          "documented": true,
+          "aliases": [
+            "销售订单表",
+            "订单表",
+            "签单表"
+          ],
+          "description": "销售订单表，记录客户签订的订单，含工程号、客户名称、含税订单金额、签单日期与订单状态。",
+          "primary_key": [
+            "order_no"
+          ],
+          "previewable": true,
+          "columns": [
+            {
+              "name": "order_no",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": true,
+              "primary_key": true,
+              "previewable": true,
+              "aliases": [
+                "订单号",
+                "订单编号"
+              ],
+              "description": "销售订单号。",
+              "usage": "唯一标识销售订单。",
+              "role": "join_key",
+              "unit": "",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "job_no",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "工程号",
+                "工程编号",
+                "项目号",
+                "job号"
+              ],
+              "description": "工程号，ERP 内部编码。与项目管理域的 project_code 指同一工程，但两库无外键约束。",
+              "usage": "跨库关联键：按命名约定对应 pm_db.project.project_code。",
+              "role": "join_key",
+              "unit": "",
+              "value_range": "",
+              "references": [
+                {
+                  "relation": "cross_database",
+                  "database": "pm_db",
+                  "table": "project",
+                  "column": "project_code",
+                  "note": "项目编号与 ERP 工程号是同一个工程"
+                }
+              ]
+            },
+            {
+              "name": "customer_name",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "客户",
+                "客户名称",
+                "甲方"
+              ],
+              "description": "客户名称，零售客户或工程项目名。",
+              "usage": "按客户筛选或展示订单。",
+              "role": "dimension",
+              "unit": "",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "order_amt",
+              "status": "available",
+              "documented": true,
+              "data_type": "REAL",
+              "kind": "number",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "订单金额",
+                "签单金额",
+                "成交金额",
+                "销售额"
+              ],
+              "description": "订单金额，**含税**。与项目管理域的 contract_amt（不含税合同额）口径不同，不可直接比较。",
+              "usage": "衡量订单规模；跨库与合同额比较时需注意含税/不含税差异。",
+              "role": "metric_filter",
+              "unit": "CNY",
+              "value_range": "> 0",
+              "references": []
+            },
+            {
+              "name": "sign_date",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "date",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "签单日期",
+                "签约日期",
+                "下单日期"
+              ],
+              "description": "签单日期。",
+              "usage": "按时间区间筛选订单。",
+              "role": "time",
+              "unit": "",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "order_status",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "订单状态",
+                "状态"
+              ],
+              "description": "订单状态：signed 已签单 / in_production 生产中 / delivered 已交付。",
+              "usage": "筛选各状态订单。",
+              "role": "filter",
+              "unit": "",
+              "value_range": "signed / in_production / delivered",
+              "references": []
+            }
+          ]
+        },
+        {
+          "name": "purchase_order",
+          "status": "available",
+          "documented": true,
+          "aliases": [
+            "采购单表",
+            "采购订单表",
+            "PO表"
+          ],
+          "description": "采购单表，记录向供应商下达的采购单，含工程号、供应商、含税采购金额、采购日期与到货状态。",
+          "primary_key": [
+            "po_no"
+          ],
+          "previewable": true,
+          "columns": [
+            {
+              "name": "po_no",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": true,
+              "primary_key": true,
+              "previewable": true,
+              "aliases": [
+                "采购单号",
+                "PO号"
+              ],
+              "description": "采购单号。",
+              "usage": "唯一标识采购单，关联付款表。",
+              "role": "join_key",
+              "unit": "",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "job_no",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "工程号",
+                "工程编号",
+                "项目号"
+              ],
+              "description": "工程号，标明这笔采购归属哪个工程。",
+              "usage": "按工程归集采购成本；跨库对应 project.project_code。",
+              "role": "join_key",
+              "unit": "",
+              "value_range": "",
+              "references": [
+                {
+                  "relation": "cross_database",
+                  "database": "pm_db",
+                  "table": "project",
+                  "column": "project_code",
+                  "note": "项目编号与采购单的工程号是同一个工程"
+                }
+              ]
+            },
+            {
+              "name": "supplier_id",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "供应商ID",
+                "供应商编号"
+              ],
+              "description": "供应商编号。",
+              "usage": "关联供应商表。",
+              "role": "join_key",
+              "unit": "",
+              "value_range": "",
+              "references": [
+                {
+                  "relation": "foreign_key",
+                  "database": "erp_db",
+                  "table": "supplier",
+                  "column": "supplier_id",
+                  "note": ""
+                }
+              ]
+            },
+            {
+              "name": "po_amt",
+              "status": "available",
+              "documented": true,
+              "data_type": "REAL",
+              "kind": "number",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "采购金额",
+                "采购额",
+                "进货金额",
+                "采购成本"
+              ],
+              "description": "采购金额，**含税**。ERP 缩写命名，字面无业务语义。",
+              "usage": "统计采购支出、按工程归集材料成本。",
+              "role": "metric_filter",
+              "unit": "CNY",
+              "value_range": "> 0",
+              "references": []
+            },
+            {
+              "name": "po_date",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "date",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "采购日期",
+                "下单日期"
+              ],
+              "description": "采购下单日期。",
+              "usage": "按时间区间统计采购。",
+              "role": "time",
+              "unit": "",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "po_status",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "采购状态",
+                "到货状态"
+              ],
+              "description": "采购单状态：ordered 已下单 / partial 部分到货 / received 已到货。",
+              "usage": "筛选未到货或已到货的采购单。",
+              "role": "filter",
+              "unit": "",
+              "value_range": "ordered / partial / received",
+              "references": []
+            }
+          ]
+        },
+        {
+          "name": "supplier",
+          "status": "available",
+          "documented": true,
+          "aliases": [
+            "供应商表",
+            "供方表"
+          ],
+          "description": "供应商表，记录供应商名称、供货品类与准时交付率。",
+          "primary_key": [
+            "supplier_id"
+          ],
+          "previewable": true,
+          "columns": [
+            {
+              "name": "supplier_id",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": true,
+              "primary_key": true,
+              "previewable": true,
+              "aliases": [
+                "供应商ID",
+                "供应商编号"
+              ],
+              "description": "供应商编号。",
+              "usage": "唯一标识供应商。",
+              "role": "join_key",
+              "unit": "",
+              "value_range": "",
+              "references": [
+                {
+                  "relation": "cross_database",
+                  "database": "wms_db",
+                  "table": "batch",
+                  "column": "supplier_id",
+                  "note": "ERP 供应商编号与入库批次的供应商编号同域"
+                }
+              ]
+            },
+            {
+              "name": "supplier_name",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "供应商",
+                "供应商名称",
+                "供方名称"
+              ],
+              "description": "供应商名称。",
+              "usage": "",
+              "role": "output_dimension",
+              "unit": "",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "category",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "品类",
+                "供货品类",
+                "材料类别",
+                "供货类别"
+              ],
+              "description": "供货品类：板材 / 五金 / 台面 / 涂料 / 玻璃。",
+              "usage": "按品类筛选供应商。",
+              "role": "dimension",
+              "unit": "",
+              "value_range": "板材 / 五金 / 台面 / 涂料 / 玻璃",
+              "references": []
+            },
+            {
+              "name": "on_time_rate",
+              "status": "available",
+              "documented": true,
+              "data_type": "REAL",
+              "kind": "number",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "准时率",
+                "准时交付率",
+                "及时率",
+                "交付准时率"
+              ],
+              "description": "准时交付率，0-1 之间的小数。",
+              "usage": "评估供应商交付表现，筛选准时率低的供应商。",
+              "role": "metric_filter",
+              "unit": "ratio",
+              "value_range": "0-1",
+              "references": []
+            }
+          ]
+        },
+        {
+          "name": "payment",
+          "status": "available",
+          "documented": true,
+          "aliases": [
+            "付款表",
+            "付款记录表"
+          ],
+          "description": "付款表，记录针对采购单的付款金额、付款日期与付款状态。",
+          "primary_key": [
+            "payment_id"
+          ],
+          "previewable": true,
+          "columns": [
+            {
+              "name": "payment_id",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": true,
+              "primary_key": true,
+              "previewable": true,
+              "aliases": [
+                "付款编号"
+              ],
+              "description": "付款记录编号。",
+              "usage": "唯一标识付款记录。",
+              "role": "join_key",
+              "unit": "",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "po_no",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "采购单号",
+                "PO号"
+              ],
+              "description": "关联的采购单号。",
+              "usage": "关联采购单表。",
+              "role": "join_key",
+              "unit": "",
+              "value_range": "",
+              "references": [
+                {
+                  "relation": "foreign_key",
+                  "database": "erp_db",
+                  "table": "purchase_order",
+                  "column": "po_no",
+                  "note": ""
+                }
+              ]
+            },
+            {
+              "name": "paid_amt",
+              "status": "available",
+              "documented": true,
+              "data_type": "REAL",
+              "kind": "number",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "已付金额",
+                "付款金额",
+                "实付金额"
+              ],
+              "description": "已付金额。",
+              "usage": "统计已付款金额、核对应付未付。",
+              "role": "metric",
+              "unit": "CNY",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "paid_date",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "date",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "付款日期"
+              ],
+              "description": "付款日期。",
+              "usage": "按时间统计付款。",
+              "role": "time",
+              "unit": "",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "pay_status",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "付款状态"
+              ],
+              "description": "付款状态：paid 已付清 / partial 部分支付。",
+              "usage": "筛选未付清的采购单。",
+              "role": "filter",
+              "unit": "",
+              "value_range": "paid / partial",
+              "references": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "database": "pm_db",
+      "kind": "pm",
+      "title": {
+        "en": "Projects & Costs",
+        "zh": "项目与成本"
+      },
+      "title_source": "preset",
+      "aliases": [
+        "项目库",
+        "项目管理库",
+        "工期库"
+      ],
+      "description": "项目管理系统：项目与工期域。记录项目、里程碑、变更单与验收，覆盖不含税合同额、预算、实际成本、工期节点、延期状态等。",
+      "description_en": "",
+      "description_zh": "",
+      "dialect": "sqlite",
+      "documented": true,
+      "preview_supported": true,
+      "status": "available",
+      "status_reason": "",
+      "tables": [
+        {
+          "name": "project",
+          "status": "available",
+          "documented": true,
+          "aliases": [
+            "项目表",
+            "工程表",
+            "项目信息表"
+          ],
+          "description": "项目表，记录工程项目的名称、所属板块、不含税合同额、预算、实际成本、工期与状态。",
+          "primary_key": [
+            "project_code"
+          ],
+          "previewable": true,
+          "columns": [
+            {
+              "name": "project_code",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": true,
+              "primary_key": true,
+              "previewable": true,
+              "aliases": [
+                "项目编号",
+                "项目号",
+                "工程号"
+              ],
+              "description": "项目编号。与 ERP 域的 job_no 指同一工程，两库间无外键，靠命名约定关联。",
+              "usage": "跨库关联键：按命名约定对应 erp_db 的 job_no。",
+              "role": "join_key",
+              "unit": "",
+              "value_range": "",
+              "references": [
+                {
+                  "relation": "cross_database",
+                  "database": "erp_db",
+                  "table": "sales_order",
+                  "column": "job_no",
+                  "note": "项目编号与 ERP 工程号是同一个工程"
+                },
+                {
+                  "relation": "cross_database",
+                  "database": "erp_db",
+                  "table": "purchase_order",
+                  "column": "job_no",
+                  "note": "项目编号与采购单的工程号是同一个工程"
+                },
+                {
+                  "relation": "cross_database",
+                  "database": "mes_db",
+                  "table": "work_order",
+                  "column": "job_no",
+                  "note": "项目编号与生产工单的工程号是同一个工程"
+                }
+              ]
+            },
+            {
+              "name": "project_name",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "项目名称",
+                "项目名",
+                "工程名称"
+              ],
+              "description": "项目名称。",
+              "usage": "",
+              "role": "output_dimension",
+              "unit": "",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "business_unit",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "业务板块",
+                "板块",
+                "子公司",
+                "事业部"
+              ],
+              "description": "所属业务板块：建筑装修 / 消防 / 地产 / 教育。",
+              "usage": "按板块分组统计，集团多子公司口径。",
+              "role": "dimension",
+              "unit": "",
+              "value_range": "建筑装修 / 消防 / 地产 / 教育",
+              "references": []
+            },
+            {
+              "name": "contract_amt",
+              "status": "available",
+              "documented": true,
+              "data_type": "REAL",
+              "kind": "number",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "合同额",
+                "合同金额",
+                "项目金额"
+              ],
+              "description": "合同额，**不含税**。与 ERP 的 order_amt/po_amt（含税）口径不同，跨库比较需注意。",
+              "usage": "衡量项目规模；与实际成本比较算毛利。",
+              "role": "metric_filter",
+              "unit": "CNY",
+              "value_range": "> 0",
+              "references": []
+            },
+            {
+              "name": "budget_amt",
+              "status": "available",
+              "documented": true,
+              "data_type": "REAL",
+              "kind": "number",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "预算",
+                "预算金额",
+                "项目预算"
+              ],
+              "description": "项目预算金额。",
+              "usage": "与实际成本比较判断是否超预算。",
+              "role": "metric_filter",
+              "unit": "CNY",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "actual_cost",
+              "status": "available",
+              "documented": true,
+              "data_type": "REAL",
+              "kind": "number",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "实际成本",
+                "实际花费",
+                "已发生成本"
+              ],
+              "description": "项目实际发生成本。",
+              "usage": "与预算比较判断超支；与合同额比较算毛利。",
+              "role": "metric_filter",
+              "unit": "CNY",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "start_date",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "date",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "开工日期",
+                "开始日期",
+                "启动日期"
+              ],
+              "description": "项目开工日期。",
+              "usage": "按时间区间筛选项目。",
+              "role": "time",
+              "unit": "",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "due_date",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "date",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "计划完工日期",
+                "交付日期",
+                "工期截止"
+              ],
+              "description": "项目计划完工日期。",
+              "usage": "判断是否延期。",
+              "role": "time",
+              "unit": "",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "project_status",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "项目状态",
+                "状态"
+              ],
+              "description": "项目状态：active 进行中 / completed 已完成。",
+              "usage": "筛选进行中或已完成的项目。",
+              "role": "filter",
+              "unit": "",
+              "value_range": "active / completed",
+              "references": []
+            }
+          ]
+        },
+        {
+          "name": "milestone",
+          "status": "available",
+          "documented": true,
+          "aliases": [
+            "里程碑表",
+            "节点表",
+            "工期节点表"
+          ],
+          "description": "里程碑表，记录项目关键节点的计划日期、实际日期与达成状态。",
+          "primary_key": [
+            "milestone_id"
+          ],
+          "previewable": true,
+          "columns": [
+            {
+              "name": "milestone_id",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": true,
+              "primary_key": true,
+              "previewable": true,
+              "aliases": [
+                "里程碑编号"
+              ],
+              "description": "里程碑编号。",
+              "usage": "唯一标识里程碑。",
+              "role": "join_key",
+              "unit": "",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "project_code",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "项目编号",
+                "项目号"
+              ],
+              "description": "所属项目编号。",
+              "usage": "关联项目表。",
+              "role": "join_key",
+              "unit": "",
+              "value_range": "",
+              "references": [
+                {
+                  "relation": "foreign_key",
+                  "database": "pm_db",
+                  "table": "project",
+                  "column": "project_code",
+                  "note": ""
+                }
+              ]
+            },
+            {
+              "name": "milestone_name",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "里程碑",
+                "节点名称"
+              ],
+              "description": "里程碑名称，如深化图纸确认、首批柜体进场、整体验收。",
+              "usage": "按节点类型筛选。",
+              "role": "dimension",
+              "unit": "",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "plan_date",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "date",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "计划日期",
+                "计划完成日期"
+              ],
+              "description": "计划达成日期。",
+              "usage": "与实际日期比较判断延期。",
+              "role": "time",
+              "unit": "",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "actual_date",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "date",
+              "nullable": true,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "实际日期",
+                "实际完成日期"
+              ],
+              "description": "实际达成日期，未达成为空。",
+              "usage": "判断节点是否已达成。",
+              "role": "time",
+              "unit": "",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "ms_status",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "节点状态",
+                "里程碑状态",
+                "延期状态"
+              ],
+              "description": "里程碑状态：on_time 准时 / delayed 延期 / pending 未开始。",
+              "usage": "筛选延期节点。",
+              "role": "filter",
+              "unit": "",
+              "value_range": "on_time / delayed / pending",
+              "references": []
+            }
+          ]
+        },
+        {
+          "name": "change_order",
+          "status": "available",
+          "documented": true,
+          "aliases": [
+            "变更单表",
+            "变更表",
+            "签证表",
+            "加签表",
+            "增项表"
+          ],
+          "description": "变更单表，记录项目变更的金额、原因与审批日期。",
+          "primary_key": [
+            "change_id"
+          ],
+          "previewable": true,
+          "columns": [
+            {
+              "name": "change_id",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": true,
+              "primary_key": true,
+              "previewable": true,
+              "aliases": [
+                "变更单号"
+              ],
+              "description": "变更单编号。",
+              "usage": "唯一标识变更单。",
+              "role": "join_key",
+              "unit": "",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "project_code",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "项目编号",
+                "项目号"
+              ],
+              "description": "所属项目编号。",
+              "usage": "关联项目表。",
+              "role": "join_key",
+              "unit": "",
+              "value_range": "",
+              "references": [
+                {
+                  "relation": "foreign_key",
+                  "database": "pm_db",
+                  "table": "project",
+                  "column": "project_code",
+                  "note": ""
+                }
+              ]
+            },
+            {
+              "name": "change_amt",
+              "status": "available",
+              "documented": true,
+              "data_type": "REAL",
+              "kind": "number",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "变更金额",
+                "签证金额",
+                "增项金额",
+                "增项",
+                "加签"
+              ],
+              "description": "变更金额。",
+              "usage": "统计项目变更增减。",
+              "role": "metric",
+              "unit": "CNY",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "change_reason",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "变更原因",
+                "原因"
+              ],
+              "description": "变更原因。",
+              "usage": "分析变更成因。",
+              "role": "dimension",
+              "unit": "",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "approved_date",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "date",
+              "nullable": true,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "审批日期"
+              ],
+              "description": "审批通过日期，未审批为空。",
+              "usage": "筛选未审批的变更单。",
+              "role": "time",
+              "unit": "",
+              "value_range": "",
+              "references": []
+            }
+          ]
+        },
+        {
+          "name": "acceptance",
+          "status": "available",
+          "documented": true,
+          "aliases": [
+            "验收表",
+            "验收记录表"
+          ],
+          "description": "验收表，记录项目验收日期与验收结果。",
+          "primary_key": [
+            "acceptance_id"
+          ],
+          "previewable": true,
+          "columns": [
+            {
+              "name": "acceptance_id",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": true,
+              "primary_key": true,
+              "previewable": true,
+              "aliases": [
+                "验收编号"
+              ],
+              "description": "验收记录编号。",
+              "usage": "唯一标识验收记录。",
+              "role": "join_key",
+              "unit": "",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "project_code",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "项目编号"
+              ],
+              "description": "所属项目编号。",
+              "usage": "关联项目表。",
+              "role": "join_key",
+              "unit": "",
+              "value_range": "",
+              "references": [
+                {
+                  "relation": "foreign_key",
+                  "database": "pm_db",
+                  "table": "project",
+                  "column": "project_code",
+                  "note": ""
+                }
+              ]
+            },
+            {
+              "name": "accept_date",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "date",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "验收日期"
+              ],
+              "description": "验收日期。",
+              "usage": "按时间筛选验收记录。",
+              "role": "time",
+              "unit": "",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "accept_result",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "验收结果",
+                "验收结论"
+              ],
+              "description": "验收结果：passed 通过 / passed_with_defects 带缺陷通过。",
+              "usage": "筛选验收有问题的项目。",
+              "role": "filter",
+              "unit": "",
+              "value_range": "passed / passed_with_defects",
+              "references": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "database": "mes_db",
+      "kind": "mes",
+      "title": {
+        "en": "Production Progress",
+        "zh": "生产进度"
+      },
+      "title_source": "preset",
+      "aliases": [
+        "生产库",
+        "MES",
+        "车间库",
+        "工单库"
+      ],
+      "description": "生产系统：生产与工时域。记录生产工单、工时报工、产能统计与质检，覆盖生产工序、排产日期、工时、产量、良率等。",
+      "description_en": "",
+      "description_zh": "",
+      "dialect": "sqlite",
+      "documented": true,
+      "preview_supported": true,
+      "status": "available",
+      "status_reason": "",
+      "tables": [
+        {
+          "name": "work_order",
+          "status": "available",
+          "documented": true,
+          "aliases": [
+            "生产工单表",
+            "工单表",
+            "排产表"
+          ],
+          "description": "生产工单表，记录车间生产任务的工程号、车间、当前工序、状态、计划数量、排产与完工日期。",
+          "primary_key": [
+            "work_order_id"
+          ],
+          "previewable": true,
+          "columns": [
+            {
+              "name": "work_order_id",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": true,
+              "primary_key": true,
+              "previewable": true,
+              "aliases": [
+                "工单号",
+                "工单编号"
+              ],
+              "description": "生产工单号。",
+              "usage": "唯一标识工单，关联工时与质检表。",
+              "role": "join_key",
+              "unit": "",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "job_no",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "工程号",
+                "项目号",
+                "工程编号"
+              ],
+              "description": "工程号，标明工单归属哪个工程。与 ERP 域同名同义。",
+              "usage": "跨库关联到订单与项目。",
+              "role": "join_key",
+              "unit": "",
+              "value_range": "",
+              "references": [
+                {
+                  "relation": "cross_database",
+                  "database": "pm_db",
+                  "table": "project",
+                  "column": "project_code",
+                  "note": "项目编号与生产工单的工程号是同一个工程"
+                }
+              ]
+            },
+            {
+              "name": "workshop",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "车间",
+                "生产车间"
+              ],
+              "description": "生产车间。",
+              "usage": "按车间统计工单与产能。",
+              "role": "dimension",
+              "unit": "",
+              "value_range": "一车间 / 二车间",
+              "references": []
+            },
+            {
+              "name": "current_process",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "当前工序",
+                "工序",
+                "生产进度",
+                "做到哪一步"
+              ],
+              "description": "当前生产工序：开料 / 封边 / 排孔 / 组装 / 包装 / 已完工。",
+              "usage": "查询订单生产进度。",
+              "role": "output_dimension",
+              "unit": "",
+              "value_range": "开料 / 封边 / 排孔 / 组装 / 包装 / 已完工",
+              "references": []
+            },
+            {
+              "name": "work_status",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "工单状态",
+                "生产状态"
+              ],
+              "description": "工单状态：in_progress 在制 / finished 已完工。",
+              "usage": "筛选在制或已完工工单。",
+              "role": "filter",
+              "unit": "",
+              "value_range": "in_progress / finished",
+              "references": []
+            },
+            {
+              "name": "plan_qty",
+              "status": "available",
+              "documented": true,
+              "data_type": "INTEGER",
+              "kind": "number",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "计划数量",
+                "计划产量",
+                "工单数量"
+              ],
+              "description": "计划生产数量（柜体件数）。",
+              "usage": "衡量工单规模。",
+              "role": "metric",
+              "unit": "EA",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "schedule_date",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "date",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "排产日期",
+                "排产时间",
+                "开工日期"
+              ],
+              "description": "排产日期。",
+              "usage": "按排产时间筛选；识别已签单未排产的工程。",
+              "role": "time",
+              "unit": "",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "finish_date",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "date",
+              "nullable": true,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "完工日期",
+                "完工时间"
+              ],
+              "description": "完工日期，未完工为空。",
+              "usage": "统计完工情况与生产周期。",
+              "role": "time",
+              "unit": "",
+              "value_range": "",
+              "references": []
+            }
+          ]
+        },
+        {
+          "name": "labor_hour",
+          "status": "available",
+          "documented": true,
+          "aliases": [
+            "工时表",
+            "工时记录表",
+            "报工表"
+          ],
+          "description": "工时记录表，记录工人在各工序上投入的工时。",
+          "primary_key": [
+            "record_id"
+          ],
+          "previewable": true,
+          "columns": [
+            {
+              "name": "record_id",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": true,
+              "primary_key": true,
+              "previewable": true,
+              "aliases": [
+                "工时记录编号"
+              ],
+              "description": "工时记录编号。",
+              "usage": "唯一标识工时记录。",
+              "role": "join_key",
+              "unit": "",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "work_order_id",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "工单号"
+              ],
+              "description": "所属工单号。",
+              "usage": "关联工单表。",
+              "role": "join_key",
+              "unit": "",
+              "value_range": "",
+              "references": [
+                {
+                  "relation": "foreign_key",
+                  "database": "mes_db",
+                  "table": "work_order",
+                  "column": "work_order_id",
+                  "note": ""
+                }
+              ]
+            },
+            {
+              "name": "worker_name",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "工人",
+                "员工",
+                "师傅",
+                "工人姓名"
+              ],
+              "description": "工人姓名。",
+              "usage": "按人统计工时。",
+              "role": "dimension",
+              "unit": "",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "process_name",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "工序",
+                "工序名称"
+              ],
+              "description": "工序名称。",
+              "usage": "按工序统计工时。",
+              "role": "dimension",
+              "unit": "",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "hours",
+              "status": "available",
+              "documented": true,
+              "data_type": "REAL",
+              "kind": "number",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "工时",
+                "小时数",
+                "耗时"
+              ],
+              "description": "投入工时（小时）。",
+              "usage": "统计工时消耗、核算人工成本。",
+              "role": "metric",
+              "unit": "",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "work_date",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "date",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "报工日期",
+                "工作日期"
+              ],
+              "description": "报工日期。",
+              "usage": "按时间统计工时。",
+              "role": "time",
+              "unit": "",
+              "value_range": "",
+              "references": []
+            }
+          ]
+        },
+        {
+          "name": "capacity_stat",
+          "status": "available",
+          "documented": true,
+          "aliases": [
+            "产能表",
+            "产能统计表"
+          ],
+          "description": "产能统计表，按车间与统计日期记录计划产量与实际产量。",
+          "primary_key": [
+            "capacity_id"
+          ],
+          "previewable": true,
+          "columns": [
+            {
+              "name": "capacity_id",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": true,
+              "primary_key": true,
+              "previewable": true,
+              "aliases": [
+                "产能记录编号"
+              ],
+              "description": "产能记录编号。",
+              "usage": "唯一标识产能记录。",
+              "role": "join_key",
+              "unit": "",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "workshop",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "车间",
+                "生产车间"
+              ],
+              "description": "车间。",
+              "usage": "按车间统计产能。",
+              "role": "dimension",
+              "unit": "",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "stat_date",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "date",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "统计日期",
+                "统计月份"
+              ],
+              "description": "统计日期（月末）。",
+              "usage": "按月统计产能。",
+              "role": "time",
+              "unit": "",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "planned_qty",
+              "status": "available",
+              "documented": true,
+              "data_type": "INTEGER",
+              "kind": "number",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "计划产量",
+                "计划产能"
+              ],
+              "description": "计划产量。",
+              "usage": "与实际产量比较算达成率。",
+              "role": "metric",
+              "unit": "EA",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "actual_qty",
+              "status": "available",
+              "documented": true,
+              "data_type": "INTEGER",
+              "kind": "number",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "实际产量",
+                "实际产能",
+                "完成产量"
+              ],
+              "description": "实际产量。",
+              "usage": "与计划产量比较算达成率。",
+              "role": "metric",
+              "unit": "EA",
+              "value_range": "",
+              "references": []
+            }
+          ]
+        },
+        {
+          "name": "quality_check",
+          "status": "available",
+          "documented": true,
+          "aliases": [
+            "质检表",
+            "品质表",
+            "良率表"
+          ],
+          "description": "质检表，记录工单的送检数量、合格数量与良率。",
+          "primary_key": [
+            "check_id"
+          ],
+          "previewable": true,
+          "columns": [
+            {
+              "name": "check_id",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": true,
+              "primary_key": true,
+              "previewable": true,
+              "aliases": [
+                "质检编号"
+              ],
+              "description": "质检记录编号。",
+              "usage": "唯一标识质检记录。",
+              "role": "join_key",
+              "unit": "",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "work_order_id",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "工单号"
+              ],
+              "description": "所属工单号。",
+              "usage": "关联工单表。",
+              "role": "join_key",
+              "unit": "",
+              "value_range": "",
+              "references": [
+                {
+                  "relation": "foreign_key",
+                  "database": "mes_db",
+                  "table": "work_order",
+                  "column": "work_order_id",
+                  "note": ""
+                }
+              ]
+            },
+            {
+              "name": "checked_qty",
+              "status": "available",
+              "documented": true,
+              "data_type": "INTEGER",
+              "kind": "number",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "送检数量",
+                "检验数量"
+              ],
+              "description": "送检数量。",
+              "usage": "统计检验规模。",
+              "role": "metric",
+              "unit": "EA",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "passed_qty",
+              "status": "available",
+              "documented": true,
+              "data_type": "INTEGER",
+              "kind": "number",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "合格数量",
+                "通过数量"
+              ],
+              "description": "合格数量。",
+              "usage": "统计合格品数量。",
+              "role": "metric",
+              "unit": "EA",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "yield_rate",
+              "status": "available",
+              "documented": true,
+              "data_type": "REAL",
+              "kind": "number",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "良率",
+                "合格率",
+                "一次合格率",
+                "良品率",
+                "不良率"
+              ],
+              "description": "良率，合格数量除以送检数量，0-1 之间。",
+              "usage": "筛选良率低的工单，定位质量问题。",
+              "role": "metric_filter",
+              "unit": "ratio",
+              "value_range": "0-1",
+              "references": []
+            },
+            {
+              "name": "check_date",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "date",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "质检日期",
+                "检验日期"
+              ],
+              "description": "质检日期。",
+              "usage": "按时间统计质检。",
+              "role": "time",
+              "unit": "",
+              "value_range": "",
+              "references": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "database": "wms_db",
+      "kind": "wms",
+      "title": {
+        "en": "Materials & Inventory",
+        "zh": "物料与库存"
+      },
+      "title_source": "preset",
+      "aliases": [
+        "库存库",
+        "仓储库",
+        "WMS",
+        "物料库"
+      ],
+      "description": "仓储系统：库存与物料域。记录物料主数据、入库批次与库存快照，覆盖物料品类、安全库存、在库数量、批次成本等。",
+      "description_en": "",
+      "description_zh": "",
+      "dialect": "sqlite",
+      "documented": true,
+      "preview_supported": true,
+      "status": "available",
+      "status_reason": "",
+      "tables": [
+        {
+          "name": "material",
+          "status": "available",
+          "documented": true,
+          "aliases": [
+            "物料表",
+            "材料表",
+            "物料主数据"
+          ],
+          "description": "物料主数据表，记录物料名称、品类、计量单位与安全库存。",
+          "primary_key": [
+            "material_code"
+          ],
+          "previewable": true,
+          "columns": [
+            {
+              "name": "material_code",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": true,
+              "primary_key": true,
+              "previewable": true,
+              "aliases": [
+                "物料编码",
+                "material编码",
+                "料号"
+              ],
+              "description": "物料编码。",
+              "usage": "唯一标识物料，关联批次与库存快照。",
+              "role": "join_key",
+              "unit": "",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "material_name",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "物料",
+                "物料名称",
+                "材料名称",
+                "材料",
+                "料"
+              ],
+              "description": "物料名称，如 18mm三聚氰胺颗粒板、烤漆门板、阻尼铰链。",
+              "usage": "",
+              "role": "output_dimension",
+              "unit": "",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "category",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "品类",
+                "物料品类",
+                "材料类别"
+              ],
+              "description": "物料品类：板材 / 门板 / 五金 / 台面 / 辅料。",
+              "usage": "按品类分组统计。",
+              "role": "dimension",
+              "unit": "",
+              "value_range": "板材 / 门板 / 五金 / 台面 / 辅料",
+              "references": []
+            },
+            {
+              "name": "unit",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "单位",
+                "计量单位"
+              ],
+              "description": "计量单位。",
+              "usage": "展示物料单位。",
+              "role": "dimension",
+              "unit": "",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "safety_stock",
+              "status": "available",
+              "documented": true,
+              "data_type": "INTEGER",
+              "kind": "number",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "安全库存",
+                "安全库存量",
+                "最低库存",
+                "补货点",
+                "缺料"
+              ],
+              "description": "安全库存量，低于此值需补货。",
+              "usage": "与在库数量比较判断是否需要补货。",
+              "role": "metric_filter",
+              "unit": "",
+              "value_range": "",
+              "references": []
+            }
+          ]
+        },
+        {
+          "name": "batch",
+          "status": "available",
+          "documented": true,
+          "aliases": [
+            "批次表",
+            "入库批次表"
+          ],
+          "description": "批次表，记录物料入库批次的供应商、入库日期、入库数量与单位成本。",
+          "primary_key": [
+            "batch_no"
+          ],
+          "previewable": true,
+          "columns": [
+            {
+              "name": "batch_no",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": true,
+              "primary_key": true,
+              "previewable": true,
+              "aliases": [
+                "批次号",
+                "批号"
+              ],
+              "description": "批次号。",
+              "usage": "唯一标识入库批次。",
+              "role": "join_key",
+              "unit": "",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "material_code",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "物料编码",
+                "料号"
+              ],
+              "description": "物料编码。",
+              "usage": "关联物料表。",
+              "role": "join_key",
+              "unit": "",
+              "value_range": "",
+              "references": [
+                {
+                  "relation": "foreign_key",
+                  "database": "wms_db",
+                  "table": "material",
+                  "column": "material_code",
+                  "note": ""
+                }
+              ]
+            },
+            {
+              "name": "supplier_id",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "供应商ID",
+                "供应商编号"
+              ],
+              "description": "供应商编号。与 ERP 域的 supplier_id 同域，跨库关联。",
+              "usage": "跨库关联 ERP 的供应商表。",
+              "role": "join_key",
+              "unit": "",
+              "value_range": "",
+              "references": [
+                {
+                  "relation": "cross_database",
+                  "database": "erp_db",
+                  "table": "supplier",
+                  "column": "supplier_id",
+                  "note": "ERP 供应商编号与入库批次的供应商编号同域"
+                }
+              ]
+            },
+            {
+              "name": "in_date",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "date",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "入库日期",
+                "到货日期"
+              ],
+              "description": "入库日期。",
+              "usage": "按时间统计入库。",
+              "role": "time",
+              "unit": "",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "in_qty",
+              "status": "available",
+              "documented": true,
+              "data_type": "REAL",
+              "kind": "number",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "入库数量",
+                "到货数量"
+              ],
+              "description": "入库数量。",
+              "usage": "统计入库量。",
+              "role": "metric",
+              "unit": "EA",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "unit_cost",
+              "status": "available",
+              "documented": true,
+              "data_type": "REAL",
+              "kind": "number",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "单位成本",
+                "成本单价",
+                "进价"
+              ],
+              "description": "该批次的单位成本（敏感字段）。",
+              "usage": "核算材料成本。",
+              "role": "metric",
+              "unit": "CNY",
+              "value_range": "",
+              "references": []
+            }
+          ]
+        },
+        {
+          "name": "stock_snapshot",
+          "status": "available",
+          "documented": true,
+          "aliases": [
+            "库存表",
+            "库存快照表",
+            "结存表"
+          ],
+          "description": "库存快照表，按日期记录物料的在库数量与锁定数量。",
+          "primary_key": [
+            "snapshot_id"
+          ],
+          "previewable": true,
+          "columns": [
+            {
+              "name": "snapshot_id",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": true,
+              "primary_key": true,
+              "previewable": true,
+              "aliases": [
+                "快照编号"
+              ],
+              "description": "快照记录编号。",
+              "usage": "唯一标识快照记录。",
+              "role": "join_key",
+              "unit": "",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "material_code",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "text",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "物料编码",
+                "料号"
+              ],
+              "description": "物料编码。",
+              "usage": "关联物料表。",
+              "role": "join_key",
+              "unit": "",
+              "value_range": "",
+              "references": [
+                {
+                  "relation": "foreign_key",
+                  "database": "wms_db",
+                  "table": "material",
+                  "column": "material_code",
+                  "note": ""
+                }
+              ]
+            },
+            {
+              "name": "snapshot_date",
+              "status": "available",
+              "documented": true,
+              "data_type": "TEXT",
+              "kind": "date",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "快照日期",
+                "库存日期",
+                "结存日期"
+              ],
+              "description": "快照日期。",
+              "usage": "按日期查询库存。",
+              "role": "time",
+              "unit": "",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "on_hand_qty",
+              "status": "available",
+              "documented": true,
+              "data_type": "REAL",
+              "kind": "number",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "在库数量",
+                "库存数量",
+                "现有库存",
+                "结存数量"
+              ],
+              "description": "在库数量。",
+              "usage": "查询库存水平；与安全库存比较判断缺货。",
+              "role": "metric_filter",
+              "unit": "EA",
+              "value_range": "",
+              "references": []
+            },
+            {
+              "name": "locked_qty",
+              "status": "available",
+              "documented": true,
+              "data_type": "REAL",
+              "kind": "number",
+              "nullable": false,
+              "primary_key": false,
+              "previewable": true,
+              "aliases": [
+                "锁定数量",
+                "占用数量"
+              ],
+              "description": "已锁定数量（已被工单占用）。",
+              "usage": "计算可用库存 = 在库 - 锁定。",
+              "role": "metric",
+              "unit": "EA",
+              "value_range": "",
+              "references": []
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "access_limited": false,
+  "columns_included": true,
+  "glossary": [
+    {
+      "term": "超预算",
+      "definition": "超预算指项目实际成本已超过立项时批准的预算金额（actual_cost > budget_amt）。"
+    },
+    {
+      "term": "合同额",
+      "definition": "合同额是与甲方签订的不含税合同总价，与 ERP 中含税的订单金额口径不同。"
+    },
+    {
+      "term": "准时率",
+      "definition": "准时率是供应商按约定交期到货的批次占比，用于评估供应商交付表现。"
+    },
+    {
+      "term": "良率",
+      "definition": "良率是质检合格数量与送检数量之比，反映工单的一次交检合格水平。"
+    },
+    {
+      "term": "安全库存",
+      "definition": "安全库存是为应对需求波动设定的最低库存量，在库数量低于它即需补货。"
+    }
+  ],
+  "generated_at": "2026-11-05T21:31:21.731Z",
+  "identity": {
+    "user_id": "console",
+    "caller": "console",
+    "is_admin": true,
+    "can_impersonate": false,
+    "anonymous": false
+  },
+  "service": {
+    "version": "1.0.0",
+    "auth_mode": "api_key",
+    "feedback_enabled": true,
+    "streaming": true,
+    "catalog_enabled": true,
+    "preview": {
+      "max_page_size": 100,
+      "max_offset": 10000,
+      "max_filters": 5,
+      "max_value_length": 200,
+      "max_cell_chars": 2000,
+      "max_search_columns": 12,
+      "operators": [
+        "eq",
+        "ne",
+        "contains",
+        "starts_with",
+        "gt",
+        "gte",
+        "lt",
+        "lte",
+        "is_empty",
+        "not_empty"
+      ]
+    },
+    "profile": {
+      "enabled": true,
+      "max_facets": 6,
+      "max_facet_values": 12,
+      "max_timelines": 2
+    }
+  }
+}
