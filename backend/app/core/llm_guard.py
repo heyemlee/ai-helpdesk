@@ -47,9 +47,8 @@ REASON_RATE_LIMIT = "rate_limited"          # 普通 429
 # 不是保护自己判出来的状态，是给调用方用的：模型这一步没答上来（超时、5xx 之类），
 # 原因不在凭证。和上面几个放在一起，是因为对外它们都叫"模型服务不可用"。
 REASON_MODEL_ERROR = "model_error"
-# 也不是凭证的事：本地准入控制判的"过载"（core/admission）——等令牌等不起，或者负载降级
-# 到最后一档、这一轮不许出网。一次都没出网，不动这份配置的状态
-REASON_OVERLOADED = admission.REASON_OVERLOADED
+# 对外同样叫"模型服务不可用"的还有过载（admission.REASON_OVERLOADED）：本地准入控制判的——
+# 等令牌等不起，或者负载降级到最后一档、这一轮不许出网。一次都没出网，不动这份配置的状态
 
 # 等人处理的那一类：不设到期时间
 _UNTIL_RESET = frozenset({REASON_CREDENTIAL, REASON_PERMISSION, REASON_QUOTA})

@@ -24,11 +24,8 @@ XAUTOCLAIM 接手——相当于 SQS 的可见性超时。Kafka 按分区提交 
 from __future__ import annotations
 
 import asyncio
-import logging
 import time
 from dataclasses import dataclass
-
-logger = logging.getLogger(__name__)
 
 GROUP = "workers"
 # 派发流只留最近这么多条（约数，XADD MAXLEN ~）。确认过的消息留着没用；没确认的被裁掉
@@ -224,9 +221,6 @@ class MemoryBroker:
 
     async def backlog(self) -> int:
         return (len(self._entries) - self._next) + len(self._pending)
-
-    def pending_of(self, consumer: str) -> list[str]:
-        return [m for m, (owner, _t) in self._pending.items() if owner == consumer]
 
     async def ping(self) -> bool:
         return True

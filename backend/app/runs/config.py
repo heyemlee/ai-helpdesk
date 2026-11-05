@@ -20,12 +20,9 @@ worker 可能跑了客户的问题（员工实例能委派查订单）。缺哪�
 """
 from __future__ import annotations
 
-import logging
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
-
-logger = logging.getLogger(__name__)
 
 MODES = ("inline", "queued")
 ROLES = ("api", "worker", "all")

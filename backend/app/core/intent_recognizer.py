@@ -466,14 +466,6 @@ class IntentRecognizer:
                 del self._cache[k]
         self._cache[key] = result
 
-    def learn(self, message: str, correct: IntentCategory) -> None:
-        """在线学习：将纠正样本加入模板，清除对应 Embedding 缓存。"""
-        tpls = _TEMPLATES.setdefault(correct, [])
-        if message not in tpls:
-            tpls.append(message)
-            self._tpl_embeddings.pop(correct, None)  # 下次重新计算
-            logger.info(f"学习新样本 → {correct.value}: {message[:40]}")
-
     # ── 零延迟规则通道 ────────────────────────────────────────────────────────
 
     def _fast_path(self, message: str) -> dict[str, Any] | None:
@@ -708,7 +700,7 @@ confidence 表示你对该判断的把握，0 到 1 之间。
         """
         保证模板向量和 space 在同一个空间里，缺的补算。返回模板最终所在的空间。
 
-        只有三种情况真的去算：首次调用、某个类别被纠正过（见 learn）、空间换了。
+        只有两种情况真的去算：首次调用、空间换了。
         换空间有两种——远端挂了改用本地，和远端恢复后换回来——都要把模板整批重算：
         留着另一个空间的旧向量，比出来的分数没有意义。
         远端一次请求带一批模板（Embedder.embed_many），不是一条一个请求。

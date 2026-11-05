@@ -12,7 +12,6 @@ SUCCEEDED = "succeeded"  # 这一轮有了结局：答了、转人工、追问�
 FAILED = "failed"        # 这一轮自己出错（编排器抛异常）。不重试，和原来一样报给客户
 DEAD = "dead"            # worker 反复失联，超过上限：进死信，转人工
 
-STATUSES = (QUEUED, RUNNING, SUCCEEDED, FAILED, DEAD)
 TERMINAL = frozenset({SUCCEEDED, FAILED, DEAD})
 
 # 帧流里标志"这一轮结束了"的两种事件：和 /chat/stream 的终结事件一致
