@@ -21,6 +21,7 @@
 """
 from __future__ import annotations
 
+import os
 import tempfile
 from collections import Counter
 from contextlib import contextmanager
@@ -37,6 +38,34 @@ from benchmark.runner import (
 CUSTOMER_CASES = Path(__file__).parent / "customer_cases.json"
 
 NOT_RUN_LABEL = "没查成（执行报错或没生成步骤）"
+
+PGVECTOR_DSN_ENV = "AI_SQL_PGVECTOR_DSN"
+
+
+@contextmanager
+def _without_pgvector() -> Iterator[None]:
+    """
+    这一轮不碰 pgvector：Schema 向量索引一律用内存的，退出时把原来的连接串放回去。
+
+    pgvector 里的索引表按命名空间全局共用（`tier_databases`、`tier_tables`、
+    `columns_<库名>`），指纹一变就整表 TRUNCATE 重建。现建的精简库客户名、供应商名
+    和生产那份写法不同，指纹必然不一样：同一个 DSN 上要是跑着 SQL Agent，它内存里的
+    「文档序号 → 表/字段」还指着旧文档，检索就会拿到错的表和字段。所以这里不管
+    环境变量还是 `.env` 里配了 DSN，都清空（环境变量里的空串盖得过 `.env`）。
+    """
+    from ai_sql_agent.core import reload_settings
+
+    saved = os.environ.get(PGVECTOR_DSN_ENV)
+    os.environ[PGVECTOR_DSN_ENV] = ""
+    reload_settings()
+    try:
+        yield
+    finally:
+        if saved is None:
+            os.environ.pop(PGVECTOR_DSN_ENV, None)
+        else:
+            os.environ[PGVECTOR_DSN_ENV] = saved
+        reload_settings()
 
 
 def build_simple_erp(root: Path) -> Path:
@@ -74,12 +103,16 @@ def customer_runner(
     enable_repair: Optional[bool] = None,
     access_check: Optional[Callable] = None,
 ) -> Iterator[BenchmarkRunner]:
-    """现建精简业务库，给出跑 `customer_cases.json` 的评测器；退出时库连同临时目录一起删掉。"""
+    """
+    现建精简业务库，给出跑 `customer_cases.json` 的评测器；退出时库连同临时目录一起删掉。
+
+    整个过程不碰 pgvector（见 `_without_pgvector`）：建索引和每一题的检索都在内存里。
+    """
     from ai_sql_agent.pipeline import Text2SQLPipeline
     from ai_sql_agent.pipeline.objects import PipelineConfig
     from ai_sql_agent.semantic import load_semantic_dir
 
-    with tempfile.TemporaryDirectory(prefix="customer-cases-") as tmp:
+    with _without_pgvector(), tempfile.TemporaryDirectory(prefix="customer-cases-") as tmp:
         config = PipelineConfig(
             semantic_layer=load_semantic_dir(build_simple_erp(Path(tmp)))
         )

@@ -151,6 +151,32 @@ class CustomerOfflineRunTest(unittest.TestCase):
         self.assertTrue(lines[0].startswith(f"客服转来的问法（{CUSTOMER_CATEGORY}，单独一行，不计入门禁）"))
         self.assertTrue(any("生产入口的路由（规则判）" in line for line in lines))
 
+    def test_never_touches_a_configured_pgvector(self):
+        """
+        配了 pgvector 也不用：那里的索引表按命名空间全局共用，现建的库指纹不同，
+        一建索引就会 TRUNCATE 同一个 DSN 上正在跑的 SQL Agent 的索引。
+        """
+        from ai_sql_agent.core import get_settings, reload_settings
+        from ai_sql_agent.retrieval.vector_index import VectorIndex
+        from benchmark.customer import customer_runner
+
+        configured = "postgresql://nobody@127.0.0.1:9/shared"
+        os.environ["AI_SQL_PGVECTOR_DSN"] = configured
+        reload_settings()
+
+        with customer_runner() as runner:
+            self.assertEqual(get_settings().pgvector_dsn, "")
+            service = runner.pipeline.schema_retrieval_service
+            indexes = [service.db_vector_index, service.table_vector_index] + [
+                column_service.vector_index for column_service in service.column_services.values()
+            ]
+            for index in indexes:
+                self.assertIs(type(index), VectorIndex)
+
+        # 退出后原样放回，不替调用方改配置
+        self.assertEqual(os.environ["AI_SQL_PGVECTOR_DSN"], configured)
+        self.assertEqual(get_settings().pgvector_dsn, configured)
+
 
 if __name__ == "__main__":
     unittest.main()

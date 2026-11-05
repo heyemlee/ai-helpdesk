@@ -485,7 +485,9 @@ It differs from the evaluation set in three ways:
   from the fixed seed in a temp directory. The generator is deterministic: order
   statuses, dates, amounts and line items match production's copy, only the customer
   and supplier names are spelled differently, so every question is asked by order
-  number.
+  number. The schema index stays in memory even when `AI_SQL_PGVECTOR_DSN` is set,
+  so the run never rebuilds the shared index tables a live service on the same
+  database is using.
 - **It records the routing decision too.** Production's entry point first decides
   "query the database or answer from the conversation"; questions routed to the second
   path never reach a database. Each item records how production would route it
