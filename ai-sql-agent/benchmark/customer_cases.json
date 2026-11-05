@@ -1,0 +1,201 @@
+[
+  {
+    "id": "c01",
+    "category": "customer",
+    "language": "zh",
+    "query": "我的订单 J26-00084 到哪了？",
+    "gold_sql": "SELECT order_status FROM erp.orders WHERE order_no = 'J26-00084'",
+    "gold_columns": ["erp_db.orders.order_no", "erp_db.orders.order_status"]
+  },
+  {
+    "id": "c02",
+    "category": "customer",
+    "language": "zh",
+    "query": "J26-00010 这单现在做到哪一步了？",
+    "gold_sql": "SELECT current_stage FROM prod.work_order WHERE order_no = 'J26-00010'",
+    "gold_columns": ["prod_db.work_order.order_no", "prod_db.work_order.current_stage"]
+  },
+  {
+    "id": "c03",
+    "category": "customer",
+    "language": "zh",
+    "query": "我这单 J26-00044 还要多久能送到？",
+    "gold_sql": "SELECT delivery_date FROM erp.orders WHERE order_no = 'J26-00044'",
+    "gold_columns": ["erp_db.orders.order_no", "erp_db.orders.delivery_date"],
+    "note": "还没送到的单只有订单上的计划交付日期，配送记录里的实际送达日期是空的"
+  },
+  {
+    "id": "c04",
+    "category": "customer",
+    "language": "zh",
+    "query": "J25-00213 怎么还没发货？",
+    "gold_sql": "SELECT delivery_notes FROM svc.delivery WHERE order_no = 'J25-00213'",
+    "gold_columns": ["svc_db.delivery.order_no", "svc_db.delivery.delivery_notes"],
+    "note": "生产已完工；没发货的原因（上次配送失败）只记在配送备注里"
+  },
+  {
+    "id": "c05",
+    "category": "customer",
+    "language": "zh",
+    "query": "J26-00910 怎么还没做完？现在卡在哪道工序，什么原因？",
+    "gold_sql": "SELECT current_stage, production_notes FROM prod.work_order WHERE order_no = 'J26-00910'",
+    "gold_columns": ["prod_db.work_order.order_no", "prod_db.work_order.current_stage", "prod_db.work_order.production_notes"]
+  },
+  {
+    "id": "c06",
+    "category": "customer",
+    "language": "zh",
+    "query": "我家柜子 J26-00038 是哪天送到的？",
+    "gold_sql": "SELECT delivered_date FROM svc.delivery WHERE order_no = 'J26-00038'",
+    "gold_columns": ["svc_db.delivery.order_no", "svc_db.delivery.delivered_date"],
+    "note": "实际送达是 8 月 11 日；订单上的计划交付日期是 8 月 9 日，拿错字段会悄悄答错"
+  },
+  {
+    "id": "c07",
+    "category": "customer",
+    "language": "zh",
+    "query": "我这单 J26-00099 一共多少钱？",
+    "gold_sql": "SELECT contract_amount FROM erp.orders WHERE order_no = 'J26-00099'",
+    "gold_columns": ["erp_db.orders.order_no", "erp_db.orders.contract_amount"],
+    "note": "答合同金额；明细小计加起来是另一个数，不是这单谈定的价"
+  },
+  {
+    "id": "c08",
+    "category": "customer",
+    "language": "zh",
+    "query": "J26-00108 我订了哪些东西，每样几件？",
+    "gold_sql": "SELECT product_name, quantity FROM erp.order_item WHERE order_no = 'J26-00108'",
+    "gold_columns": ["erp_db.order_item.order_no", "erp_db.order_item.product_name", "erp_db.order_item.quantity"]
+  },
+  {
+    "id": "c09",
+    "category": "customer",
+    "language": "zh",
+    "query": "我那单 J25-00046 是不是被取消了？",
+    "gold_sql": "SELECT order_status FROM erp.orders WHERE order_no = 'J25-00046'",
+    "gold_columns": ["erp_db.orders.order_no", "erp_db.orders.order_status"]
+  },
+  {
+    "id": "c10",
+    "category": "customer",
+    "language": "zh",
+    "query": "J25-00036 之前报的缺件，现在处理得怎么样了？",
+    "gold_sql": "SELECT service_status FROM svc.service_ticket WHERE order_no = 'J25-00036' AND issue_type = '缺件'",
+    "gold_columns": ["svc_db.service_ticket.order_no", "svc_db.service_ticket.issue_type", "svc_db.service_ticket.service_status"]
+  },
+  {
+    "id": "c11",
+    "category": "customer",
+    "language": "zh",
+    "query": "J25-00137 我们报的几个问题现在都处理好了吗？",
+    "gold_sql": "SELECT issue_type, service_status FROM svc.service_ticket WHERE order_no = 'J25-00137'",
+    "gold_columns": ["svc_db.service_ticket.order_no", "svc_db.service_ticket.issue_type", "svc_db.service_ticket.service_status"]
+  },
+  {
+    "id": "c12",
+    "category": "customer",
+    "language": "zh",
+    "query": "J25-00759 补发的铰链寄出来了没有？哪天寄的？",
+    "gold_sql": "SELECT shipped_date FROM svc.replacement_part WHERE order_no = 'J25-00759'",
+    "gold_columns": ["svc_db.replacement_part.order_no", "svc_db.replacement_part.shipped_date"],
+    "note": "补件名称是英文（Soft-close hinge set），按「铰链」两个字筛会查空"
+  },
+  {
+    "id": "c13",
+    "category": "customer",
+    "language": "zh",
+    "query": "J25-00443 申请补发的件现在什么状态？",
+    "gold_sql": "SELECT part_status FROM svc.replacement_part WHERE order_no = 'J25-00443'",
+    "gold_columns": ["svc_db.replacement_part.order_no", "svc_db.replacement_part.part_status"]
+  },
+  {
+    "id": "c14",
+    "category": "customer",
+    "language": "zh",
+    "query": "我有两单 J26-00010 和 J26-00011，分别什么时候交货？",
+    "gold_sql": "SELECT order_no, delivery_date FROM erp.orders WHERE order_no IN ('J26-00010', 'J26-00011')",
+    "gold_columns": ["erp_db.orders.order_no", "erp_db.orders.delivery_date"]
+  },
+  {
+    "id": "c15",
+    "category": "customer",
+    "language": "zh",
+    "query": "j26-00070 到哪了",
+    "gold_sql": "SELECT order_status FROM erp.orders WHERE order_no = 'J26-00070'",
+    "gold_columns": ["erp_db.orders.order_no", "erp_db.orders.order_status"],
+    "note": "客户打的是小写单号，库里是大写；SQLite 的等号区分大小写"
+  },
+  {
+    "id": "c16",
+    "category": "customer",
+    "language": "zh",
+    "query": "你好，我们是 J26-00014 那个项目，柜子开始做了没有？工地那边催得紧",
+    "gold_sql": "SELECT production_status FROM prod.work_order WHERE order_no = 'J26-00014'",
+    "gold_columns": ["prod_db.work_order.order_no", "prod_db.work_order.production_status"]
+  },
+  {
+    "id": "c17",
+    "category": "customer",
+    "language": "zh",
+    "query": "J26-00039 是你们送货上门，还是要我们自己去提？",
+    "gold_sql": "SELECT delivery_method FROM svc.delivery WHERE order_no = 'J26-00039'",
+    "gold_columns": ["svc_db.delivery.order_no", "svc_db.delivery.delivery_method"]
+  },
+  {
+    "id": "c18",
+    "category": "customer",
+    "language": "zh",
+    "query": "J26-00024 现在什么进度了？",
+    "gold_sql": "SELECT order_status FROM erp.orders WHERE order_no = 'J26-00024'",
+    "gold_columns": ["erp_db.orders.order_no", "erp_db.orders.order_status"],
+    "note": "刚签单还没排产，生产库里没有这张单"
+  },
+  {
+    "id": "c19",
+    "category": "customer",
+    "language": "zh",
+    "query": "J25-00068 是加急单吗？",
+    "gold_sql": "SELECT is_rush FROM prod.work_order WHERE order_no = 'J25-00068'",
+    "gold_columns": ["prod_db.work_order.order_no", "prod_db.work_order.is_rush"]
+  },
+  {
+    "id": "c20",
+    "category": "customer",
+    "language": "zh",
+    "query": "J26-00119 的送货地址是哪个？我想核对一下",
+    "gold_sql": "SELECT address FROM erp.orders WHERE order_no = 'J26-00119'",
+    "gold_columns": ["erp_db.orders.order_no", "erp_db.orders.address"]
+  },
+  {
+    "id": "c21",
+    "category": "customer",
+    "language": "en",
+    "query": "Where is my order J26-00142?",
+    "gold_sql": "SELECT order_status FROM erp.orders WHERE order_no = 'J26-00142'",
+    "gold_columns": ["erp_db.orders.order_no", "erp_db.orders.order_status"]
+  },
+  {
+    "id": "c22",
+    "category": "customer",
+    "language": "en",
+    "query": "When will order J25-00988 be delivered?",
+    "gold_sql": "SELECT delivery_date FROM erp.orders WHERE order_no = 'J25-00988'",
+    "gold_columns": ["erp_db.orders.order_no", "erp_db.orders.delivery_date"]
+  },
+  {
+    "id": "c23",
+    "category": "customer",
+    "language": "en",
+    "query": "Why hasn't J25-00094 shipped yet?",
+    "gold_sql": "SELECT delivery_notes FROM svc.delivery WHERE order_no = 'J25-00094'",
+    "gold_columns": ["svc_db.delivery.order_no", "svc_db.delivery.delivery_notes"]
+  },
+  {
+    "id": "c24",
+    "category": "customer",
+    "language": "en",
+    "query": "Has the replacement part for order J25-00060 been shipped?",
+    "gold_sql": "SELECT shipped_date FROM svc.replacement_part WHERE order_no = 'J25-00060'",
+    "gold_columns": ["svc_db.replacement_part.order_no", "svc_db.replacement_part.shipped_date"]
+  }
+]

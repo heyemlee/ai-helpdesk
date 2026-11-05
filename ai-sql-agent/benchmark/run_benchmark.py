@@ -11,6 +11,7 @@ from benchmark.runner import (
     ABORT_MODEL_UNAVAILABLE,
     ABORT_SUMMARY,
     EXIT_INCOMPLETE,
+    MISMATCH_LABELS,
     BenchmarkRunner,
     describe_degraded,
     save_incomplete,
@@ -160,7 +161,17 @@ def main() -> int:
             "中英文业务用例在 benchmark/bilingual_cases.json（4 个场景各一中一英）。"
         ),
     )
+    parser.add_argument(
+        "--customer",
+        action="store_true",
+        help=(
+            "跑客服转来的问法（benchmark/customer_cases.json）：在按固定种子现建的精简业务库上跑，"
+            "每题顺带记下生产入口的路由。报告里单独一行，不进门禁。"
+        ),
+    )
     args = parser.parse_args()
+    if args.customer and (args.smoke or args.dataset or args.category):
+        parser.error("--customer 自带题集和业务库，不能和 --smoke / --dataset / --category 一起用")
 
     # 用 Settings 判断而不是 os.getenv：凭证可能配在 .env 里，
     # os.getenv 读不到会误报「未检测到 Key」并让门禁悄悄降级成冒烟模式。
@@ -171,7 +182,18 @@ def main() -> int:
             file=sys.stderr,
         )
 
+    if args.customer:
+        from benchmark.customer import customer_runner
+
+        with customer_runner(enable_repair=not args.no_repair) as runner:
+            return _run(runner, args)
+
     runner = BenchmarkRunner(enable_repair=not args.no_repair, dataset_path=args.dataset)
+    return _run(runner, args)
+
+
+def _run(runner, args) -> int:
+    from benchmark.customer import customer_summary
 
     if args.repeat > 1:
         return _run_repeated(runner, args)
@@ -209,6 +231,8 @@ def main() -> int:
             f"/{report.category_totals[category]} "
             f"({report.category_accuracy(category):.2%})"
         )
+    for line in customer_summary(report):
+        print(line)
 
     if silent_items:
         print(f"\n静默错误样例（前 5 条 / 共 {len(silent_items)} 条）：")
@@ -223,6 +247,8 @@ def main() -> int:
             print(f"  [{item.item_id}] {item.query}")
             if item.error:
                 print(f"      error: {item.error}")
+            if item.mismatch:
+                print(f"      结果：{MISMATCH_LABELS[item.mismatch]}")
 
     if args.output:
         output_path = Path(args.output)
