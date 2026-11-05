@@ -119,8 +119,12 @@ check_health "客户实例配置对得上" "$CUSTOMER" "$IS_CUSTOMER"
 # 借它发来的请求要被拒，跨站也读不到响应（不发 CORS 头）
 check_code_with "员工实例：Host 不是本机的请求" 421 -H 'Host: rebind.example' "$STAFF/health"
 check_code_with "员工实例：标明跨站的请求" 403 -H 'Sec-Fetch-Site: cross-site' "$STAFF/health"
-if curl -s -m 5 -o /dev/null -D - -H 'Origin: https://evil.example' "$STAFF/health" |
-    grep -qi '^access-control-allow-origin'; then
+# 只看"没有 CORS 头"不够：连不上、超时、502 也都没有这个头。先要拿到 200，才算验到了
+response="$(curl -s -m 5 -o /dev/null -D - -w '%{http_code}' -H 'Origin: https://evil.example' "$STAFF/health")"
+code="${response##*$'\n'}"
+if [ "$code" != 200 ]; then
+    bad "带别的网站 Origin 的 $STAFF/health → ${code:-没有响应}，应该是 200，CORS 没验到"
+elif printf '%s' "$response" | grep -qi '^access-control-allow-origin'; then
     bad "员工实例给别的网站发了 CORS 头：跨站读得到响应"
 else
     ok "员工实例不给别的网站发 CORS 头"
