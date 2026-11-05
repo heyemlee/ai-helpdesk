@@ -21,10 +21,10 @@
 </div>
 
 <p align="center">
-  <img src="docs/screenshots/ask.webp" width="960" alt="打开学习模式，在控制台问哪些加急订单还在生产、什么时候交付；agent 工作时阶段事件陆续到达，答案列出六张订单的客户、交付日期和合同金额，讲解部分显示第 1 步查一个库、第 2 步查另一个库，并把第 1 步得到的订单号写进了自己的 SQL" />
+  <img src="docs/screenshots/ask.webp" width="960" alt="统一控制台的「数据 → 问数」，打开逐步讲解：问「每种状态各有多少订单」，结果是查到了数据，订单与客户库里的六种状态画成条形图并标出数量，下面可以复制答案、再问一次或查看这次查询的经过" />
 </p>
 
-<p align="center"><sub>虚构数据，放在四个 SQLite 库里。规划和 SQL 是为录屏回放的，结果行是实际执行这些 SQL 得到的。</sub></p>
+<p align="center"><sub>仓库控制台（<code>frontend/</code>）里的「数据」页面。虚构数据，放在四个 SQLite 库里；问题是实时问的。</sub></p>
 
 ## 技术亮点
 
@@ -40,7 +40,7 @@
   <img src="docs/architecture.svg" width="960" alt="网页控制台和其他 agent 调用同一个 FastAPI 服务；服务把 API Key 对应到表和字段权限，执行限流和 Token 配额，也能在线切换模型和 Embedding 连接。服务里的 agent 循环用 LLM 路由判断问题类型，用 BM25 和向量经 RRF 融合、再加重排和 YAML 语义层找到相关的表和字段，每个数据源规划一步并写出 SQL，经 SQLGlot 关卡只读执行，失败最多修复两次，再用规则和 LLM 自检检查结果；每次请求记成一次可取消的运行，带编号的事件日志，对话记忆和带 trace_id 的审计记录也一并存下。模型调用发往 OpenAI 兼容、Anthropic、vLLM 或 Ollama；SQL 在 SQLite 或 PostgreSQL 数据源上执行；运行记录、记忆、审计和向量存在 SQLite 或 pgvector。单独进程的 MCP stdio 服务使用同一道关卡，Prometheus 抓取指标，项目用 Docker Compose、pytest、GitHub Actions 和 150 + 40 题的发布门禁交付。" />
 </p>
 
-一个 FastAPI 进程同时承载 agent、它的 HTTP、A2A 与管理接口和控制台。问题从 API 进来，agent 循环先让模型判断类型，再检索相关的表，让模型规划并写 SQL，经工具关卡执行，最后让模型检查答案；请求走到哪个组件，哪张卡片就亮起来。橙色是模型调用，蓝色是请求和数据，青色是运行记录、记忆、审计和指标。状态默认存在 SQLite；配置 PostgreSQL DSN 后，审计、反馈、运行记录和两个向量索引改存 PostgreSQL + pgvector。
+一个 FastAPI 进程承载 agent 和它的 HTTP、A2A 与管理接口；页面是仓库控制台（[`frontend/`](../frontend/)）里的「数据」，经 `/sql-api/` 调它。问题从 API 进来，agent 循环先让模型判断类型，再检索相关的表，让模型规划并写 SQL，经工具关卡执行，最后让模型检查答案；请求走到哪个组件，哪张卡片就亮起来。橙色是模型调用，蓝色是请求和数据，青色是运行记录、记忆、审计和指标。状态默认存在 SQLite；配置 PostgreSQL DSN 后，审计、反馈、运行记录和两个向量索引改存 PostgreSQL + pgvector。
 
 - **模型做决定，代码管流程。** 路由、规划、写 SQL、修复和判断结果由模型完成；步骤顺序、权限关卡和各项上限由代码固定（每步只查一个数据源，最多修复两次），所以每次运行都有边界，留下编号的事件日志，取消时在下一个检查点停下。
 - **一个工具，一道关卡，出错就拒绝。** 回答、预览和 MCP 服务都经过同一道授权关卡。解析不了的 SQL 一律拒绝，没装 SQLGlot 时所有 SQL 都被拒绝；模型不可用时，重新执行该用户同一问题上次成功的 SQL，重新授权并标为降级。
@@ -68,10 +68,10 @@
 ### Agent 循环
 
 <p align="center">
-  <img src="docs/screenshots/agent.webp" width="960" alt="学习模式下，在一次关于加急订单的回答之后，追问「哪张最早交付」直接用对话记忆回答，「理解问题」一步说明路由选择了对话、没有查库；接着问低于安全库存的物料，第一次执行因为用了表里不存在的字段而失败并被修复，「写 SQL」和「执行」两步列出修复前后的 SQL 和修复记录" />
+  <img src="docs/screenshots/agent.webp" width="960" alt="同一个问题的「这次查询的经过」：循环的每个阶段依次列出（关键词抽取、用向量模型查找相关的表、规划、写 SQL、在订单库上执行并给出 SQL、检查结果），每一步都有模型调用、token 和耗时" />
 </p>
 
-<p align="center"><sub>虚构数据，开着学习模式。规划、SQL 和追问的回答是回放的；修复是项目自己的修复循环在这份数据上实际跑出来的，走的是不调模型的规则分支。</sub></p>
+<p align="center"><sub>每次运行都留一份事件日志（<code>GET /runs/{id}/events</code>），控制台的运行页按阶段把它排出来。客服助手委派过来的问题，可以从对话轮次直接跳到这一页。</sub></p>
 
 - **理解。** 路由器在「重新查库」和「用对话记忆回答」之间做选择；检索之前，先把代词和「上季度」这类说法换成具体的对象和日期。
 - **规划。** 每个数据源一步，输出只保留问题要的字段和行。每一步拿到上一步的前 50 行，按列整理成现成的 `IN` 列表，这让 Prompt 长度有上限，一次交接最多 50 行。
@@ -101,7 +101,7 @@
 
 ### 接口
 
-- **控制台。** 提问、数据、历史三个页面和设置，中英双语，无构建步骤；学习模式根据阶段事件讲解每次请求；点停止时，服务端的运行也会停下。
+- **控制台。** 在仓库的统一控制台（`frontend/`）里：问数、数据浏览、查询历史、一次查询的经过，模型连接在「管理与诊断」里；中英双语；点停止时，服务端的运行也会停下。浏览器手里没有 Key：控制台的 nginx 在服务端替它带上。
 - **A2A。** 默认开启，地址是 `POST /a2a`：`message/send` 返回一个已完成的任务，`message/stream` 先通过 SSE 推送阶段事件。任务 ID 就是运行 ID：用 `POST /runs/{id}/cancel` 取消的任务以 `canceled` 结束，调用方断开连接也会让它停下。设置 `AI_SQL_A2A_STREAMING=false` 可以关掉流式，Agent Card 会同步说明；[a2a-contract](../a2a-contract/README.zh-CN.md) 的契约用例在 CI 里读同一个提交上的契约来跑。
 - **MCP 与 HTTP。** MCP stdio 服务在演示库上提供 `list_databases` 和 `execute_sql` 两个工具，上限相同；其余由 HTTP 接口 `/query`、`/catalog`、`/history`、`/runs`、`/metrics` 提供（[接口文档](docs/api.zh-CN.md)）。
 
@@ -114,7 +114,7 @@ cd ai-sql-agent                                     # 从仓库根目录进来
 python3 -m venv .venv && source .venv/bin/activate  # 建一个 Python 3.11+ 的虚拟环境
 pip install -e ".[dev]"                             # 安装服务、固定版本的依赖和测试工具
 python examples/end_to_end.py                       # 离线跑一个单库问题和一个跨库问题，模型用 Mock
-./scripts/run_api.sh                                # 控制台和 API 在 http://localhost:8000，用内置演示数据
+./scripts/run_api.sh                                # API 在 http://localhost:8000，用内置演示数据（页面在 frontend/）
 cp .env.example .env                                # 然后填模型服务商、Key 和模型名
 python -m ai_sql_agent.semantic export semantic/    # 导出语义层模板，用来描述你自己的库
 python -m ai_sql_agent.semantic validate semantic/  # 和真实库结构比对

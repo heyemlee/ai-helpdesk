@@ -334,7 +334,6 @@ python -m ai_sql_agent.feedback resolve <trace_id>       # 标记某条已处理
 | `/health` | 存活：只看进程，不查依赖 | livenessProbe |
 | `/readyz` | 就绪：查记忆库、审计库、pgvector | readinessProbe |
 | `/metrics` | Prometheus 抓取 | ServiceMonitor / scrape_config |
-| `/` | 查询界面：业务查数、数据浏览、历史查询（静态文件在 `/static` 下，无构建步骤） | 内网直接访问 |
 
 依赖抖动时 `/readyz` 返回 503 摘掉流量，但 `/health` 仍然 200，
 避免编排系统把进程反复重启。

@@ -23,10 +23,10 @@ model management, cancellable runs with an event log, evals and tracing, in one 
 </div>
 
 <p align="center">
-  <img src="docs/screenshots/ask.webp" width="960" alt="With learning mode on, the console asks which rush orders are still in production and when they are due; stage events stream in while the agent works, the answer lists six orders with customer, delivery date and contract amount, and the walkthrough shows step 1 reading one database and step 2 reading another with step 1's order numbers written into its SQL" />
+  <img src="docs/screenshots/ask.webp" width="960" alt="Data, Ask in the unified console with Explain each step on: the question How many orders are in each status? comes back as Data found, six statuses from the orders and customers database drawn as bars with their counts, with buttons to copy the answer, ask again or see how the query ran" />
 </p>
 
-<p align="center"><sub>Made-up data in four SQLite databases. The plan and SQL are replayed for the recording; the rows come from running that SQL.</sub></p>
+<p align="center"><sub>The Data section of the repository's console (<code>frontend/</code>). Made-up data in four SQLite databases; the question was asked live.</sub></p>
 
 ## Highlights
 
@@ -54,7 +54,8 @@ model management, cancellable runs with an event log, evals and tracing, in one 
   <img src="docs/architecture.svg" width="960" alt="The web console and other agents call one FastAPI service, which maps API keys to table and column policies, applies rate limits and token quotas, and can switch the model and embedding connections live. Inside it an agent loop routes each question with an LLM router, retrieves tables and columns with BM25 and vectors fused by RRF, a reranker and a YAML semantic layer, plans one step per data source, writes SQL, runs it read-only through an SQLGlot gate, repairs it at most twice and checks the result with rules and an LLM self-check, recording each request as a cancellable run with a numbered event log and keeping conversation memory and an audit trail under a trace_id. Model calls go to an OpenAI-compatible, Anthropic, vLLM or Ollama provider; SQL runs on SQLite or PostgreSQL data sources; run records, memory, audit and vectors are kept in SQLite or pgvector. A separate MCP stdio server uses the same gate, Prometheus scrapes the metrics, and the project ships with Docker Compose, pytest, GitHub Actions and a release gate of 150 + 40 cases." />
 </p>
 
-One FastAPI process hosts the agent, its HTTP, A2A and admin endpoints and the console. A question enters through the
+One FastAPI process hosts the agent and its HTTP, A2A and admin endpoints; the console is the Data section of the
+repository's console ([`frontend/`](../frontend/)), which calls it through `/sql-api/`. A question enters through the
 API; the agent loop has the model route it, retrieves the tables, has the model plan and write SQL, runs it through the
 gate and has the model check the answer, and each card lights up while the request is in it. Orange marks model calls,
 blue the request and its data, teal run records, memory, audit and metrics. State lives in SQLite; with a PostgreSQL
@@ -90,10 +91,10 @@ DSN, audit, feedback, run records and both vector indexes move to PostgreSQL + p
 ### The agent loop
 
 <p align="center">
-  <img src="docs/screenshots/agent.webp" width="960" alt="In learning mode, after an answer about rush orders, the follow-up “Which of these is due first?” is answered from the conversation, and the Understand step explains that the router chose the conversation and no query ran; then a question about materials below safety stock fails on a column the table does not have and is repaired, and the Write the SQL and Run it steps show the SQL before and after the repair and the repair attempt" />
+  <img src="docs/screenshots/agent.webp" width="960" alt="How this query ran, for the same question: each stage of the loop in order (keyword extraction, finding the right tables with the embedding model, planning, writing the query, running it on the orders database with the SQL shown, checking the result), each with its model calls, tokens and time" />
 </p>
 
-<p align="center"><sub>Made-up data, with learning mode on. The plan, SQL and follow-up answer are replayed; the repair is the project's own repair loop run on that data, on its rule-based path.</sub></p>
+<p align="center"><sub>Every run keeps an event log (<code>GET /runs/{id}/events</code>); the console's run page lays it out by stage. A delegated question from the support assistant links straight to this page.</sub></p>
 
 - **Understand.** The router picks between querying and answering from the conversation; pronouns and phrases like
   "last quarter" are resolved before retrieval.
@@ -161,7 +162,7 @@ cd ai-sql-agent                                     # from the repository root
 python3 -m venv .venv && source .venv/bin/activate  # a virtual environment for Python 3.11+
 pip install -e ".[dev]"                             # the service, its pinned dependencies and test tools
 python examples/end_to_end.py                       # single- and cross-database questions, mock model
-./scripts/run_api.sh                                # console and API on http://localhost:8000, demo data
+./scripts/run_api.sh                                # API on http://localhost:8000, demo data (console: frontend/)
 cp .env.example .env                                # then set the model provider, key and model names
 python -m ai_sql_agent.semantic export semantic/    # a semantic-layer template for your databases
 python -m ai_sql_agent.semantic validate semantic/  # check it against the live schema

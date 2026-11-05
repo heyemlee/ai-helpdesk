@@ -16,7 +16,7 @@ RUN python -c "import tomllib; print('\n'.join(tomllib.load(open('pyproject.toml
         > /tmp/requirements.txt \
     && pip install --prefix=/install -r /tmp/requirements.txt
 
-# 应用包本体（含 api/static 与 resources/demo_sql 两组包内资源）
+# 应用包本体（含 resources/demo_sql 包内资源）
 COPY README.md ./
 COPY src ./src
 RUN pip install --prefix=/install --no-deps .

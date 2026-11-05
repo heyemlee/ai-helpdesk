@@ -166,11 +166,11 @@ pytest 风格的函数,unittest 收不到,CI 另起一步用 pytest 单独跑它
 ./scripts/run_api.sh
 ```
 
-打开 http://localhost:8000 (端口取 `AI_SQL_PORT`,默认 8000),内置查询界面有三个入口:业务查数、数据浏览、历史查询(原生 HTML/CSS/ES Module,无构建步骤)。页面上有三处和后面的章节直接对应:
+服务只提供接口(端口取 `AI_SQL_PORT`,默认 8000),页面在仓库的统一控制台里:另开一个终端,在仓库根目录下 `cd frontend && npm run dev`,打开 http://localhost:5173/#/data/ask。开发服务器把 `/sql-api/` 转给本机的 8000;生产上由控制台的 nginx 转发,并在服务端带上控制台那把 Key。也可以用仓库根目录的 `scripts/dev-all.sh` 一次起齐。「数据」下有问数、数据浏览、查询历史和一次查询的经过,页面上有三处和后面的章节直接对应:
 
-- **学习模式**(设置里打开):按每次请求实际发生的步骤讲解。传输方式默认是「自动」:学习模式开着时走 A2A 流式接口(`POST /a2a` 的 `message/stream`),这样才拿得到真实的阶段事件;关着时走 `POST /query`。见 17.6。
-- **停止按钮**:走流式时,它先用首帧里的任务编号调 `POST /runs/{id}/cancel` 让服务端停下,再断开请求。见 3.4。
-- **设置 → 高级设置 → 模型连接 / Embedding**:管理员不重启就能换模型和向量模型。见 17.7。
+- **逐步讲解**(问数页右上角的开关):按每次请求实际发生的步骤讲解。服务端开着流式时页面走 A2A 流式接口(`POST /a2a` 的 `message/stream`),拿得到真实的阶段事件;流式关着时退回 `POST /query`。见 17.6。
+- **停止按钮**:它先用首帧里的任务编号调 `POST /runs/{id}/cancel` 让服务端停下,再断开请求。见 3.4。
+- **管理与诊断 → 模型连接(SQL Agent 一栏)**:管理员不重启就能换模型和向量模型。见 17.7。
 
 或者直接打接口:
 
@@ -1589,7 +1589,6 @@ class TokenBucketLimiter:
 
 | 端点 | 用途 | 鉴权 |
 | --- | --- | --- |
-| `GET /` | 内置查询界面(静态文件在 `/static` 下) | — |
 | `GET /whoami` | 本次请求解析出的身份与服务能力(页面发问前靠它知道 user_id) | API Key |
 | `GET /catalog` | 数据目录:当前身份可见的数据域、表、字段 | API Key |
 | `GET /catalog/{库}/{表}` | 单张表的字段说明(表多的部署里 `/catalog` 不带字段,按表从这里取) | API Key |
@@ -2823,7 +2822,7 @@ src/ai_sql_agent/retrieval/vector_index.py:50: RuntimeWarning: divide by zero en
 ## 附:文件速查表
 
 ```
-src/ai_sql_agent/api/          3967 行   API 服务与内置控制台
+src/ai_sql_agent/api/                    API 服务(页面在仓库的 frontend/)
   app.py                       12 个端点 + lifespan + trace 中间件
   catalog.py                   数据目录与只读预览(5 个端点)
   runs.py                      运行记录查询与取消(3 个端点)
@@ -2833,7 +2832,6 @@ src/ai_sql_agent/api/          3967 行   API 服务与内置控制台
   limits.py                    令牌桶限流 + 日配额
   schema_watcher.py            Schema 指纹轮询
   trust.py                     「能不能拿去当出处」的判据
-  static/                      内置控制台(原生 HTML / CSS / ES Module)
 
 src/ai_sql_agent/a2a/           682 行   A2A 服务端(Agent Card + JSON-RPC,3 个端点)
 src/ai_sql_agent/runs/         1054 行   运行记录、事件日志、取消、孤儿与过期清理

@@ -61,7 +61,20 @@ describe('一次查询的经过：事件 → 时间线', () => {
       mk(1, 'stage.started', 'execution', 1), mk(2, 'tool.sql', 'execution', 1), mk(3, 'stage.finished', 'execution', 1),
       mk(4, 'stage.started', 'execution', 2), mk(5, 'tool.sql', 'execution', 2),
     ]).rows
-    expect(rows.map((row) => [row.step, row.events.length, rowStatus(row)])).toEqual([[1, 1, 'ok'], [2, 1, 'running']])
+    expect(rows.map((row) => [row.step, row.events.length, rowStatus(row, true)])).toEqual([[1, 1, 'ok'], [2, 1, 'running']])
+    // run 已经结束：没收尾的那一步说不出结局，不写 running
+    expect(rowStatus(rows[1]!, false)).toBe('')
+  })
+
+  it('不属于任何阶段的零散事件（真实 run 里的关键词抽取）单独成行，不标成进行中', () => {
+    const rows = buildTimeline([
+      { run_id: 'r', seq: 1, ts: '', type: 'stage.started', stage: 'normalization', step: null, attrs: {} },
+      { run_id: 'r', seq: 2, ts: '', type: 'stage.finished', stage: 'normalization', step: null, attrs: { status: 'ok' } },
+      { run_id: 'r', seq: 3, ts: '', type: 'model.call', stage: '', step: null, attrs: { component: 'keyword_extractor' } },
+    ]).rows
+    expect(rows.map((row) => row.stage)).toEqual(['normalization', ''])
+    expect(rowStatus(rows[1]!, true)).toBe('')
+    expect(rowStatus(rows[1]!, false)).toBe('')
   })
 
   it('总耗时：结束减开始，任一缺失就不算', () => {

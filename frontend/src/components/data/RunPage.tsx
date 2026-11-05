@@ -70,7 +70,7 @@ export function RunPage({ runId }: { runId: string }) {
           <RunSummary run={run.data} />
           {run.data.persisted
             ? <Timeline events={events.data?.events ?? []} loading={events.isLoading} error={events.error}
-                        onRetry={() => void events.refetch()} />
+                        live={running} onRetry={() => void events.refetch()} />
             : <p className="note neutral">{t('sq.run.memoryOnly')}</p>}
         </>
       )}
@@ -148,8 +148,8 @@ function RunSummary({ run }: { run: RunRecord }) {
   )
 }
 
-function Timeline({ events, loading, error, onRetry }: {
-  events: RunEvent[]; loading: boolean; error: unknown; onRetry: () => void
+function Timeline({ events, loading, error, live, onRetry }: {
+  events: RunEvent[]; loading: boolean; error: unknown; live: boolean; onRetry: () => void
 }) {
   const { t } = useT()
   if (loading) return <StateBlock busy title={t('sq.run.loading')} />
@@ -160,7 +160,7 @@ function Timeline({ events, loading, error, onRetry }: {
       <h3 className="sq-section-title">{t('sq.run.timeline')}</h3>
       {timeline.rows.length ? (
         <ol className="sq-timeline">
-          {timeline.rows.map((row) => <TimelineStep key={row.key} row={row} />)}
+          {timeline.rows.map((row) => <TimelineStep key={row.key} row={row} live={live} />)}
           {timeline.cancelRequested && (
             <li className="sq-timeline-row"><div className="sq-timeline-head">
               <strong>{t('sq.run.cancelRequested')}</strong>
@@ -173,9 +173,9 @@ function Timeline({ events, loading, error, onRetry }: {
   )
 }
 
-function TimelineStep({ row }: { row: TimelineRow }) {
+function TimelineStep({ row, live }: { row: TimelineRow; live: boolean }) {
   const { t } = useT()
-  const status = rowStatus(row)
+  const status = rowStatus(row, live)
   const duration = rowDuration(row)
   const fields = row.finished?.attrs.fields
   const startedAttrs = row.started?.attrs ?? {}
@@ -187,11 +187,11 @@ function TimelineStep({ row }: { row: TimelineRow }) {
   return (
     <li className="sq-timeline-row">
       <div className="sq-timeline-head">
-        <strong>{row.stage ? stageLabel(row.stage, t) : t('sq.run.otherEvent')}</strong>
+        <strong>{row.stage ? stageLabel(row.stage, t) : t('sq.run.noStage')}</strong>
         {row.step !== null && <span className="field-hint">{t('sq.run.stepN', { n: row.step })}</span>}
         <span className="spacer" />
         {duration !== null && <span className="mono field-hint">{formatDuration(duration)}</span>}
-        <Chip tone={STEP_TONES[status] ?? 'neutral'}>{closedSet('sq.run.step', status, t)}</Chip>
+        {status && <Chip tone={STEP_TONES[status] ?? 'neutral'}>{closedSet('sq.run.step', status, t)}</Chip>}
       </div>
       {error && <ServerText text={error} />}
       {row.events.map((event) => <TimelineEvent key={event.seq} event={event} />)}

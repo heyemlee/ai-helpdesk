@@ -123,7 +123,7 @@ Data questions on the staff instance go to the SQL agent in [ai-sql-agent/](ai-s
 
 ### Text2SQL agent
 
-The SQL agent is its own service, with its own console, release gate and deployment ([README](ai-sql-agent/README.md)).
+The SQL agent is its own service, with its own release gate and deployment ([README](ai-sql-agent/README.md)); its pages are the Data section of the same console, which reaches it through `/sql-api/` with the console's key added on the server.
 
 - **Routes and plans.** A model router with JSON-schema output decides between the tool and memory; a planner splits the rest into steps and hands each step's results to the next.
 - **One tool, behind one gate.** It acts only through read-only SQL. An SQLGlot AST gate checks every table and column against the caller's permissions and refuses what it can't parse, within 1,000 rows, 10 s and 8 MiB per call.

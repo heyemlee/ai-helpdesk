@@ -57,14 +57,9 @@ ai-sql-ops = "ai_sql_agent.ops.__main__:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-# 页面是原生 HTML / CSS / ES Module，没有构建产物：这里列的就是要随包发布的源文件。
-# 新增一层子目录时要在这里加一行，否则镜像里（非 editable 安装）会缺文件。
+# 随包发布的非 Python 文件。新增一层子目录时要在这里加一行，否则镜像里（非 editable 安装）会缺文件。
+# 控制台不在这里：它是仓库里的 frontend/（React），由控制台自己的 nginx 镜像托管
 ai_sql_agent = [
-    "api/static/*.html",
-    "api/static/*.css",
-    "api/static/js/*.js",
-    "api/static/js/i18n/*.js",
-    "api/static/js/views/*.js",
     "resources/demo_sql/*.sql",
 ]
 

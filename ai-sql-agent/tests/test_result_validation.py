@@ -253,17 +253,23 @@ class RiskFindingsReachTheUserTest(unittest.TestCase):
         self.assertEqual(payload["step_logs"][0]["risk_findings"][0]["anomaly"], "empty_result")
 
     def test_frontend_renders_the_findings(self):
-        """界面不渲染等于没提示，这里直接检查页面读了这两个字段、并且有对应的提示文案。"""
+        """
+        界面不渲染等于没提示，这里直接检查控制台读了这两个字段、并且有对应的提示文案。
+
+        控制台是仓库里的 frontend/（React），SQL Agent 自己不再带页面。只在整个仓库里跑时检查
+        （单独拷出 ai-sql-agent/ 时没有 frontend/，跳过）。
+        """
         from pathlib import Path
 
-        static = Path(__file__).resolve().parents[1] / "src" / "ai_sql_agent" / "api" / "static" / "js"
-        model = (static / "model.js").read_text(encoding="utf-8")
+        frontend = Path(__file__).resolve().parents[2] / "frontend" / "src"
+        if not frontend.is_dir():
+            self.skipTest("没有 frontend/（只拷了 ai-sql-agent/）")
+        model = (frontend / "lib" / "sql" / "model.ts").read_text(encoding="utf-8")
         self.assertIn("risk_findings", model)
         self.assertIn("has_risk", model)
 
         # 提示默认可见：它在结果卡片里，不在折叠起来的「查询过程」里
-        result = (static / "result.js").read_text(encoding="utf-8")
-        self.assertIn("notice.review.title", result)
-        for language in ("en", "zh"):
-            dictionary = (static / "i18n" / f"{language}.js").read_text(encoding="utf-8")
-            self.assertIn("'notice.review.title'", dictionary)
+        answer = (frontend / "components" / "data" / "ask" / "Answer.tsx").read_text(encoding="utf-8")
+        self.assertIn("sq.ask.notice.review.title", answer)
+        strings = (frontend / "i18n" / "sq-ask.ts").read_text(encoding="utf-8")
+        self.assertEqual(strings.count("'sq.ask.notice.review.title'"), 2, "中英两份都要有")

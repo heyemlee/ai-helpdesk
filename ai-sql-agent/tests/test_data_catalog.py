@@ -2081,17 +2081,17 @@ class CatalogApiTest(unittest.TestCase):
         self.assertNotIn('path="/catalog/erp_db/supplier/rows"', metrics)
 
     def test_unauthenticated_paths_cannot_mint_metric_labels(self):
-        # 静态文件和不存在的路径都不走鉴权：按原始路径打标签的话，谁都能把指标撑爆
-        self.assertEqual(self.client.get("/static/js/main.js").status_code, 200)
+        # 不存在的路径不走鉴权：按原始路径打标签的话，谁都能把指标撑爆。
+        # 旧控制台的 / 和 /static 已经删了（控制台在 frontend/），它们现在也是 unmatched
         self.assertEqual(self.client.get("/static/no-such-file-8231.js").status_code, 404)
         self.assertEqual(self.client.get("/wp-admin/setup-7719.php").status_code, 404)
+        self.assertEqual(self.client.get("/").status_code, 404)
 
         metrics = self.client.get("/metrics").text
-        self.assertIn('path="/static"', metrics)
         self.assertIn('path="unmatched"', metrics)
         self.assertNotIn("no-such-file-8231", metrics)
         self.assertNotIn("setup-7719", metrics)
-        self.assertNotIn('path="/static/js/main.js"', metrics)
+        self.assertNotIn('path="/static', metrics)
 
 
 class _FakeCursor:

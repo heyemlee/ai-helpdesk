@@ -123,7 +123,7 @@
 
 ### Text2SQL Agent
 
-SQL Agent 是独立的服务，有自己的控制台、发布门禁和部署方式（[README](ai-sql-agent/README.zh-CN.md)）。
+SQL Agent 是独立的服务，有自己的发布门禁和部署方式（[README](ai-sql-agent/README.zh-CN.md)）；它的页面是同一个控制台里的「数据」，经 `/sql-api/` 调它，Key 由控制台在服务端带上。
 
 - **先路由，再规划。** 模型路由用 JSON Schema 结构化输出，在工具和记忆之间做选择；规划器把其余问题拆成若干步，前一步的结果交给下一步。
 - **只有一个工具，守在一道闸门后面。** 它只能执行只读 SQL。SQLGlot 的 AST 闸门对照调用方的权限检查每一张表、每一列，解析不了的一律拒绝；每次调用限 1,000 行、10 秒、8 MiB。

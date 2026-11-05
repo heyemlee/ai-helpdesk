@@ -383,7 +383,6 @@ unauthorized table is rejected and never reaches the database).
 | `/health` | Liveness: process only, no dependency checks | livenessProbe |
 | `/readyz` | Readiness: memory store, audit store, pgvector | readinessProbe |
 | `/metrics` | Prometheus scrape | ServiceMonitor / scrape_config |
-| `/` | Web console: Ask, Data, History (static files under `/static`, no build step) | Reachable directly on the network |
 
 When a dependency wobbles, `/readyz` returns 503 and traffic is pulled, while
 `/health` still returns 200 — that keeps the orchestrator from restarting the
@@ -592,6 +591,9 @@ been sent. With N concurrent requests, up to N rejected calls go out before the 
 are stopped.
 
 ### Changing the model connection from the console
+
+The console is the repository's `frontend/` (Admin & diagnostics → Model connections, SQL Agent column). It reaches
+these endpoints through its own `/sql-api/` proxy, which adds the console's administrator key on the server side.
 
 An administrator can replace the main model connection — protocol, endpoint address, key,
 planning model and SQL model — under **Settings → Advanced settings → Model connection**,
