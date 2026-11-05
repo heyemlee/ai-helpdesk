@@ -242,6 +242,8 @@ class SQLAgentClient:
             resp = await client.post(self.endpoint, headers=headers, json=payload)
             resp.raise_for_status()
             data = resp.json()
+            # 这次查询在 SQL Agent 那边的 run（响应头里给，不在响应体里）
+            run_id = resp.headers.get("X-Run-Id", "")
 
         if not isinstance(data, dict):
             raise ValueError(f"ai-sql-agent 返回了非对象响应: {type(data).__name__}")
@@ -251,7 +253,7 @@ class SQLAgentClient:
         # data part 本身，与谁承载无关，三个承载者同一套判据。
         # 逐步骤日志的两个名字（`step_logs` / `steps`）在归一里一并处理，
         # 过渡期两个都认、`steps` 优先——见 core.evidence._steps_field。
-        result = normalize_delegation_result(data)
+        result = normalize_delegation_result(data, run_id=run_id)
 
         # 对面的 trace_id 落进本方日志，两个服务的链路才能对起来——出了问题
         # 拿这个 id 直接去 ai-sql-agent 的审计库里查那一次调用。
@@ -259,9 +261,9 @@ class SQLAgentClient:
         # 是"SQL 全跑挂了但下游照发成功"那种形态，只看前者在日志里是看不出来的。
         v = assess(result)
         logger.info(
-            "sql_agent.query 完成 trace_id=%s session=%s route=%s queried_db=%s databases=%s "
+            "sql_agent.query 完成 trace_id=%s run_id=%s session=%s route=%s queried_db=%s databases=%s "
             "risk=%s degraded=%s status=%s(%s) usable=%s",
-            result["trace_id"], payload["session_id"], result["route"], v.queried_database,
+            result["trace_id"], result["run_id"], payload["session_id"], result["route"], v.queried_database,
             result["selected_databases"], v.has_risk, v.degraded,
             v.execution_status, v.status_source, v.usable_as_source,
         )
@@ -298,9 +300,9 @@ class SQLAgentClient:
         else:
             result = await client.send(question, uid, sid)
         v = assess(result)
-        logger.info("sql_agent.a2a 完成 trace_id=%s session=%s route=%s queried_db=%s databases=%s "
+        logger.info("sql_agent.a2a 完成 trace_id=%s run_id=%s session=%s route=%s queried_db=%s databases=%s "
                     "status=%s(%s) usable=%s",
-                    result["trace_id"], sid, result["route"], v.queried_database,
+                    result["trace_id"], result.get("run_id", ""), sid, result["route"], v.queried_database,
                     result["selected_databases"],
                     v.execution_status, v.status_source, v.usable_as_source)
         return result

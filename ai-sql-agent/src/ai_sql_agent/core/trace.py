@@ -8,6 +8,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Iterator, List, Optional
 
+from . import telemetry
 from .logging_setup import get_logger, log_event
 from .metrics import STAGE_DURATION
 from .run_context import RunCancelled, check_cancelled, current_run, stage_frame
@@ -215,10 +216,22 @@ def stage(
         run.emit("stage.started", stage=name, step=step,
                  **{key: value for key, value in initial_fields.items() if key not in ("stage", "step")})
 
-    with stage_frame(name, step):
+    # 每个阶段一个 OTel span（见 core.telemetry）。只带标识类的字段，不带问题和 SQL 原文
+    database = initial_fields.get("database")
+    with telemetry.span(
+        f"stage.{name}",
+        **{
+            "ai_sql.stage": name,
+            "ai_sql.trace_id": get_trace_id() or None,
+            "ai_sql.run_id": run.run_id if run is not None else None,
+            "ai_sql.step": step,
+            "ai_sql.database": database if isinstance(database, str) else None,
+        },
+    ) as stage_span, stage_frame(name, step):
         try:
             yield recorder
         except RunCancelled as exc:
+            stage_span.set_attribute("ai_sql.status", "cancelled")
             duration_ms = round((time.perf_counter() - started) * 1000, 2)
             STAGE_DURATION.observe(
                 time.perf_counter() - started, stage=name, status="cancelled"
@@ -239,6 +252,7 @@ def stage(
                          duration_ms=duration_ms, fields=recorder.fields)
             raise
         except Exception as exc:
+            telemetry.mark_error(stage_span, exc)
             duration_ms = round((time.perf_counter() - started) * 1000, 2)
             STAGE_DURATION.observe(
                 time.perf_counter() - started, stage=name, status="error"

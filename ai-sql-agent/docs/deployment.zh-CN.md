@@ -60,7 +60,9 @@ curl -s localhost:8000/readyz | python -m json.tool
 | `AI_SQL_RUNS_RETENTION_DAYS` | `7` | 运行结束多少天后连同事件一起删掉 |
 | `AI_SQL_CANCEL_ON_DISCONNECT` | `true` | 调用方断开后，在下一个检查点取消这次运行（A2A 契约 v1.13 §5.4）。设为 `false` 就跑完为止，和 v1.12 时一样；控制台的停止按钮走 `/runs`，不受它影响 |
 | `AI_SQL_RUN_DEADLINE_SECONDS` | `0` | 一次运行的总时长上限，在下一个检查点生效；0 = 不限。要开就比调用方自己的上限大 |
-| `AI_SQL_LOG_FORMAT` | `json` | 便于日志系统采集 |
+| `AI_SQL_LOG_FORMAT` | `json` | 便于日志系统采集。请求在链路里时，JSON 日志还带一份 `otel_trace_id` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTel Collector，比如 `http://otel-collector:4318` | 用 OTLP/HTTP 导出 span。不设就不导出，但照样读请求头里的 `traceparent` |
+| `OTEL_SERVICE_NAME` | `ai-sql-agent` | span 上的服务名 |
 
 ### 执行上限
 
@@ -427,6 +429,11 @@ curl -s http://localhost:8000/runs/<run_id>/events -H 'X-API-Key: …' | jq '.ev
 
 事件类型有：`run.started`、`stage.started` / `stage.finished`、`model.call`、`tool.sql`、
 `run.cancel_requested`、`run.finished`。事件里不存提示词、模型原始输出和结果行；SQL 文本最多保留 8 KiB。
+
+设了 `OTEL_EXPORTER_OTLP_ENDPOINT` 时，同一次请求还是一条链路。调用方请求头里的 W3C `traceparent`
+是这次请求 SERVER span 的父节点，所以 ai-helpdesk 委派过来的查询在 Tempo 里是同一条链路：从那一轮对话，
+一直到每个阶段（`stage.*`）、每次模型调用（`model.call`）、每次 SQL 执行（`sql.execute`）。
+span 上记着 16 位的 `trace_id`（`ai_sql.trace_id`）和 run（`ai_sql.run_id`），不记问题、SQL 和错误原文。
 
 ## 七、常用运维查询
 

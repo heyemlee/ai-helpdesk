@@ -66,6 +66,8 @@ async def test_success_requires_final_completed_and_artifact():
     out = await _client(h).stream("q", "u", "s")
     assert out["answer"] == "订单已排产。"
     assert out["queried_database"] is True and out["trace_id"] == "tr"
+    # taskId 就是 SQL Agent 那边这次查询的 run_id：拿它去看每一步的 SQL
+    assert out["run_id"] == "t1"
 
 
 async def test_artifact_without_terminal_is_a_failure():
@@ -161,6 +163,7 @@ async def test_send_normalizes_like_query():
             "artifacts": [ART["artifact"]], "metadata": {"trace_id": "tr"}}})
     out = await _client(h).send("q", "u", "s")
     assert out["answer"] == "订单已排产。" and out["selected_databases"] == ["erp_db"]
+    assert out["run_id"] == "t"
 
 
 async def test_send_failed_task_raises():

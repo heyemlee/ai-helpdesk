@@ -19,6 +19,8 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
+from .telemetry import timed_event_span
+
 
 class RunCancelled(Exception):
     """
@@ -219,10 +221,19 @@ def cancellable_sleep(seconds: float, sleep: Callable[[float], None] = time.slee
 
 
 def emit(event_type: str, *, step: Optional[int] = None, **attrs: Any) -> None:
-    """向当前 run 发一个事件；不在 run 里是空操作。"""
+    """
+    向当前 run 发一个事件；不在 run 里是空操作。
+
+    计了时的那两种（模型调用 `model.call`、SQL 执行 `tool.sql`）同时记成一个 OTel span，
+    在不在 run 里都记：链路上每一次模型调用、每一次 SQL 执行都要有（见 `core.telemetry`）。
+    """
     run = _current_run.get()
     if run is not None:
         run.emit(event_type, step=step, **attrs)
+    try:
+        timed_event_span(event_type, attrs)
+    except Exception:  # pragma: no cover - 追踪是附加物，不能把查询带崩
+        pass
 
 
 def current_stage() -> str:

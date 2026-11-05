@@ -316,9 +316,14 @@ def normalize_delegation_result(
     *,
     answer: str = "",
     trace_id_fallback: str = "",
+    run_id: str = "",
 ) -> dict:
     """
     把三个承载者的载荷归一成同一种 dict，供 `assess()` 与上层消费。
+
+    `run_id` 是 SQL Agent 那边这次查询的 run（A2A 的 taskId，`/query` 的 `X-Run-Id` 响应头），
+    两者都不在 data part 里，由承载者自己取出来传进来；拿不到时是空串。拿它能去 SQL Agent 查
+    这次查询每一步的经过（`GET /runs/{run_id}/events`）。
 
     契约 §4.4.1（v1.8）：契约面是 data part 本身，**与谁承载无关**——
     `message/stream`、`message/send`、直连 `POST /query` 三个承载者共用
@@ -339,6 +344,7 @@ def normalize_delegation_result(
         "degrade_reason": str(data.get("degrade_reason", "") or ""),
         "selected_databases": data.get("selected_databases") or [],
         "trace_id": str(data.get("trace_id") or trace_id_fallback or ""),
+        "run_id": str(run_id or ""),
         "route": str(data.get("route", "") or ""),
         "steps": steps if isinstance(steps, list) else None,
     }
