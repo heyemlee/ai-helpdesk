@@ -108,13 +108,21 @@ echo "控制台"
 check_code "$CONSOLE/" 200
 check_health "控制台的 /api 通到员工实例" "$CONSOLE/api" '.status == "ok" and .event_log.instance == "staff"'
 # 数据页面：/sql-api/ 由控制台的 nginx 带上 console（admin）那把 Key 转给 SQL Agent。
-# whoami 不查库、不调模型，认出是 console 且是管理员，就说明 Key 在服务端加上了
-whoami="$(curl -s -m 5 "$CONSOLE/sql-api/whoami")"
+# whoami 不查库、不调模型，认出是 console 且是管理员，就说明 Key 在服务端加上了。
+# 请求要带控制台自己的头（X-Console-Request: 1），和页面一样；不带的、标明跨站的、Host 不是本机的都该被拒
+CONSOLE_HEADER='X-Console-Request: 1'
+whoami="$(curl -s -m 5 -H "$CONSOLE_HEADER" "$CONSOLE/sql-api/whoami")"
 if printf '%s' "$whoami" | jq -e '.identity.caller == "console" and .identity.is_admin == true' >/dev/null 2>&1; then
     ok "控制台的 /sql-api 带着管理员 Key 通到 SQL Agent"
 else
     bad "控制台的 /sql-api/whoami → $(printf '%s' "$whoami" | head -c 160)"
 fi
+# 跨站请求（CSRF）和 DNS 重绑定：这几种在 Key 生效之前就该被 nginx 拒掉
+check_code "$CONSOLE/sql-api/whoami" 403
+code="$(curl -s -m 5 -o /dev/null -w '%{http_code}' -H "$CONSOLE_HEADER" -H 'Sec-Fetch-Site: cross-site' "$CONSOLE/sql-api/whoami")"
+if [ "$code" = 403 ]; then ok "标明跨站的 /sql-api 请求 → 403"; else bad "标明跨站的 /sql-api 请求 → $code，应该是 403"; fi
+code="$(curl -s -m 5 -o /dev/null -w '%{http_code}' -H "$CONSOLE_HEADER" -H 'Host: rebind.example' "$CONSOLE/sql-api/whoami")"
+if [ "$code" = 421 ]; then ok "Host 不是本机的请求 → 421"; else bad "Host 不是本机的请求 → $code，应该是 421"; fi
 # Key 只在控制台的容器里：页面、JS 包和响应头里都不能有它。拿 Key 文件当 grep 的模式（-f），不进命令行、不打印
 if [ -s "$CONSOLE_KEY_FILE" ]; then
     # 模式里不能有空行：空模式匹配一切，会报"泄露"
@@ -124,7 +132,7 @@ if [ -s "$CONSOLE_KEY_FILE" ]; then
     for asset in / $(printf '%s' "$page" | grep -oE '/assets/[A-Za-z0-9._-]+\.(js|css)' | sort -u); do
         if curl -s -m 10 "$CONSOLE$asset" | grep -qF -f <(key_pattern); then leaked=1; fi
     done
-    if curl -s -m 5 -D - -o /dev/null "$CONSOLE/sql-api/whoami" | grep -qF -f <(key_pattern); then leaked=1; fi
+    if curl -s -m 5 -D - -o /dev/null -H "$CONSOLE_HEADER" "$CONSOLE/sql-api/whoami" | grep -qF -f <(key_pattern); then leaked=1; fi
     if [ "$leaked" = 0 ]; then
         ok "页面、JS 包和 /sql-api 的响应头里都没有控制台的 Key"
     else

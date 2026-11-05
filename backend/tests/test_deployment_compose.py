@@ -200,6 +200,25 @@ class TestTheConsoleCarriesTheSqlAgentKeyServerSide:
         assert 'proxy_set_header X-API-Key "${API_SQL_KEY}";' in sql_api_block
         assert "set $sql_upstream \"${API_SQL_UPSTREAM}\";" in sql_api_block
 
+    def test_only_requests_that_cannot_come_cross_site_get_the_key(self, sql_api_block):
+        """
+        Key 是服务端加的，别的网站能借员工的浏览器发"简单请求"过来（CSRF），以管理员身份跑到 SQL Agent 上。
+        所以 /sql-api/ 要求控制台自己的请求头（跨站带它得先过 CORS 预检，nginx 不回），浏览器标明跨站的直接拒；
+        整个控制台只认本机的 Host（DNS 重绑定时 Host 是攻击者的域名）。三条都在 Key 生效之前。
+        """
+        guards = sql_api_block.index('if ($http_x_console_request != "1")')
+        assert '$http_sec_fetch_site ~* "^(cross-site|same-site)$"' in sql_api_block
+        assert guards < sql_api_block.index("proxy_pass")
+        template = (FRONTEND / "docker" / "templates" / "default.conf.template").read_text(encoding="utf-8")
+        hosts = re.search(r"map \$host \$console_host_ok \{(.*?)\}", template, re.S)
+        assert hosts, "没有 Host 白名单"
+        allowed = {line.split()[0].strip('"') for line in hosts.group(1).splitlines()
+                   if line.strip() and not line.strip().startswith("default")}
+        assert allowed == {"127.0.0.1", "localhost", "[::1]"}
+        assert "if ($console_host_ok = 0)" in template
+        client = (FRONTEND / "src" / "api" / "sql" / "client.ts").read_text(encoding="utf-8")
+        assert "'X-Console-Request': '1'" in client
+
     def test_the_stream_is_not_buffered_and_outlives_the_contract_limit(self, sql_api_block):
         """A2A 的 message/stream 是 SSE；契约里流的硬上限是 90 秒。"""
         assert "proxy_buffering off;" in sql_api_block

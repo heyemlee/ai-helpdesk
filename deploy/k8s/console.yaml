@@ -52,8 +52,13 @@ spec:
             - name: sql-key
               mountPath: /run/secrets/console
               readOnly: true
+          # nginx 只认 Host 是 localhost / 127.0.0.1 的请求（防 DNS 重绑定），探针默认带的是 Pod IP
           readinessProbe:
-            httpGet: {path: /, port: http}
+            httpGet:
+              path: /
+              port: http
+              httpHeaders:
+                - {name: Host, value: localhost}
             periodSeconds: 10
           resources:
             requests: {cpu: 10m, memory: 32Mi}

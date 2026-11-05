@@ -35,6 +35,23 @@ describe('SQL Agent 客户端', () => {
     expect(JSON.stringify(init.headers ?? {})).not.toMatch(/api-key/i)
   })
 
+  it('每个请求都带控制台自己的头：nginx 只给带着它的请求加 Key（跨站请求带它得先过预检）', async () => {
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => json({}))
+    vi.stubGlobal('fetch', fetchMock)
+    await sqlApi.whoami()
+    await sqlApi.cancelRun('r1')
+    await sqlApi.rows('d', 't', { page: 1, page_size: 25 } as never)
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+      fetchMock(_url, init)
+      return sse(SSE)
+    }))
+    await streamQuery('q', { userId: 'u', sessionId: 's' })
+    for (const call of fetchMock.mock.calls) {
+      expect((call as unknown as [string, RequestInit])[1].headers).toMatchObject({ 'X-Console-Request': '1' })
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(4)
+  })
+
   it('/query 把 X-Run-Id 一起交回来：它和 A2A 的 taskId 是同一个东西', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => json(query.response, 200, { 'X-Run-Id': query.run_id })))
     const { response, runId } = await sqlApi.query({ query: 'q', user_id: 'console', session_id: 's' })

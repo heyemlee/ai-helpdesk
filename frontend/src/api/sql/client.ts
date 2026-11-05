@@ -5,6 +5,7 @@
  * **这里一把 Key 都不带。** 控制台那把管理员 Key 由 nginx 在服务端加进请求头，浏览器拿不到它，
  * JS 包里也没有；浏览器发来的 X-API-Key 会被 nginx 覆盖掉。代价是"连得到控制台就是管理员"：
  * 控制台只绑本机，在容器之间只挂 sql-net（合仓设计 §3.3），分角色是以后登录那一步的事。
+ * 别的网站借员工浏览器发的跨站请求由 nginx 挡（Host 只认本机、要求 CONSOLE_HEADER、拒绝跨站）。
  *
  * 错误统一成 SqlApiError。FastAPI 的 detail 有三种形状：字符串、{code, message}（数据浏览）、
  * 校验错误的数组（422）。
@@ -19,6 +20,12 @@ import type {
 } from './types'
 
 export const SQL_API_BASE: string = import.meta.env.VITE_SQL_API_BASE_URL || '/sql-api'
+
+/**
+ * 每个请求都带的自定义头。控制台的 nginx 只给带着它的请求加 Key：别的网站借员工的浏览器发来的
+ * 跨站请求要带自定义头，就得先过 CORS 预检，而 nginx 不回预检——这样挡住 CSRF。
+ */
+export const CONSOLE_HEADER = { 'X-Console-Request': '1' } as const
 
 export class SqlApiError extends Error {
   /** 0：请求没到服务端（网络断了、服务没起、nginx 找不到 sql-agent 时是 502） */
@@ -79,7 +86,7 @@ async function request<T>(method: string, path: string, { params, body, signal, 
     response = await fetch(SQL_API_BASE + withParams(path, params), {
       method,
       signal,
-      headers: body !== undefined ? { 'Content-Type': 'application/json' } : {},
+      headers: body !== undefined ? { ...CONSOLE_HEADER, 'Content-Type': 'application/json' } : { ...CONSOLE_HEADER },
       body: body !== undefined ? JSON.stringify(body) : undefined,
     })
   } catch (error) {
@@ -200,7 +207,7 @@ export async function streamQuery(question: string, { userId, sessionId, signal,
     response = await fetch(`${SQL_API_BASE}/a2a`, {
       method: 'POST',
       signal,
-      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+      headers: { ...CONSOLE_HEADER, 'Content-Type': 'application/json', Accept: 'text/event-stream' },
       body: JSON.stringify({
         jsonrpc: '2.0',
         id: uid(),
