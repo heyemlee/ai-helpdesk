@@ -355,8 +355,16 @@ cleanup() {
 backup_sql_agent_state() {
     local dest="$1/sql-agent-state"
 
+    if ! has_container ai-helpdesk-sql-agent; then
+        print_warn "没有 SQL Agent 的容器（还没部署过），它的状态没有备份"
+        return 0
+    fi
     if [ "$(docker inspect --format '{{.State.Running}}' ai-helpdesk-sql-agent 2>/dev/null)" != "true" ]; then
-        print_warn "SQL Agent 没在运行，它的状态没有备份"
+        # 停着（比如 sql-agent.env 改坏了、就绪检查不过在反复重启）：没有进程在写，直接拷卷里的文件
+        # 就是一致的，连同可能剩下的 -wal 一起拷，下次打开时 SQLite 会把它补进去
+        print_warn "SQL Agent 没在运行，直接从它的卷里拷状态文件"
+        mkdir -p "$dest"
+        docker cp ai-helpdesk-sql-agent:/app/state/. "$dest"
         return 0
     fi
 

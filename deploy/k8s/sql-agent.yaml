@@ -124,7 +124,9 @@ spec:
             claimName: sql-agent-data
 ---
 # 只放行员工实例的 api 和 worker。客户实例、事件消费者、Postgres 都连不到它。
-# 出站不限：它要连模型（这里是 mock-llm，真部署是外面的模型服务）
+# 出站不限：它要连模型（这里是 mock-llm，真部署是外面的模型服务）。
+# 管的是直连：api-customer 还能调 api-staff 的 Service，经员工实例间接委派（员工实例没开 Key），
+# 和 compose 那边一样这次不堵
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

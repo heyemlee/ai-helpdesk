@@ -236,6 +236,10 @@ services:
   # 员工实例（含排队模式的 worker）、控制台、Prometheus 和 OTel Collector；客户实例、nginx、
   # postgres 都不在 sql-net 上。第二道是 API Key（下面的 secrets）。
   #
+  # 这两道管的是直连。客户实例还能经员工实例间接委派：员工实例没开 Key，又和它同在
+  # ai-helpdesk-network。这条路之前就有，这次不堵；要堵就给员工实例设 AI_HELPDESK_API_KEY 和
+  # AI_HELPDESK_PROTECT_CHAT=true，控制台在浏览器里填员工钥匙。
+  #
   # 按生产模式启动：ai_sql_agent.api.app.check_production_readiness 有一项不过就不启动
   # （没有模型凭据、没开 Key、Key 带 can_impersonate、策略里写了语义层没有的库……），
   # 日志里是 production_readiness.failed。下面这几项写死在这里，env 文件改不动它们。

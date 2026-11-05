@@ -40,7 +40,10 @@ echo "$@" >> "$CMDLOG"
 # psql 那一步脚本会重定向 stdin，读掉免得管道破裂
 if [[ "$*" == *psql* ]]; then cat > /dev/null; fi
 # `docker inspect … --format` 要能给出卷名，否则脚本会判定"找不到 /data 卷"。
-if [[ "$1" == "inspect" ]]; then echo "fake_redis_volume"; fi
+# FAKE_SQL_AGENT_RUNNING 非空时，问容器在不在跑（.State.Running）回 true。
+if [[ "$1" == "inspect" ]]; then
+    if [[ "$*" == *State.Running* && -n "$FAKE_SQL_AGENT_RUNNING" ]]; then echo true; else echo "fake_redis_volume"; fi
+fi
 # 健康检查：redis-cli ping 要回 PONG；FAKE_PG_DOWN 非空时 pg_isready 报"没有响应"。
 if [[ "$*" == *redis-cli*ping ]]; then echo PONG; fi
 if [[ "$*" == *pg_isready* && -n "$FAKE_PG_DOWN" ]]; then exit 2; fi
@@ -303,11 +306,24 @@ class TestSqlAgentState:
     进程一直在写，直接拷文件拿到的可能缺着还在 -wal 里的那部分，而且拷的时候不会报错。
     """
 
-    def test_backup_goes_through_the_sqlite_online_backup(self):
-        """和 sqlite3 命令行的 .backup 是同一个接口；镜像里没有命令行，用 Python 的。"""
-        code = _script_code()
-        assert "source.backup(target)" in code
-        assert "docker cp ai-helpdesk-sql-agent:/app/state" not in code
+    def test_a_running_sql_agent_is_backed_up_through_the_sqlite_online_backup(self, fake_repo):
+        """
+        在跑的时候不能直接拷文件（WAL 里还有没合进去的）。走 SQLite 的在线备份——和 sqlite3
+        命令行的 .backup 是同一个接口，镜像里没有命令行，用 Python 的——在容器里备好再拷出来。
+        """
+        assert "source.backup(target)" in _script_code()
+        env = dict(os.environ)
+        env["PATH"] = f"{fake_repo['bin']}:{env['PATH']}"
+        env["CMDLOG"] = str(fake_repo["cmdlog"])
+        env["FAKE_SQL_AGENT_RUNNING"] = "1"
+        proc = subprocess.run(["bash", str(fake_repo["script"]), "backup"],
+                              capture_output=True, text=True, env=env, timeout=120)
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        cmds = fake_repo["cmdlog"].read_text().splitlines()
+        online = _index_of(cmds, "exec -i ai-helpdesk-sql-agent python -")
+        copy_out = _index_of(cmds, "cp", "ai-helpdesk-sql-agent:/tmp/sql-agent-backup/.")
+        assert online < copy_out
+        assert not any("ai-helpdesk-sql-agent:/app/state" in cmd for cmd in cmds)
 
     def test_state_is_replaced_while_the_sql_agent_is_stopped(self, fake_repo):
         """停着换（跑着的进程会接着往旧库和旧 WAL 里写），换完再起；起之前配置已经恢复好。"""
@@ -324,6 +340,23 @@ class TestSqlAgentState:
     def test_an_old_backup_without_it_leaves_the_state_alone(self, fake_repo):
         cmds = _run_restore(fake_repo)
         assert not any(":/state" in cmd for cmd in cmds)
+
+    def test_a_stopped_sql_agent_is_still_backed_up_from_its_volume(self, fake_repo):
+        """
+        停着的时候（比如 env 改坏了、就绪检查不过在反复重启）不能只打一句警告就跳过：
+        那份备份里就没有审计和对话记忆了。没有进程在写，直接拷卷里的文件是一致的。
+        假 docker 的 inspect 回不出 "true"，正好是"容器在、没在跑"。
+        """
+        env = dict(os.environ)
+        env["PATH"] = f"{fake_repo['bin']}:{env['PATH']}"
+        env["CMDLOG"] = str(fake_repo["cmdlog"])
+        proc = subprocess.run(["bash", str(fake_repo["script"]), "backup"],
+                              capture_output=True, text=True, env=env, timeout=120)
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        cmds = fake_repo["cmdlog"].read_text().splitlines()
+        copy = cmds[_index_of(cmds, "cp", "ai-helpdesk-sql-agent:/app/state/.")]
+        assert copy.rstrip().endswith("sql-agent-state")
+        assert not any(cmd.startswith("exec -i ai-helpdesk-sql-agent") for cmd in cmds)
 
 
 class TestRestoreStopsOnFailure:

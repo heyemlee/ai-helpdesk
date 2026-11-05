@@ -7,6 +7,11 @@
 #
 # SQL Agent 不发布宿主机端口，它的探针在它自己的容器里跑。"客户实例连不到它"用一个挂在客户实例
 # 网络上的一次性容器来试（用客户实例的镜像，跑完就删），不进客户实例的容器。
+#
+# 这里核对的是**直连** SQL Agent 这一条。经员工实例间接委派那条路还开着：员工实例没开 Key，又和
+# 客户实例同在 ai-helpdesk-network（Docker Desktop 上还有 host.docker.internal:8080 和 :5174）。
+# 合仓设计 §3.3 写明了这次不堵，要堵就给员工实例设 AI_HELPDESK_API_KEY 和 AI_HELPDESK_PROTECT_CHAT。
+# 下面会打一行 note 说它还开着，不算失败。
 set -uo pipefail
 
 EDGE="${EDGE:-http://127.0.0.1:80}"
@@ -153,6 +158,12 @@ for url in http://sql-agent:8000/health http://host.docker.internal:8000/health;
         bad "客户实例的网络上 $url → $code"
     fi
 done
+# 已知还开着的间接路径（见开头），只提示
+code="$(docker run --rm --network "$CUSTOMER_NET" --entrypoint curl ai-helpdesk-ai-helpdesk-customer:latest \
+    -s -m 3 -o /dev/null -w '%{http_code}' http://ai-helpdesk:8000/health 2>/dev/null)"
+if [ "$code" != 000 ]; then
+    printf '  note  客户实例的网络上连得到员工实例（ai-helpdesk:8000 → %s）：经它间接委派这条路这次不堵\n' "$code"
+fi
 
 echo "容器"
 for container in ai-helpdesk-app ai-helpdesk-customer ai-helpdesk-frontend ai-helpdesk-nginx ai-helpdesk-sql-agent; do
