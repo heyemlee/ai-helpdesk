@@ -1,0 +1,837 @@
+# 遗留 ERP 语义元数据 —— 由 sim_erp/legacy/semantic.py 生成，不要手改。
+name: erp_db
+description: 遗留 ERP 抽取库（金蝶/用友式命名）：销售订单、订单明细、变更单、应收与收款、客户主数据。**字段名是 F 前缀缩写，状态是单字母代码，日期是 8 位整数**——业务含义全在本元数据里，库本身没有注释。
+aliases:
+- ERP
+- ERP库
+- 订单库
+- 应收库
+- 遗留ERP
+connection:
+  dialect: sqlite
+  db_path: runtime_data/legacy/erp.db
+tables:
+  T_SAL_ORDER:
+    description: 销售订单主表（工程）。一个 FBILLNO 对应一套橱柜的完整交付。
+    aliases:
+    - 销售订单
+    - 订单表
+    - 工程表
+    - job
+    - 订单
+    columns:
+      FBILLNO:
+        description: 工程号 / 订单号，形如 J25-00123。全公司唯一。
+        aliases:
+        - 工程号
+        - 订单号
+        - 单号
+        - job号
+        - job number
+        semantic_role: join_key
+        business_usage: 主键，也是明细、变更单、应收三张表回指本表的键。
+        keyword_text: FBILLNO 工程号 订单号 单号 job号 job number T_SAL_ORDER
+        vector_text: 字段名：FBILLNO。所属表：T_SAL_ORDER。工程号 / 订单号，形如 J25-00123。全公司唯一。
+        rerank_text: 字段：T_SAL_ORDER.FBILLNO。含义：工程号 / 订单号，形如 J25-00123。全公司唯一。 角色：join_key。
+        samples:
+        - J25-00003
+        - J25-00005
+        - J25-00006
+        - J25-00007
+      FCUSTID:
+        description: 客户编号。
+        aliases:
+        - 客户号
+        - 客户编号
+        semantic_role: join_key
+        business_usage: 关联 T_BD_CUSTOMER.FCUSTID。
+        keyword_text: FCUSTID 客户号 客户编号 T_SAL_ORDER
+        vector_text: 字段名：FCUSTID。所属表：T_SAL_ORDER。客户编号。
+        rerank_text: 字段：T_SAL_ORDER.FCUSTID。含义：客户编号。 角色：join_key。
+        samples:
+        - C0001
+        - C0002
+        - C0003
+        - C0004
+      FSUBDIV:
+        description: 小区名（楼盘）。商业工程为 NULL。
+        aliases:
+        - 小区
+        - 楼盘
+        - subdivision
+        semantic_role: filter
+        business_usage: '**商业工程为 NULL**，按小区筛会把整个商业业务筛没。'
+        keyword_text: FSUBDIV 小区 楼盘 subdivision T_SAL_ORDER
+        vector_text: 字段名：FSUBDIV。所属表：T_SAL_ORDER。小区名（楼盘）。商业工程为 NULL。
+        rerank_text: 字段：T_SAL_ORDER.FSUBDIV。含义：小区名（楼盘）。商业工程为 NULL。 角色：filter。
+        samples:
+        - Amber Ridge
+        - Blue Oak Estates
+        - Cedar Point
+        - Copper Creek
+      FLOTNO:
+        description: 地块号。商业工程为 NULL。
+        aliases:
+        - 地块号
+        - lot
+        - 门牌
+        semantic_role: filter
+        business_usage: '**lot 号跨小区重复**，单独一个 lot 42 不能唯一定位工程，要配合 FSUBDIV。'
+        keyword_text: FLOTNO 地块号 lot 门牌 T_SAL_ORDER
+        vector_text: 字段名：FLOTNO。所属表：T_SAL_ORDER。地块号。商业工程为 NULL。
+        rerank_text: 字段：T_SAL_ORDER.FLOTNO。含义：地块号。商业工程为 NULL。 角色：filter。
+        samples:
+        - '1'
+        - '10'
+        - '11'
+        - '12'
+      FPLANNM:
+        description: 户型名。商业工程为 NULL。
+        aliases:
+        - 户型
+        - 图号
+        - plan
+        semantic_role: filter
+        business_usage: 量产房的标准户型。
+        keyword_text: FPLANNM 户型 图号 plan T_SAL_ORDER
+        vector_text: 字段名：FPLANNM。所属表：T_SAL_ORDER。户型名。商业工程为 NULL。
+        rerank_text: 字段：T_SAL_ORDER.FPLANNM。含义：户型名。商业工程为 NULL。 角色：filter。
+        samples:
+        - Plan 1420
+        - Plan 1685
+        - Plan 1970
+        - Plan 2240
+      FADDR:
+        description: 施工地址。
+        aliases:
+        - 地址
+        - 工地地址
+        semantic_role: text
+        business_usage: 送货与安装地址。
+        keyword_text: FADDR 地址 工地地址 T_SAL_ORDER
+        vector_text: 字段名：FADDR。所属表：T_SAL_ORDER。施工地址。
+        rerank_text: 字段：T_SAL_ORDER.FADDR。含义：施工地址。 角色：text。
+        samples:
+        - 1010 Copper Leaf Ln
+        - 1018 Wheatfield Ln
+        - 1020 Sagebrush Ave
+        - 1034 Sagebrush Ave
+      FCITY:
+        description: 城市。
+        aliases:
+        - 城市
+        semantic_role: filter
+        business_usage: 按区域统计。
+        keyword_text: FCITY 城市 T_SAL_ORDER
+        vector_text: 字段名：FCITY。所属表：T_SAL_ORDER。城市。
+        rerank_text: 字段：T_SAL_ORDER.FCITY。含义：城市。 角色：filter。
+        samples:
+        - Carson City
+        - Elk Grove
+        - Folsom
+        - Fremont
+      FPROV:
+        description: 州的原始录入值。**大小写不统一，不要用它筛选**。
+        aliases:
+        - 州原始值
+        semantic_role: dimension
+        business_usage: 只用于展示，约 3% 是手工录入的 Ca/Nv。按州筛选用 FPROVSTD。
+        keyword_text: FPROV 州原始值 T_SAL_ORDER
+        vector_text: 字段名：FPROV。所属表：T_SAL_ORDER。州的原始录入值。**大小写不统一，不要用它筛选**。
+        rerank_text: 字段：T_SAL_ORDER.FPROV。含义：州的原始录入值。**大小写不统一，不要用它筛选**。 角色：dimension。
+        samples:
+        - CA
+        - Ca
+        - NV
+        - Nv
+      FPROVSTD:
+        description: 规范化后的州（大写），按州筛选、分组一律用这一列。
+        aliases:
+        - 州
+        - 加州
+        - 内华达
+        - state
+        semantic_role: filter
+        business_usage: 等于 UPPER(TRIM(FPROV))。
+        keyword_text: FPROVSTD 州 加州 内华达 state T_SAL_ORDER
+        vector_text: 字段名：FPROVSTD。所属表：T_SAL_ORDER。规范化后的州（大写），按州筛选、分组一律用这一列。
+        rerank_text: 字段：T_SAL_ORDER.FPROVSTD。含义：规范化后的州（大写），按州筛选、分组一律用这一列。 角色：filter。
+        samples:
+        - CA
+        - NV
+      FBIZTYPE:
+        description: 业务类型：production 量产房 / semi_custom 半定制 / commercial 商业 / service 售后。
+        aliases:
+        - 业务类型
+        - 订单类型
+        - 工程类型
+        semantic_role: filter
+        business_usage: 四类的金额量级与流程都不同。
+        keyword_text: FBIZTYPE 业务类型 订单类型 工程类型 T_SAL_ORDER
+        vector_text: 字段名：FBIZTYPE。所属表：T_SAL_ORDER。业务类型：production 量产房 / semi_custom 半定制 / commercial 商业
+          / service 售后。
+        rerank_text: 字段：T_SAL_ORDER.FBIZTYPE。含义：业务类型：production 量产房 / semi_custom 半定制 / commercial 商业
+          / service 售后。 角色：filter。
+        samples:
+        - commercial
+        - production
+        - semi_custom
+        - service
+      FAMOUNT:
+        description: '**合同金额（不含税）**，不含变更单增减。'
+        aliases:
+        - 合同额
+        - 合同金额
+        - 订单金额
+        - 金额
+        semantic_role: metric
+        business_usage: '**口径警告**：本库三张表都有 FAMOUNT，含义完全不同——本列是订单头的合同额；T_SAL_ORDERENTRY.FAMOUNT 是明细行金额；T_AR_RECEIVABLE.FAMOUNT
+          是单张应收的开票额。问「合同额」用本列。'
+        keyword_text: FAMOUNT 合同额 合同金额 订单金额 金额 T_SAL_ORDER
+        vector_text: 字段名：FAMOUNT。所属表：T_SAL_ORDER。**合同金额（不含税）**，不含变更单增减。
+        rerank_text: 字段：T_SAL_ORDER.FAMOUNT。含义：**合同金额（不含税）**，不含变更单增减。 角色：metric。
+        samples:
+        - '402.3'
+        - '403.2'
+        - '429.05'
+        - '462.74'
+      FDATE:
+        description: 签单日期。【日期格式】本列是 8 位整数 20260903，不是 '2026-09-03'。与今天比较要写 `CAST(STRFTIME('%Y%m%d','now','localtime')
+          AS INTEGER)`，两个日期列相减不等于天数，要先 DATE(SUBSTR(...)) 转回来。
+        aliases:
+        - 签单日
+        - 下单日期
+        - 签单时间
+        semantic_role: time
+        business_usage: 按月/季统计签单量。
+        keyword_text: FDATE 签单日 下单日期 签单时间 T_SAL_ORDER
+        vector_text: 字段名：FDATE。所属表：T_SAL_ORDER。签单日期。【日期格式】本列是 8 位整数 20260903，不是 '2026-09-03'。与今天比较要写 `CAST(STRFTIME('%Y%m%d','now','localtime')
+          AS INTEGER)`，两个日期列相减不等于天数，要先 DATE(SUBSTR(...)) 转回来。
+        rerank_text: 字段：T_SAL_ORDER.FDATE。含义：签单日期。【日期格式】本列是 8 位整数 20260903，不是 '2026-09-03'。与今天比较要写 `CAST(STRFTIME('%Y%m%d','now','localtime')
+          AS INTEGER)`，两个日期列相减不等于天数，要先 DATE(SUBSTR(...)) 转回来。 角色：time。
+        samples:
+        - '20250101'
+        - '20250102'
+        - '20250104'
+        - '20250105'
+      FDELIVDATE:
+        description: 计划交付日期。未下达或已取消时为 NULL。【日期格式】本列是 8 位整数 20260903，不是 '2026-09-03'。与今天比较要写 `CAST(STRFTIME('%Y%m%d','now','localtime')
+          AS INTEGER)`，两个日期列相减不等于天数，要先 DATE(SUBSTR(...)) 转回来。
+        aliases:
+        - 计划交付日
+        - 交期
+        - 计划安装日
+        semantic_role: time
+        business_usage: '**未下达和已取消的为 NULL**。'
+        keyword_text: FDELIVDATE 计划交付日 交期 计划安装日 T_SAL_ORDER
+        vector_text: 字段名：FDELIVDATE。所属表：T_SAL_ORDER。计划交付日期。未下达或已取消时为 NULL。【日期格式】本列是 8 位整数 20260903，不是
+          '2026-09-03'。与今天比较要写 `CAST(STRFTIME('%Y%m%d','now','localtime') AS INTEGER)`，两个日期列相减不等于天数，要先
+          DATE(SUBSTR(...)) 转回来。
+        rerank_text: 字段：T_SAL_ORDER.FDELIVDATE。含义：计划交付日期。未下达或已取消时为 NULL。【日期格式】本列是 8 位整数 20260903，不是 '2026-09-03'。与今天比较要写
+          `CAST(STRFTIME('%Y%m%d','now','localtime') AS INTEGER)`，两个日期列相减不等于天数，要先 DATE(SUBSTR(...)) 转回来。
+          角色：time。
+        samples:
+        - '20250212'
+        - '20250228'
+        - '20250302'
+        - '20250303'
+      FDOCSTATUS:
+        description: 单据状态**代码**。
+        aliases:
+        - 订单状态
+        - 单据状态
+        - 状态
+        semantic_role: filter
+        business_usage: "**代码表（这是接遗留 ERP 最容易漏的一类翻译）**：\n  A=已签未下达 / B=已下达 / C=生产中 / D=已发货 / E=已安装 / F=已结案\
+          \ / Z=已取消。\n「在产的」是 C；「已交付的」是 D、E、F；「还没投产的」是 A 和 Z。\n**A 和 Z 没有生产工单**，跟生产库做内连接会静默丢掉约 14% 的订单。"
+        keyword_text: FDOCSTATUS 订单状态 单据状态 状态 T_SAL_ORDER
+        vector_text: 字段名：FDOCSTATUS。所属表：T_SAL_ORDER。单据状态**代码**。
+        rerank_text: 字段：T_SAL_ORDER.FDOCSTATUS。含义：单据状态**代码**。 角色：filter。
+        samples:
+        - A
+        - B
+        - C
+        - D
+  T_SAL_ORDERENTRY:
+    description: 销售订单明细行。一个工程下的每一项柜体、台面、五金、线条。
+    aliases:
+    - 订单明细
+    - 明细行
+    - 行项目
+    - 配置单
+    columns:
+      FENTRYID:
+        description: 明细行号。
+        aliases:
+        - 明细号
+        semantic_role: join_key
+        business_usage: 主键。
+        keyword_text: FENTRYID 明细号 T_SAL_ORDERENTRY
+        vector_text: 字段名：FENTRYID。所属表：T_SAL_ORDERENTRY。明细行号。
+        rerank_text: 字段：T_SAL_ORDERENTRY.FENTRYID。含义：明细行号。 角色：join_key。
+        samples:
+        - IT0000001
+        - IT0000002
+        - IT0000003
+        - IT0000004
+      FBILLNO:
+        description: 所属工程号。
+        aliases:
+        - 工程号
+        - 订单号
+        semantic_role: join_key
+        business_usage: 关联 T_SAL_ORDER.FBILLNO。
+        keyword_text: FBILLNO 工程号 订单号 T_SAL_ORDERENTRY
+        vector_text: 字段名：FBILLNO。所属表：T_SAL_ORDERENTRY。所属工程号。
+        rerank_text: 字段：T_SAL_ORDERENTRY.FBILLNO。含义：所属工程号。 角色：join_key。
+        samples:
+        - J25-00003
+        - J25-00005
+        - J25-00006
+        - J25-00007
+      FSEQ:
+        description: 行序号。
+        aliases:
+        - 行号
+        semantic_role: dimension
+        business_usage: 工程内排序。
+        keyword_text: FSEQ 行号 T_SAL_ORDERENTRY
+        vector_text: 字段名：FSEQ。所属表：T_SAL_ORDERENTRY。行序号。
+        rerank_text: 字段：T_SAL_ORDERENTRY.FSEQ。含义：行序号。 角色：dimension。
+        samples:
+        - '1'
+        - '2'
+        - '3'
+        - '4'
+      FMATCAT:
+        description: 物料品类：base_cabinet 地柜 / wall_cabinet 吊柜 / tall_cabinet 高柜 / vanity 浴室柜 / countertop
+          台面 / hardware 五金 / molding 线条 / accessory 配件。
+        aliases:
+        - 品类
+        - 类别
+        - 柜型
+        semantic_role: filter
+        business_usage: 按品类统计用量或金额。
+        keyword_text: FMATCAT 品类 类别 柜型 T_SAL_ORDERENTRY
+        vector_text: 字段名：FMATCAT。所属表：T_SAL_ORDERENTRY。物料品类：base_cabinet 地柜 / wall_cabinet 吊柜 / tall_cabinet
+          高柜 / vanity 浴室柜 / countertop 台面 / hardware 五金 / molding 线条 / accessory 配件。
+        rerank_text: 字段：T_SAL_ORDERENTRY.FMATCAT。含义：物料品类：base_cabinet 地柜 / wall_cabinet 吊柜 / tall_cabinet
+          高柜 / vanity 浴室柜 / countertop 台面 / hardware 五金 / molding 线条 / accessory 配件。 角色：filter。
+        samples:
+        - accessory
+        - base_cabinet
+        - countertop
+        - hardware
+      FMATNO:
+        description: 物料编码。
+        aliases:
+        - 物料号
+        - 编码
+        - sku
+        semantic_role: join_key
+        business_usage: 物料主数据的键。
+        keyword_text: FMATNO 物料号 编码 sku T_SAL_ORDERENTRY
+        vector_text: 字段名：FMATNO。所属表：T_SAL_ORDERENTRY。物料编码。
+        rerank_text: 字段：T_SAL_ORDERENTRY.FMATNO。含义：物料编码。 角色：join_key。
+        samples:
+        - B12-104
+        - B12-109
+        - B12-113
+        - B12-119
+      FMATNAME:
+        description: 规格描述。
+        aliases:
+        - 规格
+        - 物料名
+        - 描述
+        semantic_role: text
+        business_usage: 给人看的规格文字。
+        keyword_text: FMATNAME 规格 物料名 描述 T_SAL_ORDERENTRY
+        vector_text: 字段名：FMATNAME。所属表：T_SAL_ORDERENTRY。规格描述。
+        rerank_text: 字段：T_SAL_ORDERENTRY.FMATNAME。含义：规格描述。 角色：text。
+        samples:
+        - Base cabinet 12" 1-drawer 2-door
+        - Base cabinet 15" 1-drawer 2-door
+        - Base cabinet 18" 1-drawer 2-door
+        - Base cabinet 21" 1-drawer 2-door
+      FQTY:
+        description: 数量。
+        aliases:
+        - 数量
+        - 件数
+        semantic_role: metric
+        business_usage: 行数量。
+        keyword_text: FQTY 数量 件数 T_SAL_ORDERENTRY
+        vector_text: 字段名：FQTY。所属表：T_SAL_ORDERENTRY。数量。
+        rerank_text: 字段：T_SAL_ORDERENTRY.FQTY。含义：数量。 角色：metric。
+        samples:
+        - '1'
+        - '2'
+        - '3'
+        - '4'
+      FPRICE:
+        description: 单价（不含税）。
+        aliases:
+        - 单价
+        semantic_role: metric
+        business_usage: 单件价格。
+        keyword_text: FPRICE 单价 T_SAL_ORDERENTRY
+        vector_text: 字段名：FPRICE。所属表：T_SAL_ORDERENTRY。单价（不含税）。
+        rerank_text: 字段：T_SAL_ORDERENTRY.FPRICE。含义：单价（不含税）。 角色：metric。
+        samples:
+        - '3.0'
+        - '3.01'
+        - '3.02'
+        - '3.03'
+      FAMOUNT:
+        description: '**行金额** = FPRICE × FQTY（不含税）。'
+        aliases:
+        - 行金额
+        - 小计
+        semantic_role: metric
+        business_usage: '**口径警告**：与 T_SAL_ORDER.FAMOUNT（整单合同额）不是一回事。行金额合计也不等于合同额——合同额是谈下来的总价，明细是配置清单，中间有折扣。'
+        keyword_text: FAMOUNT 行金额 小计 T_SAL_ORDERENTRY
+        vector_text: 字段名：FAMOUNT。所属表：T_SAL_ORDERENTRY。**行金额** = FPRICE × FQTY（不含税）。
+        rerank_text: 字段：T_SAL_ORDERENTRY.FAMOUNT。含义：**行金额** = FPRICE × FQTY（不含税）。 角色：metric。
+        samples:
+        - '3.03'
+        - '3.13'
+        - '3.14'
+        - '3.2'
+  T_SAL_CHGORDER:
+    description: 变更单。签约后对配置、尺寸、饰面的改动，或退让给建筑商的折让。
+    aliases:
+    - 变更单
+    - 改单
+    - change order
+    - 加减项
+    columns:
+      FCHGNO:
+        description: 变更单号。
+        aliases:
+        - 变更单号
+        - CO号
+        semantic_role: join_key
+        business_usage: 主键。
+        keyword_text: FCHGNO 变更单号 CO号 T_SAL_CHGORDER
+        vector_text: 字段名：FCHGNO。所属表：T_SAL_CHGORDER。变更单号。
+        rerank_text: 字段：T_SAL_CHGORDER.FCHGNO。含义：变更单号。 角色：join_key。
+        samples:
+        - CO00001
+        - CO00002
+        - CO00003
+        - CO00004
+      FBILLNO:
+        description: 所属工程号。
+        aliases:
+        - 工程号
+        - 订单号
+        semantic_role: join_key
+        business_usage: 关联 T_SAL_ORDER.FBILLNO。
+        keyword_text: FBILLNO 工程号 订单号 T_SAL_CHGORDER
+        vector_text: 字段名：FBILLNO。所属表：T_SAL_CHGORDER。所属工程号。
+        rerank_text: 字段：T_SAL_CHGORDER.FBILLNO。含义：所属工程号。 角色：join_key。
+        samples:
+        - J25-00003
+        - J25-00012
+        - J25-00019
+        - J25-00026
+      FCHGRSN:
+        description: 变更原因：door_style_change 换门型 / added_cabinets 加柜 / size_change 改尺寸 / finish_change
+          改饰面 / builder_credit 折让 / field_conflict 现场冲突。
+        aliases:
+        - 变更原因
+        - 原因
+        semantic_role: filter
+        business_usage: 按原因归类。
+        keyword_text: FCHGRSN 变更原因 原因 T_SAL_CHGORDER
+        vector_text: 字段名：FCHGRSN。所属表：T_SAL_CHGORDER。变更原因：door_style_change 换门型 / added_cabinets 加柜 / size_change
+          改尺寸 / finish_change 改饰面 / builder_credit 折让 / field_conflict 现场冲突。
+        rerank_text: 字段：T_SAL_CHGORDER.FCHGRSN。含义：变更原因：door_style_change 换门型 / added_cabinets 加柜 / size_change
+          改尺寸 / finish_change 改饰面 / builder_credit 折让 / field_conflict 现场冲突。 角色：filter。
+        samples:
+        - added_cabinets
+        - builder_credit
+        - door_style_change
+        - field_conflict
+      FCHGAMT:
+        description: 金额增减（不含税）。**折让为负数**。
+        aliases:
+        - 变更金额
+        - 增减
+        - 加价
+        semantic_role: metric
+        business_usage: '**有正有负**，求变更总额必须 SUM(FCHGAMT)，取绝对值或只取正数都算错。'
+        keyword_text: FCHGAMT 变更金额 增减 加价 T_SAL_CHGORDER
+        vector_text: 字段名：FCHGAMT。所属表：T_SAL_CHGORDER。金额增减（不含税）。**折让为负数**。
+        rerank_text: 字段：T_SAL_CHGORDER.FCHGAMT。含义：金额增减（不含税）。**折让为负数**。 角色：metric。
+        samples:
+        - '-2379.4'
+        - '-2378.92'
+        - '-2368.35'
+        - '-2338.35'
+      FAPPLYDATE:
+        description: 提出日期。【日期格式】本列是 8 位整数 20260903，不是 '2026-09-03'。与今天比较要写 `CAST(STRFTIME('%Y%m%d','now','localtime')
+          AS INTEGER)`，两个日期列相减不等于天数，要先 DATE(SUBSTR(...)) 转回来。
+        aliases:
+        - 提出日
+        - 申请日期
+        semantic_role: time
+        business_usage: 变更提出时间。
+        keyword_text: FAPPLYDATE 提出日 申请日期 T_SAL_CHGORDER
+        vector_text: 字段名：FAPPLYDATE。所属表：T_SAL_CHGORDER。提出日期。【日期格式】本列是 8 位整数 20260903，不是 '2026-09-03'。与今天比较要写
+          `CAST(STRFTIME('%Y%m%d','now','localtime') AS INTEGER)`，两个日期列相减不等于天数，要先 DATE(SUBSTR(...)) 转回来。
+        rerank_text: 字段：T_SAL_CHGORDER.FAPPLYDATE。含义：提出日期。【日期格式】本列是 8 位整数 20260903，不是 '2026-09-03'。与今天比较要写
+          `CAST(STRFTIME('%Y%m%d','now','localtime') AS INTEGER)`，两个日期列相减不等于天数，要先 DATE(SUBSTR(...)) 转回来。
+          角色：time。
+        samples:
+        - '20250110'
+        - '20250127'
+        - '20250129'
+        - '20250130'
+      FAUDITDATE:
+        description: 审批日期。待审时为 NULL。【日期格式】本列是 8 位整数 20260903，不是 '2026-09-03'。与今天比较要写 `CAST(STRFTIME('%Y%m%d','now','localtime')
+          AS INTEGER)`，两个日期列相减不等于天数，要先 DATE(SUBSTR(...)) 转回来。
+        aliases:
+        - 批准日
+        - 审批日期
+        semantic_role: time
+        business_usage: '**待审为 NULL**，统计审批时长必须排除。'
+        keyword_text: FAUDITDATE 批准日 审批日期 T_SAL_CHGORDER
+        vector_text: 字段名：FAUDITDATE。所属表：T_SAL_CHGORDER。审批日期。待审时为 NULL。【日期格式】本列是 8 位整数 20260903，不是 '2026-09-03'。与今天比较要写
+          `CAST(STRFTIME('%Y%m%d','now','localtime') AS INTEGER)`，两个日期列相减不等于天数，要先 DATE(SUBSTR(...)) 转回来。
+        rerank_text: 字段：T_SAL_CHGORDER.FAUDITDATE。含义：审批日期。待审时为 NULL。【日期格式】本列是 8 位整数 20260903，不是 '2026-09-03'。与今天比较要写
+          `CAST(STRFTIME('%Y%m%d','now','localtime') AS INTEGER)`，两个日期列相减不等于天数，要先 DATE(SUBSTR(...)) 转回来。
+          角色：time。
+        samples:
+        - '20250122'
+        - '20250202'
+        - '20250206'
+        - '20250208'
+      FDOCSTATUS:
+        description: 变更单状态**代码**。
+        aliases:
+        - 变更状态
+        - 审批状态
+        semantic_role: filter
+        business_usage: '**代码表**：A=待审 / C=已批准 / R=已驳回。
+
+          **算工程实际金额时只计 C**；但问「所有变更单」「一共提过多少变更」时指的是全部，不要自作主张加状态过滤。'
+        keyword_text: FDOCSTATUS 变更状态 审批状态 T_SAL_CHGORDER
+        vector_text: 字段名：FDOCSTATUS。所属表：T_SAL_CHGORDER。变更单状态**代码**。
+        rerank_text: 字段：T_SAL_CHGORDER.FDOCSTATUS。含义：变更单状态**代码**。 角色：filter。
+        samples:
+        - A
+        - C
+        - R
+  T_AR_RECEIVABLE:
+    description: 应收单（发票）。按定金 / 进度款 / 尾款三段开票。
+    aliases:
+    - 应收
+    - 发票
+    - 账单
+    - 开票
+    columns:
+      FARNO:
+        description: 应收单号（发票号）。
+        aliases:
+        - 发票号
+        - 应收单号
+        semantic_role: join_key
+        business_usage: 主键。
+        keyword_text: FARNO 发票号 应收单号 T_AR_RECEIVABLE
+        vector_text: 字段名：FARNO。所属表：T_AR_RECEIVABLE。应收单号（发票号）。
+        rerank_text: 字段：T_AR_RECEIVABLE.FARNO。含义：应收单号（发票号）。 角色：join_key。
+        samples:
+        - INV000001
+        - INV000002
+        - INV000003
+        - INV000004
+      FBILLNO:
+        description: 所属工程号。
+        aliases:
+        - 工程号
+        - 订单号
+        semantic_role: join_key
+        business_usage: 关联 T_SAL_ORDER.FBILLNO。
+        keyword_text: FBILLNO 工程号 订单号 T_AR_RECEIVABLE
+        vector_text: 字段名：FBILLNO。所属表：T_AR_RECEIVABLE。所属工程号。
+        rerank_text: 字段：T_AR_RECEIVABLE.FBILLNO。含义：所属工程号。 角色：join_key。
+        samples:
+        - J25-00003
+        - J25-00005
+        - J25-00006
+        - J25-00007
+      FARTYPE:
+        description: 款项类型：deposit 定金 / progress 进度款 / final 尾款。
+        aliases:
+        - 款项类型
+        - 发票类型
+        - 定金
+        - 尾款
+        semantic_role: filter
+        business_usage: 问「尾款」指 FARTYPE='final'。
+        keyword_text: FARTYPE 款项类型 发票类型 定金 尾款 T_AR_RECEIVABLE
+        vector_text: 字段名：FARTYPE。所属表：T_AR_RECEIVABLE。款项类型：deposit 定金 / progress 进度款 / final 尾款。
+        rerank_text: 字段：T_AR_RECEIVABLE.FARTYPE。含义：款项类型：deposit 定金 / progress 进度款 / final 尾款。 角色：filter。
+        samples:
+        - deposit
+        - final
+        - progress
+      FBILLDATE:
+        description: 开票日期。【日期格式】本列是 8 位整数 20260903，不是 '2026-09-03'。与今天比较要写 `CAST(STRFTIME('%Y%m%d','now','localtime')
+          AS INTEGER)`，两个日期列相减不等于天数，要先 DATE(SUBSTR(...)) 转回来。
+        aliases:
+        - 开票日
+        semantic_role: time
+        business_usage: 开票时间。
+        keyword_text: FBILLDATE 开票日 T_AR_RECEIVABLE
+        vector_text: 字段名：FBILLDATE。所属表：T_AR_RECEIVABLE。开票日期。【日期格式】本列是 8 位整数 20260903，不是 '2026-09-03'。与今天比较要写
+          `CAST(STRFTIME('%Y%m%d','now','localtime') AS INTEGER)`，两个日期列相减不等于天数，要先 DATE(SUBSTR(...)) 转回来。
+        rerank_text: 字段：T_AR_RECEIVABLE.FBILLDATE。含义：开票日期。【日期格式】本列是 8 位整数 20260903，不是 '2026-09-03'。与今天比较要写
+          `CAST(STRFTIME('%Y%m%d','now','localtime') AS INTEGER)`，两个日期列相减不等于天数，要先 DATE(SUBSTR(...)) 转回来。
+          角色：time。
+        samples:
+        - '20250104'
+        - '20250105'
+        - '20250107'
+        - '20250108'
+      FAMOUNT:
+        description: '**本张应收的开票金额**（不含税）。'
+        aliases:
+        - 开票金额
+        - 应收金额
+        - 发票金额
+        semantic_role: metric
+        business_usage: '**口径警告**：与 T_SAL_ORDER.FAMOUNT（整单合同额）不同。已开票合计通常小于合同额——尾款常常还没开。'
+        keyword_text: FAMOUNT 开票金额 应收金额 发票金额 T_AR_RECEIVABLE
+        vector_text: 字段名：FAMOUNT。所属表：T_AR_RECEIVABLE。**本张应收的开票金额**（不含税）。
+        rerank_text: 字段：T_AR_RECEIVABLE.FAMOUNT。含义：**本张应收的开票金额**（不含税）。 角色：metric。
+        samples:
+        - '201.6'
+        - '214.53'
+        - '231.37'
+        - '243.18'
+      FDUEDATE:
+        description: 到期日。【日期格式】本列是 8 位整数 20260903，不是 '2026-09-03'。与今天比较要写 `CAST(STRFTIME('%Y%m%d','now','localtime')
+          AS INTEGER)`，两个日期列相减不等于天数，要先 DATE(SUBSTR(...)) 转回来。
+        aliases:
+        - 到期日
+        - 账期到期
+        semantic_role: time
+        business_usage: '**逾期判据**：FDUEDATE < 今天 且 FSETTLESTS 不是 S。'
+        keyword_text: FDUEDATE 到期日 账期到期 T_AR_RECEIVABLE
+        vector_text: 字段名：FDUEDATE。所属表：T_AR_RECEIVABLE。到期日。【日期格式】本列是 8 位整数 20260903，不是 '2026-09-03'。与今天比较要写
+          `CAST(STRFTIME('%Y%m%d','now','localtime') AS INTEGER)`，两个日期列相减不等于天数，要先 DATE(SUBSTR(...)) 转回来。
+        rerank_text: 字段：T_AR_RECEIVABLE.FDUEDATE。含义：到期日。【日期格式】本列是 8 位整数 20260903，不是 '2026-09-03'。与今天比较要写
+          `CAST(STRFTIME('%Y%m%d','now','localtime') AS INTEGER)`，两个日期列相减不等于天数，要先 DATE(SUBSTR(...)) 转回来。
+          角色：time。
+        samples:
+        - '20250122'
+        - '20250130'
+        - '20250201'
+        - '20250202'
+      FSETTLESTS:
+        description: 结算状态**代码**。
+        aliases:
+        - 结算状态
+        - 收款状态
+        - 发票状态
+        semantic_role: filter
+        business_usage: '**代码表**：O=未收 / P=部分收款 / S=已收清 / V=作废。
+
+          「未收清」= O 或 P，**不含 V**（作废不构成应收，算进去会虚高）。P 最容易漏：它既不是未付也不是已付，未付余额要用开票额减实收合计。'
+        keyword_text: FSETTLESTS 结算状态 收款状态 发票状态 T_AR_RECEIVABLE
+        vector_text: 字段名：FSETTLESTS。所属表：T_AR_RECEIVABLE。结算状态**代码**。
+        rerank_text: 字段：T_AR_RECEIVABLE.FSETTLESTS。含义：结算状态**代码**。 角色：filter。
+        samples:
+        - O
+        - P
+        - S
+        - V
+  T_AR_RECEIVEBILL:
+    description: 收款单。客户实际到账的每一笔，一张应收可能分多笔收。
+    aliases:
+    - 收款
+    - 回款
+    - 到账
+    - 客户付款
+    columns:
+      FRECNO:
+        description: 收款单号。
+        aliases:
+        - 收款单号
+        - 流水号
+        semantic_role: join_key
+        business_usage: 主键。
+        keyword_text: FRECNO 收款单号 流水号 T_AR_RECEIVEBILL
+        vector_text: 字段名：FRECNO。所属表：T_AR_RECEIVEBILL。收款单号。
+        rerank_text: 字段：T_AR_RECEIVEBILL.FRECNO。含义：收款单号。 角色：join_key。
+        samples:
+        - PM000001
+        - PM000002
+        - PM000003
+        - PM000004
+      FARNO:
+        description: 对应应收单号。
+        aliases:
+        - 发票号
+        - 应收单号
+        semantic_role: join_key
+        business_usage: 关联 T_AR_RECEIVABLE.FARNO。**未付余额 = 应收的 FAMOUNT − 该应收下本表 FAMOUNT 的合计**，只看应收单一行读不出余额。
+        keyword_text: FARNO 发票号 应收单号 T_AR_RECEIVEBILL
+        vector_text: 字段名：FARNO。所属表：T_AR_RECEIVEBILL。对应应收单号。
+        rerank_text: 字段：T_AR_RECEIVEBILL.FARNO。含义：对应应收单号。 角色：join_key。
+        samples:
+        - INV000001
+        - INV000002
+        - INV000003
+        - INV000004
+      FAMOUNT:
+        description: '**本笔到账金额**。'
+        aliases:
+        - 收款金额
+        - 到账金额
+        semantic_role: metric
+        business_usage: 单笔实收。
+        keyword_text: FAMOUNT 收款金额 到账金额 T_AR_RECEIVEBILL
+        vector_text: 字段名：FAMOUNT。所属表：T_AR_RECEIVEBILL。**本笔到账金额**。
+        rerank_text: 字段：T_AR_RECEIVEBILL.FAMOUNT。含义：**本笔到账金额**。 角色：metric。
+        samples:
+        - '48.65'
+        - '49.91'
+        - '62.63'
+        - '97.18'
+      FRECDATE:
+        description: 到账日期。【日期格式】本列是 8 位整数 20260903，不是 '2026-09-03'。与今天比较要写 `CAST(STRFTIME('%Y%m%d','now','localtime')
+          AS INTEGER)`，两个日期列相减不等于天数，要先 DATE(SUBSTR(...)) 转回来。
+        aliases:
+        - 到账日
+        - 收款日期
+        semantic_role: time
+        business_usage: '**逾期回款判据**：FRECDATE > 对应应收的 FDUEDATE。'
+        keyword_text: FRECDATE 到账日 收款日期 T_AR_RECEIVEBILL
+        vector_text: 字段名：FRECDATE。所属表：T_AR_RECEIVEBILL。到账日期。【日期格式】本列是 8 位整数 20260903，不是 '2026-09-03'。与今天比较要写
+          `CAST(STRFTIME('%Y%m%d','now','localtime') AS INTEGER)`，两个日期列相减不等于天数，要先 DATE(SUBSTR(...)) 转回来。
+        rerank_text: 字段：T_AR_RECEIVEBILL.FRECDATE。含义：到账日期。【日期格式】本列是 8 位整数 20260903，不是 '2026-09-03'。与今天比较要写
+          `CAST(STRFTIME('%Y%m%d','now','localtime') AS INTEGER)`，两个日期列相减不等于天数，要先 DATE(SUBSTR(...)) 转回来。
+          角色：time。
+        samples:
+        - '20250112'
+        - '20250124'
+        - '20250126'
+        - '20250130'
+      FSETTLETYPE:
+        description: 结算方式：check 支票 / ach / credit_card 信用卡 / wire 电汇。
+        aliases:
+        - 收款方式
+        - 付款方式
+        semantic_role: dimension
+        business_usage: 到账渠道。
+        keyword_text: FSETTLETYPE 收款方式 付款方式 T_AR_RECEIVEBILL
+        vector_text: 字段名：FSETTLETYPE。所属表：T_AR_RECEIVEBILL。结算方式：check 支票 / ach / credit_card 信用卡 / wire
+          电汇。
+        rerank_text: 字段：T_AR_RECEIVEBILL.FSETTLETYPE。含义：结算方式：check 支票 / ach / credit_card 信用卡 / wire 电汇。
+          角色：dimension。
+        samples:
+        - ach
+        - check
+        - credit_card
+        - wire
+  T_BD_CUSTOMER:
+    description: 客户主数据。建筑商、总包、经销商、零售业主四类。
+    aliases:
+    - 客户
+    - 客户主数据
+    - builder
+    columns:
+      FCUSTID:
+        description: 客户编号。
+        aliases:
+        - 客户号
+        - 客户编号
+        semantic_role: join_key
+        business_usage: 主键。
+        keyword_text: FCUSTID 客户号 客户编号 T_BD_CUSTOMER
+        vector_text: 字段名：FCUSTID。所属表：T_BD_CUSTOMER。客户编号。
+        rerank_text: 字段：T_BD_CUSTOMER.FCUSTID。含义：客户编号。 角色：join_key。
+        samples:
+        - C0001
+        - C0002
+        - C0003
+        - C0004
+      FNAME:
+        description: 客户名称。
+        aliases:
+        - 客户名
+        - 公司名
+        - 客户
+        semantic_role: filter
+        business_usage: '**存在近似重名**（Marlowe Homes / Marlowe Homes LLC），精确匹配会漏、模糊匹配会多。'
+        keyword_text: FNAME 客户名 公司名 客户 T_BD_CUSTOMER
+        vector_text: 字段名：FNAME。所属表：T_BD_CUSTOMER。客户名称。
+        rerank_text: 字段：T_BD_CUSTOMER.FNAME。含义：客户名称。 角色：filter。
+        samples:
+        - Adeyemi Residence
+        - BRBuilders
+        - Bay Area Kitchen Gallery
+        - Bexley Homes California
+      FCUSTTYPE:
+        description: 客户类型**代码**。
+        aliases:
+        - 客户类型
+        - 客户性质
+        semantic_role: filter
+        business_usage: '**代码表**：01=量产建筑商 / 02=总包 / 03=经销商 / 04=零售业主。'
+        keyword_text: FCUSTTYPE 客户类型 客户性质 T_BD_CUSTOMER
+        vector_text: 字段名：FCUSTTYPE。所属表：T_BD_CUSTOMER。客户类型**代码**。
+        rerank_text: 字段：T_BD_CUSTOMER.FCUSTTYPE。含义：客户类型**代码**。 角色：filter。
+        samples:
+        - '01'
+        - '02'
+        - '03'
+        - '04'
+      FPAYCOND:
+        description: 付款条件**代码**。
+        aliases:
+        - 付款条件
+        - 账期
+        semantic_role: dimension
+        business_usage: '**代码表**：M30/M45/M60=月结 30/45/60 天，D50=五成定金。决定应收的到期日。'
+        keyword_text: FPAYCOND 付款条件 账期 T_BD_CUSTOMER
+        vector_text: 字段名：FPAYCOND。所属表：T_BD_CUSTOMER。付款条件**代码**。
+        rerank_text: 字段：T_BD_CUSTOMER.FPAYCOND。含义：付款条件**代码**。 角色：dimension。
+        samples:
+        - D50
+        - M30
+        - M45
+        - M60
+      FCREDITLMT:
+        description: 信用额度。零售客户没有授信，本列为 NULL。
+        aliases:
+        - 信用额度
+        - 授信
+        semantic_role: metric
+        business_usage: '**零售为 NULL 不是 0**：AVG/SUM 会跳过，`> x` 也筛不到。'
+        keyword_text: FCREDITLMT 信用额度 授信 T_BD_CUSTOMER
+        vector_text: 字段名：FCREDITLMT。所属表：T_BD_CUSTOMER。信用额度。零售客户没有授信，本列为 NULL。
+        rerank_text: 字段：T_BD_CUSTOMER.FCREDITLMT。含义：信用额度。零售客户没有授信，本列为 NULL。 角色：metric。
+        samples:
+        - '50000.0'
+        - '100000.0'
+        - '150000.0'
+        - '250000.0'
+      FFORBIDSTS:
+        description: 禁用状态**代码**。
+        aliases:
+        - 是否禁用
+        - 是否活跃
+        - 状态
+        semantic_role: filter
+        business_usage: '**代码表**：A=正常 / B=已禁用。问「我们有多少客户」通常要 FFORBIDSTS=''A''。'
+        keyword_text: FFORBIDSTS 是否禁用 是否活跃 状态 T_BD_CUSTOMER
+        vector_text: 字段名：FFORBIDSTS。所属表：T_BD_CUSTOMER。禁用状态**代码**。
+        rerank_text: 字段：T_BD_CUSTOMER.FFORBIDSTS。含义：禁用状态**代码**。 角色：filter。
+        samples:
+        - A
+        - B

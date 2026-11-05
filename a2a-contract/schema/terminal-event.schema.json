@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/heyemlee/a2a-contract/schema/terminal-event.schema.json",
+  "title": "终态事件信封（SSE 最后一条 data: 的完整内容）",
+  "description": "契约 §4.2 / §4.4 / §5.1，v1.13 新增。v1.12 之前终态的形状只靠两侧各自的测试守着，没有 schema。校验对象和 progress-event 一样，是 `data: ` 后面那个完整的 JSON-RPC 2.0 响应对象。`state` 是**传输终态**：只回答「载荷有没有完整送达」，不回答「查询成不成功」（§4.4、§4.6.8）。",
+
+  "type": "object",
+  "required": ["jsonrpc", "id", "result"],
+  "additionalProperties": false,
+  "properties": {
+    "jsonrpc": { "const": "2.0" },
+    "id": {
+      "type": ["string", "number"],
+      "$comment": "§4.1：与请求的 id 一致。"
+    },
+    "result": { "$ref": "#/$defs/statusUpdateFinal" }
+  },
+
+  "$defs": {
+    "statusUpdateFinal": {
+      "type": "object",
+      "required": ["kind", "taskId", "contextId", "final", "status", "metadata"],
+      "additionalProperties": true,
+      "properties": {
+        "kind": { "const": "status-update" },
+        "taskId": { "type": "string", "minLength": 1 },
+        "contextId": { "type": "string" },
+        "final": {
+          "const": true,
+          "$comment": "§4.2：终态事件有且只有一个，且是最后一个；它是唯一 final:true 的事件。"
+        },
+        "status": {
+          "type": "object",
+          "required": ["state"],
+          "additionalProperties": true,
+          "properties": {
+            "state": { "$ref": "#/$defs/terminalState" },
+            "timestamp": { "type": "string", "format": "date-time" },
+            "message": { "type": "object" }
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "required": ["trace_id"],
+          "additionalProperties": true,
+          "properties": {
+            "trace_id": { "type": "string", "minLength": 1 },
+            "error": {
+              "type": "string",
+              "$comment": "failed / canceled 时说明原因（§5.2）。canceled 时形如 `cancelled: api`——这里的 cancelled 是取消原因的写法，不是 state 的取值。"
+            }
+          }
+        }
+      }
+    },
+
+    "terminalState": {
+      "description": "§4.4 的三种传输终态。`canceled` 是 v1.13 新增的（A2A 0.2 规范 TaskState 本来就有这个取值，不越出 §10 的 0.2 子集）。拼写跟规范走，是 canceled，不是 cancelled。",
+      "enum": ["completed", "failed", "canceled"]
+    }
+  }
+}

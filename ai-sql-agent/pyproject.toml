@@ -1,0 +1,69 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-sql-agent"
+version = "1.0.0"
+description = "Text2SQL service for business databases: multi-database planning, conversational memory, data permissions, failure repair and end-to-end audit."
+readme = "README.md"
+requires-python = ">=3.11"
+# 只列项目真正 import 的包，传递依赖交给 pip 解析。
+dependencies = [
+    # ---- 服务层 ----
+    "fastapi==0.141.1",
+    "uvicorn[standard]==0.32.1",
+    "pydantic==2.13.4",
+    "pydantic-settings==2.1.0",
+    # ---- 模型调用 ----
+    "httpx==0.28.1",
+    "python-dotenv==1.2.2",
+    # ---- 数值计算 ----
+    "numpy==2.2.6",
+    # ---- 业务语义元数据：每个业务库一份 YAML，给业务同事读写，比 JSON 好改 ----
+    "pyyaml==6.0.3",
+    # ---- 向量存储：PostgreSQL + pgvector。Schema 检索与长期记忆共用；
+    #      未配置 AI_SQL_PGVECTOR_DSN 时回退内存索引 ----
+    "psycopg[binary]==3.3.4",
+    "pgvector==0.5.0",
+    # ---- MCP ----
+    "mcp==2.0.0",
+    # ---- SQL 解析（授权用）：执行前的授权检查靠 AST 而不是正则。
+    #      **运行时硬依赖**：装不上时 auth 会拒绝一切 SQL（不解析即拒绝），
+    #      服务能起来但查不了任何东西——这是有意的失败方向 ----
+    "sqlglot==27.29.0",
+]
+
+[project.optional-dependencies]
+# 只有测试需要。跨仓库契约用例（tests/test_contract_fixtures.py）用 JSON Schema
+# 校验 a2a-contract 的 fixtures；校验器不装的话那组用例会整组报错而不是静默跳过。
+dev = [
+    "pytest==9.1.1",
+    "jsonschema==4.26.0",
+    "referencing==0.37.0",
+]
+
+[project.scripts]
+ai-sql-semantic = "ai_sql_agent.semantic.__main__:main"
+ai-sql-feedback = "ai_sql_agent.feedback.__main__:main"
+ai-sql-ops = "ai_sql_agent.ops.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+# 页面是原生 HTML / CSS / ES Module，没有构建产物：这里列的就是要随包发布的源文件。
+# 新增一层子目录时要在这里加一行，否则镜像里（非 editable 安装）会缺文件。
+ai_sql_agent = [
+    "api/static/*.html",
+    "api/static/*.css",
+    "api/static/js/*.js",
+    "api/static/js/i18n/*.js",
+    "api/static/js/views/*.js",
+    "resources/demo_sql/*.sql",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# benchmark/ 是仓库根下的评测包（不随应用发布），测试要能 import 它
+pythonpath = ["."]

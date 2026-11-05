@@ -1,0 +1,19 @@
+# 本地启动 pgvector 向量库：
+#   docker compose --project-directory . -f deploy/docker-compose.pgvector.yml up -d
+# 然后设置环境变量启用 pgvector 后端：
+#   export AI_SQL_PGVECTOR_DSN="postgresql://ai_sql:ai_sql@localhost:5432/ai_sql"
+services:
+  pgvector:
+    image: pgvector/pgvector:pg16
+    container_name: ai-sql-pgvector
+    environment:
+      POSTGRES_USER: ai_sql
+      POSTGRES_PASSWORD: ai_sql
+      POSTGRES_DB: ai_sql
+    ports:
+      - "5432:5432"
+    volumes:
+      - ai_sql_pgvector_data:/var/lib/postgresql/data
+
+volumes:
+  ai_sql_pgvector_data:

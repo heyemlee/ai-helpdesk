@@ -1,0 +1,725 @@
+[
+ {
+  "question": "查询准时率低于0.9的供应商名称"
+ },
+ {
+  "call": "DynamicIntentRouter.route",
+  "args": [
+   "查询准时率低于0.9的供应商名称",
+   {
+    "__type__": "ConversationMemoryContext",
+    "prompt": "[近期对话]\n用户：查询准时率低于0.9的供应商名称"
+   }
+  ],
+  "kwargs": {}
+ },
+ {
+  "call": "HybridKeywordExtractor.extract",
+  "args": [
+   "查询准时率低于0.9的供应商名称"
+  ],
+  "kwargs": {}
+ },
+ {
+  "call": "ThreeTierSchemaRetrievalService.retrieve",
+  "args": [],
+  "kwargs": {
+   "keywords": [
+    "供应商名称",
+    "供应商",
+    "准时率"
+   ],
+   "query": "以下是与当前问题相关的会话记忆：\n[近期对话]\n用户：查询准时率低于0.9的供应商名称\n\n当前用户问题：查询准时率低于0.9的供应商名称"
+  }
+ },
+ {
+  "call": "CotPlanner.plan",
+  "args": [],
+  "kwargs": {
+   "few_shots": [
+    {
+     "__type__": "FewShotExample",
+     "user_query": "查询实际成本超过预算的项目的采购总金额",
+     "schema_context": {
+      "sha256": "d1d905ff90a89edc",
+      "len": 355
+     },
+     "output": {
+      "sha256": "0e57361b717f1328",
+      "len": 386
+     }
+    }
+   ],
+   "schema_graph": {
+    "sha256": "4913bea043ba704b",
+    "len": 6742
+   },
+   "user_query": "以下是与当前问题相关的会话记忆：\n[近期对话]\n用户：查询准时率低于0.9的供应商名称\n\n当前用户问题：查询准时率低于0.9的供应商名称"
+  }
+ },
+ {
+  "call": "ThinkingModelClient.generate",
+  "args": [
+   {
+    "sha256": "55d3bff3abe2b8ec",
+    "len": 9746
+   }
+  ],
+  "kwargs": {}
+ },
+ {
+  "call": "SqlGenerator.generate",
+  "args": [
+   {
+    "__type__": "CotStep",
+    "database": "erp_db",
+    "processing_objects": "supplier.on_time_rate，supplier.supplier_name",
+    "operation_instruction": "在supplier表中筛选on_time_rate低于阈值的记录，输出supplier_name",
+    "output_target": "supplier.supplier_name",
+    "expected_cardinality": "数条"
+   }
+  ],
+  "kwargs": {
+   "certified_examples": "",
+   "previous_results": "",
+   "sql_dialect": "sqlite"
+  }
+ },
+ {
+  "call": "CoderModelClient.generate_sql",
+  "args": [
+   {
+    "sha256": "a9ef8584fe15c507",
+    "len": 1588
+   }
+  ],
+  "kwargs": {}
+ },
+ {
+  "call": "MCPRouter.execute",
+  "args": [
+   {
+    "database": "erp_db",
+    "sql": "SELECT supplier_name\nFROM supplier\nWHERE on_time_rate < 0.9;"
+   }
+  ],
+  "kwargs": {}
+ },
+ {
+  "call": "ResultValidator.validate",
+  "args": [],
+  "kwargs": {
+   "column_units": {},
+   "expected_cardinality": "数条",
+   "is_final_step": true,
+   "preceding_summary": "",
+   "query": "查询准时率低于0.9的供应商名称",
+   "row_count": 3,
+   "sql": "SELECT supplier_name\nFROM supplier\nWHERE on_time_rate < 0.9;",
+   "step_objective": "在supplier表中筛选on_time_rate低于阈值的记录，输出supplier_name（输出：supplier.supplier_name）"
+  }
+ },
+ {
+  "route": "database_query",
+  "answer": {
+   "sha256": "39c0cba88f2d148d",
+   "len": 383
+  },
+  "degraded": false
+ },
+ {
+  "question": "查询库存低于安全库存的物料名称"
+ },
+ {
+  "call": "DynamicIntentRouter.route",
+  "args": [
+   "查询库存低于安全库存的物料名称",
+   {
+    "__type__": "ConversationMemoryContext",
+    "prompt": {
+     "sha256": "5d6f0250d6d8cac3",
+     "len": 432
+    }
+   }
+  ],
+  "kwargs": {}
+ },
+ {
+  "call": "HybridKeywordExtractor.extract",
+  "args": [
+   "查询库存低于安全库存的物料名称"
+  ],
+  "kwargs": {}
+ },
+ {
+  "call": "ThreeTierSchemaRetrievalService.retrieve",
+  "args": [],
+  "kwargs": {
+   "keywords": [
+    "安全库存",
+    "库存",
+    "物料名称",
+    "物料"
+   ],
+   "query": {
+    "sha256": "b46e2c7feba2c5f9",
+    "len": 473
+   }
+  }
+ },
+ {
+  "call": "CotPlanner.plan",
+  "args": [],
+  "kwargs": {
+   "few_shots": [
+    {
+     "__type__": "FewShotExample",
+     "user_query": "查询实际成本超过预算的项目的采购总金额",
+     "schema_context": {
+      "sha256": "d1d905ff90a89edc",
+      "len": 355
+     },
+     "output": {
+      "sha256": "0e57361b717f1328",
+      "len": 386
+     }
+    }
+   ],
+   "schema_graph": {
+    "sha256": "5d604c635bb3cd5c",
+    "len": 5319
+   },
+   "user_query": {
+    "sha256": "b46e2c7feba2c5f9",
+    "len": 473
+   }
+  }
+ },
+ {
+  "call": "ThinkingModelClient.generate",
+  "args": [
+   {
+    "sha256": "ce06838c87acdd13",
+    "len": 8728
+   }
+  ],
+  "kwargs": {}
+ },
+ {
+  "call": "SqlGenerator.generate",
+  "args": [
+   {
+    "__type__": "CotStep",
+    "database": "wms_db",
+    "processing_objects": {
+     "sha256": "301fe022e3536c13",
+     "len": 125
+    },
+    "operation_instruction": "先关联material与stock_snapshot表；再筛选on_hand_qty小于safety_stock的记录；最后输出material_name",
+    "output_target": "material.material_name",
+    "expected_cardinality": "数条"
+   }
+  ],
+  "kwargs": {
+   "certified_examples": "",
+   "previous_results": "",
+   "sql_dialect": "sqlite"
+  }
+ },
+ {
+  "call": "CoderModelClient.generate_sql",
+  "args": [
+   {
+    "sha256": "b7d2d5c9e7ec1cf9",
+    "len": 1886
+   }
+  ],
+  "kwargs": {}
+ },
+ {
+  "call": "MCPRouter.execute",
+  "args": [
+   {
+    "database": "wms_db",
+    "sql": {
+     "sha256": "75560ec1a504dadd",
+     "len": 180
+    }
+   }
+  ],
+  "kwargs": {}
+ },
+ {
+  "call": "ResultValidator.validate",
+  "args": [],
+  "kwargs": {
+   "column_units": {},
+   "expected_cardinality": "数条",
+   "is_final_step": true,
+   "preceding_summary": "",
+   "query": "查询库存低于安全库存的物料名称",
+   "row_count": 4,
+   "sql": {
+    "sha256": "75560ec1a504dadd",
+    "len": 180
+   },
+   "step_objective": {
+    "sha256": "63bb8c4dd30e07e6",
+    "len": 104
+   }
+  }
+ },
+ {
+  "route": "database_query",
+  "answer": {
+   "sha256": "9e03f86264c47a07",
+   "len": 532
+  },
+  "degraded": false
+ },
+ {
+  "question": "查询实际成本超过预算的各个项目的采购总金额"
+ },
+ {
+  "call": "DynamicIntentRouter.route",
+  "args": [
+   "查询实际成本超过预算的各个项目的采购总金额",
+   {
+    "__type__": "ConversationMemoryContext",
+    "prompt": {
+     "sha256": "4b00d1d94f700730",
+     "len": 4596
+    }
+   }
+  ],
+  "kwargs": {}
+ },
+ {
+  "call": "HybridKeywordExtractor.extract",
+  "args": [
+   "查询实际成本超过预算的各个项目的采购总金额"
+  ],
+  "kwargs": {}
+ },
+ {
+  "call": "ThreeTierSchemaRetrievalService.retrieve",
+  "args": [],
+  "kwargs": {
+   "keywords": [
+    "实际成本",
+    "预算",
+    "项目",
+    "采购"
+   ],
+   "query": {
+    "sha256": "07b8a1bec4315bbe",
+    "len": 4643
+   }
+  }
+ },
+ {
+  "call": "CotPlanner.plan",
+  "args": [],
+  "kwargs": {
+   "few_shots": [
+    {
+     "__type__": "FewShotExample",
+     "user_query": "查询实际成本超过预算的项目的采购总金额",
+     "schema_context": {
+      "sha256": "d1d905ff90a89edc",
+      "len": 355
+     },
+     "output": {
+      "sha256": "0e57361b717f1328",
+      "len": 386
+     }
+    }
+   ],
+   "schema_graph": {
+    "sha256": "dcb92552d8eecb41",
+    "len": 5581
+   },
+   "user_query": {
+    "sha256": "07b8a1bec4315bbe",
+    "len": 4643
+   }
+  }
+ },
+ {
+  "call": "ThinkingModelClient.generate",
+  "args": [
+   {
+    "sha256": "7378b9987534bc44",
+    "len": 13160
+   }
+  ],
+  "kwargs": {}
+ },
+ {
+  "call": "SqlGenerator.generate",
+  "args": [
+   {
+    "__type__": "CotStep",
+    "database": "pm_db",
+    "processing_objects": "project.actual_cost，project.budget_amt，project.project_code",
+    "operation_instruction": "先在project表中筛选actual_cost大于budget_amt的项目；最后输出这些项目的project_code",
+    "output_target": "project.project_code",
+    "expected_cardinality": "数条"
+   }
+  ],
+  "kwargs": {
+   "certified_examples": "",
+   "previous_results": "",
+   "sql_dialect": "sqlite"
+  }
+ },
+ {
+  "call": "CoderModelClient.generate_sql",
+  "args": [
+   {
+    "sha256": "c6e2419cdde6f6f2",
+    "len": 1666
+   }
+  ],
+  "kwargs": {}
+ },
+ {
+  "call": "MCPRouter.execute",
+  "args": [
+   {
+    "database": "pm_db",
+    "sql": "SELECT project_code\nFROM project\nWHERE actual_cost > budget_amt;"
+   }
+  ],
+  "kwargs": {}
+ },
+ {
+  "call": "ResultValidator.validate",
+  "args": [],
+  "kwargs": {
+   "column_units": {},
+   "expected_cardinality": "数条",
+   "is_final_step": false,
+   "preceding_summary": "",
+   "query": "查询实际成本超过预算的各个项目的采购总金额",
+   "row_count": 3,
+   "sql": "SELECT project_code\nFROM project\nWHERE actual_cost > budget_amt;",
+   "step_objective": {
+    "sha256": "ea33590d8db581a9",
+    "len": 86
+   }
+  }
+ },
+ {
+  "call": "SqlGenerator.generate",
+  "args": [
+   {
+    "__type__": "CotStep",
+    "database": "erp_db",
+    "processing_objects": "purchase_order.job_no，purchase_order.po_amt",
+    "operation_instruction": "先读取上一步结果中的project_code列表；再按命名约定对应到purchase_order的job_no；最后按job_no汇总po_amt",
+    "output_target": "purchase_order.po_amt",
+    "expected_cardinality": "数条"
+   }
+  ],
+  "kwargs": {
+   "certified_examples": "",
+   "previous_results": {
+    "sha256": "d39c944b5804c108",
+    "len": 240
+   },
+   "sql_dialect": "sqlite"
+  }
+ },
+ {
+  "call": "CoderModelClient.generate_sql",
+  "args": [
+   {
+    "sha256": "dc4a3c27b1e5bc63",
+    "len": 2062
+   }
+  ],
+  "kwargs": {}
+ },
+ {
+  "call": "MCPRouter.execute",
+  "args": [
+   {
+    "database": "erp_db",
+    "sql": {
+     "sha256": "85498042740e5446",
+     "len": 126
+    }
+   }
+  ],
+  "kwargs": {}
+ },
+ {
+  "call": "ResultValidator.validate",
+  "args": [],
+  "kwargs": {
+   "column_units": {
+    "total_po_amt": "CNY"
+   },
+   "expected_cardinality": "数条",
+   "is_final_step": true,
+   "preceding_summary": {
+    "sha256": "ae973574e177d59e",
+    "len": 98
+   },
+   "query": "查询实际成本超过预算的各个项目的采购总金额",
+   "row_count": 3,
+   "sql": {
+    "sha256": "85498042740e5446",
+    "len": 126
+   },
+   "step_objective": {
+    "sha256": "4ed30b6a5d6637a4",
+    "len": 99
+   }
+  }
+ },
+ {
+  "route": "database_query",
+  "answer": {
+   "sha256": "85db2e53e04e66bd",
+   "len": 894
+  },
+  "degraded": false
+ },
+ {
+  "question": "查询采购状态为ordered的采购单号"
+ },
+ {
+  "call": "DynamicIntentRouter.route",
+  "args": [
+   "查询采购状态为ordered的采购单号",
+   {
+    "__type__": "ConversationMemoryContext",
+    "prompt": {
+     "sha256": "660d225bf993af5a",
+     "len": 4962
+    }
+   }
+  ],
+  "kwargs": {}
+ },
+ {
+  "call": "HybridKeywordExtractor.extract",
+  "args": [
+   "查询采购状态为ordered的采购单号"
+  ],
+  "kwargs": {}
+ },
+ {
+  "call": "ThreeTierSchemaRetrievalService.retrieve",
+  "args": [],
+  "kwargs": {
+   "keywords": [
+    "采购单号",
+    "采购单",
+    "采购"
+   ],
+   "query": {
+    "sha256": "a302b3ec5c2e5960",
+    "len": 5007
+   }
+  }
+ },
+ {
+  "call": "CotPlanner.plan",
+  "args": [],
+  "kwargs": {
+   "few_shots": [],
+   "schema_graph": {
+    "sha256": "feabc7280ba03e5a",
+    "len": 2762
+   },
+   "user_query": {
+    "sha256": "a302b3ec5c2e5960",
+    "len": 5007
+   }
+  }
+ },
+ {
+  "call": "ThinkingModelClient.generate",
+  "args": [
+   {
+    "sha256": "ea93c18d90e3b25e",
+    "len": 9892
+   }
+  ],
+  "kwargs": {}
+ },
+ {
+  "call": "SqlGenerator.generate",
+  "args": [
+   {
+    "__type__": "CotStep",
+    "database": "pm_db",
+    "processing_objects": "project.actual_cost，project.budget_amt，project.project_code",
+    "operation_instruction": "先在project表中筛选actual_cost大于budget_amt的项目；最后输出这些项目的project_code",
+    "output_target": "project.project_code",
+    "expected_cardinality": "数条"
+   }
+  ],
+  "kwargs": {
+   "certified_examples": "",
+   "previous_results": "",
+   "sql_dialect": "sqlite"
+  }
+ },
+ {
+  "call": "CoderModelClient.generate_sql",
+  "args": [
+   {
+    "sha256": "e9207f98cd3c28df",
+    "len": 1534
+   }
+  ],
+  "kwargs": {}
+ },
+ {
+  "call": "MCPRouter.execute",
+  "args": [
+   {
+    "database": "pm_db",
+    "sql": "SELECT project_code\nFROM project\nWHERE actual_cost > budget_amt;"
+   }
+  ],
+  "kwargs": {}
+ },
+ {
+  "call": "ResultValidator.validate",
+  "args": [],
+  "kwargs": {
+   "column_units": {},
+   "expected_cardinality": "数条",
+   "is_final_step": false,
+   "preceding_summary": "",
+   "query": "查询采购状态为ordered的采购单号",
+   "row_count": 3,
+   "sql": "SELECT project_code\nFROM project\nWHERE actual_cost > budget_amt;",
+   "step_objective": {
+    "sha256": "ea33590d8db581a9",
+    "len": 86
+   }
+  }
+ },
+ {
+  "call": "SqlGenerator.generate",
+  "args": [
+   {
+    "__type__": "CotStep",
+    "database": "erp_db",
+    "processing_objects": "purchase_order.job_no，purchase_order.po_amt",
+    "operation_instruction": "先读取上一步结果中的project_code列表；再按命名约定对应到purchase_order的job_no；最后按job_no汇总po_amt",
+    "output_target": "purchase_order.po_amt",
+    "expected_cardinality": "数条"
+   }
+  ],
+  "kwargs": {
+   "certified_examples": "",
+   "previous_results": {
+    "sha256": "d39c944b5804c108",
+    "len": 240
+   },
+   "sql_dialect": "sqlite"
+  }
+ },
+ {
+  "call": "CoderModelClient.generate_sql",
+  "args": [
+   {
+    "sha256": "dc4a3c27b1e5bc63",
+    "len": 2062
+   }
+  ],
+  "kwargs": {}
+ },
+ {
+  "call": "MCPRouter.execute",
+  "args": [
+   {
+    "database": "erp_db",
+    "sql": {
+     "sha256": "85498042740e5446",
+     "len": 126
+    }
+   }
+  ],
+  "kwargs": {}
+ },
+ {
+  "call": "ResultValidator.validate",
+  "args": [],
+  "kwargs": {
+   "column_units": {
+    "total_po_amt": "CNY"
+   },
+   "expected_cardinality": "数条",
+   "is_final_step": true,
+   "preceding_summary": {
+    "sha256": "ae973574e177d59e",
+    "len": 98
+   },
+   "query": "查询采购状态为ordered的采购单号",
+   "row_count": 3,
+   "sql": {
+    "sha256": "85498042740e5446",
+    "len": 126
+   },
+   "step_objective": {
+    "sha256": "4ed30b6a5d6637a4",
+    "len": 99
+   }
+  }
+ },
+ {
+  "route": "database_query",
+  "answer": {
+   "sha256": "85db2e53e04e66bd",
+   "len": 894
+  },
+  "degraded": false
+ },
+ {
+  "question": "解释一下刚才的查询结果"
+ },
+ {
+  "call": "DynamicIntentRouter.route",
+  "args": [
+   "解释一下刚才的查询结果",
+   {
+    "__type__": "ConversationMemoryContext",
+    "prompt": {
+     "sha256": "849193077ce78c1c",
+     "len": 5875
+    }
+   }
+  ],
+  "kwargs": {}
+ },
+ {
+  "call": "RuleBasedDataQAClient.answer",
+  "args": [
+   "解释一下刚才的查询结果",
+   {
+    "__type__": "ConversationMemoryContext",
+    "prompt": {
+     "sha256": "849193077ce78c1c",
+     "len": 5875
+    }
+   }
+  ],
+  "kwargs": {}
+ },
+ {
+  "route": "data_qa",
+  "answer": {
+   "sha256": "260b31413877a31e",
+   "len": 155
+  },
+  "degraded": false
+ }
+]

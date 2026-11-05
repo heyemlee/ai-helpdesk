@@ -1,0 +1,24 @@
+# 跨表共享语义 —— 由 sim_erp/legacy/semantic.py 生成，不要手改。
+metric_disambiguation:
+- term: 合同额 / 合同金额 / 订单金额
+  correct: erp_db.T_SAL_ORDER.FAMOUNT
+  wrong: erp_db.T_SAL_ORDERENTRY.FAMOUNT（明细行金额，三张表都叫 FAMOUNT，口径完全不同）
+- term: 开票金额 / 应收金额
+  correct: erp_db.T_AR_RECEIVABLE.FAMOUNT
+  wrong: erp_db.T_SAL_ORDER.FAMOUNT（整单合同额；已开票合计通常小于它，尾款常常没开）
+- term: 还欠多少 / 未付总额
+  correct: erp_db.T_SAL_ORDER.FAMOUNT
+  wrong: erp_db.T_AR_RECEIVABLE.FAMOUNT（只汇总已开票的会漏掉尚未开票的尾款）
+- term: 实收 / 到账
+  correct: erp_db.T_AR_RECEIVEBILL.FAMOUNT
+  wrong: erp_db.T_AR_RECEIVABLE.FSETTLESTS（状态只有 O/P/S/V，读不出收了多少钱）
+- term: 按州筛选
+  correct: erp_db.T_SAL_ORDER.FPROVSTD
+  wrong: erp_db.T_SAL_ORDER.FPROV（原始录入值，大小写不统一）
+metric_definitions:
+  在产: FDOCSTATUS='C'（生产中）。A/B 还没投产，D/E/F 已交付，Z 已取消。
+  未收清应收: FSETTLESTS 为 O 或 P 的应收单。**不含 V**——作废不构成应收。
+  逾期应收: FDUEDATE < 今天（8 位整数比较）且 FSETTLESTS 不是 S 也不是 V。
+  单张应收未付余额: 该应收的 FAMOUNT 减去 T_AR_RECEIVEBILL 里对应 FARNO 的 FAMOUNT 合计。
+  工程未付总额: T_SAL_ORDER.FAMOUNT + 该工程 FDOCSTATUS='C' 的变更单 SUM(FCHGAMT) − 该工程所有应收下的收款合计。**客户问「还欠多少」指的是这个**，因为它包含了尚未开票的尾款。
+  今天: 本库日期是 8 位整数，今天要写 CAST(STRFTIME('%Y%m%d','now','localtime') AS INTEGER)。

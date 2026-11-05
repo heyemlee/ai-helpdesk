@@ -1,0 +1,19 @@
+# 这个仓库只有文档、schema、fixtures 和一个自检脚本，没有构建产物。
+# 所以这份清单很短，而且**每一条都对应曾经真的漏进工作树的东西**——
+# 不要预防性地往里加没见过的模式，清单长了就没人看了。
+
+# Claude Code 的本地暂存。曾在 fixtures/data-part/ 与 fixtures/progress-event/
+# 下各留过一个空的 .claude/.cc-writes/，混在 fixture 目录里看着像仓库结构的一部分。
+.claude/
+.cc-writes/
+
+# macOS
+.DS_Store
+
+# tools/check_contract.py 跑出来的
+__pycache__/
+*.py[cod]
+
+# 本机跑自检时建的虚拟环境（CI 用的是 setup-python，不落盘在仓库里）
+.venv/
+venv/

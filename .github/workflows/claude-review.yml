@@ -21,8 +21,13 @@ jobs:
   review:
     name: Claude review
     # 不用 pull_request_target：fork 的 PR 拿不到密钥，这里直接不跑。
-    # 本仓库的分支只有有写权限的人能推，action 自己也会再查一次触发者的权限
-    if: github.event.pull_request.head.repo.full_name == github.repository && !github.event.pull_request.draft
+    # 本仓库的分支只有有写权限的人能推，action 自己也会再查一次触发者的权限。
+    # 带 skip-ai-review 标签的 PR 不审，比如整段导入另一个仓库的历史：diff 几百个文件，审了只是花钱。
+    # 判断用的是事件发生那一刻的标签，opened 之后才打的标签它看不到，所以先开草稿、打标签，再转 ready
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository
+      && !github.event.pull_request.draft
+      && !contains(github.event.pull_request.labels.*.name, 'skip-ai-review')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

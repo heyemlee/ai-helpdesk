@@ -1,0 +1,128 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "AI Helpdesk × AI SQL Agent · A2A Collaboration",
+    "locale": "en",
+    "viewBox": [
+      1080,
+      530
+    ],
+    "column_fit": "spread",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    {
+      "id": "console",
+      "type": "frontend",
+      "label": "Support Console",
+      "sublabel": "React · SSE"
+    },
+    {
+      "id": "helpdesk",
+      "type": "backend",
+      "label": "AI Helpdesk",
+      "sublabel": "Intent routing · A2A Client"
+    },
+    {
+      "id": "sqlagent",
+      "type": "backend",
+      "label": "AI SQL Agent",
+      "sublabel": "Text2SQL · A2A Server"
+    },
+    {
+      "id": "business",
+      "type": "database",
+      "label": "Business Databases",
+      "sublabel": "Read-only · Table/column policy"
+    }
+  ],
+  "messages": [
+    {
+      "id": "question",
+      "from": "console",
+      "to": "helpdesk",
+      "y": 160,
+      "label": "POST /chat/stream"
+    },
+    {
+      "id": "discover",
+      "from": "helpdesk",
+      "to": "sqlagent",
+      "y": 188,
+      "label": "GET /.well-known/agent.json"
+    },
+    {
+      "id": "capability",
+      "from": "sqlagent",
+      "to": "helpdesk",
+      "y": 216,
+      "label": "capabilities.streaming = true",
+      "variant": "return"
+    },
+    {
+      "id": "delegate",
+      "from": "helpdesk",
+      "to": "sqlagent",
+      "y": 244,
+      "label": "message/stream · POST /a2a",
+      "variant": "emphasis"
+    },
+    {
+      "id": "task",
+      "from": "sqlagent",
+      "to": "helpdesk",
+      "y": 272,
+      "label": "task → status-update",
+      "variant": "return"
+    },
+    {
+      "id": "progress",
+      "from": "helpdesk",
+      "to": "console",
+      "y": 300,
+      "label": "progress · SSE",
+      "variant": "return"
+    },
+    {
+      "id": "query",
+      "from": "sqlagent",
+      "to": "business",
+      "y": 328,
+      "label": "Authorize → read-only SQL",
+      "variant": "security"
+    },
+    {
+      "id": "rows",
+      "from": "business",
+      "to": "sqlagent",
+      "y": 356,
+      "label": "Rows → result risk checks",
+      "variant": "return"
+    },
+    {
+      "id": "artifact",
+      "from": "sqlagent",
+      "to": "helpdesk",
+      "y": 384,
+      "label": "artifact-update · text + data",
+      "variant": "return"
+    },
+    {
+      "id": "terminal",
+      "from": "sqlagent",
+      "to": "helpdesk",
+      "y": 412,
+      "label": "completed · final = true",
+      "variant": "return"
+    },
+    {
+      "id": "answer",
+      "from": "helpdesk",
+      "to": "console",
+      "y": 440,
+      "label": "Evidence → reply / handoff",
+      "variant": "security"
+    }
+  ]
+}

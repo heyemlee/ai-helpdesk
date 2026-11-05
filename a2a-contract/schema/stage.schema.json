@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/heyemlee/a2a-contract/schema/stage.schema.json",
+  "title": "progress 事件的 stage 标识符",
+  "description": "契约 §4.5。这是契约面，不是我方内部 stage 名；内部重构不得改变它，改它就是一次 §6 契约变更。",
+  "type": "string",
+  "enum": [
+    "normalization",
+    "routing",
+    "retrieval",
+    "planning",
+    "generation",
+    "execution",
+    "repair",
+    "validation",
+    "answering"
+  ],
+  "$defs": {
+    "contract-declared": {
+      "$comment": "§4.5 表里声明的九个。§9 #3 的答复是「全发」。",
+      "enum": [
+        "normalization",
+        "routing",
+        "retrieval",
+        "planning",
+        "generation",
+        "execution",
+        "repair",
+        "validation",
+        "answering"
+      ]
+    },
+    "emitted-2026-09-04": {
+      "$comment": "历史：ai-sql-agent 在 commit e68e127 实际发出的八个，缺 normalization。保留做对照，不要删——它是 §4.5 那条缺口存在过的证据。",
+      "enum": [
+        "routing",
+        "retrieval",
+        "planning",
+        "generation",
+        "execution",
+        "repair",
+        "validation",
+        "answering"
+      ]
+    },
+    "repeatable": {
+      "$comment": "会按 step 重复出现的 stage（§4.5「会重复？」列）。repair 额外受「每个 step 至多一次」约束。",
+      "enum": [
+        "generation",
+        "execution",
+        "repair",
+        "validation"
+      ]
+    },
+    "emitted-2026-09-08": {
+      "$comment": "当前：ai-sql-agent 的 8340323 把 normalization 补成真 stage()，九个契约 stage 全发。与 contract-declared 相等 ⇒ §4.5 那条缺口关闭。改这一组的提交就是关闭证据。",
+      "enum": [
+        "normalization",
+        "routing",
+        "retrieval",
+        "planning",
+        "generation",
+        "execution",
+        "repair",
+        "validation",
+        "answering"
+      ]
+    }
+  }
+}

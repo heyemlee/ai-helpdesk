@@ -1,0 +1,35 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.DS_Store
+
+# 虚拟环境与打包产物
+.venv/
+build/
+dist/
+*.egg-info/
+
+# 密钥与本机配置
+.env
+# .env.bak / .env.local 这类副本一样带真 key，只放行模板
+.env.*
+!.env.example
+deploy/api_keys.json
+
+# 本机运行期产物（记忆库、审计库、Demo 数据、压测结果）
+runtime_data/
+
+# 本地私有笔记（不公开）。docs/ 其余内容是公开文档，随仓库发布。
+docs/internal/
+
+# 编辑器 / 工具本地配置
+.claude/
+.idea/
+.vscode/
+
+# 模拟 ERP 的派生产物：数据库由 tools/sim_erp/build.py 生成（确定性，同 SEED 同结果），
+# 语义 YAML 由 tools/sim_erp/semantic.py 从规格表生成。都不入库，避免与生成器漂移。
+tools/sim_erp/semantic/
+
+# 精简业务库的语义配置由 tools/simple_erp/schema.py 生成。
+tools/simple_erp/semantic/

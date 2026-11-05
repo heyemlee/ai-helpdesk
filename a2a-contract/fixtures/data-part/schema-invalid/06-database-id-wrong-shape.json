@@ -1,0 +1,10 @@
+{
+  "route": "database_query", "confidence": 0.9,
+  "queried_database": true, "has_risk": false, "degraded": false,
+  "execution_status": "success",
+  "degrade_reason": "", "selected_databases": ["ERP"],
+  "trace_id": "ff66aa77bb88cc99",
+  "steps": [{"database": "ERP", "sql": "SELECT 1", "final_sql": "SELECT 1",
+             "success": true, "row_count": 1, "truncated": false, "rows": [],
+             "error": null, "repair_attempts": [], "risk_findings": []}]
+}

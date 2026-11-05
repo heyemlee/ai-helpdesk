@@ -1,0 +1,184 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 588" width="960" height="588" role="img" aria-labelledby="title desc">
+  <title id="title">A2A Contract architecture</title>
+  <desc id="desc">ai-helpdesk, the support agent, reads ai-sql-agent's Agent Card and calls POST /a2a with message/stream. While the SQL agent's loop calls the model and runs read-only SQL on four databases, it streams back over JSON-RPC 2.0 and SSE a task, a status update for each stage, one artifact with the data part and exactly one final event. The helpdesk's A2A client watches for 20 s of silence and a 90 s cap, judges the data part with assess() and streams progress and the answer to the console. The a2a-contract repository, version 1.13, defines every frame with the contract, five JSON Schemas, 30 golden fixtures and a self-check, and both repositories' CI pin its tag. Pulses travel each connection in that order.</desc>
+  <style>
+    text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif; }
+    .eyebrow { font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; fill: #8e8e93; }
+    .ctitle { font-size: 15px; font-weight: 600; fill: #1d1d1f; }
+    .csub { font-size: 12px; fill: #8e8e93; }
+    .title { font-size: 14px; font-weight: 600; fill: #1d1d1f; }
+    .big { font-size: 15px; }
+    .sub { font-size: 12px; fill: #6e6e73; }
+    .edge { font-size: 11px; fill: #8e8e93; }
+    .proto, .code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+    .proto { font-size: 11px; fill: #6e6e73; }
+    .code { font-size: 12px; font-weight: 600; }
+    .teal { fill: #0d9488; }
+    .orange { fill: #c4623f; }
+    .ver { font-size: 11px; font-weight: 600; fill: #6e56cf; }
+    .pill { fill: #faf9fe; stroke: #e4defa; stroke-width: 1; }
+    .pilltext { font-size: 11px; fill: #4a4a50; }
+    .box { fill: #fafafb; stroke: #e3e3e8; stroke-width: 1; }
+    .card { fill: #ffffff; stroke: #e3e3e8; stroke-width: 1; }
+    .accent { fill: #fdfcff; stroke: #cfc4f5; stroke-width: 1.5; }
+    .wire { fill: none; stroke: #d6d6dc; stroke-width: 1.5; }
+    .head { fill: #c7c7cc; }
+    .pulse {
+      fill: none;
+      stroke-width: 3;
+      stroke-linecap: round;
+      stroke-dasharray: 0.14 1.3;
+      stroke-dashoffset: 0.14;
+      opacity: 0;
+      animation: travel 8s linear infinite;
+    }
+    .data { stroke: #0a7cff; }
+    .ai { stroke: #d97757; }
+    .event { stroke: #0d9488; }
+    .contract { stroke: #6e56cf; }
+    @keyframes travel {
+      0% { stroke-dashoffset: 0.14; opacity: 1; }
+      24% { stroke-dashoffset: -1; opacity: 1; }
+      25%, 100% { stroke-dashoffset: -1; opacity: 0; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .pulse { animation: none; }
+    }
+  </style>
+  <defs>
+    <filter id="lift" x="-10%" y="-10%" width="120%" height="140%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#000000" flood-opacity="0.06" />
+    </filter>
+    <filter id="glow" filterUnits="userSpaceOnUse" x="0" y="0" width="960" height="588">
+      <feGaussianBlur stdDeviation="2" result="blur" />
+      <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+    </filter>
+  </defs>
+  <rect x="0.5" y="0.5" width="959" height="587" rx="16" fill="#ffffff" stroke="#ececf0" />
+  <rect class="box" x="20" y="20" width="280" height="388" rx="18" />
+  <rect class="box" x="660" y="20" width="280" height="388" rx="18" />
+  <!-- Wires -->
+  <path class="wire" d="M100,144 V200" />
+  <path class="wire" d="M284,212 H316 Q328,212 328,200 V126 Q328,114 340,114 H676" />
+  <path class="wire" d="M284,224 H676" />
+  <path class="wire" d="M676,258 H284" />
+  <path class="wire" d="M700,392 V468" />
+  <path class="wire" d="M676,292 H284" />
+  <path class="wire" d="M850,392 V468" />
+  <path class="wire" d="M676,326 H284" />
+  <path class="wire" d="M676,360 H284" />
+  <path class="wire" d="M220,200 V144" />
+  <path class="wire" d="M400,468 V372" stroke-dasharray="4 5" />
+  <path class="wire" d="M160,468 V408" stroke-dasharray="4 5" />
+  <path class="wire" d="M540,468 C540,438 680,438 680,408" stroke-dasharray="4 5" />
+  <path class="head" d="M669,220 L676,224 L669,228 Z" />
+  <path class="head" d="M291,254 L284,258 L291,262 Z" />
+  <path class="head" d="M291,288 L284,292 L291,296 Z" />
+  <path class="head" d="M291,322 L284,326 L291,330 Z" />
+  <path class="head" d="M291,356 L284,360 L291,364 Z" />
+  <path class="head" d="M669,110 L676,114 L669,118 Z" />
+  <!-- Wire labels -->
+  <text class="eyebrow" x="480" y="48" text-anchor="middle">A2A 0.2 SUBSET · JSON-RPC 2.0 OVER SSE</text>
+  <text class="proto" x="502" y="106" text-anchor="middle">GET /.well-known/agent.json</text>
+  <text class="proto" x="480" y="217" text-anchor="middle">POST /a2a · message/stream</text>
+  <text class="proto" x="480" y="251" text-anchor="middle">task · submitted</text>
+  <text class="proto" x="480" y="285" text-anchor="middle">status-update × N · stage, step, database</text>
+  <text class="proto" x="480" y="319" text-anchor="middle">artifact-update · data part</text>
+  <text class="proto" x="480" y="353" text-anchor="middle">status-update · final: true · completed</text>
+  <text class="edge" x="92" y="176" text-anchor="end">question</text>
+  <text class="edge" x="212" y="176" text-anchor="end">progress · answer</text>
+  <text class="edge" x="708" y="440">model calls</text>
+  <text class="edge" x="858" y="440">read-only SQL</text>
+  <text class="edge" x="408" y="428">defines every frame on this wire</text>
+  <text class="edge" x="168" y="444">CI pins v1.13 · pytest</text>
+  <text class="edge" x="530" y="452" text-anchor="end">CI pins v1.13 · unittest</text>
+  <!-- Pulses: one delegated question, in order -->
+  <path class="pulse data" pathLength="1" filter="url(#glow)" d="M100,144 V200" style="animation-delay: 0.0s" />
+  <path class="pulse event" pathLength="1" filter="url(#glow)" d="M284,212 H316 Q328,212 328,200 V126 Q328,114 340,114 H676" style="animation-delay: 0.5s" />
+  <path class="pulse data" pathLength="1" filter="url(#glow)" d="M284,224 H676" style="animation-delay: 1.0s" />
+  <path class="pulse event" pathLength="1" filter="url(#glow)" d="M676,258 H284" style="animation-delay: 1.5s" />
+  <path class="pulse ai" pathLength="1" filter="url(#glow)" d="M700,392 V468" style="animation-delay: 2.0s" />
+  <path class="pulse event" pathLength="1" filter="url(#glow)" d="M676,292 H284" style="animation-delay: 2.4s" />
+  <path class="pulse data" pathLength="1" filter="url(#glow)" d="M850,392 V468" style="animation-delay: 2.8s" />
+  <path class="pulse event" pathLength="1" filter="url(#glow)" d="M676,292 H284" style="animation-delay: 3.2s" />
+  <path class="pulse ai" pathLength="1" filter="url(#glow)" d="M700,392 V468" style="animation-delay: 3.6s" />
+  <path class="pulse event" pathLength="1" filter="url(#glow)" d="M676,292 H284" style="animation-delay: 4.0s" />
+  <path class="pulse data" pathLength="1" filter="url(#glow)" d="M676,326 H284" style="animation-delay: 4.6s" />
+  <path class="pulse event" pathLength="1" filter="url(#glow)" d="M676,360 H284" style="animation-delay: 5.2s" />
+  <path class="pulse data" pathLength="1" filter="url(#glow)" d="M220,200 V144" style="animation-delay: 5.8s" />
+  <path class="pulse contract" pathLength="1" filter="url(#glow)" d="M400,468 V372" style="animation-delay: 6.6s" />
+  <path class="pulse contract" pathLength="1" filter="url(#glow)" d="M160,468 V408" style="animation-delay: 6.6s" />
+  <path class="pulse contract" pathLength="1" filter="url(#glow)" d="M540,468 C540,438 680,438 680,408" style="animation-delay: 6.6s" />
+  <!-- Cards -->
+  <g filter="url(#lift)">
+    <rect class="card" x="36" y="84" width="248" height="60" rx="14" />
+    <rect class="card" x="36" y="200" width="248" height="192" rx="14" />
+    <rect class="card" x="676" y="84" width="248" height="60" rx="14" />
+    <rect class="card" x="676" y="200" width="248" height="192" rx="14" />
+    <rect class="card" x="620" y="468" width="152" height="80" rx="14" />
+    <rect class="card" x="784" y="468" width="156" height="80" rx="14" />
+    <rect class="card accent" x="20" y="468" width="580" height="100" rx="14" />
+  </g>
+  <text class="ctitle" x="40" y="50">ai-helpdesk</text>
+  <text class="csub" x="40" y="68">support agent · A2A client</text>
+  <text class="ctitle" x="680" y="50">ai-sql-agent</text>
+  <text class="csub" x="680" y="68">data agent · A2A server</text>
+  <rect x="50" y="98" width="32" height="32" rx="9" fill="#eaf3ff" />
+  <g transform="translate(54.0 102.0) scale(1.0000)" fill="none" stroke="#0a7cff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 9h18"/><path d="M6.5 6.5h.01M9 6.5h.01"/></g>
+  <text class="title" x="94" y="110">Support console</text>
+  <text class="sub" x="94" y="129">React 18 · reads SSE via fetch</text>
+  <rect x="50" y="214" width="32" height="32" rx="9" fill="#e3f4f2" />
+  <g transform="translate(54.0 218.0) scale(1.0000)" fill="none" stroke="#0d9488" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></g>
+  <text class="title" x="94" y="226">A2A client</text>
+  <text class="sub" x="94" y="245">FastAPI · httpx</text>
+  <circle cx="57" cy="266" r="2" fill="#0d9488" />
+  <text class="sub" x="66" y="270">Agent Card cached 30 s</text>
+  <circle cx="57" cy="286" r="2" fill="#0d9488" />
+  <text class="sub" x="66" y="290">20 s silence · 90 s hard cap</text>
+  <circle cx="57" cy="306" r="2" fill="#0d9488" />
+  <text class="sub" x="66" y="310">no retry once the stream opens</text>
+  <rect x="48" y="324" width="224" height="58" rx="9" fill="#e3f4f2" />
+  <text class="code teal" x="60" y="344">assess()</text>
+  <text class="sub" x="60" y="362">completed + execution_status</text>
+  <text class="sub" x="60" y="378">missing or mistyped = untrusted</text>
+  <rect x="690" y="98" width="32" height="32" rx="9" fill="#e3f4f2" />
+  <g transform="translate(694.0 102.0) scale(1.0000)" fill="none" stroke="#0d9488" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><circle cx="8.5" cy="11" r="2"/><path d="M5.5 16.2c.6-1.4 1.7-2 3-2s2.4.6 3 2"/><path d="M14 10h5M14 13.5h3.5"/></g>
+  <text class="title" x="734" y="110">Agent Card</text>
+  <text class="sub" x="734" y="129">streaming · protocol 0.2</text>
+  <rect x="690" y="214" width="32" height="32" rx="9" fill="#eaf3ff" />
+  <g transform="translate(694.0 218.0) scale(1.0000)" fill="none" stroke="#0a7cff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="7.5" rx="2"/><rect x="3" y="13.5" width="18" height="7.5" rx="2"/><path d="M7 6.8h.01M7 17.2h.01"/></g>
+  <text class="title" x="734" y="226">A2A server</text>
+  <text class="sub" x="734" y="245">FastAPI · /a2a · /query</text>
+  <circle cx="697" cy="266" r="2" fill="#0a7cff" />
+  <text class="sub" x="706" y="270">one data part on all three carriers</text>
+  <circle cx="697" cy="286" r="2" fill="#0a7cff" />
+  <text class="sub" x="706" y="290">exactly one terminal event</text>
+  <circle cx="697" cy="306" r="2" fill="#0a7cff" />
+  <text class="sub" x="706" y="310">cancels on disconnect</text>
+  <rect x="688" y="324" width="224" height="58" rx="9" fill="#fbeee8" />
+  <text class="code orange" x="700" y="344">Agent loop · 9 stages</text>
+  <text class="sub" x="700" y="362">from routing and planning</text>
+  <text class="sub" x="700" y="378">to execution, repair, validation</text>
+  <g transform="translate(634 481) scale(0.6667)" fill="none" stroke="#d97757" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5 13.9 9 19.5 11 13.9 13 12 18.5 10.1 13 4.5 11 10.1 9Z"/><path d="M19 3v3M17.5 4.5h3"/></g>
+  <text class="title" x="656" y="494">LLM API</text>
+  <text class="sub" x="634" y="518">OpenAI-compatible</text>
+  <text class="sub" x="634" y="535">or Anthropic</text>
+  <g transform="translate(798 481) scale(0.6667)" fill="none" stroke="#0a7cff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5.5" rx="8" ry="2.8"/><path d="M4 5.5v13c0 1.6 3.6 2.8 8 2.8s8-1.2 8-2.8v-13"/><path d="M4 12c0 1.6 3.6 2.8 8 2.8s8-1.2 8-2.8"/></g>
+  <text class="title" x="820" y="494">4 databases</text>
+  <text class="sub" x="798" y="518">read-only SQL</text>
+  <text class="sub" x="798" y="535">SQLite · PostgreSQL</text>
+  <rect x="36" y="484" width="32" height="32" rx="9" fill="#efebfb" />
+  <g transform="translate(40.0 488.0) scale(1.0000)" fill="none" stroke="#6e56cf" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2.5H7a2 2 0 0 0-2 2v15a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7Z"/><path d="M14 2.5V7h5"/><path d="m9 14.5 2 2 4-4"/></g>
+  <text class="title big" x="80" y="496">a2a-contract</text>
+  <rect x="178" y="483" width="46" height="18" rx="9" fill="#efebfb" />
+  <text class="ver" x="201" y="496" text-anchor="middle">v1.13</text>
+  <text class="sub" x="80" y="515">one versioned contract · both repos pin its tag in CI</text>
+  <rect class="pill" x="36" y="530" width="184" height="24" rx="12" />
+  <text class="pilltext mono" x="128.0" y="546" text-anchor="middle">a2a-streaming-contract.md</text>
+  <rect class="pill" x="228" y="530" width="109" height="24" rx="12" />
+  <text class="pilltext" x="282.5" y="546" text-anchor="middle">5 JSON Schemas</text>
+  <rect class="pill" x="345" y="530" width="105" height="24" rx="12" />
+  <text class="pilltext" x="397.5" y="546" text-anchor="middle">30 fixtures · A–F</text>
+  <rect class="pill" x="458" y="530" width="131" height="24" rx="12" />
+  <text class="pilltext mono" x="523.5" y="546" text-anchor="middle">check_contract.py</text>
+</svg>

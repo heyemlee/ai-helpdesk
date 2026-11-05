@@ -1,0 +1,25 @@
+{
+  "route": "database_query",
+  "confidence": 0.88,
+  "queried_database": true,
+  "execution_status": "success",
+  "has_risk": false,
+  "degraded": false,
+  "degrade_reason": "",
+  "selected_databases": ["hr_db"],
+  "trace_id": "7c1d9a03be5f4412",
+  "steps": [
+    {
+      "database": "hr_db",
+      "sql": "SELECT installer_name, cert_expiry FROM installer WHERE crew_id = 'CR-07'",
+      "final_sql": "SELECT installer_name, cert_expiry FROM installer WHERE crew_id = 'CR-07'",
+      "success": true,
+      "row_count": 1,
+      "truncated": false,
+      "rows": [{"installer_name": "Diego Ramirez", "cert_expiry": "2027-04-30"}],
+      "error": null,
+      "repair_attempts": [],
+      "risk_findings": []
+    }
+  ]
+}

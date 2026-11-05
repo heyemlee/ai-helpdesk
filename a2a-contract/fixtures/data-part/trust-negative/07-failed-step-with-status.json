@@ -1,0 +1,35 @@
+{
+  "route": "database_query",
+  "confidence": 0.9,
+  "queried_database": true,
+  "execution_status": "failed",
+  "succeeded_steps": 0,
+  "failed_steps": 1,
+  "total_steps": 1,
+  "has_risk": false,
+  "degraded": false,
+  "degrade_reason": "",
+  "selected_databases": [
+    "erp_db"
+  ],
+  "trace_id": "9d4e2f61ac07b385",
+  "steps": [
+    {
+      "database": "erp_db",
+      "sql": "SELECT ship_date FROM orders WHERE job_no = 'J25-00003'",
+      "final_sql": "SELECT ship_date FROM orders WHERE job_no = 'J25-00003'",
+      "success": false,
+      "row_count": 0,
+      "truncated": false,
+      "rows": [],
+      "error": "no such table: orders",
+      "repair_attempts": [
+        {
+          "attempt": 1,
+          "success": false
+        }
+      ],
+      "risk_findings": []
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "jsonrpc": "2.0",
+  "id": "req-1",
+  "result": {
+    "kind": "status-update",
+    "taskId": "6f2344a1b2c34d56",
+    "contextId": "s_ab12cd34",
+    "final": true,
+    "status": {"state": "cancelled", "timestamp": "2026-10-16T23:40:12.507Z"},
+    "metadata": {"trace_id": "e620e55f2e294505", "error": "cancelled: api"}
+  }
+}

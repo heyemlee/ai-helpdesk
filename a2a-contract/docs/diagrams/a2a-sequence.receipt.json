@@ -1,0 +1,74 @@
+{
+  "diagram_type": "sequence",
+  "archify_commit": "5289f6867f048a7450ec5718f58459613a84cf41",
+  "output": "a2a-sequence.zh-CN.html",
+  "specification": {
+    "sha256": "566ae2403b753bf39cc2e4b83207e35e512b7a13848e4b0fc76ad27be042fb44",
+    "bytes": 2714
+  },
+  "artifact": {
+    "sha256": "fd3e7efbb9bd3975ffae27784d6a17a1e38d00b29524494d7d7ae2fde529380e",
+    "bytes": 804982
+  },
+  "validation": {
+    "checksPassed": 9,
+    "checkCount": 9,
+    "compositionProfile": "showcase",
+    "compositionStatus": "pass",
+    "errors": 0,
+    "warnings": 0
+  },
+  "browser_evidence": "pass",
+  "viewports": [
+    {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900,
+      "overflowX": false,
+      "overflowY": false,
+      "ok": true
+    },
+    {
+      "width": 1600,
+      "height": 1000,
+      "scrollWidth": 1600,
+      "scrollHeight": 1000,
+      "overflowX": false,
+      "overflowY": false,
+      "ok": true
+    },
+    {
+      "width": 1920,
+      "height": 1080,
+      "scrollWidth": 1920,
+      "scrollHeight": 1080,
+      "overflowX": false,
+      "overflowY": false,
+      "ok": true
+    },
+    {
+      "width": 2048,
+      "height": 1320,
+      "scrollWidth": 2048,
+      "scrollHeight": 1320,
+      "overflowX": false,
+      "overflowY": false,
+      "ok": true
+    }
+  ],
+  "visual_review": {
+    "status": "passed",
+    "reviewed": [
+      "1440x900 light",
+      "2048x1320 dark"
+    ],
+    "notes": "Read rendered screenshots; labels and return arrows are legible, with no overlaps. Canonical SVG exported through Archify.exportMenu.run."
+  },
+  "correction_rounds": 2,
+  "svg": {
+    "file": "a2a-sequence.zh-CN.svg",
+    "sha256": "e36de7e4d61f4fcac905d40b6b8dcd2b4e13f9a17c83af89d75933f476059944",
+    "postprocess": "Trim trailing whitespace only; HTML and specification unchanged."
+  }
+}
