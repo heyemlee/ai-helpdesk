@@ -14,7 +14,7 @@ model management, cancellable runs with an event log, evals and tracing, in one 
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.141-009688?style=flat-square&logo=fastapi&logoColor=white)](src/ai_sql_agent/api)
 [![Agents](https://img.shields.io/badge/Agents-A2A_%2B_MCP-6E56CF?style=flat-square)](src/ai_sql_agent/a2a)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-4169E1?style=flat-square&logo=postgresql&logoColor=white)](deploy/docker-compose.prod.yml)
-[![CI](https://img.shields.io/badge/CI-GitHub_Actions-2088FF?style=flat-square&logo=githubactions&logoColor=white)](https://github.com/heyemlee/ai-sql-agent/actions/workflows/ci.yml)
+[![CI](https://img.shields.io/badge/CI-GitHub_Actions-2088FF?style=flat-square&logo=githubactions&logoColor=white)](https://github.com/heyemlee/ai-helpdesk/actions/workflows/ci.yml)
 
 **English** · [简体中文](README.zh-CN.md)
 
@@ -43,8 +43,8 @@ model management, cancellable runs with an event log, evals and tracing, in one 
   through RRF and re-ranks; the column budget follows the embedding in use, and a schema watcher rebuilds the index
   when a database changes. 99.2% recall on 40 held-out phrasings with 36.8% of the schema sent, on remote embeddings.
 - **Interoperable and operable.** Other agents call it over A2A with the same keys, limits and audit as the HTTP API:
-  [ai-helpdesk](https://github.com/heyemlee/ai-helpdesk), a support agent, delegates its data questions to it under the
-  versioned contract in [a2a-contract](https://github.com/heyemlee/a2a-contract). An MCP server offers its SQL as
+  [ai-helpdesk](../README.md), the support agent in this repository, delegates its data questions to it under the
+  versioned contract in [a2a-contract](../a2a-contract/README.md). An MCP server offers its SQL as
   tools, and model and embedding connections switch without a restart. Every request is a run with a numbered event log
   of its stages, model calls and SQL, and can be cancelled while it runs.
 
@@ -147,13 +147,17 @@ before/after pair. Sources, in Chinese: the [2026-09-09 record](benchmark/baseli
 - **A2A.** On by default at `POST /a2a`: `message/send` returns a finished task and `message/stream` sends stage events
   over SSE first. The task id is the run id: `POST /runs/{id}/cancel` ends a task as `canceled`, and a caller that
   disconnects stops it too. `AI_SQL_A2A_STREAMING=false` turns streaming off and the agent card says so;
-  [a2a-contract](https://github.com/heyemlee/a2a-contract) cases run in CI.
+  [a2a-contract](../a2a-contract/README.md) cases run in CI from the same commit.
 - **MCP and HTTP.** An MCP stdio server offers `list_databases` and `execute_sql` over the demo databases with the
   same caps; HTTP serves `/query`, `/catalog`, `/history`, `/runs` and `/metrics` ([API](docs/api.md)).
 
 ## Develop
 
+This service lives in `ai-sql-agent/` of a repository it shares with the support agent and the A2A contract; it keeps
+its own Python 3.11 environment and `.env`.
+
 ```bash
+cd ai-sql-agent                                     # from the repository root
 python3 -m venv .venv && source .venv/bin/activate  # a virtual environment for Python 3.11+
 pip install -e ".[dev]"                             # the service, its pinned dependencies and test tools
 python examples/end_to_end.py                       # single- and cross-database questions, mock model
@@ -166,7 +170,8 @@ python -m ai_sql_agent.semantic validate semantic/  # check it against the live 
 Without model credentials the service answers from a mock model. Point `AI_SQL_SEMANTIC_DIR` at the semantic directory
 to query your own databases; models, embeddings, rerank and storage are set up in
 [docs/deployment.md](docs/deployment.md#2-configuration), and another semantic layer with sample data is in
-[tools/simple_erp](tools/simple_erp/README.md) (in Chinese).
+[tools/simple_erp](tools/simple_erp/README.md) (in Chinese). From the repository root, `scripts/dev-all.sh` starts this
+service from `ai-sql-agent/.venv` together with the support agent.
 
 ## Test
 
@@ -177,8 +182,11 @@ make gate-smoke  # the release gate on its offline smoke sample
 make gate        # the full gate: 150 + 40 tasks, three runs; needs a model and spends tokens
 ```
 
-CI runs the tests against a PostgreSQL 16 + pgvector service, the A2A contract cases at the pinned tag, the demos, the
-offline gate and its negative check, the read-only role tool both ways, and a Docker image smoke test with API keys on.
+The repository's CI job `SQL Agent (tests + gate smoke)` runs the tests against a PostgreSQL 16 + pgvector service, the
+A2A contract cases from `a2a-contract/` with none allowed to skip, the demos, the offline gate and its negative check,
+and the read-only role tool both ways; `Docker images` builds the image and smoke-tests it with API keys on. Both are
+required checks on `main`. From the repository root, `.claude/skills/test-backend/scripts/run-sql-agent.sh` runs the
+tests in a throwaway copy, away from your `.env` and saved model settings.
 
 ## Deploy
 

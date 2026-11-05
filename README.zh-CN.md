@@ -2,14 +2,15 @@
 
 # AI Helpdesk
 
-**多 Agent 客服系统：按问题路由的专家 Agent、通过 A2A 委派的 SQL Agent、逐句检查的答案守卫，置信度不够时交给人。**
+**两个协作的 Agent 服务和它们之间的契约：多 Agent 客服服务、它通过 A2A 委派的 Text2SQL Agent，以及一份带版本、由机器校验的 A2A 契约，都在一个仓库里。**
 
-一个 FastAPI Agent 服务：路由对每个问题的意图投票，工具并发执行，专家 Agent 作答（问题跨领域时并行），缺资料时在有边界的工具循环里自己补查，每句话发出之前都要过检查。配套的 React 工作台实时展示每一步 Agent 决策。
+客服 Agent 对每个问题的意图投票，工具并发执行，专家 Agent 作答（问题跨领域时并行），缺资料时在有边界的工具循环里补查，每句话发出之前都要过检查。SQL Agent 在权限闸门后面自己规划、执行、修复只读 SQL，并把每个阶段实时传回。配套的 React 工作台实时展示每一步 Agent 决策。
 
-[![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)](backend/Dockerfile)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.119-009688?style=flat-square&logo=fastapi&logoColor=white)](backend/requirements.txt)
+[![Python](https://img.shields.io/badge/Python-3.12_%C2%B7_3.11-3776AB?style=flat-square&logo=python&logoColor=white)](backend/Dockerfile)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.119_%C2%B7_0.141-009688?style=flat-square&logo=fastapi&logoColor=white)](backend/requirements.txt)
 [![React](https://img.shields.io/badge/React-18-149ECA?style=flat-square&logo=react&logoColor=white)](frontend/package.json)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16_%2B_pgvector-4169E1?style=flat-square&logo=postgresql&logoColor=white)](docker-compose.yml)
+[![A2A](https://img.shields.io/badge/A2A_0.2-contract_v1.13-6E56CF?style=flat-square)](a2a-contract/README.zh-CN.md)
 [![CI](https://img.shields.io/badge/CI-GitHub_Actions-2088FF?style=flat-square&logo=githubactions&logoColor=white)](https://github.com/heyemlee/ai-helpdesk/actions/workflows/ci.yml)
 
 [English](README.md) · **简体中文**
@@ -28,7 +29,8 @@
 
 - **路由与专家 Agent。** LLM、Embedding 和规则按 0.7 / 0.2 / 0.1 对 19 个意图投票，用 gpt-6-luna 时 90 条标注消息对了 77 条。再按领域分数从三个专家里选出主处理，每个专家跑多个副本，由监控按成功率和延迟调整权重；第二个专家分数不低于 0.45、且不低于第一名的 55% 时并行加入。
 - **有边界的工具循环，A/B 过了才打开。** 预取的资料不够时，专家通过 function calling 自己再调同样的检索和查数，每轮最多 3 次模型调用、1 次委派。72 组成对 A/B 里，规则漏掉数据的问题有 26/30 轮拿到了数据（规则组一轮都没有），没有越权调用，也没有编造数字，所以员工实例上打开了。
-- **Agent 间委派。** 数据类问题交给独立的 SQL Agent，它自己规划、写 SQL、执行、出错自修。走 A2A 时每个阶段都实时传回，另有 Agent Card 发现、降级、超时，以及钉在 `v1.13` 的契约测试。
+- **自带循环的 Text2SQL Agent。** 数据类问题交给 `ai-sql-agent/` 下的 SQL Agent，它是独立的服务：先路由，再按数据源一步一步规划、写 SQL，由 SQLGlot 闸门对照调用方的表和列权限检查后只读执行，出错最多自修两次，返回前还要检查结果。最近三轮发布门禁：跨库准确率 94.7%，没有提示的错答占 0.9%。
+- **一份契约下的 Agent 间委派。** 走 A2A 时 SQL Agent 把每个阶段实时传回，另有 Agent Card 发现、降级和超时。`a2a-contract/` 里的契约（5 个 JSON Schema、30 个 golden fixture）由两个 Agent 在同一个提交上测试，改协议和两侧的实现在同一个 PR 里合进来。
 - **Agent 之间默认不信任。** 委派结果只有在执行状态为 success 或 partial_success、且没有风险或降级标记时才算证据；字段缺失一律按不可信处理。价格和日期只能以证据、检索到的片段和 SOP 为依据。
 - **带自纠错回路的检索。** 改写成三个子查询，同时查 pgvector 和关键词索引，用 cross-encoder 或 LLM 重排并判断依据够不够，不够就针对缺的部分再检索一轮。单看融合检索这一步，108 道测试题里有 101 道把正确文档排进前 3。
 - **护栏与人工接管。** 每句话发出之前都要过检查，没有依据的价格或日期承诺会被替换。专家会声明是否需要人工，置信度低时建工单；模型停机时暂停调用，而不是建工单。
@@ -38,12 +40,27 @@
 ## 系统架构
 
 <p align="center">
+  <img src="docs/system.svg" width="844" alt="系统总览：一个仓库里有两个 Agent 服务和它们之间的契约。员工工作台和经 80 端口 Nginx 进来的客户调用 backend/ 下的客服 Agent，它是 Python 3.12 上的 FastAPI 服务，按理解、收集、路由、作答、检查五个阶段处理问题，状态存在 PostgreSQL 16、Redis 7 和可选的 Kafka 里。员工实例把数据类问题委派给 ai-sql-agent/ 下的 SQL Agent（Python 3.11 上的 FastAPI 服务）：读取 Agent Card 后走 A2A，以 JSON-RPC 2.0 发 message/stream，阶段事件、artifact 和终态事件经 SSE 流回；或者走默认的 HTTP /query。SQL Agent 先路由、检索表、按数据源规划步骤、写 SQL，经 SQLGlot 闸门只读执行，最多自修两次，再检查结果，查询的是业务库。两个 Agent 各用各的连接调用模型 API。a2a-contract 目录（v1.13）里是协议文档、五个 JSON Schema、30 个 golden fixture 和自检脚本，两个 Agent 的测试读同一个提交上的它；一套 CI 在每个 PR 上跑五项必需检查" />
+</p>
+
+两个服务，一份契约。员工工作台和经 80 端口 Nginx 进来的客户访问客服 Agent；它的员工实例把数据类问题委派给 SQL Agent，走 A2A（`message/stream`，阶段事件经 SSE 传回）或默认的 HTTP `/query`。两者保持为两个服务：业务库的访问权和执行模型写的 SQL 只在 SQL Agent 里，两边各自钉自己的 Python 和框架版本，一个重查询也拖不垮对话服务。它们之间的契约是同一个仓库里的一个目录，两侧测试读同一个提交上的它。
+
+| 目录 | 是什么 | 技术 | 文档 |
+| --- | --- | --- | --- |
+| `backend/` · `frontend/` | 客服 Agent 和它的员工工作台 | Python 3.12 · FastAPI · React 18 | 本页 · [setup](docs/setup.md) |
+| `ai-sql-agent/` | Text2SQL Agent，提供 A2A、MCP、HTTP 接口，自带控制台 | Python 3.11 · FastAPI · SQLGlot | [README](ai-sql-agent/README.zh-CN.md) |
+| `a2a-contract/` | A2A 契约：协议文档、JSON Schema、golden fixture、自检脚本 | JSON Schema 2020-12 · Python | [README](a2a-contract/README.zh-CN.md) |
+| `deploy/` · `scripts/` | Compose、Kubernetes 和监控配置；本机 CI、开发和部署脚本 | Docker Compose · Kubernetes · KEDA | [setup](docs/setup.md) |
+
+### 客服 Agent 内部
+
+<p align="center">
   <img src="docs/architecture.svg" width="844" alt="Agent 架构图：一个问题在 Agent 运行时里依次经过五个阶段，由 React 18 工作台发出，回答经 SSE 流回。1 Understand：意图投票，结果用 Pydantic 2 校验，工作记忆在 Redis 7。2 Gather：规则选中的工具用 asyncio.gather 并发执行，在 PostgreSQL 16 上用 pgvector 和 tsvector 检索，同时通过 A2A 委派独立的 ai-sql-agent（它有自己的循环）；依据不足时回头再检索一轮。3 Route：领域分选出专家，监控每 10 秒给副本重新加权。4 Answer：三个专家调用 Anthropic 或 OpenAI 的对话模型作答，失败时由通用 Agent 兜底；在有边界的工具循环里，专家还能通过 function calling 再检索或再查数据。5 Check：守卫加三道置信度门槛，不过就建工单交给人工。排队模式（Docker Compose 上要手动开启，Kubernetes 清单默认开启）下，run 在 Redis Streams 上等 worker 领取，worker 持有带栅栏的租约；w1 在委派之后掉线，w2 以第 2 次尝试接手，工作台用 Last-Event-ID 续读 SSE 流。每一步还按顺序记进一轮的事件日志（意图、预取、路由、模型调用、工具调用、守卫、回答和转人工），在回答路径之外批量写进 PostgreSQL，也可以改走 Kafka（默认开关同上），由投影和采样两个消费者各自读取。向量和重排来自 Embedding API，平台是 FastAPI、Python 3.12、httpx、Docker Compose、Kubernetes、KEDA、Nginx、OpenTelemetry 和 Grafana；光点按这个顺序依次流过每条连线" />
 </p>
 
-问题从工作台进员工实例，或者经 80 端口的 Nginx 进客户实例，然后依次经过五个阶段。**理解**（Understand）读取记忆并投票定意图；**收集**（Gather）同时运行规则为它选中的工具：在 PostgreSQL 里做混合检索，在员工实例上还会通过 A2A 或 HTTP `/query` 委派 [ai-sql-agent](https://github.com/heyemlee/ai-sql-agent) 查数据；**路由**（Route）给专家打分并选出副本，**作答**（Answer）由专家结合各自的 SOP 完成，员工实例上还能自己补查缺的资料，**检查**（Check）在发出前逐句把关，需要人工时建工单，通知先写进 outbox 再投递到 webhook。排队模式下，同样的五个阶段改在 worker 上跑，worker 对这个 run 持有带栅栏的租约：它挂了，另一个 worker 以第 2 次尝试接手，工作台用 `Last-Event-ID` 接着读流；事件日志也可以改走 Kafka（见[可恢复的运行](#可恢复的运行)）。
+问题从工作台进员工实例，或者经 80 端口的 Nginx 进客户实例，然后依次经过五个阶段。**理解**（Understand）读取记忆并投票定意图；**收集**（Gather）同时运行规则为它选中的工具：在 PostgreSQL 里做混合检索，在员工实例上还会通过 A2A 或 HTTP `/query` 委派 [SQL Agent](ai-sql-agent/README.zh-CN.md) 查数据；**路由**（Route）给专家打分并选出副本，**作答**（Answer）由专家结合各自的 SOP 完成，员工实例上还能自己补查缺的资料，**检查**（Check）在发出前逐句把关，需要人工时建工单，通知先写进 outbox 再投递到 webhook。排队模式下，同样的五个阶段改在 worker 上跑，worker 对这个 run 持有带栅栏的租约：它挂了，另一个 worker 以第 2 次尝试接手，工作台用 `Last-Event-ID` 接着读流；事件日志也可以改走 Kafka（见[可恢复的运行](#可恢复的运行)）。
 
-- **规则先查，专家补缺。** 查不查知识库、查不查数据，在任何 Agent 运行之前就由投票得出的意图和实体决定，两路查询同时进行。打开工具循环后，专家读完资料还缺东西时，会在预算内自己再调同样的工具；关着时每一轮的模型调用次数可预期。开放式的循环（规划 SQL、出错自修）放在 SQL Agent 里，由钉住版本的契约约束。
+- **规则先查，专家补缺。** 查不查知识库、查不查数据，在任何 Agent 运行之前就由投票得出的意图和实体决定，两路查询同时进行。打开工具循环后，专家读完资料还缺东西时，会在预算内自己再调同样的工具；关着时每一轮的模型调用次数可预期。开放式的循环（规划 SQL、出错自修）放在 SQL Agent 里，由带版本的契约约束。
 - **两个入口，同一个镜像。** 客户实例从不委派、不开工具循环，也不保留跨会话记忆，因为它的用户 ID 取自请求体；只有 80 端口的 Nginx 接受其他机器的连接。
 
 ## 技术栈
@@ -53,6 +70,8 @@
 | Agent 运行时   | Python 3.12 · FastAPI · asyncio                                        | FastAPI 用 SSE 提供对话；asyncio 用 `gather` 并发执行预取、并行专家和工具循环每一步的调用，把阻塞的存储调用移出事件循环，并把进度推进流里                       |
 | 模型调用       | Anthropic SDK · OpenAI SDK · Pydantic 2                                | 两家供应商共用一套接口，可在线切换，function calling 两边互译；每个模型决策（意图投票、查询改写、重排结论、用户画像、评审打分）都是 Pydantic 结构，用之前先校验 |
 | Agent 协议     | A2A JSON-RPC（`message/stream`、`message/send`）· Agent Card · httpx   | 委派给 SQL Agent，带实时阶段、降级和超时；默认传输是普通 HTTP `/query`                                                                                          |
+| Text2SQL Agent | Python 3.11 · FastAPI · SQLGlot · psycopg 3 · MCP                      | 独立的服务：JSON Schema 结构化输出的路由、YAML 语义层上的 BM25 加向量检索、逐表逐列的 AST 闸门、在 SQLite 或 PostgreSQL 上只读执行，提供 A2A、MCP、HTTP 接口（[详情](ai-sql-agent/README.zh-CN.md#技术栈)） |
+| Agent 契约     | JSON Schema 2020-12 · golden fixture · Python 自检                     | 5 个 schema 和 30 个 fixture，两个 Agent 的测试都读；自检确认每个反例真的被拒、每一处版本号都一致 |
 | 向量与重排     | OpenAI 兼容 `/embeddings` · 本地 n-gram 向量 · cross-encoder `/rerank` | 知识库、情景记忆和意图投票共用一个向量化入口，没配 API 时用本地向量；重排优先 cross-encoder，LLM 兜底                                                           |
 | 检索存储       | PostgreSQL 16 · pgvector · `tsvector` · asyncpg · SQLite               | 稠密和关键词两路按名次融合；本地兜底用 SQLite 加 BM25                                                                                                           |
 | 记忆与共享状态 | Redis 7                                                                | 24 小时工作记忆及其压缩锁、按用户限流，以及多实例共享的熔断状态和路由扣分；排队模式下还有 run 的派发和可续读的帧流（Streams）、模型调用的令牌桶（Lua）     |
@@ -60,7 +79,7 @@
 | 护栏与身份     | 纯规则的答案策略 · 置信度门槛 · HMAC 用户令牌                          | 逐句检查、转人工判定、签名的用户身份                                                                                                                            |
 | 工作台         | React 18 · TypeScript · Vite 6 · TanStack Query 5 · Tailwind CSS 4     | 从 `fetch` 流里读 SSE（EventSource 不支持 POST）、流式 Markdown 和学习模式，中英文界面                                                                          |
 | 可观测性       | OpenTelemetry · Prometheus · Grafana · Tempo · Loki                    | 每个请求的链路追踪、指标、日志和告警规则，另有监控的 Z-score 异常检测                                                                                           |
-| 交付与质量     | Docker Compose · Nginx · Kubernetes · KEDA · GitHub Actions · pytest · Ruff · Vitest · k6 | 一次部署 12 个服务，或者用 Kustomize 清单、worker 由 KEDA 扩缩；CI 连 pgvector、Redis 和 Kafka 跑测试，并跑 A2A 契约用例和两个镜像的构建；排队模式另有 k6 压测和故障演练 |
+| 交付与质量     | Docker Compose · Nginx · Kubernetes · KEDA · GitHub Actions · pytest · unittest · Ruff · Vitest · k6 | 一次部署 12 个服务，或者用 Kustomize 清单、worker 由 KEDA 扩缩；一套 CI 连 pgvector 跑两个 Agent 的测试（客服的还连 Redis 和 Kafka），并跑契约自检和三个镜像的构建；排队模式另有 k6 压测和故障演练 |
 
 ## 功能
 
@@ -96,11 +115,26 @@
 
 ### Agent 间委派
 
-员工实例上的数据类问题交给 [ai-sql-agent](https://github.com/heyemlee/ai-sql-agent)，它用自己的发布门禁衡量准确率。`SQL_AGENT_TRANSPORT=a2a` 时通过 `message/stream` 实时传回各个阶段；默认值 `query` 调用它的同步 HTTP `/query`。
+员工实例上的数据类问题交给 [ai-sql-agent/](ai-sql-agent/README.zh-CN.md) 下的 SQL Agent，它用自己的发布门禁衡量准确率。`SQL_AGENT_TRANSPORT=a2a` 时通过 `message/stream` 实时传回各个阶段；默认值 `query` 调用它的同步 HTTP `/query`。
 
 - **流式加降级。** Agent Card 缓存 30 秒；每个阶段（找表、规划、写 SQL、查询、自修）按界面语言显示在工作台上。流打开之前收到 `-32004` 就改用 `message/send`；静默超时或超过总时长就结束调用。
 - **每种传输都用同一套证据规则。** A2A 和 `/query` 的结果过同一道检查；部分成功时失败的那几步不能下结论，结果被截断时不能报总数。
-- **一份契约。** 消费方测试跑 [a2a-contract](https://github.com/heyemlee/a2a-contract) 的 golden fixtures，钉在 `v1.13`；拿不到 fixture 时测试失败，而不是跳过。
+- **一份契约，同一个提交。** 两个 Agent 的测试读同一个提交上 [a2a-contract/](a2a-contract/README.zh-CN.md) 的 golden fixtures；拿不到 fixture 时测试失败，而不是跳过。两侧各自声明实现的契约版本 `v1.13`，任何一边和契约对不上，CI 就失败。
+
+### Text2SQL Agent
+
+SQL Agent 是独立的服务，有自己的控制台、发布门禁和部署方式（[README](ai-sql-agent/README.zh-CN.md)）。
+
+- **先路由，再规划。** 模型路由用 JSON Schema 结构化输出，在工具和记忆之间做选择；规划器把其余问题拆成若干步，前一步的结果交给下一步。
+- **只有一个工具，守在一道闸门后面。** 它只能执行只读 SQL。SQLGlot 的 AST 闸门对照调用方的权限检查每一张表、每一列，解析不了的一律拒绝；每次调用限 1,000 行、10 秒、8 MiB。
+- **自己修，自己查。** 调用失败时按日志修复，最多两次；结果先过规则检查和模型自检，再返回。
+- **上下文自己保持最新。** 按库、表、列三级检索，用 RRF 融合 BM25 和向量结果后再重排；库结构变了，监听器会重建索引。用远程 Embedding 时，40 条留出问法召回 99.2%，只送出 36.8% 的表结构。
+- **每次运行都能跟踪、能取消。** A2A 和 HTTP 共用同一套 Key、限流和审计，MCP 服务以工具的形式提供同一道闸门。每次请求都是一次运行，带编号的事件日志记下阶段、模型调用和 SQL，跑到一半也能取消。
+
+| 发布门禁，最近三轮 | 结果 |
+| --- | --- |
+| 跨库准确率 | 94.7%（门槛 ≥ 90%） |
+| 没有提示的错答 | 0.9%（门槛 ≤ 3%） |
 
 ### 可恢复的运行
 
@@ -175,12 +209,12 @@ PostgreSQL 上按题型统计的前 3 命中数，只测融合检索这一步（
 ```bash
 cp .env.example .env                  # Compose 变量：数据库、Redis 和 Grafana 的密码
 cp backend/.env.example backend/.env  # 设 APP_ENV=development、模型 Key 和 SQL_AGENT_TRANSPORT=a2a
-docker compose up -d --build          # 起全栈；工作台在 http://localhost:5174
+docker compose up -d --build          # 起客服这一侧的全栈；工作台在 http://localhost:5174
 scripts/dev.sh                        # 或从源码运行，工作台在 http://localhost:5173
-scripts/dev-all.sh                    # 同上，并从相邻目录启动 ai-sql-agent
+scripts/dev-all.sh                    # 同上，并用 ai-sql-agent/ 自己的 venv 启动 SQL Agent
 ```
 
-配置、模型服务、导入知识、不用 Docker 的本地环境和 API 一览见 [docs/setup.md](docs/setup.md)（英文）；完整的中文使用指南见 [backend/README.md](backend/README.md)。
+配置、模型服务、导入知识、不用 Docker 的本地环境和 API 一览见 [docs/setup.md](docs/setup.md)（英文）；完整的中文使用指南见 [backend/README.md](backend/README.md)。SQL Agent 在 `ai-sql-agent/` 里有自己的 Python 3.11 环境和 `.env`（见[本地开发](ai-sql-agent/README.zh-CN.md#本地开发)）。
 
 排队模式要 Postgres、Redis 和 `AI_HELPDESK_INSTANCE`；演练那一套三样都有，模型是假的：
 
@@ -191,7 +225,8 @@ docker compose -f deploy/drill/docker-compose.yml up -d --build --wait   # API �
 ## 测试
 
 ```bash
-scripts/ci-local.sh                         # 在一次性副本里跑一遍 CI；--full 连上 Postgres、Redis 和 Kafka；--with-images 连镜像一起构建
+scripts/ci-local.sh                         # 在一次性副本里跑一遍 CI 的每个任务；--full 连上 Postgres、Redis 和 Kafka；--with-images 连三个镜像一起构建
+.claude/skills/test-backend/scripts/run-sql-agent.sh  # 在一次性副本里跑 SQL Agent 的测试
 cd backend && .venv/bin/python -m pytest    # 后端测试；设了 TEST_POSTGRES_DSN 才跑 pgvector 用例
 .venv/bin/python scripts/eval_retrieval.py  # 检索的 hit@3 和 MRR，不调用模型
 .venv/bin/python scripts/run_eval.py        # 端到端评测；会调用模型
@@ -202,7 +237,7 @@ backend/.venv/bin/python backend/scripts/chaos_drill.py --kafka --kill-projector
 loadtest/run.sh <名字>                      # 用 k6 压演练那一套；WORKERS、LLM_RPM、DEGRADE、MOCK_RPM
 ```
 
-CI 跑 Ruff、连 pgvector、Redis 和 Kafka 的 1,531 个后端用例、255 个工作台用例、生产构建、A2A 契约用例，以及两个 Docker 镜像的构建。端到端评测和轨迹评测要花模型调用，所以只在手动触发时运行。
+一套 CI 在每个 PR 上跑五个必需任务：Ruff 和连 pgvector、Redis、Kafka 的 1,630 个客服用例；255 个工作台用例和生产构建；契约自检和客服这一侧的契约用例；连 pgvector 的 1,266 个 SQL Agent 用例、它的演示脚本和发布门禁冒烟；三个 Docker 镜像的构建，外加 SQL Agent 镜像开启 API Key 的冒烟。端到端评测和轨迹评测要花模型调用，所以只在手动触发时运行。
 
 ## 部署
 
@@ -215,13 +250,15 @@ docker compose -f docker-compose.yml -f docker-compose.kafka.yml up -d --build  
 scripts/k8s-up.sh                               # kind 集群：清单、KEDA、Kafka、假模型
 ```
 
+SQL Agent 目前单独部署，从 `ai-sql-agent/` 起（见[部署](ai-sql-agent/README.zh-CN.md#部署)）；员工实例通过 `SQL_AGENT_URL` 连它。
+
 生产模式下，缺管理钥匙、用户签名密钥、对话保护或部署范围声明中的任何一项，服务都拒绝启动。系统按单租户设计，具体范围见[部署边界](docs/deployment-boundaries.zh-CN.md)。
 
 ## AI 辅助开发
 
 这个仓库用 Claude Code 开发，配套的管控和工具如下（下面链接的 setup.md 是英文）：
 
-- **`main` 的分支保护。** 改动只能走 PR，且 [ci.yml](.github/workflows/ci.yml) 里的四个任务（后端、前端、A2A 契约用例、Docker 镜像）必须通过。管理员也绕不过去。
-- **项目 skill。** [`test-backend`](.claude/skills/test-backend/SKILL.md) 在一次性副本里跑 Ruff 和 pytest，真实的 `backend/.env` 和生产数据库碰不到测试。[`deploy`](.claude/skills/deploy/SKILL.md) 只有人手动调用才会运行；它还没做过真实部署，其中的构建、重建容器和回滚步骤都没实际跑过。
+- **`main` 的分支保护。** 改动只能走 PR，且 [ci.yml](.github/workflows/ci.yml) 里的五个任务（后端、前端、A2A 契约、SQL Agent、Docker 镜像）必须通过。管理员也绕不过去。
+- **项目 skill。** [`test-backend`](.claude/skills/test-backend/SKILL.md) 在一次性副本里跑 Ruff、pytest、契约自检和 SQL Agent 的测试，真实的 `.env` 和生产数据库碰不到测试。[`deploy`](.claude/skills/deploy/SKILL.md) 只有人手动调用才会运行；它还没做过真实部署，其中的构建、重建容器和回滚步骤都没实际跑过。
 - **只读的开发 MCP server。** `helpdesk-dev`（[.mcp.json](.mcp.json)、[dev_mcp_server.py](backend/scripts/dev_mcp_server.py)）让 Agent 能从开发库读取轮次记录和知识库，并拒绝连接生产库。详见 [Inspect turns from Claude Code](docs/setup.md#inspect-turns-from-claude-code)。
-- **只提意见的 Claude 审查。** [claude-review.yml](.github/workflows/claude-review.yml) 在 PR 上留评论，但不能批准或拦下 PR；真正拦合并的是 CI 检查。目前只在一个一次性 PR 上试过一次：它抓到了两个能通过全部测试的预埋 bug，也没有误报那处无害的重构。这只是一次样本，不代表命中率。详见 [Review pull requests with Claude](docs/setup.md#review-pull-requests-with-claude)。
+- **只提意见的 Claude 审查。** [claude-review.yml](.github/workflows/claude-review.yml) 在 PR 上留评论，但不能批准或拦下 PR；真正拦合并的是 CI 检查。目前只在一个一次性 PR 上试过一次：它抓到了两个能通过全部测试的预埋 bug，也没有误报那处无害的重构。这只是一次样本，不代表命中率。PR 打上 `skip-ai-review` 标签就不审，比如把 SQL Agent 和契约的历史导入本仓库的那次。详见 [Review pull requests with Claude](docs/setup.md#review-pull-requests-with-claude)。

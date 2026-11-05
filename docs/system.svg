@@ -1,0 +1,152 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 844 560" width="844" height="560" role="img" aria-labelledby="title desc">
+  <title id="title">System overview: two agent services and their contract</title>
+  <desc id="desc">One repository holds two agent services and the contract between them. The staff console and, through Nginx on port 80, customers call the support agent in backend/, a FastAPI service on Python 3.12 that runs five stages: understand, gather, route, answer and check, with its state in PostgreSQL 16, Redis 7 and optionally Kafka, in a staff and a customer instance. The staff instance delegates data questions to the Text2SQL agent in ai-sql-agent/, a FastAPI service on Python 3.11: over A2A after reading its Agent Card, with message/stream as JSON-RPC 2.0 and stage events, the artifact and a final event back over SSE, or over HTTP /query, the default. The SQL agent routes, retrieves tables, plans a step per data source, writes SQL, runs it read-only through an SQLGlot gate, repairs it at most twice and checks the result against the business databases. Both agents call model APIs through their own connections. The a2a-contract directory, version 1.13, holds the protocol document, five JSON Schemas, 30 golden fixtures and a self-check, and both agents' tests read it from the same commit. One CI runs five required checks on every pull request: Backend, Frontend, A2A contract, SQL Agent and Docker images.</desc>
+  <style>
+    text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif; }
+    .eyebrow { font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; fill: #8e8e93; }
+    .name { font-size: 14.5px; font-weight: 600; fill: #1d1d1f; }
+    .sub { font-size: 12.5px; fill: #6e6e73; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; fill: #6e56cf; }
+    .edge { font-size: 11.5px; fill: #8e8e93; }
+    .step { font-size: 12.5px; fill: #1d1d1f; }
+    .stepsub { font-size: 12px; fill: #8e8e93; }
+    .num { font-size: 11px; font-weight: 700; fill: #ffffff; }
+    .pilltext { font-size: 12px; font-weight: 600; fill: #6e6e73; }
+    .vtext { font-size: 12px; font-weight: 600; fill: #6e56cf; }
+    .proto { font-size: 12px; font-weight: 600; fill: #0b7a70; }
+    .ver { font-size: 11.5px; font-weight: 700; fill: #6e56cf; }
+    .citext { font-size: 12px; font-weight: 600; fill: #1d1d1f; }
+    .card { fill: #ffffff; stroke: #e5e5ea; stroke-width: 1; }
+    .well { fill: #f5f5f7; }
+    .pill { fill: #f5f5f7; stroke: #e5e5ea; }
+    .ppill { fill: #e6f6f4; stroke: #a7dcd5; }
+    .vpill { fill: #f3f0fd; stroke: #d6cdf7; }
+    .b { fill: none; stroke: #0a7cff; stroke-width: 1.6; }
+    .t { fill: none; stroke: #0d9488; stroke-width: 1.6; }
+    .o { fill: none; stroke: #e5733f; stroke-width: 1.5; }
+    .v { fill: none; stroke: #7c5cff; stroke-width: 1.4; stroke-dasharray: 4 3; }
+    .icon { fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+  </style>
+  <defs>
+    <marker id="ab" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L8,4 L0,8 z" fill="#0a7cff" /></marker>
+    <marker id="at" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L8,4 L0,8 z" fill="#0d9488" /></marker>
+    <marker id="ao" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L8,4 L0,8 z" fill="#e5733f" /></marker>
+    <marker id="av" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L8,4 L0,8 z" fill="#7c5cff" /></marker>
+  </defs>
+
+  <rect x="0" y="0" width="844" height="560" fill="#ffffff" />
+
+  <!-- Model APIs, called by both agents -->
+  <rect class="card" x="200" y="16" width="624" height="40" rx="12" />
+  <rect x="214" y="24" width="24" height="24" rx="7" fill="#fdf0e9" />
+  <g transform="translate(217 27) scale(0.75)"><path class="icon" stroke="#e5733f" d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1" /><circle class="icon" stroke="#e5733f" cx="12" cy="12" r="3.5" /></g>
+  <text class="name" x="248" y="41">Model APIs</text>
+  <text class="sub" x="336" y="41">Anthropic · OpenAI-compatible · embeddings, one connection per agent</text>
+  <path class="o" d="M322,76 V60" marker-end="url(#ao)" />
+  <path class="o" d="M712,76 V60" marker-end="url(#ao)" />
+
+  <!-- Clients -->
+  <text class="eyebrow" x="20" y="98">CLIENTS</text>
+  <rect class="card" x="20" y="110" width="132" height="64" rx="12" />
+  <text class="name" x="34" y="136">Staff console</text>
+  <text class="sub" x="34" y="156">React 18 · TS</text>
+  <rect class="card" x="20" y="194" width="132" height="64" rx="12" />
+  <text class="name" x="34" y="220">Customers</text>
+  <text class="sub" x="34" y="240">via Nginx :80</text>
+  <path class="b" d="M152,142 H196" marker-end="url(#ab)" />
+  <path class="b" d="M152,226 H196" marker-end="url(#ab)" />
+  <text class="edge" x="174" y="134" text-anchor="middle">SSE</text>
+  <text class="edge" x="174" y="218" text-anchor="middle">SSE</text>
+
+  <!-- Support agent -->
+  <rect class="card" x="200" y="76" width="244" height="348" rx="14" />
+  <text class="eyebrow" x="216" y="98">SUPPORT AGENT · backend/</text>
+  <text class="name" x="216" y="120">AI Helpdesk</text>
+  <text class="sub" x="216" y="139">FastAPI · Python 3.12</text>
+  <rect class="well" x="214" y="152" width="216" height="34" rx="9" />
+  <circle cx="232" cy="169" r="9" fill="#0a7cff" /><text class="num" x="232" y="173" text-anchor="middle">1</text>
+  <text class="step" x="248" y="173">Understand</text><text class="stepsub" x="330" y="173">intent vote</text>
+  <rect class="well" x="214" y="192" width="216" height="34" rx="9" />
+  <circle cx="232" cy="209" r="9" fill="#0a7cff" /><text class="num" x="232" y="213" text-anchor="middle">2</text>
+  <text class="step" x="248" y="213">Gather</text><text class="stepsub" x="304" y="213">search · delegate</text>
+  <rect class="well" x="214" y="232" width="216" height="34" rx="9" />
+  <circle cx="232" cy="249" r="9" fill="#0a7cff" /><text class="num" x="232" y="253" text-anchor="middle">3</text>
+  <text class="step" x="248" y="253">Route</text><text class="stepsub" x="296" y="253">to specialists</text>
+  <rect class="well" x="214" y="272" width="216" height="34" rx="9" />
+  <circle cx="232" cy="289" r="9" fill="#0a7cff" /><text class="num" x="232" y="293" text-anchor="middle">4</text>
+  <text class="step" x="248" y="293">Answer</text><text class="stepsub" x="306" y="293">bounded tool loop</text>
+  <rect class="well" x="214" y="312" width="216" height="34" rx="9" />
+  <circle cx="232" cy="329" r="9" fill="#0a7cff" /><text class="num" x="232" y="333" text-anchor="middle">5</text>
+  <text class="step" x="248" y="333">Check</text><text class="stepsub" x="296" y="333">guard · handoff</text>
+  <text class="sub" x="216" y="372">staff and customer instances</text>
+  <rect class="pill" x="210" y="386" width="106" height="24" rx="12" />
+  <text class="pilltext" x="263" y="402" text-anchor="middle">PostgreSQL 16</text>
+  <rect class="pill" x="322" y="386" width="58" height="24" rx="12" />
+  <text class="pilltext" x="351" y="402" text-anchor="middle">Redis 7</text>
+  <rect class="pill" x="386" y="386" width="48" height="24" rx="12" />
+  <text class="pilltext" x="410" y="402" text-anchor="middle">Kafka</text>
+
+  <!-- Delegation -->
+  <text class="eyebrow" x="522" y="150" text-anchor="middle">DELEGATION</text>
+  <rect class="ppill" x="460" y="160" width="124" height="24" rx="12" />
+  <text class="proto" x="522" y="176" text-anchor="middle">Agent Card</text>
+  <path class="t" d="M444,204 H596" marker-end="url(#at)" />
+  <rect class="ppill" x="460" y="214" width="124" height="24" rx="12" />
+  <text class="proto" x="522" y="230" text-anchor="middle">message/stream</text>
+  <text class="edge" x="522" y="254" text-anchor="middle">A2A 0.2 · JSON-RPC 2.0</text>
+  <path class="t" d="M596,268 H444" marker-end="url(#at)" />
+  <text class="edge" x="522" y="286" text-anchor="middle">stages, artifact and</text>
+  <text class="edge" x="522" y="302" text-anchor="middle">a final event over SSE</text>
+  <rect class="pill" x="460" y="318" width="124" height="24" rx="12" />
+  <text class="pilltext" x="522" y="334" text-anchor="middle">or HTTP /query</text>
+  <text class="edge" x="522" y="358" text-anchor="middle">/query is the default</text>
+  <text class="edge" x="522" y="374" text-anchor="middle">staff instance only</text>
+
+  <!-- Text2SQL agent -->
+  <rect class="card" x="600" y="76" width="224" height="348" rx="14" />
+  <text class="eyebrow" x="616" y="98">SQL AGENT · ai-sql-agent/</text>
+  <text class="name" x="616" y="120">AI SQL Agent</text>
+  <text class="sub" x="616" y="139">FastAPI · Python 3.11</text>
+  <rect class="well" x="614" y="152" width="196" height="26" rx="8" />
+  <text class="step" x="628" y="170">Route</text><text class="stepsub" x="672" y="170">LLM router</text>
+  <rect class="well" x="614" y="182" width="196" height="26" rx="8" />
+  <text class="step" x="628" y="200">Retrieve</text><text class="stepsub" x="690" y="200">BM25 + vectors</text>
+  <rect class="well" x="614" y="212" width="196" height="26" rx="8" />
+  <text class="step" x="628" y="230">Plan</text><text class="stepsub" x="664" y="230">a step per source</text>
+  <rect class="well" x="614" y="242" width="196" height="26" rx="8" />
+  <text class="step" x="628" y="260">Write SQL</text>
+  <rect class="well" x="614" y="272" width="196" height="26" rx="8" />
+  <text class="step" x="628" y="290">Run</text><text class="stepsub" x="660" y="290">read-only, SQLGlot gate</text>
+  <rect class="well" x="614" y="302" width="196" height="26" rx="8" />
+  <text class="step" x="628" y="320">Repair</text><text class="stepsub" x="680" y="320">at most twice</text>
+  <rect class="well" x="614" y="332" width="196" height="26" rx="8" />
+  <text class="step" x="628" y="350">Check</text><text class="stepsub" x="674" y="350">rules + self-check</text>
+  <text class="sub" x="616" y="372">A2A · MCP · HTTP</text>
+  <rect class="pill" x="608" y="386" width="208" height="24" rx="12" />
+  <text class="pilltext" x="712" y="402" text-anchor="middle">business databases, read-only</text>
+
+  <!-- Contract, tested from both sides -->
+  <path class="v" d="M300,448 V428" marker-end="url(#av)" />
+  <path class="v" d="M712,448 V428" marker-end="url(#av)" />
+  <text class="edge" x="308" y="442">tests read the same commit</text>
+  <text class="edge" x="704" y="442" text-anchor="end">tests read the same commit</text>
+  <rect class="card" x="200" y="448" width="624" height="64" rx="14" />
+  <rect x="214" y="459" width="24" height="24" rx="7" fill="#efebfb" />
+  <g transform="translate(217 462) scale(0.75)"><path class="icon" stroke="#6e56cf" d="M14.5 2.5H7a2 2 0 0 0-2 2v15a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7Z" /><path class="icon" stroke="#6e56cf" d="M14 2.5V7h5" /><path class="icon" stroke="#6e56cf" d="m9 14.5 2 2 4-4" /></g>
+  <text class="name" x="248" y="476">a2a-contract/</text>
+  <rect x="346" y="463" width="46" height="18" rx="9" fill="#efebfb" />
+  <text class="ver" x="369" y="476" text-anchor="middle">v1.13</text>
+  <text class="sub" x="404" y="476">one versioned contract between the two agents</text>
+  <rect class="vpill" x="210" y="487" width="198" height="18" rx="9" />
+  <text class="mono" x="309" y="500" text-anchor="middle">a2a-streaming-contract.md</text>
+  <rect class="vpill" x="412" y="487" width="122" height="18" rx="9" />
+  <text class="vtext" x="473" y="500" text-anchor="middle">5 JSON Schemas</text>
+  <rect class="vpill" x="538" y="487" width="130" height="18" rx="9" />
+  <text class="vtext" x="603" y="500" text-anchor="middle">30 golden fixtures</text>
+  <rect class="vpill" x="672" y="487" width="138" height="18" rx="9" />
+  <text class="mono" x="741" y="500" text-anchor="middle">check_contract.py</text>
+
+  <!-- CI -->
+  <text class="eyebrow" x="20" y="542">ONE CI</text>
+  <text class="citext" x="80" y="542">five required checks on every pull request: Backend · Frontend · A2A contract · SQL Agent · Docker images</text>
+</svg>

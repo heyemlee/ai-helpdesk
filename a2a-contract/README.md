@@ -4,13 +4,13 @@
 
 **A versioned, machine-checked contract between a support agent and a data agent.**
 
-It defines how AI Helpdesk delegates a data question to AI SQL Agent over A2A, how each stage streams back over SSE, and when the result may back an answer: one protocol document, five JSON Schemas, 30 golden fixtures and a self-check, pinned by tag in both agents' CI.
+It defines how AI Helpdesk delegates a data question to AI SQL Agent over A2A, how each stage streams back over SSE, and when the result may back an answer: one protocol document, five JSON Schemas, 30 golden fixtures and a self-check, tested against both agents in the same CI.
 
 [![Contract](https://img.shields.io/badge/Contract-v1.13-6E56CF?style=flat-square)](a2a-streaming-contract.md)
 [![A2A](https://img.shields.io/badge/A2A_0.2-JSON--RPC_2.0_%2B_SSE-0D9488?style=flat-square)](docs/a2a-integration.md)
 [![JSON Schema](https://img.shields.io/badge/JSON_Schema-2020--12-0A7CFF?style=flat-square)](schema/)
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)](tools/check_contract.py)
-[![CI](https://img.shields.io/badge/CI-GitHub_Actions-2088FF?style=flat-square&logo=githubactions&logoColor=white)](https://github.com/heyemlee/a2a-contract/actions/workflows/contract.yml)
+[![CI](https://img.shields.io/badge/CI-GitHub_Actions-2088FF?style=flat-square&logo=githubactions&logoColor=white)](https://github.com/heyemlee/ai-helpdesk/actions/workflows/ci.yml)
 
 **English** · [简体中文](README.zh-CN.md)
 
@@ -28,17 +28,17 @@ It defines how AI Helpdesk delegates a data question to AI SQL Agent over A2A, h
 
 - **One payload, three transports.** `message/stream` (JSON-RPC 2.0 over SSE), `message/send` and plain `POST /query` carry the same data part, with 7 required fields and one set of trust rules, so a fallback or a rollback never changes what counts as evidence.
 - **Delivered is not succeeded.** `completed` only says the payload arrived; `execution_status` (5 values) says whether the query ran, and risk, degradation or truncation can still rule a result out. A missing or mistyped field counts against it: `"false"` is not a boolean.
-- **Checked by machine.** 5 JSON Schemas (Draft 2020-12) and 30 golden fixtures in 6 groups, 7 of them schema-valid but not plain evidence. `tools/check_contract.py` proves each negative fixture is rejected, each link and `§` reference resolves, and the version agrees in all 5 places; GitHub Actions runs it on every push to `main`, pull request and tag.
+- **Checked by machine.** 5 JSON Schemas (Draft 2020-12) and 30 golden fixtures in 6 groups, 7 of them schema-valid but not plain evidence. `tools/check_contract.py` proves each negative fixture is rejected, each link and `§` reference resolves, and every statement of the version agrees; it is the required `A2A contract` check on every pull request.
 - **Timeouts set from measurements.** In 82 audited model calls, database queries averaged 17.7 s and the slowest took 68.3 s, so the client gives up after 20 s of silence or 90 s in total, and progress events are the heartbeat. A cancelled run stops at its next checkpoint: 0.07–2.7 s in 6 measured cancels.
-- **Released like a public API.** Both agents pin `v1.13` in CI and fail rather than skip without it. A released tag's contract never changes: `v1.11` exists only to fix the version string `v1.10` shipped with.
+- **Versioned like a public API.** Both agents declare the version they implement, `v1.13`, and CI fails when either disagrees with the contract; their contract tests fail rather than skip without it. A released tag's contract never changes: `a2a-contract/v1.11` exists only to fix the version string `v1.10` shipped with.
 
 ## Architecture
 
 <p align="center">
-  <img src="docs/architecture.svg" width="960" alt="A2A Contract architecture: ai-helpdesk, the support agent, reads ai-sql-agent's Agent Card and calls POST /a2a with message/stream. While the SQL agent's loop calls the model and runs read-only SQL on four databases, it streams back over JSON-RPC 2.0 and SSE a task, a status update for each stage, one artifact with the data part and exactly one final event. The helpdesk's A2A client gives up after 20 s of silence or 90 s in total, judges the data part with assess() and streams progress and the answer to the console. The a2a-contract repository, version 1.13, defines every frame with the contract, five JSON Schemas, 30 golden fixtures and a self-check, and both repositories' CI pin its tag. Pulses travel each connection in that order" />
+  <img src="docs/architecture.svg" width="960" alt="A2A Contract architecture: ai-helpdesk, the support agent, reads ai-sql-agent's Agent Card and calls POST /a2a with message/stream. While the SQL agent's loop calls the model and runs read-only SQL on four databases, it streams back over JSON-RPC 2.0 and SSE a task, a status update for each stage, one artifact with the data part and exactly one final event. The helpdesk's A2A client gives up after 20 s of silence or 90 s in total, judges the data part with assess() and streams progress and the answer to the console. The a2a-contract directory, version 1.13, defines every frame with the contract, five JSON Schemas, 30 golden fixtures and a self-check, and both agents' tests read it from the same commit in one CI. Pulses travel each connection in that order" />
 </p>
 
-[AI Helpdesk](https://github.com/heyemlee/ai-helpdesk) runs the conversation, [AI SQL Agent](https://github.com/heyemlee/ai-sql-agent) queries business data, and this repository defines the interface between them; nothing here is deployed. For an order question, the helpdesk reads the Agent Card and opens `message/stream`. The SQL agent streams a status update per stage while its loop calls the model and runs read-only SQL, then one artifact and one final event, and the helpdesk judges the data part before a specialist may use it. Knowledge questions never leave the helpdesk. Blue marks requests and data, teal protocol events, orange model calls, violet the contract.
+[AI Helpdesk](../README.md) runs the conversation, [AI SQL Agent](../ai-sql-agent/README.md) queries business data, and this directory defines the interface between them; all three live in one repository, and nothing here is deployed. For an order question, the helpdesk reads the Agent Card and opens `message/stream`. The SQL agent streams a status update per stage while its loop calls the model and runs read-only SQL, then one artifact and one final event, and the helpdesk judges the data part before a specialist may use it. Knowledge questions never leave the helpdesk. Blue marks requests and data, teal protocol events, orange model calls, violet the contract.
 
 - **No keep-alive frames.** The client drops a stream after 20 s without an event, and every event the server sends is a real stage change, so a stalled query dies at 20 s instead of being pinged along to the 90 s cap.
 - **Fall back only before the stream opens.** A `-32004` before the stream opens has cost nothing, so the client may resend with `message/send`. After that, a failure ends the call: resending would run the query twice and charge the quota twice.
@@ -52,7 +52,7 @@ It defines how AI Helpdesk delegates a data question to AI SQL Agent over A2A, h
 | Contract surface | JSON Schema Draft 2020-12                          | Data part, progress event, terminal event, stage names, the `*_db` identifier pattern               |
 | Shared samples   | Golden fixtures · `fixtures/index.json`            | 30 payloads, each with its expected schema verdict, trust verdict and reason                        |
 | Self-check       | Python 3.12 · jsonschema · referencing             | Schemas, fixtures, links and `§` references, version consistency                                    |
-| CI               | GitHub Actions                                     | Runs the self-check here; both agents run the fixtures in their own CI against the pinned tag       |
+| CI               | GitHub Actions                                     | One workflow for the repository runs the self-check and both agents' fixture tests on every PR     |
 | A2A client       | AI Helpdesk · FastAPI · httpx                      | Streams the call, enforces the 20 s and 90 s limits, one `assess()` for all three transports        |
 | A2A server       | AI SQL Agent · FastAPI                             | Emits the stages, the data part and one terminal event; cancels a run when the caller disconnects   |
 
@@ -91,28 +91,32 @@ Recorded in the contract (§2, §5.4 and its status notes). The whole exchange i
 | F     | Terminal events; ordering is asserted on whole streams                                  |        5 |
 
 - Each fixture is the raw payload; `fixtures/index.json` records its expected schema and trust verdicts and why it exists.
-- Both agents read the same files at the pinned tag, never a copy, since copies drift.
+- Both agents read the same files from the same commit, never a copy, since copies drift.
 - A and B must pass together: rejecting everything passes B and fails A. What each side asserts: [CONSUMER-TESTS.md](CONSUMER-TESTS.md) (in Chinese).
 
 ### Boundaries
 
 - **A2A 0.2, a subset.** The Agent Card says `0.2`. A2A 1.0 dropped the `kind` field these events are built on, so moving up is a major contract change, not a new version string.
 - **No answer deltas, ever.** Delegated text reaches users only through the helpdesk's own model and sentence guard; streaming it raw would bypass the guard.
-- **One service identity.** Sessions stay separate, but what a query can see follows the SQL agent's service key, not the end user ([identity notes](https://github.com/heyemlee/ai-helpdesk/blob/main/docs/integrations/sql-agent-identity-requirements.md)).
+- **One service identity.** Sessions stay separate, but what a query can see follows the SQL agent's service key, not the end user ([identity notes](../docs/integrations/sql-agent-identity-requirements.md)).
 
 ## Integrate
 
+Both agents' contract tests read this directory from the same commit, so there is nothing to clone or pin:
+
 ```bash
-git clone --depth 1 --branch v1.13 https://github.com/heyemlee/a2a-contract.git .contract  # never main
-export A2A_CONTRACT_DIR="$PWD/.contract"  # where both agents' contract tests look first
-export A2A_CONTRACT_REQUIRED=1            # fail instead of skipping when the contract is missing
+export A2A_CONTRACT_REQUIRED=1                   # fail instead of skipping when the contract is missing, as CI does
+export A2A_CONTRACT_DIR=/path/to/a2a-contract    # only to test against a different copy
 ```
 
-To switch the agents to A2A, set `SQL_AGENT_TRANSPORT=a2a` (the default is `POST /query`) and `SQL_AGENT_TIMEOUT_S=90` in AI Helpdesk, plus `SQL_AGENT_API_KEY` if the SQL agent requires a key; streaming is on by default in AI SQL Agent. Budgets and fallbacks: [docs/a2a-integration.md](docs/a2a-integration.md) (in Chinese).
+An agent outside this repository that calls the SQL agent over A2A can pin a release by its tag, `a2a-contract/v1.13`.
+
+To switch the agents to A2A, set `SQL_AGENT_TRANSPORT=a2a` (the default is `POST /query`) and `SQL_AGENT_TIMEOUT_S=90` in AI Helpdesk's `backend/.env`, plus `SQL_AGENT_API_KEY` if the SQL agent requires a key; streaming is on by default in AI SQL Agent. Budgets and fallbacks: [docs/a2a-integration.md](docs/a2a-integration.md) (in Chinese).
 
 ## Test
 
 ```bash
+cd a2a-contract                                                        # from the repository root
 python3 -m venv .venv && .venv/bin/pip install jsonschema referencing  # the self-check's only dependencies
 .venv/bin/python tools/check_contract.py           # schema, fixtures, links and version, as CI runs it
 .venv/bin/python tools/check_contract.py fixtures  # one section: schema, fixtures, links or version
@@ -122,12 +126,12 @@ python3 -m venv .venv && .venv/bin/pip install jsonschema referencing  # the sel
 
 ```bash
 .venv/bin/python tools/check_contract.py version  # every place that states the version must agree
-git tag vX.Y && git push origin vX.Y              # the last step: a released tag's contract never changes
+git tag -a a2a-contract/vX.Y && git push origin a2a-contract/vX.Y  # after the release PR merges; a released tag's contract never changes
 ```
 
-A contract change is bilateral: both agents move their pins (2 places in AI SQL Agent, 3 in AI Helpdesk) and add the new cases. Procedure and history: [docs/maintenance.md](docs/maintenance.md#版本) (in Chinese).
+A contract change lands in one pull request: the contract, `CONTRACT_VERSION` in both agents (`backend/app/tools/a2a_client.py` and `ai-sql-agent/src/ai_sql_agent/a2a/server.py`) and the new cases on both sides. CI fails if either agent's version disagrees with `fixtures/index.json`. Procedure and history: [docs/maintenance.md](docs/maintenance.md#版本) (in Chinese).
 
-| Tag     | Change                                                                                                                          |
+| Version | Change                                                                                                                          |
 | ------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | `v1.13` | A disconnect cancels the run at its next checkpoint; new `canceled` terminal state with a schema and 5 fixtures; 429 uses `-32029` |
 | `v1.12` | `execution_status` becomes required; `dp-trust-01`, which lacks it, moves to group B                                            |

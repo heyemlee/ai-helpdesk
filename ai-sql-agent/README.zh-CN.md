@@ -12,7 +12,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.141-009688?style=flat-square&logo=fastapi&logoColor=white)](src/ai_sql_agent/api)
 [![Agents](https://img.shields.io/badge/Agents-A2A_%2B_MCP-6E56CF?style=flat-square)](src/ai_sql_agent/a2a)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-4169E1?style=flat-square&logo=postgresql&logoColor=white)](deploy/docker-compose.prod.yml)
-[![CI](https://img.shields.io/badge/CI-GitHub_Actions-2088FF?style=flat-square&logo=githubactions&logoColor=white)](https://github.com/heyemlee/ai-sql-agent/actions/workflows/ci.yml)
+[![CI](https://img.shields.io/badge/CI-GitHub_Actions-2088FF?style=flat-square&logo=githubactions&logoColor=white)](https://github.com/heyemlee/ai-helpdesk/actions/workflows/ci.yml)
 
 [English](README.md) · **简体中文**
 
@@ -32,7 +32,7 @@
 - **一个工具，一道关卡。** agent 只能通过只读 SQL 行动。SQLGlot AST 关卡按调用方权限检查每一张表、每一个字段，解析不了的一律拒绝；每次调用上限 1,000 行、10 秒、8 MiB。这部分有 213 个测试。
 - **自己修复，自己检查。** 执行失败的调用由基于日志的修复循环处理，最多两次；结果返回之前要经过规则检查和模型自检。答错且没有提示的答案：同样这三轮 0.9%（门禁线 ≤ 3%）。
 - **上下文自己保持最新。** 按库 → 表 → 字段三级检索，BM25 与本地或远端 Embedding 用 RRF 融合后重排；字段预算随实际在用的 Embedding 调整，库结构一变，Schema 监听器就重建索引。用远端 Embedding 时，在 40 条留出问法上字段召回率 99.2%，只送出 36.8% 的 Schema。
-- **能互联，好运维。** 其他 agent 通过 A2A 调用它，与 HTTP API 共用同一套 Key、限流和审计：客服 agent [ai-helpdesk](https://github.com/heyemlee/ai-helpdesk) 就按 [a2a-contract](https://github.com/heyemlee/a2a-contract) 里带版本号的契约，把数据类问题委派给它。MCP 服务把 SQL 作为工具提供出去；模型和 Embedding 连接不用重启就能切换。每次请求都是一次运行，带编号的事件日志记下它的阶段、模型调用和 SQL，跑到一半也能取消。
+- **能互联，好运维。** 其他 agent 通过 A2A 调用它，与 HTTP API 共用同一套 Key、限流和审计：同一个仓库里的客服 agent [ai-helpdesk](../README.zh-CN.md) 就按 [a2a-contract](../a2a-contract/README.zh-CN.md) 里带版本号的契约，把数据类问题委派给它。MCP 服务把 SQL 作为工具提供出去；模型和 Embedding 连接不用重启就能切换。每次请求都是一次运行，带编号的事件日志记下它的阶段、模型调用和 SQL，跑到一半也能取消。
 
 ## 系统架构
 
@@ -102,12 +102,15 @@
 ### 接口
 
 - **控制台。** 提问、数据、历史三个页面和设置，中英双语，无构建步骤；学习模式根据阶段事件讲解每次请求；点停止时，服务端的运行也会停下。
-- **A2A。** 默认开启，地址是 `POST /a2a`：`message/send` 返回一个已完成的任务，`message/stream` 先通过 SSE 推送阶段事件。任务 ID 就是运行 ID：用 `POST /runs/{id}/cancel` 取消的任务以 `canceled` 结束，调用方断开连接也会让它停下。设置 `AI_SQL_A2A_STREAMING=false` 可以关掉流式，Agent Card 会同步说明；[a2a-contract](https://github.com/heyemlee/a2a-contract) 的契约用例在 CI 里跑。
+- **A2A。** 默认开启，地址是 `POST /a2a`：`message/send` 返回一个已完成的任务，`message/stream` 先通过 SSE 推送阶段事件。任务 ID 就是运行 ID：用 `POST /runs/{id}/cancel` 取消的任务以 `canceled` 结束，调用方断开连接也会让它停下。设置 `AI_SQL_A2A_STREAMING=false` 可以关掉流式，Agent Card 会同步说明；[a2a-contract](../a2a-contract/README.zh-CN.md) 的契约用例在 CI 里读同一个提交上的契约来跑。
 - **MCP 与 HTTP。** MCP stdio 服务在演示库上提供 `list_databases` 和 `execute_sql` 两个工具，上限相同；其余由 HTTP 接口 `/query`、`/catalog`、`/history`、`/runs`、`/metrics` 提供（[接口文档](docs/api.zh-CN.md)）。
 
 ## 本地开发
 
+这个服务在仓库的 `ai-sql-agent/` 目录下，和客服 agent、A2A 契约在同一个仓库里；它有自己的 Python 3.11 环境和 `.env`。
+
 ```bash
+cd ai-sql-agent                                     # 从仓库根目录进来
 python3 -m venv .venv && source .venv/bin/activate  # 建一个 Python 3.11+ 的虚拟环境
 pip install -e ".[dev]"                             # 安装服务、固定版本的依赖和测试工具
 python examples/end_to_end.py                       # 离线跑一个单库问题和一个跨库问题，模型用 Mock
@@ -117,7 +120,7 @@ python -m ai_sql_agent.semantic export semantic/    # 导出语义层模板，�
 python -m ai_sql_agent.semantic validate semantic/  # 和真实库结构比对
 ```
 
-没有模型凭证时服务用 Mock 模型作答。把 `AI_SQL_SEMANTIC_DIR` 指向语义层目录，就能查你自己的库；模型、Embedding、Rerank 和存储的配置见 [docs/deployment.zh-CN.md](docs/deployment.zh-CN.md#二配置项)，另一套带示例数据的语义层见 [tools/simple_erp](tools/simple_erp/README.md)。
+没有模型凭证时服务用 Mock 模型作答。把 `AI_SQL_SEMANTIC_DIR` 指向语义层目录，就能查你自己的库；模型、Embedding、Rerank 和存储的配置见 [docs/deployment.zh-CN.md](docs/deployment.zh-CN.md#二配置项)，另一套带示例数据的语义层见 [tools/simple_erp](tools/simple_erp/README.md)。在仓库根目录跑 `scripts/dev-all.sh`，会用 `ai-sql-agent/.venv` 把这个服务和客服 agent 一起启动。
 
 ## 测试
 
@@ -128,7 +131,7 @@ make gate-smoke  # 发布门禁的离线冒烟样本
 make gate        # 完整门禁：150 + 40 题，跑三轮；需要模型，会消耗 token
 ```
 
-CI 在 PostgreSQL 16 + pgvector 服务上跑测试，还跑固定 tag 的 A2A 契约用例、演示脚本、离线门禁及其反例检查、只读账号工具的正反两面，以及开启 API Key 的 Docker 镜像冒烟。
+仓库 CI 的 `SQL Agent (tests + gate smoke)` 在 PostgreSQL 16 + pgvector 服务上跑测试，还跑 `a2a-contract/` 里的契约用例（一条都不许跳过）、演示脚本、离线门禁及其反例检查、只读账号工具的正反两面；`Docker images` 构建镜像并开启 API Key 做冒烟。两项都是 `main` 的必需检查。在仓库根目录跑 `.claude/skills/test-backend/scripts/run-sql-agent.sh`，会在一次性副本里跑测试，读不到你本机的 `.env` 和保存过的模型设置。
 
 ## 部署
 

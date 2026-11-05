@@ -77,7 +77,7 @@ By default the rules decide what to search and whether to delegate, before any s
 
 The startup log states the deadline in use and warns when an explicit one leaves no room for `order_data_query`. A delegation that already timed out during the rule prefetch is not retried by the model in the same turn. If the endpoint rejects tool calls, the turn falls back to a single answer and `GET /health` reports `tool_loop.tools_rejected`.
 
-[run_trajectory_eval.py](../backend/scripts/run_trajectory_eval.py) compares the loop with the rule-only path on 40 trajectory cases. It calls the model only with `--yes`, prints its call estimate first, and replays order data from the [a2a-contract](https://github.com/heyemlee/a2a-contract) fixtures.
+[run_trajectory_eval.py](../backend/scripts/run_trajectory_eval.py) compares the loop with the rule-only path on 40 trajectory cases. It calls the model only with `--yes`, prints its call estimate first, and replays order data from the fixtures in [a2a-contract/](../a2a-contract/README.md).
 
 ## Keep a record of each turn
 
@@ -126,7 +126,7 @@ Then ask Claude Code why the last turn went the way it did. `docker compose -f d
 
 ## Review pull requests with Claude
 
-[claude-review.yml](../.github/workflows/claude-review.yml) has Claude review each pull request from a branch in this repository and leave comments. It only advises: the required checks are the four CI jobs, so a model outage can't block a merge. Drafts and changes limited to `docs/` or the READMEs are skipped.
+[claude-review.yml](../.github/workflows/claude-review.yml) has Claude review each pull request from a branch in this repository and leave comments. It only advises: the required checks are the five CI jobs, so a model outage can't block a merge. Drafts, changes limited to `docs/` or the READMEs, and pull requests labeled `skip-ai-review` are skipped. The label is read when the event fires, so add it while the pull request is still a draft.
 
 It stays off until a credential exists, and after that every run spends model usage, limited per run by `--max-budget-usd`. Add one of these as a repository secret:
 
@@ -152,7 +152,7 @@ Knowledge supplies reference material; SOPs define handling steps and escalation
 
 The bundled domain is cabinet manufacturing and fulfilment. Replacing the knowledge and SOPs adapts the content; a different intent taxonomy or specialist lineup also needs changes to intent recognition and routing.
 
-For live order data, set `SQL_AGENT_URL` and its credentials to connect [ai-sql-agent](https://github.com/heyemlee/ai-sql-agent). Set `SQL_AGENT_TRANSPORT=a2a` to reach it over A2A, which streams its stages (table search, planning, SQL, queries, repair) to the console; the default, `query`, calls its synchronous HTTP `/query` and shows no progress. The identity requirements are in [sql-agent-identity-requirements.md](integrations/sql-agent-identity-requirements.md).
+For live order data, set `SQL_AGENT_URL` and its credentials to connect the SQL agent in [ai-sql-agent/](../ai-sql-agent/README.md). Set `SQL_AGENT_TRANSPORT=a2a` to reach it over A2A, which streams its stages (table search, planning, SQL, queries, repair) to the console; the default, `query`, calls its synchronous HTTP `/query` and shows no progress. The identity requirements are in [sql-agent-identity-requirements.md](integrations/sql-agent-identity-requirements.md).
 
 ## Run from source
 
@@ -173,9 +173,10 @@ scripts/dev.sh
 
 Open [localhost:5173](http://localhost:5173). The backend listens on `API_PORT` (default `8000`) and the console's proxy follows it.
 
-To run it with ai-sql-agent and the local setup from [a2a-contract](https://github.com/heyemlee/a2a-contract#2-enable-a2a-collaboration), check out ai-sql-agent next to this repository (or set `SQL_AGENT_DIR`) and run:
+To run it together with the SQL agent in `ai-sql-agent/` (or another checkout named by `SQL_AGENT_DIR`), give the SQL agent its own Python 3.11 environment once, then start both. The A2A settings are in the [contract's README](../a2a-contract/README.md#integrate).
 
 ```bash
+(cd ai-sql-agent && python3 -m venv .venv && .venv/bin/pip install -e ".[dev]")   # once, with Python 3.11+
 scripts/dev-all.sh
 ```
 
@@ -216,6 +217,8 @@ backend/app/
 backend/skills/            Scoped, reloadable SOPs
 backend/tests/ · scripts/  Tests, retrieval evaluation, re-embedding, load testing
 frontend/src/              The staff console
+ai-sql-agent/              The SQL agent: its own service, tests, deployment and docs (Python 3.11)
+a2a-contract/              The A2A contract both agents test against: protocol, schemas, fixtures, self-check
 deploy/                    Nginx, metrics, logs, tracing and alert configuration
 scripts/                   Local development, local CI, deployment, backup and restore
 .claude/ · .mcp.json       Claude Code skills and the read-only development MCP server
