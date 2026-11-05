@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import type { ReactNode } from 'react'
+import type { ReactElement } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
 import { render, screen, waitFor, within } from '@/test/render'
@@ -30,7 +30,7 @@ function serve(routes: Record<string, (body: Record<string, unknown> | null) => 
   return calls
 }
 
-function show(ui: ReactNode = <SqlModelSettings />) {
+function show(ui: ReactElement = <SqlModelSettings />) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(ui, { lang: 'en', wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider> })
 }
