@@ -1,0 +1,94 @@
+{
+  "mode": "legacy",
+  "score": "6/8",
+  "results": [
+    {
+      "id": "C1",
+      "问题": "J26-00001 这个工程还欠多少钱？",
+      "考点": "工程未付总额 = 合同额 − 已收（含未开票的尾款）",
+      "真值": 49448.16,
+      "模型": 18545.89,
+      "对": false,
+      "SQL": "SELECT SUM(DISTINCT_AR.FAMOUNT) - IFNULL(SUM(RB.FAMOUNT), 0) AS FQIANKUAN\nFROM (\n    SELECT FARNO, FAMOUNT\n    FROM T_AR_RECEIVABLE\n    WHERE FBILLNO = 'J26-00001' AND FSETTLESTS <> 'V'\n) DISTINCT_AR\nLEFT JOIN T_AR_RECEIVEBILL RB ON DISTINCT_AR.FARNO = RB.FARNO;",
+      "错误": null,
+      "耗时s": 43.5
+    },
+    {
+      "id": "C2",
+      "问题": "现在有多少个工程在生产中？",
+      "考点": "状态码：sim 是 in_production，legacy 是 FDOCSTATUS='C'",
+      "真值": 232,
+      "模型": 232,
+      "对": true,
+      "SQL": "SELECT COUNT(FBILLNO) FROM T_SAL_ORDER WHERE FDOCSTATUS = 'C';",
+      "错误": null,
+      "耗时s": 19.3
+    },
+    {
+      "id": "C3",
+      "问题": "所有变更单加起来一共增加了多少金额？",
+      "考点": "折让是负数，且不能只算已批准",
+      "真值": 1150382.66,
+      "模型": 1150382.66,
+      "对": true,
+      "SQL": "SELECT SUM(FCHGAMT) AS \"变更金额合计\" FROM T_SAL_CHGORDER;",
+      "错误": null,
+      "耗时s": 18.9
+    },
+    {
+      "id": "C4",
+      "问题": "客户的平均信用额度是多少？",
+      "考点": "零售客户为 NULL，不是 0",
+      "真值": 174074.07,
+      "模型": 174074.07407407407,
+      "对": true,
+      "SQL": "SELECT AVG(\"FCREDITLMT\") \"平均信用额度\" FROM T_BD_CUSTOMER;",
+      "错误": null,
+      "耗时s": 14.4
+    },
+    {
+      "id": "C5",
+      "问题": "加州一共有多少个工程？",
+      "考点": "州名大小写不统一，要用规范化列",
+      "真值": 893,
+      "模型": 893,
+      "对": true,
+      "SQL": "SELECT COUNT(FBILLNO) AS \"加州工程数量\" FROM T_SAL_ORDER WHERE FPROVSTD = 'CA';",
+      "错误": null,
+      "耗时s": 15.6
+    },
+    {
+      "id": "C6",
+      "问题": "有多少张发票已经逾期还没收清？",
+      "考点": "逾期判据 + 作废不算 + legacy 侧日期是 8 位整数",
+      "真值": 831,
+      "模型": 831,
+      "对": true,
+      "SQL": "SELECT COUNT(\"FARNO\") FROM T_AR_RECEIVABLE WHERE \"FDUEDATE\" < CAST(STRFTIME('%Y%m%d','now','localtime') AS INTEGER) AND \"FSETTLESTS\" IN ('O', 'P');",
+      "错误": null,
+      "耗时s": 18.7
+    },
+    {
+      "id": "C7",
+      "问题": "有多少个工程还没下生产工单？",
+      "考点": "sim: sold/cancelled；legacy: FDOCSTATUS in (A,Z)",
+      "真值": 117,
+      "模型": 64,
+      "对": false,
+      "SQL": "SELECT COUNT(\"FBILLNO\") FROM T_SAL_ORDER WHERE \"FDOCSTATUS\" = 'A';",
+      "错误": null,
+      "耗时s": 23.9
+    },
+    {
+      "id": "C8",
+      "问题": "商业工程有多少个？",
+      "考点": "商业工程的小区字段为 NULL",
+      "真值": 227,
+      "模型": 227,
+      "对": true,
+      "SQL": "SELECT COUNT(FBILLNO) AS \"商业工程数量\" FROM T_SAL_ORDER WHERE FBIZTYPE = 'commercial';",
+      "错误": null,
+      "耗时s": 15.9
+    }
+  ]
+}

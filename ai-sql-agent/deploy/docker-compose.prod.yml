@@ -1,0 +1,75 @@
+# AI SQL Agent 内部生产编排：应用 + PostgreSQL(pgvector)
+#
+#   docker compose --project-directory . -f deploy/docker-compose.prod.yml up -d --build
+#
+# 必须带 --project-directory .（或用 make up）：compose 文件在 deploy/ 里，
+# 但构建上下文、deploy/api_keys.json 挂载和 .env 变量替换都以仓库根为准。
+#
+# 首次启动前：
+#   1) cp deploy/api_keys.example.json deploy/api_keys.json 并改掉里面的 key
+#   2) 在 .env 里选 AI_SQL_MODEL_PROVIDER 并填对应厂商的 API Key
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: ai-sql-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ai_sql}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ai_sql}
+      POSTGRES_DB: ${POSTGRES_DB:-ai_sql}
+    volumes:
+      - ai_sql_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ai_sql}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+    container_name: ai-sql-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # 模型：provider 决定协议，openai=兼容协议 / anthropic=Messages 协议
+      AI_SQL_MODEL_PROVIDER: ${AI_SQL_MODEL_PROVIDER:-openai}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-https://api.anthropic.com}
+      AI_SQL_CHAT_MODEL: ${AI_SQL_CHAT_MODEL:-}
+      AI_SQL_CODER_MODEL: ${AI_SQL_CODER_MODEL:-}
+      # Rerank（可选，阿里云百炼业务空间）
+      DASHSCOPE_WORKSPACE_ID: ${DASHSCOPE_WORKSPACE_ID:-}
+      # 存储：Schema 向量、长期记忆、审计都落这一个实例
+      AI_SQL_PGVECTOR_DSN: postgresql://${POSTGRES_USER:-ai_sql}:${POSTGRES_PASSWORD:-ai_sql}@postgres:5432/${POSTGRES_DB:-ai_sql}
+      # 鉴权：Key 从挂载的文件读，改 Key 不用重建镜像
+      AI_SQL_AUTH_MODE: api_key
+      AI_SQL_API_KEYS_FILE: /run/secrets/api_keys.json
+      # 执行治理：单查询行数上限与超时，启动时交给执行器（docs/deployment.zh-CN.md「执行上限」）。
+      # 这里原来写的 10000 / 30 从未生效；1000 / 10 是一直实际在用的值，调大是真的会变。
+      AI_SQL_MAX_ROWS: "1000"
+      AI_SQL_MAX_EXECUTION_SECONDS: "10"
+      # 调用治理
+      AI_SQL_HTTP_TIMEOUT_SECONDS: "60"
+      AI_SQL_HTTP_MAX_RETRIES: "2"
+      AI_SQL_DEFAULT_RATE_LIMIT_PER_MINUTE: "60"
+      # 业务库结构变更后自动重建索引，不用重启
+      AI_SQL_SCHEMA_REFRESH_SECONDS: "300"
+      # 日志：JSON 便于采集
+      AI_SQL_LOG_FORMAT: json
+      AI_SQL_LOG_LEVEL: INFO
+    volumes:
+      - ./deploy/api_keys.json:/run/secrets/api_keys.json:ro
+      - ai_sql_runtime:/app/runtime_data
+    ports:
+      - "${AI_SQL_PORT:-8000}:8000"
+    restart: unless-stopped
+
+volumes:
+  ai_sql_pg_data:
+  ai_sql_runtime:

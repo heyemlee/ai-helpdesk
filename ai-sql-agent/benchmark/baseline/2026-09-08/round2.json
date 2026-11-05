@@ -1,0 +1,3814 @@
+{
+  "total": 150,
+  "correct": 132,
+  "accuracy": 0.88,
+  "column_recall": 1.0,
+  "retrieval_recall": 1.0,
+  "recall_gap": 0.0,
+  "silent_error_rate": 0.0867,
+  "false_alarm_rate": 0.0606,
+  "avg_retrieved_columns": 37.48,
+  "avg_column_ratio": 0.4358,
+  "grouped_accuracy": {
+    "single_db": 0.912,
+    "cross_db": 0.72
+  },
+  "category_accuracy": {
+    "aggregation": 0.96,
+    "cross_db": 0.72,
+    "having": 1.0,
+    "multi_join": 0.68,
+    "single_table": 0.96,
+    "time_range": 0.96
+  },
+  "items": [
+    {
+      "id": "q001",
+      "category": "single_table",
+      "query": "查询准时率低于0.7的供应商名称",
+      "correct": true,
+      "predicted_sql": "SELECT supplier_name FROM supplier WHERE on_time_rate < 0.7;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT supplier_name FROM supplier WHERE on_time_rate < 0.7;",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q002",
+      "category": "single_table",
+      "query": "查询准时率低于0.8的供应商名称",
+      "correct": false,
+      "predicted_sql": "SELECT supplier_name FROM supplier WHERE on_time_rate < 0.8;\n```\n\nWait, I should not output markdown code blocks.\n\nSELECT supplier_name FROM supplier WHERE on_time_rate < 0.8;",
+      "error": "没有访问权限：SQL 无法解析，出于安全拒绝执行：SQL 无法解析（TokenError）：Error tokenizing 'plier_name FROM supplier WHERE on_time_rate < 0.8'。请联系管理员申请该表的查询权限。",
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": false,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": []
+    },
+    {
+      "id": "q003",
+      "category": "single_table",
+      "query": "查询准时率低于0.9的供应商名称",
+      "correct": true,
+      "predicted_sql": "SELECT supplier_name FROM supplier WHERE on_time_rate < 0.9;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT supplier_name FROM supplier WHERE on_time_rate < 0.9;",
+          "success": true,
+          "row_count": 3
+        }
+      ]
+    },
+    {
+      "id": "q004",
+      "category": "single_table",
+      "query": "查询采购状态为ordered的采购单号",
+      "correct": true,
+      "predicted_sql": "SELECT po_no FROM purchase_order WHERE po_status = 'ordered';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT po_no FROM purchase_order WHERE po_status = 'ordered';",
+          "success": true,
+          "row_count": 2
+        }
+      ]
+    },
+    {
+      "id": "q005",
+      "category": "single_table",
+      "query": "查询采购状态为partial的采购单号",
+      "correct": true,
+      "predicted_sql": "SELECT po_no FROM purchase_order WHERE po_status = 'partial';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT po_no FROM purchase_order WHERE po_status = 'partial';",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q006",
+      "category": "single_table",
+      "query": "查询采购状态为received的采购单号",
+      "correct": true,
+      "predicted_sql": "SELECT po_no FROM purchase_order WHERE po_status = 'received';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT po_no FROM purchase_order WHERE po_status = 'received';",
+          "success": true,
+          "row_count": 9
+        }
+      ]
+    },
+    {
+      "id": "q007",
+      "category": "single_table",
+      "query": "查询订单状态为signed的客户名称",
+      "correct": true,
+      "predicted_sql": "SELECT customer_name FROM sales_order WHERE order_status = 'signed';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT customer_name FROM sales_order WHERE order_status = 'signed';",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q008",
+      "category": "single_table",
+      "query": "查询订单状态为in_production的客户名称",
+      "correct": true,
+      "predicted_sql": "SELECT customer_name FROM sales_order WHERE order_status = 'in_production';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT customer_name FROM sales_order WHERE order_status = 'in_production';",
+          "success": true,
+          "row_count": 4
+        }
+      ]
+    },
+    {
+      "id": "q009",
+      "category": "single_table",
+      "query": "查询订单状态为delivered的客户名称",
+      "correct": true,
+      "predicted_sql": "SELECT customer_name FROM sales_order WHERE order_status = 'delivered';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT customer_name FROM sales_order WHERE order_status = 'delivered';",
+          "success": true,
+          "row_count": 3
+        }
+      ]
+    },
+    {
+      "id": "q010",
+      "category": "single_table",
+      "query": "查询实际成本超过预算的项目名称",
+      "correct": true,
+      "predicted_sql": "SELECT project_name FROM project WHERE actual_cost > budget_amt;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "pm_db",
+          "sql": "SELECT project_name FROM project WHERE actual_cost > budget_amt;",
+          "success": true,
+          "row_count": 3
+        }
+      ]
+    },
+    {
+      "id": "q011",
+      "category": "single_table",
+      "query": "查询业务板块为建筑装修的项目名称",
+      "correct": true,
+      "predicted_sql": "SELECT project_name FROM project WHERE business_unit = '建筑装修';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "pm_db",
+          "sql": "SELECT project_name FROM project WHERE business_unit = '建筑装修';",
+          "success": true,
+          "row_count": 7
+        }
+      ]
+    },
+    {
+      "id": "q012",
+      "category": "single_table",
+      "query": "查询业务板块为消防的项目名称",
+      "correct": true,
+      "predicted_sql": "SELECT project_name FROM project WHERE business_unit = '消防';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "pm_db",
+          "sql": "SELECT project_name FROM project WHERE business_unit = '消防';",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q013",
+      "category": "single_table",
+      "query": "查询合同额大于100000的项目名称",
+      "correct": true,
+      "predicted_sql": "SELECT project_name FROM project WHERE contract_amt > 100000;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "pm_db",
+          "sql": "SELECT project_name FROM project WHERE contract_amt > 100000;",
+          "success": true,
+          "row_count": 6
+        }
+      ]
+    },
+    {
+      "id": "q014",
+      "category": "single_table",
+      "query": "查询合同额大于1000000的项目名称",
+      "correct": true,
+      "predicted_sql": "SELECT project_name FROM project WHERE contract_amt > 1000000;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "pm_db",
+          "sql": "SELECT project_name FROM project WHERE contract_amt > 1000000;",
+          "success": true,
+          "row_count": 2
+        }
+      ]
+    },
+    {
+      "id": "q015",
+      "category": "single_table",
+      "query": "查询当前工序为开料的工单号",
+      "correct": true,
+      "predicted_sql": "SELECT work_order_id FROM work_order WHERE current_process = '开料';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "mes_db",
+          "sql": "SELECT work_order_id FROM work_order WHERE current_process = '开料';",
+          "success": true,
+          "row_count": 2
+        }
+      ]
+    },
+    {
+      "id": "q016",
+      "category": "single_table",
+      "query": "查询当前工序为封边的工单号",
+      "correct": true,
+      "predicted_sql": "SELECT work_order_id FROM work_order WHERE current_process = '封边';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "mes_db",
+          "sql": "SELECT work_order_id FROM work_order WHERE current_process = '封边';",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q017",
+      "category": "single_table",
+      "query": "查询当前工序为排孔的工单号",
+      "correct": true,
+      "predicted_sql": "SELECT work_order_id FROM work_order WHERE current_process = '排孔';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "mes_db",
+          "sql": "SELECT work_order_id FROM work_order WHERE current_process = '排孔';",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q018",
+      "category": "single_table",
+      "query": "查询当前工序为组装的工单号",
+      "correct": true,
+      "predicted_sql": "SELECT work_order_id FROM work_order WHERE current_process = '组装';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "mes_db",
+          "sql": "SELECT work_order_id FROM work_order WHERE current_process = '组装';",
+          "success": true,
+          "row_count": 2
+        }
+      ]
+    },
+    {
+      "id": "q019",
+      "category": "single_table",
+      "query": "查询良率低于0.8的工单号",
+      "correct": true,
+      "predicted_sql": "SELECT work_order_id FROM quality_check WHERE yield_rate < 0.8;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "mes_db",
+          "sql": "SELECT work_order_id FROM quality_check WHERE yield_rate < 0.8;",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q020",
+      "category": "single_table",
+      "query": "查询良率低于0.95的工单号",
+      "correct": true,
+      "predicted_sql": "SELECT work_order_id FROM quality_check WHERE yield_rate < 0.95;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "mes_db",
+          "sql": "SELECT work_order_id FROM quality_check WHERE yield_rate < 0.95;",
+          "success": true,
+          "row_count": 3
+        }
+      ]
+    },
+    {
+      "id": "q021",
+      "category": "single_table",
+      "query": "查询品类为板材的物料名称",
+      "correct": true,
+      "predicted_sql": "SELECT material_name FROM material WHERE category = '板材';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "wms_db",
+          "sql": "SELECT material_name FROM material WHERE category = '板材';",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q022",
+      "category": "single_table",
+      "query": "查询品类为门板的物料名称",
+      "correct": true,
+      "predicted_sql": "SELECT material_name FROM material WHERE category = '门板';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "wms_db",
+          "sql": "SELECT material_name FROM material WHERE category = '门板';",
+          "success": true,
+          "row_count": 3
+        }
+      ]
+    },
+    {
+      "id": "q023",
+      "category": "single_table",
+      "query": "查询品类为五金的物料名称",
+      "correct": true,
+      "predicted_sql": "SELECT material_name FROM material WHERE category = '五金';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "wms_db",
+          "sql": "SELECT material_name FROM material WHERE category = '五金';",
+          "success": true,
+          "row_count": 2
+        }
+      ]
+    },
+    {
+      "id": "q024",
+      "category": "single_table",
+      "query": "查询安全库存大于100的物料名称",
+      "correct": true,
+      "predicted_sql": "SELECT material_name FROM material WHERE safety_stock > 100;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "wms_db",
+          "sql": "SELECT material_name FROM material WHERE safety_stock > 100;",
+          "success": true,
+          "row_count": 5
+        }
+      ]
+    },
+    {
+      "id": "q025",
+      "category": "single_table",
+      "query": "查询安全库存大于500的物料名称",
+      "correct": true,
+      "predicted_sql": "SELECT material_name FROM material WHERE safety_stock > 500;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "wms_db",
+          "sql": "SELECT material_name FROM material WHERE safety_stock > 500;",
+          "success": true,
+          "row_count": 2
+        }
+      ]
+    },
+    {
+      "id": "q026",
+      "category": "multi_join",
+      "query": "查询准时率低于0.7的供应商的采购单号",
+      "correct": true,
+      "predicted_sql": "SELECT po_no FROM purchase_order WHERE supplier_id IN (SELECT supplier_id FROM supplier WHERE on_time_rate < 0.7);",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT po_no FROM purchase_order WHERE supplier_id IN (SELECT supplier_id FROM supplier WHERE on_time_rate < 0.7);",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q027",
+      "category": "multi_join",
+      "query": "查询准时率低于0.8的供应商的采购单号",
+      "correct": true,
+      "predicted_sql": "SELECT po.po_no\nFROM purchase_order po\nJOIN supplier s ON po.supplier_id = s.supplier_id\nWHERE s.on_time_rate < 0.8;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT po.po_no\nFROM purchase_order po\nJOIN supplier s ON po.supplier_id = s.supplier_id\nWHERE s.on_time_rate < 0.8;",
+          "success": true,
+          "row_count": 2
+        }
+      ]
+    },
+    {
+      "id": "q028",
+      "category": "multi_join",
+      "query": "查询准时率低于0.9的供应商的采购单号",
+      "correct": true,
+      "predicted_sql": "SELECT po.po_no\nFROM purchase_order po\nJOIN supplier s ON po.supplier_id = s.supplier_id\nWHERE s.on_time_rate < 0.9;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT po.po_no\nFROM purchase_order po\nJOIN supplier s ON po.supplier_id = s.supplier_id\nWHERE s.on_time_rate < 0.9;",
+          "success": true,
+          "row_count": 5
+        }
+      ]
+    },
+    {
+      "id": "q029",
+      "category": "multi_join",
+      "query": "查询板材类供应商的采购金额",
+      "correct": false,
+      "predicted_sql": "SELECT SUM(\"po_amt\") FROM purchase_order WHERE \"supplier_id\" IN ('SUP-01');",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": true,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [
+        "aggregation_unrequested",
+        "semantic_mismatch"
+      ],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT supplier_id FROM supplier WHERE category = '板材';",
+          "success": true,
+          "row_count": 1
+        },
+        {
+          "database": "erp_db",
+          "sql": "SELECT SUM(\"po_amt\") FROM purchase_order WHERE \"supplier_id\" IN ('SUP-01');",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q030",
+      "category": "multi_join",
+      "query": "查询五金类供应商的采购金额",
+      "correct": false,
+      "predicted_sql": "SELECT po.supplier_id, SUM(po.po_amt) AS 采购金额\nFROM purchase_order po\nJOIN supplier s ON po.supplier_id = s.supplier_id\nWHERE s.category = '五金'\nGROUP BY po.supplier_id;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": true,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT po.supplier_id, SUM(po.po_amt) AS 采购金额\nFROM purchase_order po\nJOIN supplier s ON po.supplier_id = s.supplier_id\nWHERE s.category = '五金'\nGROUP BY po.supplier_id;",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q031",
+      "category": "multi_join",
+      "query": "查询台面类供应商的采购金额",
+      "correct": false,
+      "predicted_sql": "SELECT SUM(po_amt) FROM purchase_order WHERE supplier_id IN ('SUP-03');",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": true,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [
+        "aggregation_unrequested"
+      ],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT supplier_id FROM supplier WHERE category = '台面';",
+          "success": true,
+          "row_count": 1
+        },
+        {
+          "database": "erp_db",
+          "sql": "SELECT SUM(po_amt) FROM purchase_order WHERE supplier_id IN ('SUP-03');",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q032",
+      "category": "multi_join",
+      "query": "查询涂料类供应商的采购金额",
+      "correct": false,
+      "predicted_sql": "SELECT po.po_amt AS 采购金额\nFROM purchase_order po\nJOIN supplier s ON po.supplier_id = s.supplier_id\nWHERE s.category = '涂料';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": true,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT po.po_amt AS 采购金额\nFROM purchase_order po\nJOIN supplier s ON po.supplier_id = s.supplier_id\nWHERE s.category = '涂料';",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q033",
+      "category": "multi_join",
+      "query": "查询付款状态为paid的采购单的工程号",
+      "correct": true,
+      "predicted_sql": "SELECT DISTINCT po.\"job_no\"\nFROM \"purchase_order\" po\nJOIN \"payment\" p ON p.\"po_no\" = po.\"po_no\"\nWHERE p.\"pay_status\" = 'paid';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT DISTINCT po.\"job_no\"\nFROM \"purchase_order\" po\nJOIN \"payment\" p ON p.\"po_no\" = po.\"po_no\"\nWHERE p.\"pay_status\" = 'paid';",
+          "success": true,
+          "row_count": 6
+        }
+      ]
+    },
+    {
+      "id": "q034",
+      "category": "multi_join",
+      "query": "查询付款状态为partial的采购单的工程号",
+      "correct": true,
+      "predicted_sql": "SELECT job_no FROM purchase_order WHERE po_no IN (SELECT po_no FROM payment WHERE pay_status = 'partial');",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT job_no FROM purchase_order WHERE po_no IN (SELECT po_no FROM payment WHERE pay_status = 'partial');",
+          "success": true,
+          "row_count": 2
+        }
+      ]
+    },
+    {
+      "id": "q035",
+      "category": "multi_join",
+      "query": "查询里程碑状态为delayed的项目名称",
+      "correct": true,
+      "predicted_sql": "SELECT DISTINCT p.project_name\nFROM project p\nJOIN milestone m ON m.project_code = p.project_code\nWHERE m.ms_status = 'delayed';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "pm_db",
+          "sql": "SELECT DISTINCT p.project_name\nFROM project p\nJOIN milestone m ON m.project_code = p.project_code\nWHERE m.ms_status = 'delayed';",
+          "success": true,
+          "row_count": 2
+        }
+      ]
+    },
+    {
+      "id": "q036",
+      "category": "multi_join",
+      "query": "查询里程碑状态为on_time的项目名称",
+      "correct": true,
+      "predicted_sql": "SELECT DISTINCT p.project_name\nFROM milestone m\nJOIN project p ON m.project_code = p.project_code\nWHERE m.ms_status = 'on_time';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "pm_db",
+          "sql": "SELECT DISTINCT p.project_name\nFROM milestone m\nJOIN project p ON m.project_code = p.project_code\nWHERE m.ms_status = 'on_time';",
+          "success": true,
+          "row_count": 4
+        }
+      ]
+    },
+    {
+      "id": "q037",
+      "category": "multi_join",
+      "query": "查询里程碑状态为pending的项目名称",
+      "correct": true,
+      "predicted_sql": "SELECT DISTINCT p.project_name\nFROM milestone m\nJOIN project p ON m.project_code = p.project_code\nWHERE m.ms_status = 'pending';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "pm_db",
+          "sql": "SELECT DISTINCT p.project_name\nFROM milestone m\nJOIN project p ON m.project_code = p.project_code\nWHERE m.ms_status = 'pending';",
+          "success": true,
+          "row_count": 4
+        }
+      ]
+    },
+    {
+      "id": "q038",
+      "category": "multi_join",
+      "query": "查询变更金额大于10000的项目名称",
+      "correct": true,
+      "predicted_sql": "SELECT DISTINCT p.project_name\nFROM change_order co\nJOIN project p ON co.project_code = p.project_code\nWHERE co.change_amt > 10000;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "pm_db",
+          "sql": "SELECT DISTINCT p.project_name\nFROM change_order co\nJOIN project p ON co.project_code = p.project_code\nWHERE co.change_amt > 10000;",
+          "success": true,
+          "row_count": 2
+        }
+      ]
+    },
+    {
+      "id": "q039",
+      "category": "multi_join",
+      "query": "查询变更金额大于50000的项目名称",
+      "correct": true,
+      "predicted_sql": "SELECT DISTINCT p.project_name\nFROM change_order c\nJOIN project p ON c.project_code = p.project_code\nWHERE c.change_amt > 50000;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "pm_db",
+          "sql": "SELECT DISTINCT p.project_name\nFROM change_order c\nJOIN project p ON c.project_code = p.project_code\nWHERE c.change_amt > 50000;",
+          "success": true,
+          "row_count": 2
+        }
+      ]
+    },
+    {
+      "id": "q040",
+      "category": "multi_join",
+      "query": "查询变更金额大于100000的项目名称",
+      "correct": true,
+      "predicted_sql": "SELECT DISTINCT p.project_name\nFROM change_order c\nJOIN project p ON c.project_code = p.project_code\nWHERE c.change_amt > 100000;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "pm_db",
+          "sql": "SELECT DISTINCT p.project_name\nFROM change_order c\nJOIN project p ON c.project_code = p.project_code\nWHERE c.change_amt > 100000;",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q041",
+      "category": "multi_join",
+      "query": "查询验收结果为passed的项目名称",
+      "correct": true,
+      "predicted_sql": "SELECT project.project_name FROM acceptance JOIN project ON acceptance.project_code = project.project_code WHERE acceptance.accept_result = 'passed';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "pm_db",
+          "sql": "SELECT project.project_name FROM acceptance JOIN project ON acceptance.project_code = project.project_code WHERE acceptance.accept_result = 'passed';",
+          "success": true,
+          "row_count": 2
+        }
+      ]
+    },
+    {
+      "id": "q042",
+      "category": "multi_join",
+      "query": "查询一车间工单的工时记录中的工人姓名",
+      "correct": false,
+      "predicted_sql": "SELECT lh.worker_name\nFROM labor_hour lh\nJOIN work_order wo ON lh.work_order_id = wo.work_order_id\nWHERE wo.workshop = '一车间';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": true,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "mes_db",
+          "sql": "SELECT lh.worker_name\nFROM labor_hour lh\nJOIN work_order wo ON lh.work_order_id = wo.work_order_id\nWHERE wo.workshop = '一车间';",
+          "success": true,
+          "row_count": 8
+        }
+      ]
+    },
+    {
+      "id": "q043",
+      "category": "multi_join",
+      "query": "查询二车间工单的工时记录中的工人姓名",
+      "correct": false,
+      "predicted_sql": "SELECT lh.worker_name FROM labor_hour lh JOIN work_order wo ON lh.work_order_id = wo.work_order_id WHERE wo.workshop = '二车间';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": true,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "mes_db",
+          "sql": "SELECT lh.worker_name FROM labor_hour lh JOIN work_order wo ON lh.work_order_id = wo.work_order_id WHERE wo.workshop = '二车间';",
+          "success": true,
+          "row_count": 4
+        }
+      ]
+    },
+    {
+      "id": "q044",
+      "category": "multi_join",
+      "query": "查询良率低于0.8的工单所属车间",
+      "correct": true,
+      "predicted_sql": "SELECT wo.work_order_id, wo.workshop\nFROM quality_check qc\nJOIN work_order wo ON qc.work_order_id = wo.work_order_id\nWHERE qc.yield_rate < 0.8;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "mes_db",
+          "sql": "SELECT wo.work_order_id, wo.workshop\nFROM quality_check qc\nJOIN work_order wo ON qc.work_order_id = wo.work_order_id\nWHERE qc.yield_rate < 0.8;",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q045",
+      "category": "multi_join",
+      "query": "查询良率低于0.95的工单所属车间",
+      "correct": true,
+      "predicted_sql": "SELECT DISTINCT wo.workshop\nFROM quality_check qc\nJOIN work_order wo ON qc.work_order_id = wo.work_order_id\nWHERE qc.yield_rate < 0.95;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "mes_db",
+          "sql": "SELECT DISTINCT wo.workshop\nFROM quality_check qc\nJOIN work_order wo ON qc.work_order_id = wo.work_order_id\nWHERE qc.yield_rate < 0.95;",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q046",
+      "category": "multi_join",
+      "query": "查询库存低于安全库存的物料名称",
+      "correct": true,
+      "predicted_sql": "SELECT m.material_name\nFROM stock_snapshot s\nJOIN material m ON s.material_code = m.material_code\nWHERE s.on_hand_qty < m.safety_stock;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "wms_db",
+          "sql": "SELECT m.material_name\nFROM stock_snapshot s\nJOIN material m ON s.material_code = m.material_code\nWHERE s.on_hand_qty < m.safety_stock;",
+          "success": true,
+          "row_count": 4
+        }
+      ]
+    },
+    {
+      "id": "q047",
+      "category": "multi_join",
+      "query": "查询单位成本大于200的批次对应的物料名称",
+      "correct": true,
+      "predicted_sql": "SELECT DISTINCT m.material_name\nFROM batch b\nJOIN material m ON b.material_code = m.material_code\nWHERE b.unit_cost > 200;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "wms_db",
+          "sql": "SELECT DISTINCT m.material_name\nFROM batch b\nJOIN material m ON b.material_code = m.material_code\nWHERE b.unit_cost > 200;",
+          "success": true,
+          "row_count": 4
+        }
+      ]
+    },
+    {
+      "id": "q048",
+      "category": "multi_join",
+      "query": "查询单位成本大于500的批次对应的物料名称",
+      "correct": true,
+      "predicted_sql": "SELECT DISTINCT material.material_name\nFROM batch\nJOIN material ON batch.material_code = material.material_code\nWHERE batch.unit_cost > 500;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "wms_db",
+          "sql": "SELECT DISTINCT material.material_name\nFROM batch\nJOIN material ON batch.material_code = material.material_code\nWHERE batch.unit_cost > 500;",
+          "success": true,
+          "row_count": 2
+        }
+      ]
+    },
+    {
+      "id": "q049",
+      "category": "multi_join",
+      "query": "查询板材类物料的在库数量",
+      "correct": false,
+      "predicted_sql": "SELECT s.material_code, s.on_hand_qty\nFROM stock_snapshot s\nJOIN material m ON s.material_code = m.material_code\nWHERE m.category = '板材';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": true,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "wms_db",
+          "sql": "SELECT s.material_code, s.on_hand_qty\nFROM stock_snapshot s\nJOIN material m ON s.material_code = m.material_code\nWHERE m.category = '板材';",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q050",
+      "category": "multi_join",
+      "query": "查询门板类物料的在库数量",
+      "correct": false,
+      "predicted_sql": "SELECT s.material_code, s.on_hand_qty FROM stock_snapshot s JOIN material m ON s.material_code = m.material_code WHERE m.category = '门板';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": true,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "wms_db",
+          "sql": "SELECT s.material_code, s.on_hand_qty FROM stock_snapshot s JOIN material m ON s.material_code = m.material_code WHERE m.category = '门板';",
+          "success": true,
+          "row_count": 3
+        }
+      ]
+    },
+    {
+      "id": "q051",
+      "category": "aggregation",
+      "query": "统计每个工程的采购总金额",
+      "correct": true,
+      "predicted_sql": "SELECT job_no, SUM(po_amt) AS 采购总金额\nFROM purchase_order\nGROUP BY job_no;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT job_no, SUM(po_amt) AS 采购总金额\nFROM purchase_order\nGROUP BY job_no;",
+          "success": true,
+          "row_count": 7
+        }
+      ]
+    },
+    {
+      "id": "q052",
+      "category": "aggregation",
+      "query": "统计采购单总数",
+      "correct": true,
+      "predicted_sql": "SELECT COUNT(po_no) FROM purchase_order;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT COUNT(po_no) FROM purchase_order;",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q053",
+      "category": "aggregation",
+      "query": "统计所有供应商的平均准时率",
+      "correct": true,
+      "predicted_sql": "SELECT AVG(on_time_rate) FROM supplier;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT AVG(on_time_rate) FROM supplier;",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q054",
+      "category": "aggregation",
+      "query": "统计每个品类的供应商数量",
+      "correct": true,
+      "predicted_sql": "SELECT \"category\", COUNT(DISTINCT \"supplier_id\") AS \"供应商数量\"\nFROM supplier\nGROUP BY \"category\";",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT \"category\", COUNT(DISTINCT \"supplier_id\") AS \"供应商数量\"\nFROM supplier\nGROUP BY \"category\";",
+          "success": true,
+          "row_count": 5
+        }
+      ]
+    },
+    {
+      "id": "q055",
+      "category": "aggregation",
+      "query": "统计订单总金额",
+      "correct": true,
+      "predicted_sql": "SELECT SUM(order_amt) AS \"订单总金额\" FROM sales_order;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT SUM(order_amt) AS \"订单总金额\" FROM sales_order;",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q056",
+      "category": "aggregation",
+      "query": "统计每个订单状态的订单数量",
+      "correct": true,
+      "predicted_sql": "SELECT order_status, COUNT(order_no) AS 订单数量 FROM sales_order GROUP BY order_status;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT order_status, COUNT(order_no) AS 订单数量 FROM sales_order GROUP BY order_status;",
+          "success": true,
+          "row_count": 3
+        }
+      ]
+    },
+    {
+      "id": "q057",
+      "category": "aggregation",
+      "query": "统计已付款总金额",
+      "correct": false,
+      "predicted_sql": "SELECT SUM(paid_amt) FROM payment WHERE pay_status = 'paid';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": true,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT SUM(paid_amt) FROM payment WHERE pay_status = 'paid';",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q058",
+      "category": "aggregation",
+      "query": "统计每个供应商的采购单数量",
+      "correct": true,
+      "predicted_sql": "SELECT s.supplier_id, s.supplier_name, COUNT(po.po_no) AS 采购单数量\nFROM purchase_order po\nJOIN supplier s ON po.supplier_id = s.supplier_id\nGROUP BY s.supplier_id, s.supplier_name;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT s.supplier_id, s.supplier_name, COUNT(po.po_no) AS 采购单数量\nFROM purchase_order po\nJOIN supplier s ON po.supplier_id = s.supplier_id\nGROUP BY s.supplier_id, s.supplier_name;",
+          "success": true,
+          "row_count": 5
+        }
+      ]
+    },
+    {
+      "id": "q059",
+      "category": "aggregation",
+      "query": "统计每个业务板块的项目数量",
+      "correct": true,
+      "predicted_sql": "SELECT business_unit, COUNT(project_code) AS 项目数量 FROM project GROUP BY business_unit;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "pm_db",
+          "sql": "SELECT business_unit, COUNT(project_code) AS 项目数量 FROM project GROUP BY business_unit;",
+          "success": true,
+          "row_count": 2
+        }
+      ]
+    },
+    {
+      "id": "q060",
+      "category": "aggregation",
+      "query": "统计每个业务板块的合同额合计",
+      "correct": true,
+      "predicted_sql": "SELECT business_unit, SUM(contract_amt) AS 合同额合计 FROM project GROUP BY business_unit;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "pm_db",
+          "sql": "SELECT business_unit, SUM(contract_amt) AS 合同额合计 FROM project GROUP BY business_unit;",
+          "success": true,
+          "row_count": 2
+        }
+      ]
+    },
+    {
+      "id": "q061",
+      "category": "aggregation",
+      "query": "统计所有项目的平均预算金额",
+      "correct": true,
+      "predicted_sql": "SELECT AVG(budget_amt) FROM project;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "pm_db",
+          "sql": "SELECT AVG(budget_amt) FROM project;",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q062",
+      "category": "aggregation",
+      "query": "统计所有项目的实际成本合计",
+      "correct": true,
+      "predicted_sql": "SELECT SUM(actual_cost) AS 实际成本合计 FROM project;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "pm_db",
+          "sql": "SELECT SUM(actual_cost) AS 实际成本合计 FROM project;",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q063",
+      "category": "aggregation",
+      "query": "统计每个项目的变更总金额",
+      "correct": true,
+      "predicted_sql": "SELECT project_code, SUM(change_amt) AS 变更总金额\nFROM change_order\nGROUP BY project_code;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "pm_db",
+          "sql": "SELECT project_code, SUM(change_amt) AS 变更总金额\nFROM change_order\nGROUP BY project_code;",
+          "success": true,
+          "row_count": 3
+        }
+      ]
+    },
+    {
+      "id": "q064",
+      "category": "aggregation",
+      "query": "统计每个里程碑状态的节点数量",
+      "correct": true,
+      "predicted_sql": "SELECT ms_status, COUNT(milestone_id) AS 节点数量 FROM milestone GROUP BY ms_status;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "pm_db",
+          "sql": "SELECT ms_status, COUNT(milestone_id) AS 节点数量 FROM milestone GROUP BY ms_status;",
+          "success": true,
+          "row_count": 3
+        }
+      ]
+    },
+    {
+      "id": "q065",
+      "category": "aggregation",
+      "query": "统计项目总数",
+      "correct": true,
+      "predicted_sql": "SELECT COUNT(\"project_code\") FROM project;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "pm_db",
+          "sql": "SELECT COUNT(\"project_code\") FROM project;",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q066",
+      "category": "aggregation",
+      "query": "统计每个工单的工时合计",
+      "correct": true,
+      "predicted_sql": "SELECT work_order_id, SUM(hours) AS 工时合计\nFROM labor_hour\nGROUP BY work_order_id;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "mes_db",
+          "sql": "SELECT work_order_id, SUM(hours) AS 工时合计\nFROM labor_hour\nGROUP BY work_order_id;",
+          "success": true,
+          "row_count": 8
+        }
+      ]
+    },
+    {
+      "id": "q067",
+      "category": "aggregation",
+      "query": "统计每个工人的工时合计",
+      "correct": true,
+      "predicted_sql": "SELECT worker_name, SUM(hours) AS 工时合计 FROM labor_hour GROUP BY worker_name;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "mes_db",
+          "sql": "SELECT worker_name, SUM(hours) AS 工时合计 FROM labor_hour GROUP BY worker_name;",
+          "success": true,
+          "row_count": 4
+        }
+      ]
+    },
+    {
+      "id": "q068",
+      "category": "aggregation",
+      "query": "统计每个车间的工单数量",
+      "correct": true,
+      "predicted_sql": "SELECT \"workshop\", COUNT(\"work_order_id\") AS \"工单数量\" FROM work_order GROUP BY \"workshop\";",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "mes_db",
+          "sql": "SELECT \"workshop\", COUNT(\"work_order_id\") AS \"工单数量\" FROM work_order GROUP BY \"workshop\";",
+          "success": true,
+          "row_count": 2
+        }
+      ]
+    },
+    {
+      "id": "q069",
+      "category": "aggregation",
+      "query": "统计所有工单的平均良率",
+      "correct": true,
+      "predicted_sql": "SELECT AVG(yield_rate) AS avg_yield_rate FROM quality_check;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "mes_db",
+          "sql": "SELECT AVG(yield_rate) AS avg_yield_rate FROM quality_check;",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q070",
+      "category": "aggregation",
+      "query": "统计每个车间的实际产量合计",
+      "correct": true,
+      "predicted_sql": "SELECT \"workshop\", SUM(\"actual_qty\") AS \"实际产量合计\" FROM capacity_stat GROUP BY \"workshop\";",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "mes_db",
+          "sql": "SELECT \"workshop\", SUM(\"actual_qty\") AS \"实际产量合计\" FROM capacity_stat GROUP BY \"workshop\";",
+          "success": true,
+          "row_count": 2
+        }
+      ]
+    },
+    {
+      "id": "q071",
+      "category": "aggregation",
+      "query": "统计每个工序的工时合计",
+      "correct": true,
+      "predicted_sql": "SELECT process_name, SUM(hours) AS 工时合计\nFROM labor_hour\nGROUP BY process_name;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "mes_db",
+          "sql": "SELECT process_name, SUM(hours) AS 工时合计\nFROM labor_hour\nGROUP BY process_name;",
+          "success": true,
+          "row_count": 5
+        }
+      ]
+    },
+    {
+      "id": "q072",
+      "category": "aggregation",
+      "query": "统计每个品类的物料数量",
+      "correct": true,
+      "predicted_sql": "SELECT category, COUNT(material_code) AS 物料数量 FROM material GROUP BY category;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "wms_db",
+          "sql": "SELECT category, COUNT(material_code) AS 物料数量 FROM material GROUP BY category;",
+          "success": true,
+          "row_count": 5
+        }
+      ]
+    },
+    {
+      "id": "q073",
+      "category": "aggregation",
+      "query": "统计每个物料的入库总数量",
+      "correct": true,
+      "predicted_sql": "SELECT material_code, SUM(in_qty) AS 入库总数量\nFROM batch\nGROUP BY material_code;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "wms_db",
+          "sql": "SELECT material_code, SUM(in_qty) AS 入库总数量\nFROM batch\nGROUP BY material_code;",
+          "success": true,
+          "row_count": 8
+        }
+      ]
+    },
+    {
+      "id": "q074",
+      "category": "aggregation",
+      "query": "统计所有物料的在库数量合计",
+      "correct": true,
+      "predicted_sql": "SELECT SUM(on_hand_qty) AS total_on_hand_qty FROM stock_snapshot;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "wms_db",
+          "sql": "SELECT SUM(on_hand_qty) AS total_on_hand_qty FROM stock_snapshot;",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q075",
+      "category": "aggregation",
+      "query": "统计所有批次的平均单位成本",
+      "correct": true,
+      "predicted_sql": "SELECT AVG(unit_cost) AS avg_unit_cost FROM batch;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "wms_db",
+          "sql": "SELECT AVG(unit_cost) AS avg_unit_cost FROM batch;",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q076",
+      "category": "having",
+      "query": "查询采购总金额超过50000的工程号",
+      "correct": true,
+      "predicted_sql": "SELECT job_no, SUM(po_amt) AS \"采购总金额\"\nFROM purchase_order\nGROUP BY job_no\nHAVING SUM(po_amt) > 50000;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT job_no, SUM(po_amt) AS \"采购总金额\"\nFROM purchase_order\nGROUP BY job_no\nHAVING SUM(po_amt) > 50000;",
+          "success": true,
+          "row_count": 3
+        }
+      ]
+    },
+    {
+      "id": "q077",
+      "category": "having",
+      "query": "查询采购总金额超过100000的工程号",
+      "correct": true,
+      "predicted_sql": "SELECT job_no\nFROM purchase_order\nGROUP BY job_no\nHAVING SUM(po_amt) > 100000;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT job_no\nFROM purchase_order\nGROUP BY job_no\nHAVING SUM(po_amt) > 100000;",
+          "success": true,
+          "row_count": 3
+        }
+      ]
+    },
+    {
+      "id": "q078",
+      "category": "having",
+      "query": "查询采购总金额超过200000的工程号",
+      "correct": true,
+      "predicted_sql": "SELECT job_no FROM purchase_order GROUP BY job_no HAVING SUM(po_amt) > 200000;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT job_no FROM purchase_order GROUP BY job_no HAVING SUM(po_amt) > 200000;",
+          "success": true,
+          "row_count": 2
+        }
+      ]
+    },
+    {
+      "id": "q079",
+      "category": "having",
+      "query": "查询采购总金额超过500000的工程号",
+      "correct": true,
+      "predicted_sql": "SELECT job_no\nFROM purchase_order\nGROUP BY job_no\nHAVING SUM(po_amt) > 500000;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT job_no\nFROM purchase_order\nGROUP BY job_no\nHAVING SUM(po_amt) > 500000;",
+          "success": true,
+          "row_count": 2
+        }
+      ]
+    },
+    {
+      "id": "q080",
+      "category": "having",
+      "query": "查询采购单数量超过0的工程号",
+      "correct": true,
+      "predicted_sql": "SELECT job_no\nFROM purchase_order\nGROUP BY job_no\nHAVING COUNT(po_no) > 0;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT job_no\nFROM purchase_order\nGROUP BY job_no\nHAVING COUNT(po_no) > 0;",
+          "success": true,
+          "row_count": 7
+        }
+      ]
+    },
+    {
+      "id": "q081",
+      "category": "having",
+      "query": "查询采购单数量超过1的工程号",
+      "correct": true,
+      "predicted_sql": "SELECT job_no FROM purchase_order GROUP BY job_no HAVING COUNT(po_no) > 1;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT job_no FROM purchase_order GROUP BY job_no HAVING COUNT(po_no) > 1;",
+          "success": true,
+          "row_count": 3
+        }
+      ]
+    },
+    {
+      "id": "q082",
+      "category": "having",
+      "query": "查询采购单数量超过2的工程号",
+      "correct": true,
+      "predicted_sql": "SELECT job_no\nFROM purchase_order\nGROUP BY job_no\nHAVING COUNT(po_no) > 2;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT job_no\nFROM purchase_order\nGROUP BY job_no\nHAVING COUNT(po_no) > 2;",
+          "success": true,
+          "row_count": 2
+        }
+      ]
+    },
+    {
+      "id": "q083",
+      "category": "having",
+      "query": "查询采购单数量超过1的供应商编号",
+      "correct": true,
+      "predicted_sql": "SELECT supplier_id FROM purchase_order GROUP BY supplier_id HAVING COUNT(po_no) > 1;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT supplier_id FROM purchase_order GROUP BY supplier_id HAVING COUNT(po_no) > 1;",
+          "success": true,
+          "row_count": 2
+        }
+      ]
+    },
+    {
+      "id": "q084",
+      "category": "having",
+      "query": "查询采购单数量超过2的供应商编号",
+      "correct": true,
+      "predicted_sql": "SELECT supplier_id FROM purchase_order GROUP BY supplier_id HAVING COUNT(po_no) > 2;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT supplier_id FROM purchase_order GROUP BY supplier_id HAVING COUNT(po_no) > 2;",
+          "success": true,
+          "row_count": 2
+        }
+      ]
+    },
+    {
+      "id": "q085",
+      "category": "having",
+      "query": "查询变更总金额超过10000的项目编号",
+      "correct": true,
+      "predicted_sql": "SELECT project_code\nFROM change_order\nGROUP BY project_code\nHAVING SUM(change_amt) > 10000;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "pm_db",
+          "sql": "SELECT project_code\nFROM change_order\nGROUP BY project_code\nHAVING SUM(change_amt) > 10000;",
+          "success": true,
+          "row_count": 2
+        }
+      ]
+    },
+    {
+      "id": "q086",
+      "category": "having",
+      "query": "查询变更总金额超过50000的项目编号",
+      "correct": true,
+      "predicted_sql": "SELECT project_code\nFROM change_order\nGROUP BY project_code\nHAVING SUM(change_amt) > 50000;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "pm_db",
+          "sql": "SELECT project_code\nFROM change_order\nGROUP BY project_code\nHAVING SUM(change_amt) > 50000;",
+          "success": true,
+          "row_count": 2
+        }
+      ]
+    },
+    {
+      "id": "q087",
+      "category": "having",
+      "query": "查询变更总金额超过100000的项目编号",
+      "correct": true,
+      "predicted_sql": "SELECT project_code\nFROM change_order\nGROUP BY project_code\nHAVING SUM(change_amt) > 100000;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "pm_db",
+          "sql": "SELECT project_code\nFROM change_order\nGROUP BY project_code\nHAVING SUM(change_amt) > 100000;",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q088",
+      "category": "having",
+      "query": "查询里程碑数量超过1的项目编号",
+      "correct": true,
+      "predicted_sql": "SELECT project_code\nFROM milestone\nGROUP BY project_code\nHAVING COUNT(milestone_id) > 1;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "pm_db",
+          "sql": "SELECT project_code\nFROM milestone\nGROUP BY project_code\nHAVING COUNT(milestone_id) > 1;",
+          "success": true,
+          "row_count": 3
+        }
+      ]
+    },
+    {
+      "id": "q089",
+      "category": "having",
+      "query": "查询里程碑数量超过2的项目编号",
+      "correct": true,
+      "predicted_sql": "SELECT project_code FROM milestone GROUP BY project_code HAVING COUNT(milestone_id) > 2;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "pm_db",
+          "sql": "SELECT project_code FROM milestone GROUP BY project_code HAVING COUNT(milestone_id) > 2;",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q090",
+      "category": "having",
+      "query": "查询合同额合计超过1000000的业务板块",
+      "correct": true,
+      "predicted_sql": "SELECT business_unit FROM project GROUP BY business_unit HAVING SUM(contract_amt) > 1000000;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "pm_db",
+          "sql": "SELECT business_unit FROM project GROUP BY business_unit HAVING SUM(contract_amt) > 1000000;",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q091",
+      "category": "having",
+      "query": "查询工时合计超过20小时的工单号",
+      "correct": true,
+      "predicted_sql": "SELECT work_order_id, SUM(hours) AS \"工时合计\"\nFROM labor_hour\nGROUP BY work_order_id\nHAVING SUM(hours) > 20;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "mes_db",
+          "sql": "SELECT work_order_id, SUM(hours) AS \"工时合计\"\nFROM labor_hour\nGROUP BY work_order_id\nHAVING SUM(hours) > 20;",
+          "success": true,
+          "row_count": 4
+        }
+      ]
+    },
+    {
+      "id": "q092",
+      "category": "having",
+      "query": "查询工时合计超过50小时的工单号",
+      "correct": true,
+      "predicted_sql": "SELECT work_order_id, SUM(hours) AS total_hours\nFROM labor_hour\nGROUP BY work_order_id\nHAVING SUM(hours) > 50;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "mes_db",
+          "sql": "SELECT work_order_id, SUM(hours) AS total_hours\nFROM labor_hour\nGROUP BY work_order_id\nHAVING SUM(hours) > 50;",
+          "success": true,
+          "row_count": 3
+        }
+      ]
+    },
+    {
+      "id": "q093",
+      "category": "having",
+      "query": "查询工时合计超过100小时的工单号",
+      "correct": true,
+      "predicted_sql": "SELECT work_order_id, SUM(hours) AS \"SUM(hours)\"\nFROM labor_hour\nGROUP BY work_order_id\nHAVING SUM(hours) > 100;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "mes_db",
+          "sql": "SELECT work_order_id, SUM(hours) AS \"SUM(hours)\"\nFROM labor_hour\nGROUP BY work_order_id\nHAVING SUM(hours) > 100;",
+          "success": true,
+          "row_count": 2
+        }
+      ]
+    },
+    {
+      "id": "q094",
+      "category": "having",
+      "query": "查询工时合计超过30小时的工人姓名",
+      "correct": true,
+      "predicted_sql": "SELECT worker_name, SUM(hours) AS 工时合计 FROM labor_hour GROUP BY worker_name HAVING SUM(hours) > 30;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "mes_db",
+          "sql": "SELECT worker_name, SUM(hours) AS 工时合计 FROM labor_hour GROUP BY worker_name HAVING SUM(hours) > 30;",
+          "success": true,
+          "row_count": 4
+        }
+      ]
+    },
+    {
+      "id": "q095",
+      "category": "having",
+      "query": "查询工时合计超过80小时的工人姓名",
+      "correct": true,
+      "predicted_sql": "SELECT worker_name FROM labor_hour GROUP BY worker_name HAVING SUM(hours) > 80;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "mes_db",
+          "sql": "SELECT worker_name FROM labor_hour GROUP BY worker_name HAVING SUM(hours) > 80;",
+          "success": true,
+          "row_count": 3
+        }
+      ]
+    },
+    {
+      "id": "q096",
+      "category": "having",
+      "query": "查询实际产量合计超过500的车间",
+      "correct": true,
+      "predicted_sql": "SELECT \"workshop\", SUM(\"actual_qty\") AS \"actual_qty合计\"\nFROM capacity_stat\nGROUP BY \"workshop\"\nHAVING SUM(\"actual_qty\") > 500;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "mes_db",
+          "sql": "SELECT \"workshop\", SUM(\"actual_qty\") AS \"actual_qty合计\"\nFROM capacity_stat\nGROUP BY \"workshop\"\nHAVING SUM(\"actual_qty\") > 500;",
+          "success": true,
+          "row_count": 2
+        }
+      ]
+    },
+    {
+      "id": "q097",
+      "category": "having",
+      "query": "查询入库总量超过500的物料编码",
+      "correct": true,
+      "predicted_sql": "SELECT material_code, SUM(in_qty) AS 入库总量\nFROM batch\nGROUP BY material_code\nHAVING SUM(in_qty) > 500;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "wms_db",
+          "sql": "SELECT material_code, SUM(in_qty) AS 入库总量\nFROM batch\nGROUP BY material_code\nHAVING SUM(in_qty) > 500;",
+          "success": true,
+          "row_count": 4
+        }
+      ]
+    },
+    {
+      "id": "q098",
+      "category": "having",
+      "query": "查询入库总量超过1000的物料编码",
+      "correct": true,
+      "predicted_sql": "SELECT material_code\nFROM batch\nGROUP BY material_code\nHAVING SUM(in_qty) > 1000;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "wms_db",
+          "sql": "SELECT material_code\nFROM batch\nGROUP BY material_code\nHAVING SUM(in_qty) > 1000;",
+          "success": true,
+          "row_count": 4
+        }
+      ]
+    },
+    {
+      "id": "q099",
+      "category": "having",
+      "query": "查询入库总量超过3000的物料编码",
+      "correct": true,
+      "predicted_sql": "SELECT material_code\nFROM batch\nGROUP BY material_code\nHAVING SUM(in_qty) > 3000;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "wms_db",
+          "sql": "SELECT material_code\nFROM batch\nGROUP BY material_code\nHAVING SUM(in_qty) > 3000;",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q100",
+      "category": "having",
+      "query": "查询批次数量超过1的物料编码",
+      "correct": true,
+      "predicted_sql": "SELECT material_code FROM batch GROUP BY material_code HAVING COUNT(batch_no) > 1;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "wms_db",
+          "sql": "SELECT material_code FROM batch GROUP BY material_code HAVING COUNT(batch_no) > 1;",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q101",
+      "category": "cross_db",
+      "query": "查询实际成本超过预算的各个项目的采购总金额",
+      "correct": true,
+      "predicted_sql": "SELECT job_no, SUM(po_amt) AS 采购总金额 FROM purchase_order WHERE job_no IN ('J24001', 'J24003', 'J24006') GROUP BY job_no;",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "pm_db",
+          "sql": "SELECT project_code FROM project WHERE actual_cost > budget_amt;",
+          "success": true,
+          "row_count": 3
+        },
+        {
+          "database": "erp_db",
+          "sql": "SELECT job_no, SUM(po_amt) AS 采购总金额 FROM purchase_order WHERE job_no IN ('J24001', 'J24003', 'J24006') GROUP BY job_no;",
+          "success": true,
+          "row_count": 3
+        }
+      ]
+    },
+    {
+      "id": "q102",
+      "category": "cross_db",
+      "query": "查询建筑装修板块项目的采购总金额",
+      "correct": true,
+      "predicted_sql": "SELECT SUM(\"po_amt\") AS \"采购总金额\" FROM purchase_order WHERE \"job_no\" IN ('J24001', 'J24002', 'J24003', 'J24004', 'J24005', 'J24006', 'J24008');",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "pm_db",
+          "sql": "SELECT project_code FROM project WHERE business_unit = '建筑装修';",
+          "success": true,
+          "row_count": 7
+        },
+        {
+          "database": "erp_db",
+          "sql": "SELECT SUM(\"po_amt\") AS \"采购总金额\" FROM purchase_order WHERE \"job_no\" IN ('J24001', 'J24002', 'J24003', 'J24004', 'J24005', 'J24006', 'J24008');",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q103",
+      "category": "cross_db",
+      "query": "查询消防板块项目的采购总金额",
+      "correct": true,
+      "predicted_sql": "SELECT SUM(po_amt) FROM purchase_order WHERE job_no IN ('J24007');",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": true,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [
+        "semantic_mismatch"
+      ],
+      "steps": [
+        {
+          "database": "pm_db",
+          "sql": "SELECT project_code FROM project WHERE business_unit = '消防';",
+          "success": true,
+          "row_count": 1
+        },
+        {
+          "database": "erp_db",
+          "sql": "SELECT SUM(po_amt) FROM purchase_order WHERE job_no IN ('J24007');",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q104",
+      "category": "cross_db",
+      "query": "查询状态为active的项目的订单金额",
+      "correct": false,
+      "predicted_sql": "SELECT job_no, order_amt FROM sales_order WHERE job_no IN ('J24001', 'J24003', 'J24004', 'J24006', 'J24007');",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": true,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "pm_db",
+          "sql": "SELECT project_code FROM project WHERE project_status = 'active';",
+          "success": true,
+          "row_count": 5
+        },
+        {
+          "database": "erp_db",
+          "sql": "SELECT job_no, order_amt FROM sales_order WHERE job_no IN ('J24001', 'J24003', 'J24004', 'J24006', 'J24007');",
+          "success": true,
+          "row_count": 5
+        }
+      ]
+    },
+    {
+      "id": "q105",
+      "category": "cross_db",
+      "query": "查询合同额大于1000000的项目的采购单号",
+      "correct": true,
+      "predicted_sql": "SELECT po_no FROM purchase_order WHERE job_no IN ('J24001', 'J24003');",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": true,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [
+        "semantic_mismatch"
+      ],
+      "steps": [
+        {
+          "database": "pm_db",
+          "sql": "SELECT project_code FROM project WHERE contract_amt > 1000000;",
+          "success": true,
+          "row_count": 2
+        },
+        {
+          "database": "erp_db",
+          "sql": "SELECT po_no FROM purchase_order WHERE job_no IN ('J24001', 'J24003');",
+          "success": true,
+          "row_count": 6
+        }
+      ]
+    },
+    {
+      "id": "q106",
+      "category": "cross_db",
+      "query": "查询里程碑状态为delayed的项目的生产工单号",
+      "correct": true,
+      "predicted_sql": "SELECT work_order_id FROM work_order WHERE job_no IN ('J24001', 'J24003');",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": true,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [
+        "semantic_mismatch"
+      ],
+      "steps": [
+        {
+          "database": "pm_db",
+          "sql": "SELECT project_code FROM milestone WHERE ms_status = 'delayed';",
+          "success": true,
+          "row_count": 2
+        },
+        {
+          "database": "mes_db",
+          "sql": "SELECT work_order_id FROM work_order WHERE job_no IN ('J24001', 'J24003');",
+          "success": true,
+          "row_count": 4
+        }
+      ]
+    },
+    {
+      "id": "q107",
+      "category": "cross_db",
+      "query": "查询里程碑状态为pending的项目的生产工单号",
+      "correct": true,
+      "predicted_sql": "SELECT work_order_id FROM work_order WHERE job_no IN ('J24001', 'J24003', 'J24004', 'J24007');",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": true,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [
+        "semantic_mismatch"
+      ],
+      "steps": [
+        {
+          "database": "pm_db",
+          "sql": "SELECT project_code FROM milestone WHERE ms_status = 'pending';",
+          "success": true,
+          "row_count": 4
+        },
+        {
+          "database": "mes_db",
+          "sql": "SELECT work_order_id FROM work_order WHERE job_no IN ('J24001', 'J24003', 'J24004', 'J24007');",
+          "success": true,
+          "row_count": 5
+        }
+      ]
+    },
+    {
+      "id": "q108",
+      "category": "cross_db",
+      "query": "查询超预算项目的当前生产工序",
+      "correct": true,
+      "predicted_sql": "SELECT job_no, current_process FROM work_order WHERE job_no IN ('J24001', 'J24003', 'J24006');",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "pm_db",
+          "sql": "SELECT project_code FROM project WHERE actual_cost > budget_amt;",
+          "success": true,
+          "row_count": 3
+        },
+        {
+          "database": "mes_db",
+          "sql": "SELECT job_no, current_process FROM work_order WHERE job_no IN ('J24001', 'J24003', 'J24006');",
+          "success": true,
+          "row_count": 5
+        }
+      ]
+    },
+    {
+      "id": "q109",
+      "category": "cross_db",
+      "query": "查询建筑装修板块项目的工单数量",
+      "correct": true,
+      "predicted_sql": "SELECT COUNT(work_order_id) FROM work_order WHERE job_no IN ('J24001', 'J24002', 'J24003', 'J24004', 'J24005', 'J24006', 'J24008');",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": true,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [
+        "aggregation_unrequested",
+        "semantic_mismatch"
+      ],
+      "steps": [
+        {
+          "database": "pm_db",
+          "sql": "SELECT project_code FROM project WHERE business_unit = '建筑装修';",
+          "success": true,
+          "row_count": 7
+        },
+        {
+          "database": "mes_db",
+          "sql": "SELECT COUNT(work_order_id) FROM work_order WHERE job_no IN ('J24001', 'J24002', 'J24003', 'J24004', 'J24005', 'J24006', 'J24008');",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q110",
+      "category": "cross_db",
+      "query": "查询订单状态为in_production的工程的生产车间",
+      "correct": false,
+      "predicted_sql": "SELECT \"workshop\" FROM work_order WHERE \"job_no\" IN ('J24001', 'J24003', 'J24004', 'J24006');",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": true,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT job_no FROM sales_order WHERE order_status = 'in_production';",
+          "success": true,
+          "row_count": 4
+        },
+        {
+          "database": "mes_db",
+          "sql": "SELECT \"workshop\" FROM work_order WHERE \"job_no\" IN ('J24001', 'J24003', 'J24004', 'J24006');",
+          "success": true,
+          "row_count": 6
+        }
+      ]
+    },
+    {
+      "id": "q111",
+      "category": "cross_db",
+      "query": "查询订单状态为delivered的工程的生产车间",
+      "correct": false,
+      "predicted_sql": "SELECT workshop FROM work_order WHERE job_no IN ('J24002', 'J24005', 'J24008');",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": true,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT job_no FROM sales_order WHERE order_status = 'delivered';",
+          "success": true,
+          "row_count": 3
+        },
+        {
+          "database": "mes_db",
+          "sql": "SELECT workshop FROM work_order WHERE job_no IN ('J24002', 'J24005', 'J24008');",
+          "success": true,
+          "row_count": 3
+        }
+      ]
+    },
+    {
+      "id": "q112",
+      "category": "cross_db",
+      "query": "查询订单金额大于1000000的工程的工单号",
+      "correct": true,
+      "predicted_sql": "SELECT work_order_id FROM work_order WHERE job_no IN ('J24001', 'J24003');",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT job_no FROM sales_order WHERE order_amt > 1000000;",
+          "success": true,
+          "row_count": 2
+        },
+        {
+          "database": "mes_db",
+          "sql": "SELECT work_order_id FROM work_order WHERE job_no IN ('J24001', 'J24003');",
+          "success": true,
+          "row_count": 4
+        }
+      ]
+    },
+    {
+      "id": "q113",
+      "category": "cross_db",
+      "query": "查询板材类供应商的入库批次号",
+      "correct": true,
+      "predicted_sql": "SELECT batch_no FROM batch WHERE supplier_id IN ('SUP-01');",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": true,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [
+        "semantic_mismatch"
+      ],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT supplier_id FROM supplier WHERE category = '板材';",
+          "success": true,
+          "row_count": 1
+        },
+        {
+          "database": "wms_db",
+          "sql": "SELECT batch_no FROM batch WHERE supplier_id IN ('SUP-01');",
+          "success": true,
+          "row_count": 5
+        }
+      ]
+    },
+    {
+      "id": "q114",
+      "category": "cross_db",
+      "query": "查询五金类供应商的入库批次号",
+      "correct": true,
+      "predicted_sql": "SELECT batch_no FROM batch WHERE supplier_id IN ('SUP-02');",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": true,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [
+        "semantic_mismatch"
+      ],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT supplier_id FROM supplier WHERE category = '五金';",
+          "success": true,
+          "row_count": 1
+        },
+        {
+          "database": "wms_db",
+          "sql": "SELECT batch_no FROM batch WHERE supplier_id IN ('SUP-02');",
+          "success": true,
+          "row_count": 2
+        }
+      ]
+    },
+    {
+      "id": "q115",
+      "category": "cross_db",
+      "query": "查询准时率低于0.8的供应商的入库总量合计",
+      "correct": true,
+      "predicted_sql": "SELECT SUM(in_qty) FROM batch WHERE supplier_id IN ('SUP-03', 'SUP-05');",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT supplier_id FROM supplier WHERE on_time_rate < 0.8;",
+          "success": true,
+          "row_count": 2
+        },
+        {
+          "database": "wms_db",
+          "sql": "SELECT SUM(in_qty) FROM batch WHERE supplier_id IN ('SUP-03', 'SUP-05');",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q116",
+      "category": "cross_db",
+      "query": "查询准时率低于0.9的供应商的入库总量合计",
+      "correct": true,
+      "predicted_sql": "SELECT SUM(\"in_qty\") FROM batch WHERE \"supplier_id\" IN ('SUP-02', 'SUP-03', 'SUP-05');",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT supplier_id FROM supplier WHERE on_time_rate < 0.9;",
+          "success": true,
+          "row_count": 3
+        },
+        {
+          "database": "wms_db",
+          "sql": "SELECT SUM(\"in_qty\") FROM batch WHERE \"supplier_id\" IN ('SUP-02', 'SUP-03', 'SUP-05');",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q117",
+      "category": "cross_db",
+      "query": "查询已完工工单对应项目的合同额",
+      "correct": false,
+      "predicted_sql": "SELECT project_code, contract_amt FROM project WHERE project_code IN ('J24002', 'J24005', 'J24008');",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": true,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "mes_db",
+          "sql": "SELECT job_no FROM work_order WHERE work_status = 'finished';",
+          "success": true,
+          "row_count": 3
+        },
+        {
+          "database": "pm_db",
+          "sql": "SELECT project_code, contract_amt FROM project WHERE project_code IN ('J24002', 'J24005', 'J24008');",
+          "success": true,
+          "row_count": 3
+        }
+      ]
+    },
+    {
+      "id": "q118",
+      "category": "cross_db",
+      "query": "查询良率低于0.95的工单对应的客户名称",
+      "correct": false,
+      "predicted_sql": "SELECT customer_name FROM sales_order WHERE job_no IN (/* 步骤2所需的job_no列表缺失，无法执行 */);",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": true,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [
+        "empty_result",
+        "empty_result"
+      ],
+      "steps": [
+        {
+          "database": "mes_db",
+          "sql": "SELECT work_order_id FROM quality_check WHERE yield_rate < 0.95;",
+          "success": true,
+          "row_count": 3
+        },
+        {
+          "database": "mes_db",
+          "sql": "SELECT NULL WHERE 0;",
+          "success": true,
+          "row_count": 0
+        },
+        {
+          "database": "erp_db",
+          "sql": "SELECT customer_name FROM sales_order WHERE job_no IN (/* 步骤2所需的job_no列表缺失，无法执行 */);",
+          "success": true,
+          "row_count": 0
+        }
+      ]
+    },
+    {
+      "id": "q119",
+      "category": "cross_db",
+      "query": "查询采购总额超过100000的工程对应的项目名称",
+      "correct": true,
+      "predicted_sql": "SELECT project_name FROM project WHERE project_code IN ('J24001', 'J24002', 'J24003');",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT job_no\nFROM purchase_order\nGROUP BY job_no\nHAVING SUM(po_amt) > 100000;",
+          "success": true,
+          "row_count": 3
+        },
+        {
+          "database": "pm_db",
+          "sql": "SELECT project_name FROM project WHERE project_code IN ('J24001', 'J24002', 'J24003');",
+          "success": true,
+          "row_count": 3
+        }
+      ]
+    },
+    {
+      "id": "q120",
+      "category": "cross_db",
+      "query": "查询采购总额超过500000的工程对应的项目名称",
+      "correct": true,
+      "predicted_sql": "SELECT project_name FROM project WHERE project_code IN ('J24001', 'J24003');",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT job_no FROM purchase_order GROUP BY job_no HAVING SUM(po_amt) > 500000;",
+          "success": true,
+          "row_count": 2
+        },
+        {
+          "database": "pm_db",
+          "sql": "SELECT project_name FROM project WHERE project_code IN ('J24001', 'J24003');",
+          "success": true,
+          "row_count": 2
+        }
+      ]
+    },
+    {
+      "id": "q121",
+      "category": "cross_db",
+      "query": "查询已验收项目的订单金额",
+      "correct": false,
+      "predicted_sql": "SELECT order_amt FROM sales_order WHERE job_no IN ('J24002', 'J24005', 'J24008');",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": true,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "pm_db",
+          "sql": "SELECT DISTINCT project_code FROM acceptance WHERE project_code IS NOT NULL;",
+          "success": true,
+          "row_count": 3
+        },
+        {
+          "database": "erp_db",
+          "sql": "SELECT order_amt FROM sales_order WHERE job_no IN ('J24002', 'J24005', 'J24008');",
+          "success": true,
+          "row_count": 3
+        }
+      ]
+    },
+    {
+      "id": "q122",
+      "category": "cross_db",
+      "query": "查询一车间生产的工程的客户名称",
+      "correct": true,
+      "predicted_sql": "SELECT customer_name FROM sales_order WHERE job_no IN ('J24001', 'J24003', 'J24004', 'J24005', 'J24006', 'J24008');",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "mes_db",
+          "sql": "SELECT job_no FROM work_order WHERE workshop = '一车间';",
+          "success": true,
+          "row_count": 6
+        },
+        {
+          "database": "erp_db",
+          "sql": "SELECT customer_name FROM sales_order WHERE job_no IN ('J24001', 'J24003', 'J24004', 'J24005', 'J24006', 'J24008');",
+          "success": true,
+          "row_count": 6
+        }
+      ]
+    },
+    {
+      "id": "q123",
+      "category": "cross_db",
+      "query": "查询二车间生产的工程的客户名称",
+      "correct": true,
+      "predicted_sql": "SELECT customer_name FROM sales_order WHERE job_no IN ('J24001', 'J24002', 'J24003');",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "mes_db",
+          "sql": "SELECT job_no FROM work_order WHERE workshop = '二车间';",
+          "success": true,
+          "row_count": 3
+        },
+        {
+          "database": "erp_db",
+          "sql": "SELECT customer_name FROM sales_order WHERE job_no IN ('J24001', 'J24002', 'J24003');",
+          "success": true,
+          "row_count": 3
+        }
+      ]
+    },
+    {
+      "id": "q124",
+      "category": "cross_db",
+      "query": "查询进行中项目的采购单数量",
+      "correct": true,
+      "predicted_sql": "SELECT COUNT(po_no) AS 采购单数量 FROM purchase_order WHERE job_no IN ('J24001', 'J24003', 'J24004', 'J24006', 'J24007');",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": true,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [
+        "aggregation_unrequested"
+      ],
+      "steps": [
+        {
+          "database": "pm_db",
+          "sql": "SELECT project_code FROM project WHERE project_status = 'active';",
+          "success": true,
+          "row_count": 5
+        },
+        {
+          "database": "erp_db",
+          "sql": "SELECT COUNT(po_no) AS 采购单数量 FROM purchase_order WHERE job_no IN ('J24001', 'J24003', 'J24004', 'J24006', 'J24007');",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q125",
+      "category": "cross_db",
+      "query": "查询变更金额大于50000的项目的生产车间",
+      "correct": false,
+      "predicted_sql": "SELECT workshop FROM work_order WHERE job_no IN ('J24001', 'J24003');",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": true,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [
+        "semantic_mismatch"
+      ],
+      "steps": [
+        {
+          "database": "pm_db",
+          "sql": "SELECT project_code FROM change_order WHERE change_amt > 50000;",
+          "success": true,
+          "row_count": 2
+        },
+        {
+          "database": "mes_db",
+          "sql": "SELECT workshop FROM work_order WHERE job_no IN ('J24001', 'J24003');",
+          "success": true,
+          "row_count": 4
+        }
+      ]
+    },
+    {
+      "id": "q126",
+      "category": "time_range",
+      "query": "查询2024-01-01到2024-03-31期间签单的订单号",
+      "correct": true,
+      "predicted_sql": "SELECT order_no FROM sales_order WHERE sign_date BETWEEN '2024-01-01' AND '2024-03-31';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT order_no FROM sales_order WHERE sign_date BETWEEN '2024-01-01' AND '2024-03-31';",
+          "success": true,
+          "row_count": 5
+        }
+      ]
+    },
+    {
+      "id": "q127",
+      "category": "time_range",
+      "query": "查询2024-04-01到2024-06-30期间签单的订单号",
+      "correct": true,
+      "predicted_sql": "SELECT order_no FROM sales_order WHERE sign_date BETWEEN '2024-04-01' AND '2024-06-30';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT order_no FROM sales_order WHERE sign_date BETWEEN '2024-04-01' AND '2024-06-30';",
+          "success": true,
+          "row_count": 3
+        }
+      ]
+    },
+    {
+      "id": "q128",
+      "category": "time_range",
+      "query": "查询2024-02-01到2024-02-29期间签单的订单号",
+      "correct": true,
+      "predicted_sql": "SELECT order_no FROM sales_order WHERE sign_date BETWEEN '2024-02-01' AND '2024-02-29';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT order_no FROM sales_order WHERE sign_date BETWEEN '2024-02-01' AND '2024-02-29';",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q129",
+      "category": "time_range",
+      "query": "统计2024-01-01到2024-03-31期间的采购总金额",
+      "correct": true,
+      "predicted_sql": "SELECT SUM(po_amt) FROM purchase_order WHERE po_date BETWEEN '2024-01-01' AND '2024-03-31';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT SUM(po_amt) FROM purchase_order WHERE po_date BETWEEN '2024-01-01' AND '2024-03-31';",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q130",
+      "category": "time_range",
+      "query": "统计2024-04-01到2024-06-30期间的采购总金额",
+      "correct": true,
+      "predicted_sql": "SELECT SUM(po_amt) AS 采购总金额 FROM purchase_order WHERE po_date BETWEEN '2024-04-01' AND '2024-06-30';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT SUM(po_amt) AS 采购总金额 FROM purchase_order WHERE po_date BETWEEN '2024-04-01' AND '2024-06-30';",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q131",
+      "category": "time_range",
+      "query": "查询2024-03-01之后付款的付款编号",
+      "correct": true,
+      "predicted_sql": "SELECT payment_id FROM payment WHERE paid_date > '2024-03-01';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT payment_id FROM payment WHERE paid_date > '2024-03-01';",
+          "success": true,
+          "row_count": 6
+        }
+      ]
+    },
+    {
+      "id": "q132",
+      "category": "time_range",
+      "query": "查询2024-04-01之后付款的付款编号",
+      "correct": true,
+      "predicted_sql": "SELECT payment_id FROM payment WHERE paid_date > '2024-04-01';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT payment_id FROM payment WHERE paid_date > '2024-04-01';",
+          "success": true,
+          "row_count": 3
+        }
+      ]
+    },
+    {
+      "id": "q133",
+      "category": "time_range",
+      "query": "查询2024-02-01之后开工的项目名称",
+      "correct": true,
+      "predicted_sql": "SELECT project_name FROM project WHERE start_date > '2024-02-01';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "pm_db",
+          "sql": "SELECT project_name FROM project WHERE start_date > '2024-02-01';",
+          "success": true,
+          "row_count": 7
+        }
+      ]
+    },
+    {
+      "id": "q134",
+      "category": "time_range",
+      "query": "查询2024-04-01之后开工的项目名称",
+      "correct": true,
+      "predicted_sql": "SELECT project_name FROM project WHERE start_date > '2024-04-01';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "pm_db",
+          "sql": "SELECT project_name FROM project WHERE start_date > '2024-04-01';",
+          "success": true,
+          "row_count": 2
+        }
+      ]
+    },
+    {
+      "id": "q135",
+      "category": "time_range",
+      "query": "查询计划完工日期早于2024-05-30的项目名称",
+      "correct": true,
+      "predicted_sql": "SELECT project_name FROM project WHERE due_date < '2024-05-30';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "pm_db",
+          "sql": "SELECT project_name FROM project WHERE due_date < '2024-05-30';",
+          "success": true,
+          "row_count": 3
+        }
+      ]
+    },
+    {
+      "id": "q136",
+      "category": "time_range",
+      "query": "查询计划完工日期早于2024-06-30的项目名称",
+      "correct": true,
+      "predicted_sql": "SELECT project_name FROM project WHERE due_date < '2024-06-30';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "pm_db",
+          "sql": "SELECT project_name FROM project WHERE due_date < '2024-06-30';",
+          "success": true,
+          "row_count": 5
+        }
+      ]
+    },
+    {
+      "id": "q137",
+      "category": "time_range",
+      "query": "查询2024-03-01之后验收的项目编号",
+      "correct": true,
+      "predicted_sql": "SELECT project_code FROM acceptance WHERE accept_date > '2024-03-01';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "pm_db",
+          "sql": "SELECT project_code FROM acceptance WHERE accept_date > '2024-03-01';",
+          "success": true,
+          "row_count": 3
+        }
+      ]
+    },
+    {
+      "id": "q138",
+      "category": "time_range",
+      "query": "查询2024-05-01之后验收的项目编号",
+      "correct": true,
+      "predicted_sql": "SELECT project_code FROM acceptance WHERE accept_date > '2024-05-01';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "pm_db",
+          "sql": "SELECT project_code FROM acceptance WHERE accept_date > '2024-05-01';",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q139",
+      "category": "time_range",
+      "query": "查询2024-03-01之后排产的工单号",
+      "correct": true,
+      "predicted_sql": "SELECT work_order_id FROM work_order WHERE schedule_date > '2024-03-01';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "mes_db",
+          "sql": "SELECT work_order_id FROM work_order WHERE schedule_date > '2024-03-01';",
+          "success": true,
+          "row_count": 7
+        }
+      ]
+    },
+    {
+      "id": "q140",
+      "category": "time_range",
+      "query": "查询2024-04-01之后排产的工单号",
+      "correct": true,
+      "predicted_sql": "SELECT work_order_id FROM work_order WHERE schedule_date > '2024-04-01';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "mes_db",
+          "sql": "SELECT work_order_id FROM work_order WHERE schedule_date > '2024-04-01';",
+          "success": true,
+          "row_count": 4
+        }
+      ]
+    },
+    {
+      "id": "q141",
+      "category": "time_range",
+      "query": "查询2024-04-20之后排产的工单号",
+      "correct": true,
+      "predicted_sql": "SELECT work_order_id FROM work_order WHERE schedule_date > '2024-04-20';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "mes_db",
+          "sql": "SELECT work_order_id FROM work_order WHERE schedule_date > '2024-04-20';",
+          "success": true,
+          "row_count": 2
+        }
+      ]
+    },
+    {
+      "id": "q142",
+      "category": "time_range",
+      "query": "查询2024-03-15之后完工的工单号",
+      "correct": true,
+      "predicted_sql": "SELECT work_order_id FROM work_order WHERE finish_date > '2024-03-15';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "mes_db",
+          "sql": "SELECT work_order_id FROM work_order WHERE finish_date > '2024-03-15';",
+          "success": true,
+          "row_count": 2
+        }
+      ]
+    },
+    {
+      "id": "q143",
+      "category": "time_range",
+      "query": "查询2024-04-01之后完工的工单号",
+      "correct": true,
+      "predicted_sql": "SELECT work_order_id FROM work_order WHERE finish_date > '2024-04-01';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "mes_db",
+          "sql": "SELECT work_order_id FROM work_order WHERE finish_date > '2024-04-01';",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q144",
+      "category": "time_range",
+      "query": "统计2024-04-01到2024-04-30期间的工时合计",
+      "correct": true,
+      "predicted_sql": "SELECT SUM(hours) AS 工时合计 FROM labor_hour WHERE work_date BETWEEN '2024-04-01' AND '2024-04-30';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "mes_db",
+          "sql": "SELECT SUM(hours) AS 工时合计 FROM labor_hour WHERE work_date BETWEEN '2024-04-01' AND '2024-04-30';",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q145",
+      "category": "time_range",
+      "query": "统计2024-02-01到2024-02-29期间的工时合计",
+      "correct": true,
+      "predicted_sql": "SELECT SUM(\"hours\") AS 工时合计 FROM labor_hour WHERE \"work_date\" BETWEEN '2024-02-01' AND '2024-02-29';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "mes_db",
+          "sql": "SELECT SUM(\"hours\") AS 工时合计 FROM labor_hour WHERE \"work_date\" BETWEEN '2024-02-01' AND '2024-02-29';",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q146",
+      "category": "time_range",
+      "query": "查询2024-02-01之后入库的批次号",
+      "correct": true,
+      "predicted_sql": "SELECT batch_no FROM batch WHERE in_date > '2024-02-01';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "wms_db",
+          "sql": "SELECT batch_no FROM batch WHERE in_date > '2024-02-01';",
+          "success": true,
+          "row_count": 7
+        }
+      ]
+    },
+    {
+      "id": "q147",
+      "category": "time_range",
+      "query": "查询2024-04-01之后入库的批次号",
+      "correct": true,
+      "predicted_sql": "SELECT batch_no FROM batch WHERE in_date > '2024-04-01';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "wms_db",
+          "sql": "SELECT batch_no FROM batch WHERE in_date > '2024-04-01';",
+          "success": true,
+          "row_count": 2
+        }
+      ]
+    },
+    {
+      "id": "q148",
+      "category": "time_range",
+      "query": "统计2024-01-01到2024-02-28期间的入库总量",
+      "correct": true,
+      "predicted_sql": "SELECT SUM(in_qty) FROM batch WHERE in_date BETWEEN '2024-01-01' AND '2024-02-28';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "wms_db",
+          "sql": "SELECT SUM(in_qty) FROM batch WHERE in_date BETWEEN '2024-01-01' AND '2024-02-28';",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q149",
+      "category": "time_range",
+      "query": "统计2024-03-01到2024-04-30期间的入库总量",
+      "correct": true,
+      "predicted_sql": "SELECT SUM(in_qty) FROM batch WHERE in_date BETWEEN '2024-03-01' AND '2024-04-30';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": false,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "wms_db",
+          "sql": "SELECT SUM(in_qty) FROM batch WHERE in_date BETWEEN '2024-03-01' AND '2024-04-30';",
+          "success": true,
+          "row_count": 1
+        }
+      ]
+    },
+    {
+      "id": "q150",
+      "category": "time_range",
+      "query": "查询2024-04-30的库存快照中在库数量",
+      "correct": false,
+      "predicted_sql": "SELECT on_hand_qty FROM stock_snapshot WHERE snapshot_date = '2024-04-30';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "silent_error": true,
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "wms_db",
+          "sql": "SELECT on_hand_qty FROM stock_snapshot WHERE snapshot_date = '2024-04-30';",
+          "success": true,
+          "row_count": 8
+        }
+      ]
+    }
+  ]
+}

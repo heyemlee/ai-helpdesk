@@ -1,0 +1,144 @@
+# AI SQL Agent 内网私有化编排：应用 + PostgreSQL(pgvector) + vLLM 自建推理服务
+#
+#   docker compose --project-directory . -f deploy/docker-compose.vllm.yml up -d --build
+#
+# 必须带 --project-directory .（或用 make up）：compose 文件在 deploy/ 里，
+# 但构建上下文、deploy/api_keys.json 挂载和 .env 变量替换都以仓库根为准。
+#
+# 与 docker-compose.prod.yml 的唯一区别：模型不走公网 API，而是跑在内网自建的
+# vLLM 上。应用侧代码完全不用改——vLLM 对外暴露的就是 OpenAI 兼容接口，
+# 只要把 AI_SQL_CHAT_URL / AI_SQL_EMBEDDING_URL 指过去即可。
+#
+# 适用场景：客户与供应商信息、合同金额、批次成本单价这类数据不允许出内网。
+#
+# 前置条件：
+#   1) 宿主机有 NVIDIA GPU 且装好 nvidia-container-toolkit
+#   2) 模型权重已下载到 ${MODEL_DIR}（默认 ./models）
+#   3) cp deploy/api_keys.example.json deploy/api_keys.json 并改掉里面的 key
+#
+# 显存参考（bf16）：14B 约需 32GB，7B 约需 18GB，显存不足时换小模型或加 --quantization
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: ai-sql-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ai_sql}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ai_sql}
+      POSTGRES_DB: ${POSTGRES_DB:-ai_sql}
+    volumes:
+      - ai_sql_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ai_sql}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # 对话/规划/SQL 生成模型
+  vllm-chat:
+    image: vllm/vllm-openai:latest
+    container_name: ai-sql-vllm-chat
+    command:
+      - --model=${CHAT_MODEL_PATH:-/models/Qwen2.5-14B-Instruct}
+      - --served-model-name=${CHAT_MODEL_NAME:-Qwen2.5-14B-Instruct}
+      - --api-key=${VLLM_API_KEY:-sk-internal-vllm}
+      - --max-model-len=16384          # 单次查询 Token 预算 ~8k，留一倍余量
+      - --gpu-memory-utilization=0.85
+      - --port=8000
+    volumes:
+      - ${MODEL_DIR:-./models}:/models:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 180s              # 加载权重较慢，给足启动时间
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  # Embedding 模型（Schema 向量索引与长期记忆共用）
+  vllm-embed:
+    image: vllm/vllm-openai:latest
+    container_name: ai-sql-vllm-embed
+    command:
+      - --model=${EMBED_MODEL_PATH:-/models/bge-m3}
+      - --served-model-name=${EMBED_MODEL_NAME:-bge-m3}
+      - --api-key=${VLLM_API_KEY:-sk-internal-vllm}
+      - --task=embed
+      - --port=8000
+    volumes:
+      - ${MODEL_DIR:-./models}:/models:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 120s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+    container_name: ai-sql-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      vllm-chat:
+        condition: service_healthy
+      vllm-embed:
+        condition: service_healthy
+    environment:
+      # ---- 模型服务：指向内网 vLLM，不出公网 ----
+      AI_SQL_CHAT_URL: http://vllm-chat:8000/v1/chat/completions
+      AI_SQL_EMBEDDING_URL: http://vllm-embed:8000/v1/embeddings
+      AI_SQL_MODEL_PROVIDER: openai
+      AI_SQL_OPENAI_API_KEY: ${VLLM_API_KEY:-sk-internal-vllm}
+      AI_SQL_CHAT_MODEL: ${CHAT_MODEL_NAME:-Qwen2.5-14B-Instruct}
+      AI_SQL_CODER_MODEL: ${CODER_MODEL_NAME:-Qwen2.5-14B-Instruct}
+      AI_SQL_EMBEDDING_MODEL: ${EMBED_MODEL_NAME:-bge-m3}
+      AI_SQL_EMBEDDING_DIMENSIONS: "1024"
+      # Rerank 走的是厂商自定义格式（非 OpenAI 标准），vLLM 不直接兼容。
+      # 留空时字段级精排退化为本地词面覆盖度打分（可用但弱于交叉编码精排）；
+      # 要恢复精排能力需自建 rerank 服务并做一层格式适配。
+      AI_SQL_RERANK_URL: ${AI_SQL_RERANK_URL:-}
+      # ---- 存储 ----
+      AI_SQL_PGVECTOR_DSN: postgresql://${POSTGRES_USER:-ai_sql}:${POSTGRES_PASSWORD:-ai_sql}@postgres:5432/${POSTGRES_DB:-ai_sql}
+      # ---- 鉴权 ----
+      AI_SQL_AUTH_MODE: api_key
+      AI_SQL_API_KEYS_FILE: /run/secrets/api_keys.json
+      # ---- 执行治理：单查询行数上限与超时，启动时交给执行器 ----
+      # 这里原来写的 10000 / 30 从未生效；1000 / 10 是一直实际在用的值，调大是真的会变。
+      AI_SQL_MAX_ROWS: "1000"
+      AI_SQL_MAX_EXECUTION_SECONDS: "10"
+      # ---- 调用治理：本地推理比公网快，超时可收紧 ----
+      AI_SQL_HTTP_TIMEOUT_SECONDS: "45"
+      AI_SQL_HTTP_MAX_RETRIES: "2"
+      AI_SQL_DEFAULT_RATE_LIMIT_PER_MINUTE: "60"
+      AI_SQL_SCHEMA_REFRESH_SECONDS: "300"
+      AI_SQL_LOG_FORMAT: json
+      AI_SQL_LOG_LEVEL: INFO
+    volumes:
+      - ./deploy/api_keys.json:/run/secrets/api_keys.json:ro
+      - ai_sql_runtime:/app/runtime_data
+    ports:
+      - "${AI_SQL_PORT:-8000}:8000"
+    restart: unless-stopped
+
+volumes:
+  ai_sql_pg_data:
+  ai_sql_runtime:

@@ -1,0 +1,171 @@
+{
+  "recorded_at": "2026-09-09T03:52:32+00:00",
+  "what_this_is": "ai-sql-agent 真实模型评测基线。判定口径 = benchmark/thresholds.json 的 full 档。",
+  "binding": {
+    "model": {
+      "provider": "anthropic",
+      "chat_model": "claude-sonnet-5",
+      "coder_model": "claude-sonnet-5",
+      "base_url_host": [
+        "claude-relay.liziqiao.com"
+      ]
+    },
+    "code": {
+      "repo": "ai-sql-agent",
+      "commit": "ee920e9f0ebf6065c69f74f3e03972a309ec3805",
+      "branch": "feat/p0-authorization-and-business-outcome",
+      "worktree_dirty_files": [],
+      "worktree_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "data": {
+      "semantic_layer": "builtin demo (AI_SQL_SEMANTIC_DIR 留空)",
+      "semantic_layer_note": "不是当前部署的 sim_erp/semantic。夹具 dataset.json 按内置演示元数据（erp_db/pm_db/mes_db/wms_db）写，sim_erp 下 pm/mes 两个别名 ATTACH 不上，GoldExecutor 会拒绝出分。这份基线因此只代表内置演示语义层。",
+      "dataset_sha256": "52b8041fae8e9d8ed784c96be0043b136cd59aa7b38cb09ece8491db7bc4f4d8",
+      "holdout_sha256": "4623583fcc65425e666c7f98cb43c22025ea7e86a2dbf1ec655a6a36d46408a9",
+      "thresholds_sha256": "05198cb9316ef36fa036a4b361ea10cc78440646885daf6572b6f011f01f52de",
+      "dataset_items": 150
+    }
+  },
+  "rounds": 3,
+  "gate_verdict": "FAIL",
+  "metrics": {
+    "accuracy": {
+      "mean": 0.8689,
+      "min": 0.86,
+      "max": 0.88,
+      "rounds": 3
+    },
+    "avg_column_ratio": {
+      "mean": 0.4363,
+      "min": 0.4356,
+      "max": 0.4375,
+      "rounds": 3,
+      "threshold": {
+        "max": 0.4,
+        "label": "平均进图字段占比（召回率护栏，生产路径口径）"
+      },
+      "verdict": "FAIL",
+      "worst_round_verdict": "FAIL"
+    },
+    "cat:aggregation": {
+      "mean": 0.92,
+      "min": 0.88,
+      "max": 0.96,
+      "rounds": 3
+    },
+    "cat:cross_db": {
+      "mean": 0.7333,
+      "min": 0.72,
+      "max": 0.76,
+      "rounds": 3
+    },
+    "cat:having": {
+      "mean": 1.0,
+      "min": 1.0,
+      "max": 1.0,
+      "rounds": 3
+    },
+    "cat:multi_join": {
+      "mean": 0.6533,
+      "min": 0.64,
+      "max": 0.68,
+      "rounds": 3
+    },
+    "cat:single_table": {
+      "mean": 0.9733,
+      "min": 0.96,
+      "max": 1.0,
+      "rounds": 3
+    },
+    "cat:time_range": {
+      "mean": 0.9333,
+      "min": 0.88,
+      "max": 0.96,
+      "rounds": 3
+    },
+    "column_recall": {
+      "mean": 1.0,
+      "min": 1.0,
+      "max": 1.0,
+      "rounds": 3,
+      "threshold": {
+        "min": 0.95,
+        "label": "字段召回率（评测集）"
+      },
+      "verdict": "PASS",
+      "worst_round_verdict": "PASS"
+    },
+    "cross_db": {
+      "mean": 0.7333,
+      "min": 0.72,
+      "max": 0.76,
+      "rounds": 3,
+      "threshold": {
+        "min": 0.9,
+        "label": "跨库执行准确率"
+      },
+      "verdict": "FAIL",
+      "worst_round_verdict": "FAIL"
+    },
+    "false_alarm_rate": {
+      "mean": 0.0588,
+      "min": 0.0538,
+      "max": 0.062,
+      "rounds": 3,
+      "threshold": {
+        "max": 0.2,
+        "label": "风险提示误报率（静默错误率护栏）"
+      },
+      "verdict": "PASS",
+      "worst_round_verdict": "PASS"
+    },
+    "holdout_recall": {
+      "mean": 1.0,
+      "min": 1.0,
+      "max": 1.0,
+      "rounds": 1,
+      "threshold": {
+        "min": 0.85,
+        "label": "字段召回率（留出集）"
+      },
+      "verdict": "PASS",
+      "worst_round_verdict": "PASS"
+    },
+    "recall_gap": {
+      "mean": 0.0,
+      "min": 0.0,
+      "max": 0.0,
+      "rounds": 3,
+      "threshold": {
+        "max": 0.03,
+        "label": "检索召回与进Prompt召回的落差（预算护栏）"
+      },
+      "verdict": "PASS",
+      "worst_round_verdict": "PASS"
+    },
+    "silent_error_rate": {
+      "mean": 0.1,
+      "min": 0.0867,
+      "max": 0.1133,
+      "rounds": 3,
+      "threshold": {
+        "max": 0.03,
+        "label": "静默错误率"
+      },
+      "verdict": "FAIL",
+      "worst_round_verdict": "FAIL"
+    },
+    "single_db": {
+      "mean": 0.896,
+      "min": 0.88,
+      "max": 0.912,
+      "rounds": 3,
+      "threshold": {
+        "min": 0.85,
+        "label": "单库执行准确率"
+      },
+      "verdict": "PASS",
+      "worst_round_verdict": "PASS"
+    }
+  }
+}

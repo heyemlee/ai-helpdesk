@@ -1,0 +1,71 @@
+{
+  "comment": "企业落地合理线。四项主指标 + 四项对偶护栏，任一未达标即阻断发布。依据与推导见 benchmark/README.md「四项落地指标与合理线」。avg_column_ratio 于 2026-08-20 从 0.30 重标为 0.40：原值按离线规则抽词口径（24.6%）定，而门禁跑的是生产路径（模型抽词 + 术语表，实测 34~42%）——口径定错，不是够不着才放宽。",
+  "full": {
+    "column_recall": {
+      "min": 0.95,
+      "label": "字段召回率（评测集）"
+    },
+    "holdout_recall": {
+      "min": 0.85,
+      "label": "字段召回率（留出集）"
+    },
+    "avg_column_ratio": {
+      "max": 0.4,
+      "label": "平均进图字段占比（召回率护栏，生产路径口径）"
+    },
+    "single_db": {
+      "min": 0.85,
+      "label": "单库执行准确率"
+    },
+    "cross_db": {
+      "min": 0.9,
+      "label": "跨库执行准确率"
+    },
+    "silent_error_rate": {
+      "max": 0.03,
+      "label": "静默错误率"
+    },
+    "false_alarm_rate": {
+      "max": 0.2,
+      "label": "风险提示误报率（静默错误率护栏）"
+    },
+    "recall_gap": {
+      "max": 0.03,
+      "label": "检索召回与进Prompt召回的落差（预算护栏）"
+    }
+  },
+  "smoke": {
+    "column_recall": {
+      "min": 1.0,
+      "label": "字段召回率（冒烟子集）"
+    },
+    "holdout_recall": {
+      "min": 0.5,
+      "label": "字段召回率（留出集 40 条，规则抽词口径实测 57.5%）"
+    },
+    "avg_column_ratio": {
+      "max": 0.45,
+      "label": "平均进图字段占比（4 条冒烟样本，比全集口径松）"
+    },
+    "single_db": {
+      "min": 1.0,
+      "label": "单库执行准确率"
+    },
+    "cross_db": {
+      "min": 1.0,
+      "label": "跨库执行准确率"
+    },
+    "silent_error_rate": {
+      "max": 0.0,
+      "label": "静默错误率"
+    },
+    "false_alarm_rate": {
+      "max": 0.5,
+      "label": "风险提示误报率"
+    },
+    "recall_gap": {
+      "max": 0.05,
+      "label": "检索/进Prompt 召回落差"
+    }
+  }
+}

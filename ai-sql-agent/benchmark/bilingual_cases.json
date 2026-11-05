@@ -1,0 +1,120 @@
+[
+  {
+    "id": "b01-zh",
+    "scenario": "supplier_on_time_rate",
+    "language": "zh",
+    "category": "single_table",
+    "query": "查询准时率低于0.9的供应商编号、供应商名称和准时率",
+    "gold_sql": "SELECT supplier_id, supplier_name, on_time_rate FROM erp.supplier WHERE on_time_rate < 0.9",
+    "gold_columns": [
+      "erp_db.supplier.supplier_id",
+      "erp_db.supplier.supplier_name",
+      "erp_db.supplier.on_time_rate"
+    ]
+  },
+  {
+    "id": "b01-en",
+    "scenario": "supplier_on_time_rate",
+    "language": "en",
+    "category": "single_table",
+    "query": "Which suppliers have an on-time delivery rate below 0.9? Show the supplier ID, supplier name and on-time rate.",
+    "gold_sql": "SELECT supplier_id, supplier_name, on_time_rate FROM erp.supplier WHERE on_time_rate < 0.9",
+    "gold_columns": [
+      "erp_db.supplier.supplier_id",
+      "erp_db.supplier.supplier_name",
+      "erp_db.supplier.on_time_rate"
+    ]
+  },
+  {
+    "id": "b02-zh",
+    "scenario": "purchase_unpaid_balance",
+    "language": "zh",
+    "category": "having",
+    "query": "查询已有付款记录但尚未付清的采购单：列出采购单号、采购金额、已付款合计和未付余额",
+    "gold_sql": "SELECT po.po_no, po.po_amt, SUM(p.paid_amt), po.po_amt - SUM(p.paid_amt) FROM erp.purchase_order po JOIN erp.payment p ON p.po_no = po.po_no GROUP BY po.po_no, po.po_amt HAVING SUM(p.paid_amt) < po.po_amt",
+    "gold_columns": [
+      "erp_db.purchase_order.po_no",
+      "erp_db.purchase_order.po_amt",
+      "erp_db.payment.po_no",
+      "erp_db.payment.paid_amt"
+    ]
+  },
+  {
+    "id": "b02-en",
+    "scenario": "purchase_unpaid_balance",
+    "language": "en",
+    "category": "having",
+    "query": "Which purchase orders have payments recorded but are not fully paid? Show the PO number, purchase amount, total paid and unpaid balance.",
+    "gold_sql": "SELECT po.po_no, po.po_amt, SUM(p.paid_amt), po.po_amt - SUM(p.paid_amt) FROM erp.purchase_order po JOIN erp.payment p ON p.po_no = po.po_no GROUP BY po.po_no, po.po_amt HAVING SUM(p.paid_amt) < po.po_amt",
+    "gold_columns": [
+      "erp_db.purchase_order.po_no",
+      "erp_db.purchase_order.po_amt",
+      "erp_db.payment.po_no",
+      "erp_db.payment.paid_amt"
+    ]
+  },
+  {
+    "id": "b03-zh",
+    "scenario": "cross_db_order_progress",
+    "language": "zh",
+    "category": "cross_db",
+    "query": "查询订单状态为in_production的工程的生产工单号、工程号和当前工序",
+    "gold_sql": "SELECT DISTINCT w.work_order_id, w.job_no, w.current_process FROM mes.work_order w JOIN erp.sales_order s ON w.job_no = s.job_no WHERE s.order_status = 'in_production'",
+    "gold_columns": [
+      "erp_db.sales_order.job_no",
+      "erp_db.sales_order.order_status",
+      "mes_db.work_order.work_order_id",
+      "mes_db.work_order.job_no",
+      "mes_db.work_order.current_process"
+    ]
+  },
+  {
+    "id": "b03-en",
+    "scenario": "cross_db_order_progress",
+    "language": "en",
+    "category": "cross_db",
+    "query": "For jobs whose sales order status is in_production, list the work order ID, job number and current process.",
+    "gold_sql": "SELECT DISTINCT w.work_order_id, w.job_no, w.current_process FROM mes.work_order w JOIN erp.sales_order s ON w.job_no = s.job_no WHERE s.order_status = 'in_production'",
+    "gold_columns": [
+      "erp_db.sales_order.job_no",
+      "erp_db.sales_order.order_status",
+      "mes_db.work_order.work_order_id",
+      "mes_db.work_order.job_no",
+      "mes_db.work_order.current_process"
+    ]
+  },
+  {
+    "id": "b04-zh",
+    "scenario": "latest_stock_and_unit",
+    "language": "zh",
+    "category": "multi_join",
+    "query": "按每种物料最新的库存快照，查询可用库存（在库数量减锁定数量）低于安全库存的物料：列出物料编码、可用库存、安全库存和计量单位",
+    "gold_sql": "SELECT m.material_code, s.on_hand_qty - s.locked_qty, m.safety_stock, m.unit FROM wms.material m JOIN wms.stock_snapshot s ON s.material_code = m.material_code WHERE s.snapshot_date = (SELECT MAX(s2.snapshot_date) FROM wms.stock_snapshot s2 WHERE s2.material_code = s.material_code) AND s.on_hand_qty - s.locked_qty < m.safety_stock",
+    "gold_columns": [
+      "wms_db.material.material_code",
+      "wms_db.material.safety_stock",
+      "wms_db.material.unit",
+      "wms_db.stock_snapshot.material_code",
+      "wms_db.stock_snapshot.snapshot_date",
+      "wms_db.stock_snapshot.on_hand_qty",
+      "wms_db.stock_snapshot.locked_qty"
+    ]
+  },
+  {
+    "id": "b04-en",
+    "scenario": "latest_stock_and_unit",
+    "language": "en",
+    "category": "multi_join",
+    "query": "Using the latest stock snapshot for each material, which materials have available stock (on-hand quantity minus locked quantity) below safety stock? Show the material code, available stock, safety stock and unit.",
+    "gold_sql": "SELECT m.material_code, s.on_hand_qty - s.locked_qty, m.safety_stock, m.unit FROM wms.material m JOIN wms.stock_snapshot s ON s.material_code = m.material_code WHERE s.snapshot_date = (SELECT MAX(s2.snapshot_date) FROM wms.stock_snapshot s2 WHERE s2.material_code = s.material_code) AND s.on_hand_qty - s.locked_qty < m.safety_stock",
+    "gold_columns": [
+      "wms_db.material.material_code",
+      "wms_db.material.safety_stock",
+      "wms_db.material.unit",
+      "wms_db.stock_snapshot.material_code",
+      "wms_db.stock_snapshot.snapshot_date",
+      "wms_db.stock_snapshot.on_hand_qty",
+      "wms_db.stock_snapshot.locked_qty"
+    ]
+  }
+]

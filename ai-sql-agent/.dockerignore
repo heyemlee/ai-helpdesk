@@ -1,0 +1,29 @@
+# 镜像只需要 pyproject.toml / README.md / src/ / .env.example（见 deploy/Dockerfile）。
+# 其余一律不进构建上下文：既缩小上下文，也把凭证挡在镜像外。
+__pycache__/
+*.pyc
+.git/
+.venv/
+venv/
+build/
+dist/
+*.egg-info/
+runtime_data/
+tests/
+docs/
+benchmark/
+examples/
+scripts/
+tools/
+.github/
+.claude/
+.pytest_cache/
+deploy/api_keys.json
+# 凭证不进镜像：.env 里有真实 API Key，打进去等于把密钥随镜像分发到每个 registry
+# 和每台拉取的机器上。运行时用 -e / K8s Secret 注入，模板留 .env.example。
+.env
+.env.*
+!.env.example
+*.db
+*.docx
+.DS_Store

@@ -1,0 +1,1117 @@
+{
+ "stream": [
+  {
+   "question": "查询准时率低于0.9的供应商名称",
+   "content_type": "text/event-stream",
+   "frames": [
+    {
+     "envelope": [
+      "id",
+      "jsonrpc",
+      "result"
+     ],
+     "kind": "task",
+     "keys": [
+      "contextId",
+      "id",
+      "kind",
+      "status"
+     ],
+     "state": "submitted",
+     "status_keys": [
+      "state",
+      "timestamp"
+     ]
+    },
+    {
+     "envelope": [
+      "id",
+      "jsonrpc",
+      "result"
+     ],
+     "kind": "status-update",
+     "keys": [
+      "contextId",
+      "final",
+      "kind",
+      "metadata",
+      "status",
+      "taskId"
+     ],
+     "final": false,
+     "state": "working",
+     "status_keys": [
+      "message",
+      "state",
+      "timestamp"
+     ],
+     "metadata": {
+      "stage": "routing",
+      "trace_id": "<present>"
+     },
+     "message_keys": [
+      "contextId",
+      "kind",
+      "messageId",
+      "parts",
+      "role",
+      "taskId"
+     ],
+     "text": [
+      "正在判断问题类型"
+     ]
+    },
+    {
+     "envelope": [
+      "id",
+      "jsonrpc",
+      "result"
+     ],
+     "kind": "status-update",
+     "keys": [
+      "contextId",
+      "final",
+      "kind",
+      "metadata",
+      "status",
+      "taskId"
+     ],
+     "final": false,
+     "state": "working",
+     "status_keys": [
+      "message",
+      "state",
+      "timestamp"
+     ],
+     "metadata": {
+      "stage": "normalization",
+      "trace_id": "<present>"
+     },
+     "message_keys": [
+      "contextId",
+      "kind",
+      "messageId",
+      "parts",
+      "role",
+      "taskId"
+     ],
+     "text": [
+      "正在理解问题"
+     ]
+    },
+    {
+     "envelope": [
+      "id",
+      "jsonrpc",
+      "result"
+     ],
+     "kind": "status-update",
+     "keys": [
+      "contextId",
+      "final",
+      "kind",
+      "metadata",
+      "status",
+      "taskId"
+     ],
+     "final": false,
+     "state": "working",
+     "status_keys": [
+      "message",
+      "state",
+      "timestamp"
+     ],
+     "metadata": {
+      "stage": "retrieval",
+      "trace_id": "<present>",
+      "with_memory": true
+     },
+     "message_keys": [
+      "contextId",
+      "kind",
+      "messageId",
+      "parts",
+      "role",
+      "taskId"
+     ],
+     "text": [
+      "正在检索知识库"
+     ]
+    },
+    {
+     "envelope": [
+      "id",
+      "jsonrpc",
+      "result"
+     ],
+     "kind": "status-update",
+     "keys": [
+      "contextId",
+      "final",
+      "kind",
+      "metadata",
+      "status",
+      "taskId"
+     ],
+     "final": false,
+     "state": "working",
+     "status_keys": [
+      "message",
+      "state",
+      "timestamp"
+     ],
+     "metadata": {
+      "short_path": false,
+      "stage": "planning",
+      "trace_id": "<present>"
+     },
+     "message_keys": [
+      "contextId",
+      "kind",
+      "messageId",
+      "parts",
+      "role",
+      "taskId"
+     ],
+     "text": [
+      "正在规划查询步骤"
+     ]
+    },
+    {
+     "envelope": [
+      "id",
+      "jsonrpc",
+      "result"
+     ],
+     "kind": "status-update",
+     "keys": [
+      "contextId",
+      "final",
+      "kind",
+      "metadata",
+      "status",
+      "taskId"
+     ],
+     "final": false,
+     "state": "working",
+     "status_keys": [
+      "message",
+      "state",
+      "timestamp"
+     ],
+     "metadata": {
+      "database": "erp_db",
+      "dialect": "sqlite",
+      "stage": "generation",
+      "step": 1,
+      "trace_id": "<present>"
+     },
+     "message_keys": [
+      "contextId",
+      "kind",
+      "messageId",
+      "parts",
+      "role",
+      "taskId"
+     ],
+     "text": [
+      "正在生成查询（erp_db）"
+     ]
+    },
+    {
+     "envelope": [
+      "id",
+      "jsonrpc",
+      "result"
+     ],
+     "kind": "status-update",
+     "keys": [
+      "contextId",
+      "final",
+      "kind",
+      "metadata",
+      "status",
+      "taskId"
+     ],
+     "final": false,
+     "state": "working",
+     "status_keys": [
+      "message",
+      "state",
+      "timestamp"
+     ],
+     "metadata": {
+      "database": "erp_db",
+      "stage": "execution",
+      "step": 1,
+      "trace_id": "<present>"
+     },
+     "message_keys": [
+      "contextId",
+      "kind",
+      "messageId",
+      "parts",
+      "role",
+      "taskId"
+     ],
+     "text": [
+      "正在查询数据库（erp_db）"
+     ]
+    },
+    {
+     "envelope": [
+      "id",
+      "jsonrpc",
+      "result"
+     ],
+     "kind": "status-update",
+     "keys": [
+      "contextId",
+      "final",
+      "kind",
+      "metadata",
+      "status",
+      "taskId"
+     ],
+     "final": false,
+     "state": "working",
+     "status_keys": [
+      "message",
+      "state",
+      "timestamp"
+     ],
+     "metadata": {
+      "database": "erp_db",
+      "stage": "validation",
+      "step": 1,
+      "trace_id": "<present>"
+     },
+     "message_keys": [
+      "contextId",
+      "kind",
+      "messageId",
+      "parts",
+      "role",
+      "taskId"
+     ],
+     "text": [
+      "正在校验结果"
+     ]
+    },
+    {
+     "envelope": [
+      "id",
+      "jsonrpc",
+      "result"
+     ],
+     "kind": "artifact-update",
+     "keys": [
+      "artifact",
+      "contextId",
+      "kind",
+      "lastChunk",
+      "taskId"
+     ],
+     "lastChunk": true,
+     "artifact_keys": [
+      "artifactId",
+      "name",
+      "parts"
+     ],
+     "parts": [
+      "text",
+      "data"
+     ],
+     "data_keys": [
+      "as_of",
+      "as_of_source",
+      "confidence",
+      "currency",
+      "degrade_reason",
+      "degraded",
+      "execution_status",
+      "failed_steps",
+      "has_risk",
+      "queried_database",
+      "repaired_steps",
+      "result_truncated",
+      "route",
+      "selected_databases",
+      "steps",
+      "succeeded_steps",
+      "trace_id"
+     ],
+     "step_keys": [
+      "as_of",
+      "as_of_source",
+      "column_units",
+      "database",
+      "error",
+      "final_sql",
+      "repair_attempts",
+      "risk_findings",
+      "row_count",
+      "row_limit",
+      "rows",
+      "source_records",
+      "sql",
+      "success",
+      "truncated"
+     ]
+    },
+    {
+     "envelope": [
+      "id",
+      "jsonrpc",
+      "result"
+     ],
+     "kind": "status-update",
+     "keys": [
+      "contextId",
+      "final",
+      "kind",
+      "metadata",
+      "status",
+      "taskId"
+     ],
+     "final": true,
+     "state": "completed",
+     "status_keys": [
+      "state",
+      "timestamp"
+     ],
+     "metadata": {
+      "trace_id": "<present>"
+     }
+    }
+   ]
+  },
+  {
+   "question": "查询实际成本超过预算的各个项目的采购总金额",
+   "content_type": "text/event-stream",
+   "frames": [
+    {
+     "envelope": [
+      "id",
+      "jsonrpc",
+      "result"
+     ],
+     "kind": "task",
+     "keys": [
+      "contextId",
+      "id",
+      "kind",
+      "status"
+     ],
+     "state": "submitted",
+     "status_keys": [
+      "state",
+      "timestamp"
+     ]
+    },
+    {
+     "envelope": [
+      "id",
+      "jsonrpc",
+      "result"
+     ],
+     "kind": "status-update",
+     "keys": [
+      "contextId",
+      "final",
+      "kind",
+      "metadata",
+      "status",
+      "taskId"
+     ],
+     "final": false,
+     "state": "working",
+     "status_keys": [
+      "message",
+      "state",
+      "timestamp"
+     ],
+     "metadata": {
+      "stage": "routing",
+      "trace_id": "<present>"
+     },
+     "message_keys": [
+      "contextId",
+      "kind",
+      "messageId",
+      "parts",
+      "role",
+      "taskId"
+     ],
+     "text": [
+      "正在判断问题类型"
+     ]
+    },
+    {
+     "envelope": [
+      "id",
+      "jsonrpc",
+      "result"
+     ],
+     "kind": "status-update",
+     "keys": [
+      "contextId",
+      "final",
+      "kind",
+      "metadata",
+      "status",
+      "taskId"
+     ],
+     "final": false,
+     "state": "working",
+     "status_keys": [
+      "message",
+      "state",
+      "timestamp"
+     ],
+     "metadata": {
+      "stage": "normalization",
+      "trace_id": "<present>"
+     },
+     "message_keys": [
+      "contextId",
+      "kind",
+      "messageId",
+      "parts",
+      "role",
+      "taskId"
+     ],
+     "text": [
+      "正在理解问题"
+     ]
+    },
+    {
+     "envelope": [
+      "id",
+      "jsonrpc",
+      "result"
+     ],
+     "kind": "status-update",
+     "keys": [
+      "contextId",
+      "final",
+      "kind",
+      "metadata",
+      "status",
+      "taskId"
+     ],
+     "final": false,
+     "state": "working",
+     "status_keys": [
+      "message",
+      "state",
+      "timestamp"
+     ],
+     "metadata": {
+      "stage": "retrieval",
+      "trace_id": "<present>",
+      "with_memory": true
+     },
+     "message_keys": [
+      "contextId",
+      "kind",
+      "messageId",
+      "parts",
+      "role",
+      "taskId"
+     ],
+     "text": [
+      "正在检索知识库"
+     ]
+    },
+    {
+     "envelope": [
+      "id",
+      "jsonrpc",
+      "result"
+     ],
+     "kind": "status-update",
+     "keys": [
+      "contextId",
+      "final",
+      "kind",
+      "metadata",
+      "status",
+      "taskId"
+     ],
+     "final": false,
+     "state": "working",
+     "status_keys": [
+      "message",
+      "state",
+      "timestamp"
+     ],
+     "metadata": {
+      "short_path": false,
+      "stage": "planning",
+      "trace_id": "<present>"
+     },
+     "message_keys": [
+      "contextId",
+      "kind",
+      "messageId",
+      "parts",
+      "role",
+      "taskId"
+     ],
+     "text": [
+      "正在规划查询步骤"
+     ]
+    },
+    {
+     "envelope": [
+      "id",
+      "jsonrpc",
+      "result"
+     ],
+     "kind": "status-update",
+     "keys": [
+      "contextId",
+      "final",
+      "kind",
+      "metadata",
+      "status",
+      "taskId"
+     ],
+     "final": false,
+     "state": "working",
+     "status_keys": [
+      "message",
+      "state",
+      "timestamp"
+     ],
+     "metadata": {
+      "database": "pm_db",
+      "dialect": "sqlite",
+      "stage": "generation",
+      "step": 1,
+      "trace_id": "<present>"
+     },
+     "message_keys": [
+      "contextId",
+      "kind",
+      "messageId",
+      "parts",
+      "role",
+      "taskId"
+     ],
+     "text": [
+      "正在生成查询（pm_db）"
+     ]
+    },
+    {
+     "envelope": [
+      "id",
+      "jsonrpc",
+      "result"
+     ],
+     "kind": "status-update",
+     "keys": [
+      "contextId",
+      "final",
+      "kind",
+      "metadata",
+      "status",
+      "taskId"
+     ],
+     "final": false,
+     "state": "working",
+     "status_keys": [
+      "message",
+      "state",
+      "timestamp"
+     ],
+     "metadata": {
+      "database": "pm_db",
+      "stage": "execution",
+      "step": 1,
+      "trace_id": "<present>"
+     },
+     "message_keys": [
+      "contextId",
+      "kind",
+      "messageId",
+      "parts",
+      "role",
+      "taskId"
+     ],
+     "text": [
+      "正在查询数据库（pm_db）"
+     ]
+    },
+    {
+     "envelope": [
+      "id",
+      "jsonrpc",
+      "result"
+     ],
+     "kind": "status-update",
+     "keys": [
+      "contextId",
+      "final",
+      "kind",
+      "metadata",
+      "status",
+      "taskId"
+     ],
+     "final": false,
+     "state": "working",
+     "status_keys": [
+      "message",
+      "state",
+      "timestamp"
+     ],
+     "metadata": {
+      "database": "pm_db",
+      "stage": "validation",
+      "step": 1,
+      "trace_id": "<present>"
+     },
+     "message_keys": [
+      "contextId",
+      "kind",
+      "messageId",
+      "parts",
+      "role",
+      "taskId"
+     ],
+     "text": [
+      "正在校验结果"
+     ]
+    },
+    {
+     "envelope": [
+      "id",
+      "jsonrpc",
+      "result"
+     ],
+     "kind": "status-update",
+     "keys": [
+      "contextId",
+      "final",
+      "kind",
+      "metadata",
+      "status",
+      "taskId"
+     ],
+     "final": false,
+     "state": "working",
+     "status_keys": [
+      "message",
+      "state",
+      "timestamp"
+     ],
+     "metadata": {
+      "database": "erp_db",
+      "dialect": "sqlite",
+      "stage": "generation",
+      "step": 2,
+      "trace_id": "<present>"
+     },
+     "message_keys": [
+      "contextId",
+      "kind",
+      "messageId",
+      "parts",
+      "role",
+      "taskId"
+     ],
+     "text": [
+      "正在生成查询（erp_db）"
+     ]
+    },
+    {
+     "envelope": [
+      "id",
+      "jsonrpc",
+      "result"
+     ],
+     "kind": "status-update",
+     "keys": [
+      "contextId",
+      "final",
+      "kind",
+      "metadata",
+      "status",
+      "taskId"
+     ],
+     "final": false,
+     "state": "working",
+     "status_keys": [
+      "message",
+      "state",
+      "timestamp"
+     ],
+     "metadata": {
+      "database": "erp_db",
+      "stage": "execution",
+      "step": 2,
+      "trace_id": "<present>"
+     },
+     "message_keys": [
+      "contextId",
+      "kind",
+      "messageId",
+      "parts",
+      "role",
+      "taskId"
+     ],
+     "text": [
+      "正在查询数据库（erp_db）"
+     ]
+    },
+    {
+     "envelope": [
+      "id",
+      "jsonrpc",
+      "result"
+     ],
+     "kind": "status-update",
+     "keys": [
+      "contextId",
+      "final",
+      "kind",
+      "metadata",
+      "status",
+      "taskId"
+     ],
+     "final": false,
+     "state": "working",
+     "status_keys": [
+      "message",
+      "state",
+      "timestamp"
+     ],
+     "metadata": {
+      "database": "erp_db",
+      "stage": "validation",
+      "step": 2,
+      "trace_id": "<present>"
+     },
+     "message_keys": [
+      "contextId",
+      "kind",
+      "messageId",
+      "parts",
+      "role",
+      "taskId"
+     ],
+     "text": [
+      "正在校验结果"
+     ]
+    },
+    {
+     "envelope": [
+      "id",
+      "jsonrpc",
+      "result"
+     ],
+     "kind": "artifact-update",
+     "keys": [
+      "artifact",
+      "contextId",
+      "kind",
+      "lastChunk",
+      "taskId"
+     ],
+     "lastChunk": true,
+     "artifact_keys": [
+      "artifactId",
+      "name",
+      "parts"
+     ],
+     "parts": [
+      "text",
+      "data"
+     ],
+     "data_keys": [
+      "as_of",
+      "as_of_source",
+      "confidence",
+      "currency",
+      "degrade_reason",
+      "degraded",
+      "execution_status",
+      "failed_steps",
+      "has_risk",
+      "queried_database",
+      "repaired_steps",
+      "result_truncated",
+      "route",
+      "selected_databases",
+      "steps",
+      "succeeded_steps",
+      "trace_id"
+     ],
+     "step_keys": [
+      "as_of",
+      "as_of_source",
+      "column_units",
+      "database",
+      "error",
+      "final_sql",
+      "repair_attempts",
+      "risk_findings",
+      "row_count",
+      "row_limit",
+      "rows",
+      "source_records",
+      "sql",
+      "success",
+      "truncated"
+     ]
+    },
+    {
+     "envelope": [
+      "id",
+      "jsonrpc",
+      "result"
+     ],
+     "kind": "status-update",
+     "keys": [
+      "contextId",
+      "final",
+      "kind",
+      "metadata",
+      "status",
+      "taskId"
+     ],
+     "final": true,
+     "state": "completed",
+     "status_keys": [
+      "state",
+      "timestamp"
+     ],
+     "metadata": {
+      "trace_id": "<present>"
+     }
+    }
+   ]
+  }
+ ],
+ "send": [
+  {
+   "question": "查询准时率低于0.9的供应商名称",
+   "envelope": [
+    "id",
+    "jsonrpc",
+    "result"
+   ],
+   "task_keys": [
+    "artifacts",
+    "contextId",
+    "id",
+    "kind",
+    "metadata",
+    "status"
+   ],
+   "state": "completed",
+   "artifacts": [
+    {
+     "artifact_keys": [
+      "artifactId",
+      "name",
+      "parts"
+     ],
+     "parts": [
+      "text",
+      "data"
+     ],
+     "data_keys": [
+      "as_of",
+      "as_of_source",
+      "confidence",
+      "currency",
+      "degrade_reason",
+      "degraded",
+      "execution_status",
+      "failed_steps",
+      "has_risk",
+      "queried_database",
+      "repaired_steps",
+      "result_truncated",
+      "route",
+      "selected_databases",
+      "steps",
+      "succeeded_steps",
+      "trace_id"
+     ],
+     "step_keys": [
+      "as_of",
+      "as_of_source",
+      "column_units",
+      "database",
+      "error",
+      "final_sql",
+      "repair_attempts",
+      "risk_findings",
+      "row_count",
+      "row_limit",
+      "rows",
+      "source_records",
+      "sql",
+      "success",
+      "truncated"
+     ]
+    }
+   ]
+  },
+  {
+   "question": "查询实际成本超过预算的各个项目的采购总金额",
+   "envelope": [
+    "id",
+    "jsonrpc",
+    "result"
+   ],
+   "task_keys": [
+    "artifacts",
+    "contextId",
+    "id",
+    "kind",
+    "metadata",
+    "status"
+   ],
+   "state": "completed",
+   "artifacts": [
+    {
+     "artifact_keys": [
+      "artifactId",
+      "name",
+      "parts"
+     ],
+     "parts": [
+      "text",
+      "data"
+     ],
+     "data_keys": [
+      "as_of",
+      "as_of_source",
+      "confidence",
+      "currency",
+      "degrade_reason",
+      "degraded",
+      "execution_status",
+      "failed_steps",
+      "has_risk",
+      "queried_database",
+      "repaired_steps",
+      "result_truncated",
+      "route",
+      "selected_databases",
+      "steps",
+      "succeeded_steps",
+      "trace_id"
+     ],
+     "step_keys": [
+      "as_of",
+      "as_of_source",
+      "column_units",
+      "database",
+      "error",
+      "final_sql",
+      "repair_attempts",
+      "risk_findings",
+      "row_count",
+      "row_limit",
+      "rows",
+      "source_records",
+      "sql",
+      "success",
+      "truncated"
+     ]
+    }
+   ]
+  }
+ ],
+ "query": [
+  {
+   "question": "查询准时率低于0.9的供应商名称",
+   "data_keys": [
+    "answer",
+    "as_of",
+    "as_of_source",
+    "confidence",
+    "currency",
+    "degrade_reason",
+    "degraded",
+    "execution_status",
+    "failed_steps",
+    "has_risk",
+    "queried_database",
+    "reason",
+    "repaired_steps",
+    "result_truncated",
+    "route",
+    "selected_databases",
+    "step_logs",
+    "steps",
+    "succeeded_steps",
+    "trace_id"
+   ],
+   "step_keys": [
+    "as_of",
+    "as_of_source",
+    "column_units",
+    "database",
+    "error",
+    "final_sql",
+    "repair_attempts",
+    "risk_findings",
+    "row_count",
+    "row_limit",
+    "rows",
+    "source_records",
+    "sql",
+    "success",
+    "truncated"
+   ]
+  },
+  {
+   "question": "查询实际成本超过预算的各个项目的采购总金额",
+   "data_keys": [
+    "answer",
+    "as_of",
+    "as_of_source",
+    "confidence",
+    "currency",
+    "degrade_reason",
+    "degraded",
+    "execution_status",
+    "failed_steps",
+    "has_risk",
+    "queried_database",
+    "reason",
+    "repaired_steps",
+    "result_truncated",
+    "route",
+    "selected_databases",
+    "step_logs",
+    "steps",
+    "succeeded_steps",
+    "trace_id"
+   ],
+   "step_keys": [
+    "as_of",
+    "as_of_source",
+    "column_units",
+    "database",
+    "error",
+    "final_sql",
+    "repair_attempts",
+    "risk_findings",
+    "row_count",
+    "row_limit",
+    "rows",
+    "source_records",
+    "sql",
+    "success",
+    "truncated"
+   ]
+  }
+ ]
+}

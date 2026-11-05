@@ -1,0 +1,94 @@
+{
+  "mode": "sim",
+  "score": "7/8",
+  "results": [
+    {
+      "id": "C1",
+      "问题": "J26-00001 这个工程还欠多少钱？",
+      "考点": "工程未付总额 = 合同额 − 已收（含未开票的尾款）",
+      "真值": 49448.16,
+      "模型": 49448.16,
+      "对": true,
+      "SQL": "SELECT job.contract_amount - COALESCE((\n    SELECT SUM(payment_received.amount)\n    FROM payment_received\n    WHERE payment_received.invoice_no IN (\n        SELECT invoice.invoice_no\n        FROM invoice\n        WHERE invoice.job_no = 'J26-00001'\n    )\n), 0) AS unpaid_amount\nFROM job\nWHERE job.job_no = 'J26-00001';",
+      "错误": null,
+      "耗时s": 24.1
+    },
+    {
+      "id": "C2",
+      "问题": "现在有多少个工程在生产中？",
+      "考点": "状态码：sim 是 in_production，legacy 是 FDOCSTATUS='C'",
+      "真值": 232,
+      "模型": 232,
+      "对": true,
+      "SQL": "SELECT COUNT(job_no) FROM job WHERE job_status = 'in_production';",
+      "错误": null,
+      "耗时s": 14.2
+    },
+    {
+      "id": "C3",
+      "问题": "所有变更单加起来一共增加了多少金额？",
+      "考点": "折让是负数，且不能只算已批准",
+      "真值": 1150382.66,
+      "模型": 1150382.66,
+      "对": true,
+      "SQL": "SELECT SUM(\"amount_delta\") AS \"变更单增加总金额\"\nFROM \"change_order\";",
+      "错误": null,
+      "耗时s": 18.1
+    },
+    {
+      "id": "C4",
+      "问题": "客户的平均信用额度是多少？",
+      "考点": "零售客户为 NULL，不是 0",
+      "真值": 174074.07,
+      "模型": 174074.07407407407,
+      "对": true,
+      "SQL": "SELECT AVG(credit_limit) AS avg_credit_limit FROM customer;",
+      "错误": null,
+      "耗时s": 15.0
+    },
+    {
+      "id": "C5",
+      "问题": "加州一共有多少个工程？",
+      "考点": "州名大小写不统一，要用规范化列",
+      "真值": 893,
+      "模型": 893,
+      "对": true,
+      "SQL": "SELECT COUNT(job_no) FROM job WHERE state_norm = 'CA';",
+      "错误": null,
+      "耗时s": 11.7
+    },
+    {
+      "id": "C6",
+      "问题": "有多少张发票已经逾期还没收清？",
+      "考点": "逾期判据 + 作废不算 + legacy 侧日期是 8 位整数",
+      "真值": 831,
+      "模型": 831,
+      "对": true,
+      "SQL": "SELECT COUNT(invoice_no) AS \"逾期未收清的发票张数\" FROM invoice WHERE due_date < DATE('now','localtime') AND invoice_status IN ('open','partial');",
+      "错误": null,
+      "耗时s": 19.6
+    },
+    {
+      "id": "C7",
+      "问题": "有多少个工程还没下生产工单？",
+      "考点": "sim: sold/cancelled；legacy: FDOCSTATUS in (A,Z)",
+      "真值": 117,
+      "模型": 4,
+      "对": false,
+      "SQL": "SELECT COUNT(job_no) FROM (SELECT 'J25-00003' AS job_no UNION ALL SELECT 'J25-00005' UNION ALL SELECT 'J25-00006' UNION ALL SELECT 'J25-00007' UNION ALL SELECT 'J25-00008' UNION ALL SELECT 'J25-00009' UNION ALL SELECT 'J25-00012' UNION ALL SELECT 'J25-00015' UNION ALL SELECT 'J25-00017' UNION ALL SELECT 'J25-00018' UNION ALL SELECT 'J25-00019' UNION ALL SELECT 'J25-00021' UNION ALL SELECT 'J25-00023' UNION ALL SELECT 'J25-00026' UNION ALL SELECT 'J25-00027' UNION ALL SELECT 'J25-00029' UNION ALL SELECT 'J25-00030' UNION ALL SELECT 'J25-00032' UNION ALL SELECT 'J25-00034' UNION ALL SELECT 'J25-00035' UNION ALL SELECT 'J25-00036' UNION ALL SELECT 'J25-00037' UNION ALL SELECT 'J25-00040' UNION ALL SELECT 'J25-00042' UNION ALL SELECT 'J25-00043' UNION ALL SELECT 'J25-00046' UNION ALL SELECT 'J25-00047' UNION ALL SELECT 'J25-00049' UNION ALL SELECT 'J25-00051' UNION ALL SELECT 'J25-00055' UNION ALL SELECT 'J25-00057' UNION ALL SELECT 'J25-00060' UNION ALL SELECT 'J25-00061' UNION ALL SELECT 'J25-00062' UNION ALL SELECT 'J25-00063' UNION ALL SELECT 'J25-00065' UNION ALL SELECT 'J25-00066' UNION ALL SELECT 'J25-00068' UNION ALL SELECT 'J25-00069' UNION ALL SELECT 'J25-00071' UNION ALL SELECT 'J25-00072' UNION ALL SELECT 'J25-00074' UNION ALL SELECT 'J25-00075' UNION ALL SELECT 'J25-00076' UNION ALL SELECT 'J25-00077' UNION ALL SELECT 'J25-00078' UNION ALL SELECT 'J25-00079' UNION ALL SELECT 'J25-00081' UNION ALL SELECT 'J25-00085' UNION ALL SELECT 'J25-00089') AS t WHERE job_no NOT IN (SELECT job_no FROM work_order);",
+      "错误": null,
+      "耗时s": 47.5
+    },
+    {
+      "id": "C8",
+      "问题": "商业工程有多少个？",
+      "考点": "商业工程的小区字段为 NULL",
+      "真值": 227,
+      "模型": 227,
+      "对": true,
+      "SQL": "SELECT COUNT(\"job_no\") FROM job WHERE \"job_type\" = 'commercial';",
+      "错误": null,
+      "耗时s": 12.8
+    }
+  ]
+}

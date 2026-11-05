@@ -1,0 +1,1489 @@
+[
+  {
+    "category": "single_table",
+    "query": "查询准时率低于0.7的供应商名称",
+    "gold_sql": "SELECT supplier_name FROM erp.supplier WHERE on_time_rate < 0.7",
+    "gold_columns": [
+      "erp_db.supplier.supplier_name",
+      "erp_db.supplier.on_time_rate"
+    ],
+    "id": "q001"
+  },
+  {
+    "category": "single_table",
+    "query": "查询准时率低于0.8的供应商名称",
+    "gold_sql": "SELECT supplier_name FROM erp.supplier WHERE on_time_rate < 0.8",
+    "gold_columns": [
+      "erp_db.supplier.supplier_name",
+      "erp_db.supplier.on_time_rate"
+    ],
+    "id": "q002"
+  },
+  {
+    "category": "single_table",
+    "query": "查询准时率低于0.9的供应商名称",
+    "gold_sql": "SELECT supplier_name FROM erp.supplier WHERE on_time_rate < 0.9",
+    "gold_columns": [
+      "erp_db.supplier.supplier_name",
+      "erp_db.supplier.on_time_rate"
+    ],
+    "id": "q003"
+  },
+  {
+    "category": "single_table",
+    "query": "查询采购状态为ordered的采购单号",
+    "gold_sql": "SELECT po_no FROM erp.purchase_order WHERE po_status = 'ordered'",
+    "gold_columns": [
+      "erp_db.purchase_order.po_no",
+      "erp_db.purchase_order.po_status"
+    ],
+    "id": "q004"
+  },
+  {
+    "category": "single_table",
+    "query": "查询采购状态为partial的采购单号",
+    "gold_sql": "SELECT po_no FROM erp.purchase_order WHERE po_status = 'partial'",
+    "gold_columns": [
+      "erp_db.purchase_order.po_no",
+      "erp_db.purchase_order.po_status"
+    ],
+    "id": "q005"
+  },
+  {
+    "category": "single_table",
+    "query": "查询采购状态为received的采购单号",
+    "gold_sql": "SELECT po_no FROM erp.purchase_order WHERE po_status = 'received'",
+    "gold_columns": [
+      "erp_db.purchase_order.po_no",
+      "erp_db.purchase_order.po_status"
+    ],
+    "id": "q006"
+  },
+  {
+    "category": "single_table",
+    "query": "查询订单状态为signed的客户名称",
+    "gold_sql": "SELECT customer_name FROM erp.sales_order WHERE order_status = 'signed'",
+    "gold_columns": [
+      "erp_db.sales_order.customer_name",
+      "erp_db.sales_order.order_status"
+    ],
+    "id": "q007"
+  },
+  {
+    "category": "single_table",
+    "query": "查询订单状态为in_production的客户名称",
+    "gold_sql": "SELECT customer_name FROM erp.sales_order WHERE order_status = 'in_production'",
+    "gold_columns": [
+      "erp_db.sales_order.customer_name",
+      "erp_db.sales_order.order_status"
+    ],
+    "id": "q008"
+  },
+  {
+    "category": "single_table",
+    "query": "查询订单状态为delivered的客户名称",
+    "gold_sql": "SELECT customer_name FROM erp.sales_order WHERE order_status = 'delivered'",
+    "gold_columns": [
+      "erp_db.sales_order.customer_name",
+      "erp_db.sales_order.order_status"
+    ],
+    "id": "q009"
+  },
+  {
+    "category": "single_table",
+    "query": "查询实际成本超过预算的项目名称",
+    "gold_sql": "SELECT project_name FROM pm.project WHERE actual_cost > budget_amt",
+    "gold_columns": [
+      "pm_db.project.project_name",
+      "pm_db.project.actual_cost",
+      "pm_db.project.budget_amt"
+    ],
+    "id": "q010"
+  },
+  {
+    "category": "single_table",
+    "query": "查询业务板块为建筑装修的项目名称",
+    "gold_sql": "SELECT project_name FROM pm.project WHERE business_unit = '建筑装修'",
+    "gold_columns": [
+      "pm_db.project.project_name",
+      "pm_db.project.business_unit"
+    ],
+    "id": "q011"
+  },
+  {
+    "category": "single_table",
+    "query": "查询业务板块为消防的项目名称",
+    "gold_sql": "SELECT project_name FROM pm.project WHERE business_unit = '消防'",
+    "gold_columns": [
+      "pm_db.project.project_name",
+      "pm_db.project.business_unit"
+    ],
+    "id": "q012"
+  },
+  {
+    "category": "single_table",
+    "query": "查询合同额大于100000的项目名称",
+    "gold_sql": "SELECT project_name FROM pm.project WHERE contract_amt > 100000",
+    "gold_columns": [
+      "pm_db.project.project_name",
+      "pm_db.project.contract_amt"
+    ],
+    "id": "q013"
+  },
+  {
+    "category": "single_table",
+    "query": "查询合同额大于1000000的项目名称",
+    "gold_sql": "SELECT project_name FROM pm.project WHERE contract_amt > 1000000",
+    "gold_columns": [
+      "pm_db.project.project_name",
+      "pm_db.project.contract_amt"
+    ],
+    "id": "q014"
+  },
+  {
+    "category": "single_table",
+    "query": "查询当前工序为开料的工单号",
+    "gold_sql": "SELECT work_order_id FROM mes.work_order WHERE current_process = '开料'",
+    "gold_columns": [
+      "mes_db.work_order.work_order_id",
+      "mes_db.work_order.current_process"
+    ],
+    "id": "q015"
+  },
+  {
+    "category": "single_table",
+    "query": "查询当前工序为封边的工单号",
+    "gold_sql": "SELECT work_order_id FROM mes.work_order WHERE current_process = '封边'",
+    "gold_columns": [
+      "mes_db.work_order.work_order_id",
+      "mes_db.work_order.current_process"
+    ],
+    "id": "q016"
+  },
+  {
+    "category": "single_table",
+    "query": "查询当前工序为排孔的工单号",
+    "gold_sql": "SELECT work_order_id FROM mes.work_order WHERE current_process = '排孔'",
+    "gold_columns": [
+      "mes_db.work_order.work_order_id",
+      "mes_db.work_order.current_process"
+    ],
+    "id": "q017"
+  },
+  {
+    "category": "single_table",
+    "query": "查询当前工序为组装的工单号",
+    "gold_sql": "SELECT work_order_id FROM mes.work_order WHERE current_process = '组装'",
+    "gold_columns": [
+      "mes_db.work_order.work_order_id",
+      "mes_db.work_order.current_process"
+    ],
+    "id": "q018"
+  },
+  {
+    "category": "single_table",
+    "query": "查询良率低于0.8的工单号",
+    "gold_sql": "SELECT work_order_id FROM mes.quality_check WHERE yield_rate < 0.8",
+    "gold_columns": [
+      "mes_db.quality_check.work_order_id",
+      "mes_db.quality_check.yield_rate"
+    ],
+    "id": "q019"
+  },
+  {
+    "category": "single_table",
+    "query": "查询良率低于0.95的工单号",
+    "gold_sql": "SELECT work_order_id FROM mes.quality_check WHERE yield_rate < 0.95",
+    "gold_columns": [
+      "mes_db.quality_check.work_order_id",
+      "mes_db.quality_check.yield_rate"
+    ],
+    "id": "q020"
+  },
+  {
+    "category": "single_table",
+    "query": "查询品类为板材的物料名称",
+    "gold_sql": "SELECT material_name FROM wms.material WHERE category = '板材'",
+    "gold_columns": [
+      "wms_db.material.material_name",
+      "wms_db.material.category"
+    ],
+    "id": "q021"
+  },
+  {
+    "category": "single_table",
+    "query": "查询品类为门板的物料名称",
+    "gold_sql": "SELECT material_name FROM wms.material WHERE category = '门板'",
+    "gold_columns": [
+      "wms_db.material.material_name",
+      "wms_db.material.category"
+    ],
+    "id": "q022"
+  },
+  {
+    "category": "single_table",
+    "query": "查询品类为五金的物料名称",
+    "gold_sql": "SELECT material_name FROM wms.material WHERE category = '五金'",
+    "gold_columns": [
+      "wms_db.material.material_name",
+      "wms_db.material.category"
+    ],
+    "id": "q023"
+  },
+  {
+    "category": "single_table",
+    "query": "查询安全库存大于100的物料名称",
+    "gold_sql": "SELECT material_name FROM wms.material WHERE safety_stock > 100",
+    "gold_columns": [
+      "wms_db.material.material_name",
+      "wms_db.material.safety_stock"
+    ],
+    "id": "q024"
+  },
+  {
+    "category": "single_table",
+    "query": "查询安全库存大于500的物料名称",
+    "gold_sql": "SELECT material_name FROM wms.material WHERE safety_stock > 500",
+    "gold_columns": [
+      "wms_db.material.material_name",
+      "wms_db.material.safety_stock"
+    ],
+    "id": "q025"
+  },
+  {
+    "category": "multi_join",
+    "query": "查询准时率低于0.7的供应商的采购单号",
+    "gold_sql": "SELECT p.po_no FROM erp.purchase_order p JOIN erp.supplier s ON p.supplier_id = s.supplier_id WHERE s.on_time_rate < 0.7",
+    "gold_columns": [
+      "erp_db.purchase_order.po_no",
+      "erp_db.purchase_order.supplier_id",
+      "erp_db.supplier.supplier_id",
+      "erp_db.supplier.on_time_rate"
+    ],
+    "id": "q026"
+  },
+  {
+    "category": "multi_join",
+    "query": "查询准时率低于0.8的供应商的采购单号",
+    "gold_sql": "SELECT p.po_no FROM erp.purchase_order p JOIN erp.supplier s ON p.supplier_id = s.supplier_id WHERE s.on_time_rate < 0.8",
+    "gold_columns": [
+      "erp_db.purchase_order.po_no",
+      "erp_db.purchase_order.supplier_id",
+      "erp_db.supplier.supplier_id",
+      "erp_db.supplier.on_time_rate"
+    ],
+    "id": "q027"
+  },
+  {
+    "category": "multi_join",
+    "query": "查询准时率低于0.9的供应商的采购单号",
+    "gold_sql": "SELECT p.po_no FROM erp.purchase_order p JOIN erp.supplier s ON p.supplier_id = s.supplier_id WHERE s.on_time_rate < 0.9",
+    "gold_columns": [
+      "erp_db.purchase_order.po_no",
+      "erp_db.purchase_order.supplier_id",
+      "erp_db.supplier.supplier_id",
+      "erp_db.supplier.on_time_rate"
+    ],
+    "id": "q028"
+  },
+  {
+    "category": "multi_join",
+    "query": "查询板材类供应商的采购金额",
+    "gold_sql": "SELECT p.po_no, p.po_amt FROM erp.purchase_order p JOIN erp.supplier s ON p.supplier_id = s.supplier_id WHERE s.category = '板材'",
+    "gold_columns": [
+      "erp_db.purchase_order.po_amt",
+      "erp_db.supplier.category"
+    ],
+    "id": "q029"
+  },
+  {
+    "category": "multi_join",
+    "query": "查询五金类供应商的采购金额",
+    "gold_sql": "SELECT p.po_no, p.po_amt FROM erp.purchase_order p JOIN erp.supplier s ON p.supplier_id = s.supplier_id WHERE s.category = '五金'",
+    "gold_columns": [
+      "erp_db.purchase_order.po_amt",
+      "erp_db.supplier.category"
+    ],
+    "id": "q030"
+  },
+  {
+    "category": "multi_join",
+    "query": "查询台面类供应商的采购金额",
+    "gold_sql": "SELECT p.po_no, p.po_amt FROM erp.purchase_order p JOIN erp.supplier s ON p.supplier_id = s.supplier_id WHERE s.category = '台面'",
+    "gold_columns": [
+      "erp_db.purchase_order.po_amt",
+      "erp_db.supplier.category"
+    ],
+    "id": "q031"
+  },
+  {
+    "category": "multi_join",
+    "query": "查询涂料类供应商的采购金额",
+    "gold_sql": "SELECT p.po_no, p.po_amt FROM erp.purchase_order p JOIN erp.supplier s ON p.supplier_id = s.supplier_id WHERE s.category = '涂料'",
+    "gold_columns": [
+      "erp_db.purchase_order.po_amt",
+      "erp_db.supplier.category"
+    ],
+    "id": "q032"
+  },
+  {
+    "category": "multi_join",
+    "query": "查询付款状态为paid的采购单的工程号",
+    "gold_sql": "SELECT DISTINCT p.job_no FROM erp.purchase_order p JOIN erp.payment y ON p.po_no = y.po_no WHERE y.pay_status = 'paid'",
+    "gold_columns": [
+      "erp_db.purchase_order.job_no",
+      "erp_db.payment.pay_status"
+    ],
+    "id": "q033"
+  },
+  {
+    "category": "multi_join",
+    "query": "查询付款状态为partial的采购单的工程号",
+    "gold_sql": "SELECT p.job_no FROM erp.purchase_order p JOIN erp.payment y ON p.po_no = y.po_no WHERE y.pay_status = 'partial'",
+    "gold_columns": [
+      "erp_db.purchase_order.job_no",
+      "erp_db.payment.pay_status"
+    ],
+    "id": "q034"
+  },
+  {
+    "category": "multi_join",
+    "query": "查询里程碑状态为delayed的项目名称",
+    "gold_sql": "SELECT DISTINCT p.project_name FROM pm.project p JOIN pm.milestone m ON p.project_code = m.project_code WHERE m.ms_status = 'delayed'",
+    "gold_columns": [
+      "pm_db.project.project_name",
+      "pm_db.milestone.ms_status"
+    ],
+    "id": "q035"
+  },
+  {
+    "category": "multi_join",
+    "query": "查询里程碑状态为on_time的项目名称",
+    "gold_sql": "SELECT DISTINCT p.project_name FROM pm.project p JOIN pm.milestone m ON p.project_code = m.project_code WHERE m.ms_status = 'on_time'",
+    "gold_columns": [
+      "pm_db.project.project_name",
+      "pm_db.milestone.ms_status"
+    ],
+    "id": "q036"
+  },
+  {
+    "category": "multi_join",
+    "query": "查询里程碑状态为pending的项目名称",
+    "gold_sql": "SELECT DISTINCT p.project_name FROM pm.project p JOIN pm.milestone m ON p.project_code = m.project_code WHERE m.ms_status = 'pending'",
+    "gold_columns": [
+      "pm_db.project.project_name",
+      "pm_db.milestone.ms_status"
+    ],
+    "id": "q037"
+  },
+  {
+    "category": "multi_join",
+    "query": "查询变更金额大于10000的项目名称",
+    "gold_sql": "SELECT DISTINCT p.project_name FROM pm.project p JOIN pm.change_order c ON p.project_code = c.project_code WHERE c.change_amt > 10000",
+    "gold_columns": [
+      "pm_db.project.project_name",
+      "pm_db.change_order.change_amt"
+    ],
+    "id": "q038"
+  },
+  {
+    "category": "multi_join",
+    "query": "查询变更金额大于50000的项目名称",
+    "gold_sql": "SELECT DISTINCT p.project_name FROM pm.project p JOIN pm.change_order c ON p.project_code = c.project_code WHERE c.change_amt > 50000",
+    "gold_columns": [
+      "pm_db.project.project_name",
+      "pm_db.change_order.change_amt"
+    ],
+    "id": "q039"
+  },
+  {
+    "category": "multi_join",
+    "query": "查询变更金额大于100000的项目名称",
+    "gold_sql": "SELECT DISTINCT p.project_name FROM pm.project p JOIN pm.change_order c ON p.project_code = c.project_code WHERE c.change_amt > 100000",
+    "gold_columns": [
+      "pm_db.project.project_name",
+      "pm_db.change_order.change_amt"
+    ],
+    "id": "q040"
+  },
+  {
+    "category": "multi_join",
+    "query": "查询验收结果为passed的项目名称",
+    "gold_sql": "SELECT p.project_name FROM pm.project p JOIN pm.acceptance a ON p.project_code = a.project_code WHERE a.accept_result = 'passed'",
+    "gold_columns": [
+      "pm_db.project.project_name",
+      "pm_db.acceptance.accept_result"
+    ],
+    "id": "q041"
+  },
+  {
+    "category": "multi_join",
+    "query": "查询一车间工单的工时记录中的工人姓名",
+    "gold_sql": "SELECT DISTINCT l.worker_name FROM mes.labor_hour l JOIN mes.work_order w ON l.work_order_id = w.work_order_id WHERE w.workshop = '一车间'",
+    "gold_columns": [
+      "mes_db.labor_hour.worker_name",
+      "mes_db.work_order.workshop"
+    ],
+    "id": "q042"
+  },
+  {
+    "category": "multi_join",
+    "query": "查询二车间工单的工时记录中的工人姓名",
+    "gold_sql": "SELECT DISTINCT l.worker_name FROM mes.labor_hour l JOIN mes.work_order w ON l.work_order_id = w.work_order_id WHERE w.workshop = '二车间'",
+    "gold_columns": [
+      "mes_db.labor_hour.worker_name",
+      "mes_db.work_order.workshop"
+    ],
+    "id": "q043"
+  },
+  {
+    "category": "multi_join",
+    "query": "查询良率低于0.8的工单所属车间",
+    "gold_sql": "SELECT w.workshop FROM mes.work_order w JOIN mes.quality_check q ON w.work_order_id = q.work_order_id WHERE q.yield_rate < 0.8",
+    "gold_columns": [
+      "mes_db.work_order.workshop",
+      "mes_db.quality_check.yield_rate"
+    ],
+    "id": "q044"
+  },
+  {
+    "category": "multi_join",
+    "query": "查询良率低于0.95的工单所属车间",
+    "gold_sql": "SELECT DISTINCT w.workshop FROM mes.work_order w JOIN mes.quality_check q ON w.work_order_id = q.work_order_id WHERE q.yield_rate < 0.95",
+    "gold_columns": [
+      "mes_db.work_order.workshop",
+      "mes_db.quality_check.yield_rate"
+    ],
+    "id": "q045"
+  },
+  {
+    "category": "multi_join",
+    "query": "查询库存低于安全库存的物料名称",
+    "gold_sql": "SELECT m.material_name FROM wms.material m JOIN wms.stock_snapshot s ON m.material_code = s.material_code WHERE s.on_hand_qty < m.safety_stock",
+    "gold_columns": [
+      "wms_db.material.material_name",
+      "wms_db.material.safety_stock",
+      "wms_db.stock_snapshot.on_hand_qty"
+    ],
+    "id": "q046"
+  },
+  {
+    "category": "multi_join",
+    "query": "查询单位成本大于200的批次对应的物料名称",
+    "gold_sql": "SELECT DISTINCT m.material_name FROM wms.material m JOIN wms.batch b ON m.material_code = b.material_code WHERE b.unit_cost > 200",
+    "gold_columns": [
+      "wms_db.material.material_name",
+      "wms_db.batch.unit_cost"
+    ],
+    "id": "q047"
+  },
+  {
+    "category": "multi_join",
+    "query": "查询单位成本大于500的批次对应的物料名称",
+    "gold_sql": "SELECT DISTINCT m.material_name FROM wms.material m JOIN wms.batch b ON m.material_code = b.material_code WHERE b.unit_cost > 500",
+    "gold_columns": [
+      "wms_db.material.material_name",
+      "wms_db.batch.unit_cost"
+    ],
+    "id": "q048"
+  },
+  {
+    "category": "multi_join",
+    "query": "查询板材类物料的在库数量",
+    "gold_sql": "SELECT m.material_name, s.on_hand_qty FROM wms.material m JOIN wms.stock_snapshot s ON m.material_code = s.material_code WHERE m.category = '板材'",
+    "gold_columns": [
+      "wms_db.material.category",
+      "wms_db.stock_snapshot.on_hand_qty"
+    ],
+    "id": "q049"
+  },
+  {
+    "category": "multi_join",
+    "query": "查询门板类物料的在库数量",
+    "gold_sql": "SELECT m.material_name, s.on_hand_qty FROM wms.material m JOIN wms.stock_snapshot s ON m.material_code = s.material_code WHERE m.category = '门板'",
+    "gold_columns": [
+      "wms_db.material.category",
+      "wms_db.stock_snapshot.on_hand_qty"
+    ],
+    "id": "q050"
+  },
+  {
+    "category": "aggregation",
+    "query": "统计每个工程的采购总金额",
+    "gold_sql": "SELECT job_no, SUM(po_amt) FROM erp.purchase_order GROUP BY job_no",
+    "gold_columns": [
+      "erp_db.purchase_order.job_no",
+      "erp_db.purchase_order.po_amt"
+    ],
+    "id": "q051"
+  },
+  {
+    "category": "aggregation",
+    "query": "统计采购单总数",
+    "gold_sql": "SELECT COUNT(*) FROM erp.purchase_order",
+    "gold_columns": [
+      "erp_db.purchase_order.po_no"
+    ],
+    "id": "q052"
+  },
+  {
+    "category": "aggregation",
+    "query": "统计所有供应商的平均准时率",
+    "gold_sql": "SELECT AVG(on_time_rate) FROM erp.supplier",
+    "gold_columns": [
+      "erp_db.supplier.on_time_rate"
+    ],
+    "id": "q053"
+  },
+  {
+    "category": "aggregation",
+    "query": "统计每个品类的供应商数量",
+    "gold_sql": "SELECT category, COUNT(*) FROM erp.supplier GROUP BY category",
+    "gold_columns": [
+      "erp_db.supplier.category"
+    ],
+    "id": "q054"
+  },
+  {
+    "category": "aggregation",
+    "query": "统计订单总金额",
+    "gold_sql": "SELECT SUM(order_amt) FROM erp.sales_order",
+    "gold_columns": [
+      "erp_db.sales_order.order_amt"
+    ],
+    "id": "q055"
+  },
+  {
+    "category": "aggregation",
+    "query": "统计每个订单状态的订单数量",
+    "gold_sql": "SELECT order_status, COUNT(*) FROM erp.sales_order GROUP BY order_status",
+    "gold_columns": [
+      "erp_db.sales_order.order_status"
+    ],
+    "id": "q056"
+  },
+  {
+    "category": "aggregation",
+    "query": "统计已付款总金额",
+    "gold_sql": "SELECT SUM(paid_amt) FROM erp.payment",
+    "gold_columns": [
+      "erp_db.payment.paid_amt"
+    ],
+    "id": "q057"
+  },
+  {
+    "category": "aggregation",
+    "query": "统计每个供应商的采购单数量",
+    "gold_sql": "SELECT supplier_id, COUNT(*) FROM erp.purchase_order GROUP BY supplier_id",
+    "gold_columns": [
+      "erp_db.purchase_order.supplier_id"
+    ],
+    "id": "q058"
+  },
+  {
+    "category": "aggregation",
+    "query": "统计每个业务板块的项目数量",
+    "gold_sql": "SELECT business_unit, COUNT(*) FROM pm.project GROUP BY business_unit",
+    "gold_columns": [
+      "pm_db.project.business_unit"
+    ],
+    "id": "q059"
+  },
+  {
+    "category": "aggregation",
+    "query": "统计每个业务板块的合同额合计",
+    "gold_sql": "SELECT business_unit, SUM(contract_amt) FROM pm.project GROUP BY business_unit",
+    "gold_columns": [
+      "pm_db.project.business_unit",
+      "pm_db.project.contract_amt"
+    ],
+    "id": "q060"
+  },
+  {
+    "category": "aggregation",
+    "query": "统计所有项目的平均预算金额",
+    "gold_sql": "SELECT AVG(budget_amt) FROM pm.project",
+    "gold_columns": [
+      "pm_db.project.budget_amt"
+    ],
+    "id": "q061"
+  },
+  {
+    "category": "aggregation",
+    "query": "统计所有项目的实际成本合计",
+    "gold_sql": "SELECT SUM(actual_cost) FROM pm.project",
+    "gold_columns": [
+      "pm_db.project.actual_cost"
+    ],
+    "id": "q062"
+  },
+  {
+    "category": "aggregation",
+    "query": "统计每个项目的变更总金额",
+    "gold_sql": "SELECT project_code, SUM(change_amt) FROM pm.change_order GROUP BY project_code",
+    "gold_columns": [
+      "pm_db.change_order.project_code",
+      "pm_db.change_order.change_amt"
+    ],
+    "id": "q063"
+  },
+  {
+    "category": "aggregation",
+    "query": "统计每个里程碑状态的节点数量",
+    "gold_sql": "SELECT ms_status, COUNT(*) FROM pm.milestone GROUP BY ms_status",
+    "gold_columns": [
+      "pm_db.milestone.ms_status"
+    ],
+    "id": "q064"
+  },
+  {
+    "category": "aggregation",
+    "query": "统计项目总数",
+    "gold_sql": "SELECT COUNT(*) FROM pm.project",
+    "gold_columns": [
+      "pm_db.project.project_code"
+    ],
+    "id": "q065"
+  },
+  {
+    "category": "aggregation",
+    "query": "统计每个工单的工时合计",
+    "gold_sql": "SELECT work_order_id, SUM(hours) FROM mes.labor_hour GROUP BY work_order_id",
+    "gold_columns": [
+      "mes_db.labor_hour.work_order_id",
+      "mes_db.labor_hour.hours"
+    ],
+    "id": "q066"
+  },
+  {
+    "category": "aggregation",
+    "query": "统计每个工人的工时合计",
+    "gold_sql": "SELECT worker_name, SUM(hours) FROM mes.labor_hour GROUP BY worker_name",
+    "gold_columns": [
+      "mes_db.labor_hour.worker_name",
+      "mes_db.labor_hour.hours"
+    ],
+    "id": "q067"
+  },
+  {
+    "category": "aggregation",
+    "query": "统计每个车间的工单数量",
+    "gold_sql": "SELECT workshop, COUNT(*) FROM mes.work_order GROUP BY workshop",
+    "gold_columns": [
+      "mes_db.work_order.workshop"
+    ],
+    "id": "q068"
+  },
+  {
+    "category": "aggregation",
+    "query": "统计所有工单的平均良率",
+    "gold_sql": "SELECT AVG(yield_rate) FROM mes.quality_check",
+    "gold_columns": [
+      "mes_db.quality_check.yield_rate"
+    ],
+    "id": "q069"
+  },
+  {
+    "category": "aggregation",
+    "query": "统计每个车间的实际产量合计",
+    "gold_sql": "SELECT workshop, SUM(actual_qty) FROM mes.capacity_stat GROUP BY workshop",
+    "gold_columns": [
+      "mes_db.capacity_stat.workshop",
+      "mes_db.capacity_stat.actual_qty"
+    ],
+    "id": "q070"
+  },
+  {
+    "category": "aggregation",
+    "query": "统计每个工序的工时合计",
+    "gold_sql": "SELECT process_name, SUM(hours) FROM mes.labor_hour GROUP BY process_name",
+    "gold_columns": [
+      "mes_db.labor_hour.process_name",
+      "mes_db.labor_hour.hours"
+    ],
+    "id": "q071"
+  },
+  {
+    "category": "aggregation",
+    "query": "统计每个品类的物料数量",
+    "gold_sql": "SELECT category, COUNT(*) FROM wms.material GROUP BY category",
+    "gold_columns": [
+      "wms_db.material.category"
+    ],
+    "id": "q072"
+  },
+  {
+    "category": "aggregation",
+    "query": "统计每个物料的入库总数量",
+    "gold_sql": "SELECT material_code, SUM(in_qty) FROM wms.batch GROUP BY material_code",
+    "gold_columns": [
+      "wms_db.batch.material_code",
+      "wms_db.batch.in_qty"
+    ],
+    "id": "q073"
+  },
+  {
+    "category": "aggregation",
+    "query": "统计所有物料的在库数量合计",
+    "gold_sql": "SELECT SUM(on_hand_qty) FROM wms.stock_snapshot",
+    "gold_columns": [
+      "wms_db.stock_snapshot.on_hand_qty"
+    ],
+    "id": "q074"
+  },
+  {
+    "category": "aggregation",
+    "query": "统计所有批次的平均单位成本",
+    "gold_sql": "SELECT AVG(unit_cost) FROM wms.batch",
+    "gold_columns": [
+      "wms_db.batch.unit_cost"
+    ],
+    "id": "q075"
+  },
+  {
+    "category": "having",
+    "query": "查询采购总金额超过50000的工程号",
+    "gold_sql": "SELECT job_no FROM erp.purchase_order GROUP BY job_no HAVING SUM(po_amt) > 50000",
+    "gold_columns": [
+      "erp_db.purchase_order.job_no",
+      "erp_db.purchase_order.po_amt"
+    ],
+    "id": "q076"
+  },
+  {
+    "category": "having",
+    "query": "查询采购总金额超过100000的工程号",
+    "gold_sql": "SELECT job_no FROM erp.purchase_order GROUP BY job_no HAVING SUM(po_amt) > 100000",
+    "gold_columns": [
+      "erp_db.purchase_order.job_no",
+      "erp_db.purchase_order.po_amt"
+    ],
+    "id": "q077"
+  },
+  {
+    "category": "having",
+    "query": "查询采购总金额超过200000的工程号",
+    "gold_sql": "SELECT job_no FROM erp.purchase_order GROUP BY job_no HAVING SUM(po_amt) > 200000",
+    "gold_columns": [
+      "erp_db.purchase_order.job_no",
+      "erp_db.purchase_order.po_amt"
+    ],
+    "id": "q078"
+  },
+  {
+    "category": "having",
+    "query": "查询采购总金额超过500000的工程号",
+    "gold_sql": "SELECT job_no FROM erp.purchase_order GROUP BY job_no HAVING SUM(po_amt) > 500000",
+    "gold_columns": [
+      "erp_db.purchase_order.job_no",
+      "erp_db.purchase_order.po_amt"
+    ],
+    "id": "q079"
+  },
+  {
+    "category": "having",
+    "query": "查询采购单数量超过0的工程号",
+    "gold_sql": "SELECT job_no FROM erp.purchase_order GROUP BY job_no HAVING COUNT(*) > 0",
+    "gold_columns": [
+      "erp_db.purchase_order.job_no"
+    ],
+    "id": "q080"
+  },
+  {
+    "category": "having",
+    "query": "查询采购单数量超过1的工程号",
+    "gold_sql": "SELECT job_no FROM erp.purchase_order GROUP BY job_no HAVING COUNT(*) > 1",
+    "gold_columns": [
+      "erp_db.purchase_order.job_no"
+    ],
+    "id": "q081"
+  },
+  {
+    "category": "having",
+    "query": "查询采购单数量超过2的工程号",
+    "gold_sql": "SELECT job_no FROM erp.purchase_order GROUP BY job_no HAVING COUNT(*) > 2",
+    "gold_columns": [
+      "erp_db.purchase_order.job_no"
+    ],
+    "id": "q082"
+  },
+  {
+    "category": "having",
+    "query": "查询采购单数量超过1的供应商编号",
+    "gold_sql": "SELECT supplier_id FROM erp.purchase_order GROUP BY supplier_id HAVING COUNT(*) > 1",
+    "gold_columns": [
+      "erp_db.purchase_order.supplier_id"
+    ],
+    "id": "q083"
+  },
+  {
+    "category": "having",
+    "query": "查询采购单数量超过2的供应商编号",
+    "gold_sql": "SELECT supplier_id FROM erp.purchase_order GROUP BY supplier_id HAVING COUNT(*) > 2",
+    "gold_columns": [
+      "erp_db.purchase_order.supplier_id"
+    ],
+    "id": "q084"
+  },
+  {
+    "category": "having",
+    "query": "查询变更总金额超过10000的项目编号",
+    "gold_sql": "SELECT project_code FROM pm.change_order GROUP BY project_code HAVING SUM(change_amt) > 10000",
+    "gold_columns": [
+      "pm_db.change_order.project_code",
+      "pm_db.change_order.change_amt"
+    ],
+    "id": "q085"
+  },
+  {
+    "category": "having",
+    "query": "查询变更总金额超过50000的项目编号",
+    "gold_sql": "SELECT project_code FROM pm.change_order GROUP BY project_code HAVING SUM(change_amt) > 50000",
+    "gold_columns": [
+      "pm_db.change_order.project_code",
+      "pm_db.change_order.change_amt"
+    ],
+    "id": "q086"
+  },
+  {
+    "category": "having",
+    "query": "查询变更总金额超过100000的项目编号",
+    "gold_sql": "SELECT project_code FROM pm.change_order GROUP BY project_code HAVING SUM(change_amt) > 100000",
+    "gold_columns": [
+      "pm_db.change_order.project_code",
+      "pm_db.change_order.change_amt"
+    ],
+    "id": "q087"
+  },
+  {
+    "category": "having",
+    "query": "查询里程碑数量超过1的项目编号",
+    "gold_sql": "SELECT project_code FROM pm.milestone GROUP BY project_code HAVING COUNT(*) > 1",
+    "gold_columns": [
+      "pm_db.milestone.project_code"
+    ],
+    "id": "q088"
+  },
+  {
+    "category": "having",
+    "query": "查询里程碑数量超过2的项目编号",
+    "gold_sql": "SELECT project_code FROM pm.milestone GROUP BY project_code HAVING COUNT(*) > 2",
+    "gold_columns": [
+      "pm_db.milestone.project_code"
+    ],
+    "id": "q089"
+  },
+  {
+    "category": "having",
+    "query": "查询合同额合计超过1000000的业务板块",
+    "gold_sql": "SELECT business_unit FROM pm.project GROUP BY business_unit HAVING SUM(contract_amt) > 1000000",
+    "gold_columns": [
+      "pm_db.project.business_unit",
+      "pm_db.project.contract_amt"
+    ],
+    "id": "q090"
+  },
+  {
+    "category": "having",
+    "query": "查询工时合计超过20小时的工单号",
+    "gold_sql": "SELECT work_order_id FROM mes.labor_hour GROUP BY work_order_id HAVING SUM(hours) > 20",
+    "gold_columns": [
+      "mes_db.labor_hour.work_order_id",
+      "mes_db.labor_hour.hours"
+    ],
+    "id": "q091"
+  },
+  {
+    "category": "having",
+    "query": "查询工时合计超过50小时的工单号",
+    "gold_sql": "SELECT work_order_id FROM mes.labor_hour GROUP BY work_order_id HAVING SUM(hours) > 50",
+    "gold_columns": [
+      "mes_db.labor_hour.work_order_id",
+      "mes_db.labor_hour.hours"
+    ],
+    "id": "q092"
+  },
+  {
+    "category": "having",
+    "query": "查询工时合计超过100小时的工单号",
+    "gold_sql": "SELECT work_order_id FROM mes.labor_hour GROUP BY work_order_id HAVING SUM(hours) > 100",
+    "gold_columns": [
+      "mes_db.labor_hour.work_order_id",
+      "mes_db.labor_hour.hours"
+    ],
+    "id": "q093"
+  },
+  {
+    "category": "having",
+    "query": "查询工时合计超过30小时的工人姓名",
+    "gold_sql": "SELECT worker_name FROM mes.labor_hour GROUP BY worker_name HAVING SUM(hours) > 30",
+    "gold_columns": [
+      "mes_db.labor_hour.worker_name",
+      "mes_db.labor_hour.hours"
+    ],
+    "id": "q094"
+  },
+  {
+    "category": "having",
+    "query": "查询工时合计超过80小时的工人姓名",
+    "gold_sql": "SELECT worker_name FROM mes.labor_hour GROUP BY worker_name HAVING SUM(hours) > 80",
+    "gold_columns": [
+      "mes_db.labor_hour.worker_name",
+      "mes_db.labor_hour.hours"
+    ],
+    "id": "q095"
+  },
+  {
+    "category": "having",
+    "query": "查询实际产量合计超过500的车间",
+    "gold_sql": "SELECT workshop FROM mes.capacity_stat GROUP BY workshop HAVING SUM(actual_qty) > 500",
+    "gold_columns": [
+      "mes_db.capacity_stat.workshop",
+      "mes_db.capacity_stat.actual_qty"
+    ],
+    "id": "q096"
+  },
+  {
+    "category": "having",
+    "query": "查询入库总量超过500的物料编码",
+    "gold_sql": "SELECT material_code FROM wms.batch GROUP BY material_code HAVING SUM(in_qty) > 500",
+    "gold_columns": [
+      "wms_db.batch.material_code",
+      "wms_db.batch.in_qty"
+    ],
+    "id": "q097"
+  },
+  {
+    "category": "having",
+    "query": "查询入库总量超过1000的物料编码",
+    "gold_sql": "SELECT material_code FROM wms.batch GROUP BY material_code HAVING SUM(in_qty) > 1000",
+    "gold_columns": [
+      "wms_db.batch.material_code",
+      "wms_db.batch.in_qty"
+    ],
+    "id": "q098"
+  },
+  {
+    "category": "having",
+    "query": "查询入库总量超过3000的物料编码",
+    "gold_sql": "SELECT material_code FROM wms.batch GROUP BY material_code HAVING SUM(in_qty) > 3000",
+    "gold_columns": [
+      "wms_db.batch.material_code",
+      "wms_db.batch.in_qty"
+    ],
+    "id": "q099"
+  },
+  {
+    "category": "having",
+    "query": "查询批次数量超过1的物料编码",
+    "gold_sql": "SELECT material_code FROM wms.batch GROUP BY material_code HAVING COUNT(*) > 1",
+    "gold_columns": [
+      "wms_db.batch.material_code"
+    ],
+    "id": "q100"
+  },
+  {
+    "category": "cross_db",
+    "query": "查询实际成本超过预算的各个项目的采购总金额",
+    "gold_sql": "SELECT o.job_no, SUM(o.po_amt) FROM erp.purchase_order o JOIN pm.project p ON o.job_no = p.project_code WHERE p.actual_cost > p.budget_amt GROUP BY o.job_no",
+    "gold_columns": [
+      "pm_db.project.actual_cost",
+      "pm_db.project.budget_amt",
+      "pm_db.project.project_code",
+      "erp_db.purchase_order.job_no",
+      "erp_db.purchase_order.po_amt"
+    ],
+    "id": "q101"
+  },
+  {
+    "category": "cross_db",
+    "query": "查询建筑装修板块项目的采购总金额",
+    "gold_sql": "SELECT SUM(o.po_amt) FROM erp.purchase_order o JOIN pm.project p ON o.job_no = p.project_code WHERE p.business_unit = '建筑装修'",
+    "gold_columns": [
+      "pm_db.project.business_unit",
+      "erp_db.purchase_order.po_amt"
+    ],
+    "id": "q102"
+  },
+  {
+    "category": "cross_db",
+    "query": "查询消防板块项目的采购总金额",
+    "gold_sql": "SELECT SUM(o.po_amt) FROM erp.purchase_order o JOIN pm.project p ON o.job_no = p.project_code WHERE p.business_unit = '消防'",
+    "gold_columns": [
+      "pm_db.project.business_unit",
+      "erp_db.purchase_order.po_amt"
+    ],
+    "id": "q103"
+  },
+  {
+    "category": "cross_db",
+    "query": "查询状态为active的项目的订单金额",
+    "gold_sql": "SELECT s.order_no, s.order_amt FROM erp.sales_order s JOIN pm.project p ON s.job_no = p.project_code WHERE p.project_status = 'active'",
+    "gold_columns": [
+      "pm_db.project.project_status",
+      "erp_db.sales_order.order_amt"
+    ],
+    "id": "q104"
+  },
+  {
+    "category": "cross_db",
+    "query": "查询合同额大于1000000的项目的采购单号",
+    "gold_sql": "SELECT o.po_no FROM erp.purchase_order o JOIN pm.project p ON o.job_no = p.project_code WHERE p.contract_amt > 1000000",
+    "gold_columns": [
+      "pm_db.project.contract_amt",
+      "erp_db.purchase_order.po_no"
+    ],
+    "id": "q105"
+  },
+  {
+    "category": "cross_db",
+    "query": "查询里程碑状态为delayed的项目的生产工单号",
+    "gold_sql": "SELECT DISTINCT w.work_order_id FROM mes.work_order w JOIN pm.milestone m ON w.job_no = m.project_code WHERE m.ms_status = 'delayed'",
+    "gold_columns": [
+      "pm_db.milestone.ms_status",
+      "mes_db.work_order.work_order_id"
+    ],
+    "id": "q106"
+  },
+  {
+    "category": "cross_db",
+    "query": "查询里程碑状态为pending的项目的生产工单号",
+    "gold_sql": "SELECT DISTINCT w.work_order_id FROM mes.work_order w JOIN pm.milestone m ON w.job_no = m.project_code WHERE m.ms_status = 'pending'",
+    "gold_columns": [
+      "pm_db.milestone.ms_status",
+      "mes_db.work_order.work_order_id"
+    ],
+    "id": "q107"
+  },
+  {
+    "category": "cross_db",
+    "query": "查询超预算项目的当前生产工序",
+    "gold_sql": "SELECT w.job_no, w.current_process FROM mes.work_order w JOIN pm.project p ON w.job_no = p.project_code WHERE p.actual_cost > p.budget_amt",
+    "gold_columns": [
+      "pm_db.project.actual_cost",
+      "pm_db.project.budget_amt",
+      "mes_db.work_order.current_process"
+    ],
+    "id": "q108"
+  },
+  {
+    "category": "cross_db",
+    "query": "查询建筑装修板块项目的工单数量",
+    "gold_sql": "SELECT COUNT(*) FROM mes.work_order w JOIN pm.project p ON w.job_no = p.project_code WHERE p.business_unit = '建筑装修'",
+    "gold_columns": [
+      "pm_db.project.business_unit",
+      "mes_db.work_order.work_order_id"
+    ],
+    "id": "q109"
+  },
+  {
+    "category": "cross_db",
+    "query": "查询订单状态为in_production的工程的生产车间",
+    "gold_sql": "SELECT DISTINCT w.workshop FROM mes.work_order w JOIN erp.sales_order s ON w.job_no = s.job_no WHERE s.order_status = 'in_production'",
+    "gold_columns": [
+      "erp_db.sales_order.order_status",
+      "mes_db.work_order.workshop"
+    ],
+    "id": "q110"
+  },
+  {
+    "category": "cross_db",
+    "query": "查询订单状态为delivered的工程的生产车间",
+    "gold_sql": "SELECT DISTINCT w.workshop FROM mes.work_order w JOIN erp.sales_order s ON w.job_no = s.job_no WHERE s.order_status = 'delivered'",
+    "gold_columns": [
+      "erp_db.sales_order.order_status",
+      "mes_db.work_order.workshop"
+    ],
+    "id": "q111"
+  },
+  {
+    "category": "cross_db",
+    "query": "查询订单金额大于1000000的工程的工单号",
+    "gold_sql": "SELECT w.work_order_id FROM mes.work_order w JOIN erp.sales_order s ON w.job_no = s.job_no WHERE s.order_amt > 1000000",
+    "gold_columns": [
+      "erp_db.sales_order.order_amt",
+      "mes_db.work_order.work_order_id"
+    ],
+    "id": "q112"
+  },
+  {
+    "category": "cross_db",
+    "query": "查询板材类供应商的入库批次号",
+    "gold_sql": "SELECT b.batch_no FROM wms.batch b JOIN erp.supplier s ON b.supplier_id = s.supplier_id WHERE s.category = '板材'",
+    "gold_columns": [
+      "erp_db.supplier.category",
+      "wms_db.batch.batch_no"
+    ],
+    "id": "q113"
+  },
+  {
+    "category": "cross_db",
+    "query": "查询五金类供应商的入库批次号",
+    "gold_sql": "SELECT b.batch_no FROM wms.batch b JOIN erp.supplier s ON b.supplier_id = s.supplier_id WHERE s.category = '五金'",
+    "gold_columns": [
+      "erp_db.supplier.category",
+      "wms_db.batch.batch_no"
+    ],
+    "id": "q114"
+  },
+  {
+    "category": "cross_db",
+    "query": "查询准时率低于0.8的供应商的入库总量合计",
+    "gold_sql": "SELECT SUM(b.in_qty) FROM wms.batch b JOIN erp.supplier s ON b.supplier_id = s.supplier_id WHERE s.on_time_rate < 0.8",
+    "gold_columns": [
+      "erp_db.supplier.on_time_rate",
+      "wms_db.batch.in_qty"
+    ],
+    "id": "q115"
+  },
+  {
+    "category": "cross_db",
+    "query": "查询准时率低于0.9的供应商的入库总量合计",
+    "gold_sql": "SELECT SUM(b.in_qty) FROM wms.batch b JOIN erp.supplier s ON b.supplier_id = s.supplier_id WHERE s.on_time_rate < 0.9",
+    "gold_columns": [
+      "erp_db.supplier.on_time_rate",
+      "wms_db.batch.in_qty"
+    ],
+    "id": "q116"
+  },
+  {
+    "category": "cross_db",
+    "query": "查询已完工工单对应项目的合同额",
+    "gold_sql": "SELECT DISTINCT p.project_name, p.contract_amt FROM pm.project p JOIN mes.work_order w ON p.project_code = w.job_no WHERE w.work_status = 'finished'",
+    "gold_columns": [
+      "mes_db.work_order.work_status",
+      "pm_db.project.contract_amt"
+    ],
+    "id": "q117"
+  },
+  {
+    "category": "cross_db",
+    "query": "查询良率低于0.95的工单对应的客户名称",
+    "gold_sql": "SELECT DISTINCT s.customer_name FROM erp.sales_order s JOIN mes.work_order w ON s.job_no = w.job_no JOIN mes.quality_check q ON w.work_order_id = q.work_order_id WHERE q.yield_rate < 0.95",
+    "gold_columns": [
+      "mes_db.quality_check.yield_rate",
+      "erp_db.sales_order.customer_name"
+    ],
+    "id": "q118"
+  },
+  {
+    "category": "cross_db",
+    "query": "查询采购总额超过100000的工程对应的项目名称",
+    "gold_sql": "SELECT p.project_name FROM pm.project p WHERE p.project_code IN (SELECT job_no FROM erp.purchase_order GROUP BY job_no HAVING SUM(po_amt) > 100000)",
+    "gold_columns": [
+      "erp_db.purchase_order.po_amt",
+      "pm_db.project.project_name"
+    ],
+    "id": "q119"
+  },
+  {
+    "category": "cross_db",
+    "query": "查询采购总额超过500000的工程对应的项目名称",
+    "gold_sql": "SELECT p.project_name FROM pm.project p WHERE p.project_code IN (SELECT job_no FROM erp.purchase_order GROUP BY job_no HAVING SUM(po_amt) > 500000)",
+    "gold_columns": [
+      "erp_db.purchase_order.po_amt",
+      "pm_db.project.project_name"
+    ],
+    "id": "q120"
+  },
+  {
+    "category": "cross_db",
+    "query": "查询已验收项目的订单金额",
+    "gold_sql": "SELECT s.order_no, s.order_amt FROM erp.sales_order s JOIN pm.acceptance a ON s.job_no = a.project_code",
+    "gold_columns": [
+      "pm_db.acceptance.project_code",
+      "erp_db.sales_order.order_amt"
+    ],
+    "id": "q121"
+  },
+  {
+    "category": "cross_db",
+    "query": "查询一车间生产的工程的客户名称",
+    "gold_sql": "SELECT DISTINCT s.customer_name FROM erp.sales_order s JOIN mes.work_order w ON s.job_no = w.job_no WHERE w.workshop = '一车间'",
+    "gold_columns": [
+      "mes_db.work_order.workshop",
+      "erp_db.sales_order.customer_name"
+    ],
+    "id": "q122"
+  },
+  {
+    "category": "cross_db",
+    "query": "查询二车间生产的工程的客户名称",
+    "gold_sql": "SELECT DISTINCT s.customer_name FROM erp.sales_order s JOIN mes.work_order w ON s.job_no = w.job_no WHERE w.workshop = '二车间'",
+    "gold_columns": [
+      "mes_db.work_order.workshop",
+      "erp_db.sales_order.customer_name"
+    ],
+    "id": "q123"
+  },
+  {
+    "category": "cross_db",
+    "query": "查询进行中项目的采购单数量",
+    "gold_sql": "SELECT COUNT(*) FROM erp.purchase_order o JOIN pm.project p ON o.job_no = p.project_code WHERE p.project_status = 'active'",
+    "gold_columns": [
+      "pm_db.project.project_status",
+      "erp_db.purchase_order.po_no"
+    ],
+    "id": "q124"
+  },
+  {
+    "category": "cross_db",
+    "query": "查询变更金额大于50000的项目的生产车间",
+    "gold_sql": "SELECT DISTINCT w.workshop FROM mes.work_order w JOIN pm.change_order c ON w.job_no = c.project_code WHERE c.change_amt > 50000",
+    "gold_columns": [
+      "pm_db.change_order.change_amt",
+      "mes_db.work_order.workshop"
+    ],
+    "id": "q125"
+  },
+  {
+    "category": "time_range",
+    "query": "查询2024-01-01到2024-03-31期间签单的订单号",
+    "gold_sql": "SELECT order_no FROM erp.sales_order WHERE sign_date >= '2024-01-01' AND sign_date <= '2024-03-31'",
+    "gold_columns": [
+      "erp_db.sales_order.order_no",
+      "erp_db.sales_order.sign_date"
+    ],
+    "id": "q126"
+  },
+  {
+    "category": "time_range",
+    "query": "查询2024-04-01到2024-06-30期间签单的订单号",
+    "gold_sql": "SELECT order_no FROM erp.sales_order WHERE sign_date >= '2024-04-01' AND sign_date <= '2024-06-30'",
+    "gold_columns": [
+      "erp_db.sales_order.order_no",
+      "erp_db.sales_order.sign_date"
+    ],
+    "id": "q127"
+  },
+  {
+    "category": "time_range",
+    "query": "查询2024-02-01到2024-02-29期间签单的订单号",
+    "gold_sql": "SELECT order_no FROM erp.sales_order WHERE sign_date >= '2024-02-01' AND sign_date <= '2024-02-29'",
+    "gold_columns": [
+      "erp_db.sales_order.order_no",
+      "erp_db.sales_order.sign_date"
+    ],
+    "id": "q128"
+  },
+  {
+    "category": "time_range",
+    "query": "统计2024-01-01到2024-03-31期间的采购总金额",
+    "gold_sql": "SELECT SUM(po_amt) FROM erp.purchase_order WHERE po_date >= '2024-01-01' AND po_date <= '2024-03-31'",
+    "gold_columns": [
+      "erp_db.purchase_order.po_amt",
+      "erp_db.purchase_order.po_date"
+    ],
+    "id": "q129"
+  },
+  {
+    "category": "time_range",
+    "query": "统计2024-04-01到2024-06-30期间的采购总金额",
+    "gold_sql": "SELECT SUM(po_amt) FROM erp.purchase_order WHERE po_date >= '2024-04-01' AND po_date <= '2024-06-30'",
+    "gold_columns": [
+      "erp_db.purchase_order.po_amt",
+      "erp_db.purchase_order.po_date"
+    ],
+    "id": "q130"
+  },
+  {
+    "category": "time_range",
+    "query": "查询2024-03-01之后付款的付款编号",
+    "gold_sql": "SELECT payment_id FROM erp.payment WHERE paid_date > '2024-03-01'",
+    "gold_columns": [
+      "erp_db.payment.payment_id",
+      "erp_db.payment.paid_date"
+    ],
+    "id": "q131"
+  },
+  {
+    "category": "time_range",
+    "query": "查询2024-04-01之后付款的付款编号",
+    "gold_sql": "SELECT payment_id FROM erp.payment WHERE paid_date > '2024-04-01'",
+    "gold_columns": [
+      "erp_db.payment.payment_id",
+      "erp_db.payment.paid_date"
+    ],
+    "id": "q132"
+  },
+  {
+    "category": "time_range",
+    "query": "查询2024-02-01之后开工的项目名称",
+    "gold_sql": "SELECT project_name FROM pm.project WHERE start_date > '2024-02-01'",
+    "gold_columns": [
+      "pm_db.project.project_name",
+      "pm_db.project.start_date"
+    ],
+    "id": "q133"
+  },
+  {
+    "category": "time_range",
+    "query": "查询2024-04-01之后开工的项目名称",
+    "gold_sql": "SELECT project_name FROM pm.project WHERE start_date > '2024-04-01'",
+    "gold_columns": [
+      "pm_db.project.project_name",
+      "pm_db.project.start_date"
+    ],
+    "id": "q134"
+  },
+  {
+    "category": "time_range",
+    "query": "查询计划完工日期早于2024-05-30的项目名称",
+    "gold_sql": "SELECT project_name FROM pm.project WHERE due_date < '2024-05-30'",
+    "gold_columns": [
+      "pm_db.project.project_name",
+      "pm_db.project.due_date"
+    ],
+    "id": "q135"
+  },
+  {
+    "category": "time_range",
+    "query": "查询计划完工日期早于2024-06-30的项目名称",
+    "gold_sql": "SELECT project_name FROM pm.project WHERE due_date < '2024-06-30'",
+    "gold_columns": [
+      "pm_db.project.project_name",
+      "pm_db.project.due_date"
+    ],
+    "id": "q136"
+  },
+  {
+    "category": "time_range",
+    "query": "查询2024-03-01之后验收的项目编号",
+    "gold_sql": "SELECT project_code FROM pm.acceptance WHERE accept_date > '2024-03-01'",
+    "gold_columns": [
+      "pm_db.acceptance.project_code",
+      "pm_db.acceptance.accept_date"
+    ],
+    "id": "q137"
+  },
+  {
+    "category": "time_range",
+    "query": "查询2024-05-01之后验收的项目编号",
+    "gold_sql": "SELECT project_code FROM pm.acceptance WHERE accept_date > '2024-05-01'",
+    "gold_columns": [
+      "pm_db.acceptance.project_code",
+      "pm_db.acceptance.accept_date"
+    ],
+    "id": "q138"
+  },
+  {
+    "category": "time_range",
+    "query": "查询2024-03-01之后排产的工单号",
+    "gold_sql": "SELECT work_order_id FROM mes.work_order WHERE schedule_date > '2024-03-01'",
+    "gold_columns": [
+      "mes_db.work_order.work_order_id",
+      "mes_db.work_order.schedule_date"
+    ],
+    "id": "q139"
+  },
+  {
+    "category": "time_range",
+    "query": "查询2024-04-01之后排产的工单号",
+    "gold_sql": "SELECT work_order_id FROM mes.work_order WHERE schedule_date > '2024-04-01'",
+    "gold_columns": [
+      "mes_db.work_order.work_order_id",
+      "mes_db.work_order.schedule_date"
+    ],
+    "id": "q140"
+  },
+  {
+    "category": "time_range",
+    "query": "查询2024-04-20之后排产的工单号",
+    "gold_sql": "SELECT work_order_id FROM mes.work_order WHERE schedule_date > '2024-04-20'",
+    "gold_columns": [
+      "mes_db.work_order.work_order_id",
+      "mes_db.work_order.schedule_date"
+    ],
+    "id": "q141"
+  },
+  {
+    "category": "time_range",
+    "query": "查询2024-03-15之后完工的工单号",
+    "gold_sql": "SELECT work_order_id FROM mes.work_order WHERE finish_date > '2024-03-15'",
+    "gold_columns": [
+      "mes_db.work_order.work_order_id",
+      "mes_db.work_order.finish_date"
+    ],
+    "id": "q142"
+  },
+  {
+    "category": "time_range",
+    "query": "查询2024-04-01之后完工的工单号",
+    "gold_sql": "SELECT work_order_id FROM mes.work_order WHERE finish_date > '2024-04-01'",
+    "gold_columns": [
+      "mes_db.work_order.work_order_id",
+      "mes_db.work_order.finish_date"
+    ],
+    "id": "q143"
+  },
+  {
+    "category": "time_range",
+    "query": "统计2024-04-01到2024-04-30期间的工时合计",
+    "gold_sql": "SELECT SUM(hours) FROM mes.labor_hour WHERE work_date >= '2024-04-01' AND work_date <= '2024-04-30'",
+    "gold_columns": [
+      "mes_db.labor_hour.hours",
+      "mes_db.labor_hour.work_date"
+    ],
+    "id": "q144"
+  },
+  {
+    "category": "time_range",
+    "query": "统计2024-02-01到2024-02-29期间的工时合计",
+    "gold_sql": "SELECT SUM(hours) FROM mes.labor_hour WHERE work_date >= '2024-02-01' AND work_date <= '2024-02-29'",
+    "gold_columns": [
+      "mes_db.labor_hour.hours",
+      "mes_db.labor_hour.work_date"
+    ],
+    "id": "q145"
+  },
+  {
+    "category": "time_range",
+    "query": "查询2024-02-01之后入库的批次号",
+    "gold_sql": "SELECT batch_no FROM wms.batch WHERE in_date > '2024-02-01'",
+    "gold_columns": [
+      "wms_db.batch.batch_no",
+      "wms_db.batch.in_date"
+    ],
+    "id": "q146"
+  },
+  {
+    "category": "time_range",
+    "query": "查询2024-04-01之后入库的批次号",
+    "gold_sql": "SELECT batch_no FROM wms.batch WHERE in_date > '2024-04-01'",
+    "gold_columns": [
+      "wms_db.batch.batch_no",
+      "wms_db.batch.in_date"
+    ],
+    "id": "q147"
+  },
+  {
+    "category": "time_range",
+    "query": "统计2024-01-01到2024-02-28期间的入库总量",
+    "gold_sql": "SELECT SUM(in_qty) FROM wms.batch WHERE in_date >= '2024-01-01' AND in_date <= '2024-02-28'",
+    "gold_columns": [
+      "wms_db.batch.in_qty",
+      "wms_db.batch.in_date"
+    ],
+    "id": "q148"
+  },
+  {
+    "category": "time_range",
+    "query": "统计2024-03-01到2024-04-30期间的入库总量",
+    "gold_sql": "SELECT SUM(in_qty) FROM wms.batch WHERE in_date >= '2024-03-01' AND in_date <= '2024-04-30'",
+    "gold_columns": [
+      "wms_db.batch.in_qty",
+      "wms_db.batch.in_date"
+    ],
+    "id": "q149"
+  },
+  {
+    "category": "time_range",
+    "query": "查询2024-04-30的库存快照中在库数量",
+    "gold_sql": "SELECT material_code, on_hand_qty FROM wms.stock_snapshot WHERE snapshot_date = '2024-04-30'",
+    "gold_columns": [
+      "wms_db.stock_snapshot.on_hand_qty",
+      "wms_db.stock_snapshot.snapshot_date"
+    ],
+    "id": "q150"
+  }
+]

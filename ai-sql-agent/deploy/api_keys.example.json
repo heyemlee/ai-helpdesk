@@ -1,0 +1,103 @@
+{
+  "keys": [
+    {
+      "key": "REPLACE_ME_bi_portal__python -c \"import secrets;print(secrets.token_urlsafe(32))\"",
+      "caller": "bi-portal",
+      "roles": [
+        "analyst"
+      ],
+      "can_impersonate": true,
+      "rate_limit_per_minute": 120,
+      "daily_query_quota": 5000,
+      "daily_token_quota": 5000000,
+      "is_admin": true
+    },
+    {
+      "key": "REPLACE_ME_li",
+      "caller": "estimator-zhang",
+      "user_id": "estimator-zhang",
+      "roles": [
+        "estimating"
+      ],
+      "rate_limit_per_minute": 30,
+      "daily_query_quota": 200
+    },
+    {
+      "key": "REPLACE_ME_intern",
+      "caller": "workshop-01",
+      "user_id": "workshop-01",
+      "roles": [
+        "workshop"
+      ],
+      "rate_limit_per_minute": 10,
+      "daily_query_quota": 50
+    }
+  ],
+  "policies": {
+    "analyst": {
+      "allow_tables": [
+        "erp_db.*",
+        "prod_db.*",
+        "svc_db.*",
+        "wms_db.*"
+      ],
+      "deny_columns": [
+        "*.*.id_card_no",
+        "*.*.phone_no"
+      ],
+      "row_filters": [
+        {
+          "table": "*",
+          "predicate": "*"
+        }
+      ]
+    },
+    "estimating": {
+      "comment": "估价：看工程、明细、变更单、采购，但看不到物料标准成本",
+      "allow_tables": [
+        "erp_db.*",
+        "wms_db.material",
+        "wms_db.inventory"
+      ],
+      "deny_columns": [
+        "wms_db.material.unit_cost"
+      ],
+      "row_filters": [
+        {
+          "table": "erp_db.job",
+          "predicate": "owner_id = current_setting('app.user_id', true)"
+        },
+        {
+          "table": "*",
+          "predicate": "*"
+        }
+      ]
+    },
+    "workshop": {
+      "comment": "车间：只看生产域，接触不到客户与合同金额",
+      "allow_tables": [
+        "prod_db.*"
+      ],
+      "row_filters": [
+        {
+          "table": "*",
+          "predicate": "*"
+        }
+      ]
+    }
+  },
+  "$comment": "示例配置，对齐默认部署的语义层 tools/sim_erp/semantic（erp_db / prod_db / svc_db / wms_db）。契约 v1.6 已把 mes_db 标为 prod_db 的旧名、pm_db 的职责并入 erp_db，两者都已退役——策略里写它们等于写了一个不存在的库，而 deny by default 之下那把 Key 会什么都查不到、且没有任何症状。换语义层时这份文件要跟着改；启动检查会比对（见 ai_sql_agent.api.app.check_production_readiness）。 users 段是 impersonation 时解析最终用户权限用的（最终权限 = 服务身份 ∩ 用户）；row_filters 是行范围，predicate 为 \"*\" 表示显式声明这张表不做行隔离——「显式的宽松可以接受，默认的宽松不行」。两者的设计见 docs/authz-model.md。",
+  "users": {
+    "$comment": "最终用户 → 角色。有这一段时 impersonation 会按人重新解析权限并与服务身份取交集；未列出的用户拒绝（不知道他能看什么 ≠ 他什么都能看）。",
+    "estimator-zhang": {
+      "roles": [
+        "estimating"
+      ]
+    },
+    "workshop-01": {
+      "roles": [
+        "workshop"
+      ]
+    }
+  }
+}
