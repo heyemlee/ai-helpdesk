@@ -621,7 +621,7 @@ from app.runs.records import FAILED, SUCCEEDED, TERMINAL_FRAMES  # noqa: E402
 from app.runs.service import Backpressure, RunService  # noqa: E402
 from app.runs.store import IdempotencyConflict  # noqa: E402
 from app.runs.worker import RetryRun, RunContext, RunOutcome, RunWorker  # noqa: E402
-from app.tools.knowledge_base import UnknownCategory  # noqa: E402
+from app.tools.knowledge_base import SOURCE_MANUAL, SOURCE_UPLOAD, UnknownCategory  # noqa: E402
 from app.tools.turn_tools import Prefetch, loop_tools  # noqa: E402
 
 # OTel：配置 OTEL_EXPORTER_OTLP_ENDPOINT 后启用 FastAPI/httpx/redis/asyncpg
@@ -2593,7 +2593,7 @@ async def add_knowledge(body: BatchDocInput):
     results = await _import_or_503(
         kb,
         [{"title": d.title, "content": d.content, "category": d.category} for d in body.documents],
-        source_type="manual",
+        source_type=SOURCE_MANUAL,
     )
     return await _import_response(kb, results)
 
@@ -2636,7 +2636,7 @@ async def upload_knowledge(file: UploadFile = File(...), category: str = Form(""
         docs = [{"title": title, "content": text}]
 
     results = await _import_or_503(
-        kb, docs, source_type="upload", source_name=filename, category=category
+        kb, docs, source_type=SOURCE_UPLOAD, source_name=filename, category=category
     )
     return await _import_response(kb, results, f"文件 {filename} 导入成功")
 

@@ -243,9 +243,6 @@ class LocalStore:
             self._db.execute("ALTER TABLE kb_documents ADD COLUMN category TEXT NOT NULL DEFAULT ''")
             logger.info("kb_documents 已补 category 列（已有文档都是未分类）")
 
-    async def init(self) -> None:
-        """与 PgStore 对齐的异步初始化钩子（SQLite 在构造时已建表）。"""
-
     # ── KB 片段 ───────────────────────────────────────────────────────────────
 
     async def kb_existing_ids(self, ids: list[str]) -> set[str]:
@@ -750,9 +747,6 @@ class PgStore:
 
     def __init__(self, db: Database):
         self._db = db
-
-    async def init(self) -> None:
-        """建表已由 Database.init_schema 完成，这里无事可做。"""
 
     @staticmethod
     def _vec(embedding: list[float]) -> str:

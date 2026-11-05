@@ -1,5 +1,4 @@
 """LLM 客户端工厂与响应解析，供 Anthropic 协议与 OpenAI 兼容协议共用。"""
-import logging
 import os
 from collections.abc import Iterable
 from typing import Any
@@ -7,8 +6,6 @@ from typing import Any
 from anthropic import AsyncAnthropic
 
 from app.core.llm_guard import GuardedLLMClient, guard_for
-
-logger = logging.getLogger(__name__)
 
 # 全项目按 Anthropic 的 messages 形状调 LLM；OpenAI 兼容端点由
 # core/openai_compat.py 翻译成同一套接口，所以调用点只认这个别名。

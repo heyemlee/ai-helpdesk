@@ -14,14 +14,11 @@ from __future__ import annotations
 
 import dataclasses
 import json
-import logging
 import time
 from collections import OrderedDict
 
 from app.events.recorder import EventLogStats
 from app.events.types import COLUMNS, Event, event_from_row
-
-logger = logging.getLogger(__name__)
 
 # 保留任务每批处理的行数：一条语句锁的行不多，别的写入不用等它
 PURGE_BATCH = 5000

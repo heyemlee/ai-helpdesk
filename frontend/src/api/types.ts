@@ -488,12 +488,6 @@ export interface SearchResponse {
   evidence_ok?: boolean | null
 }
 
-export interface KnowledgeStats {
-  total_chunks: number
-  total_documents?: number
-  legacy_documents?: number
-}
-
 /**
  * 文档原文的可信程度。
  * original = 导入时存下的原文；legacy = 加文档表之前导入的，正文由当时的分片拼回；

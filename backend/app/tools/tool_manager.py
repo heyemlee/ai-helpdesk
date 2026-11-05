@@ -299,9 +299,6 @@ class ToolManager:
             await dist.record_failure()
         tool.breaker.record_failure()
 
-    def unregister(self, name: str) -> None:
-        self._tools.pop(name, None)
-
     # ── 核心调用 ──────────────────────────────────────────────────────────────
 
     async def call(
