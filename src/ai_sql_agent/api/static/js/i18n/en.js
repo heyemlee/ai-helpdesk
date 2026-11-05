@@ -24,7 +24,6 @@ export default {
   'action.copyTable': 'Copy table',
   'action.followUp': 'Ask a follow-up',
   'action.refresh': 'Refresh',
-  'action.search': 'Search',
   'action.send': 'Send question',
   'action.stop': 'Stop',
   'action.tryAgain': 'Try again',

@@ -148,7 +148,3 @@ export function lookupColumn(database, name, sql = '') {
     column.description === pool[0].column.description && column.unit === pool[0].column.unit);
   return same ? pool[0] : null;
 }
-
-/* 当前权限下有没有这一类业务域（示例问题据此取舍）。 */
-export const hasKinds = (kinds) =>
-  kinds.every((kind) => domains().some((domain) => domain.kind === kind && domain.status === 'available'));

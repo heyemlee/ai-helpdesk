@@ -24,7 +24,6 @@ export default {
   'action.copyTable': '复制表格',
   'action.followUp': '继续追问',
   'action.refresh': '刷新',
-  'action.search': '搜索',
   'action.send': '发送问题',
   'action.stop': '停止',
   'action.tryAgain': '重试',
