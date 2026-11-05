@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# 在一次性副本里跑后端门禁（ruff + pytest），和 CI 的 backend、contract 两个 job 对应。
+# 在一次性副本里跑后端门禁（ruff + pytest）和契约自检，和 CI 的 Backend、A2A contract 两个 job 对应。
+# SQL Agent 的测试在旁边的 run-sql-agent.sh 里。
 #
 # 为什么不在工作区里跑：app/api/main.py 的 load_dotenv() 会读到真实的 backend/.env，
 # 测试就带上了真 Key、中继地址和生产库的 DSN。这里只拷 git 认识的文件，被 gitignore 的东西
@@ -56,18 +57,11 @@ git -C "$ROOT" ls-files -co --exclude-standard -z |
 RUN_ENV=(env -i "HOME=$HOME" "PATH=$PATH" "TMPDIR=${TMPDIR:-/tmp}" LANG=en_US.UTF-8
     ANTHROPIC_API_KEY=test-key)
 
-# 契约用例钉在 tag 上。从 tag 导出，而不是直接读本机契约仓库的检出：
-# 那边可能停在别的提交上，用例跑的就不是 CI 那一版了
-CONTRACT_REPO="${A2A_CONTRACT_DIR:-$MAIN/../a2a-contract}"
-TAG="$(sed -n 's/^PINNED_TAG = "\(.*\)"$/\1/p' "$ROOT/backend/tests/test_contract_fixtures.py")"
-if git -C "$CONTRACT_REPO" rev-parse -q --verify "refs/tags/$TAG" >/dev/null 2>&1; then
-    mkdir "$COPY/.contract"
-    git -C "$CONTRACT_REPO" archive "$TAG" | tar -xf - -C "$COPY/.contract"
-    RUN_ENV+=("A2A_CONTRACT_DIR=$COPY/.contract" A2A_CONTRACT_REQUIRED=1)
-# 离线模式下没有契约仓库也能跑。scripts/ci-local.sh 是门禁，它设 A2A_CONTRACT_REQUIRED=1，不许跳过
-elif [ "$FULL" = 1 ] || [ "${A2A_CONTRACT_REQUIRED:-}" = 1 ]; then
-    fail "$CONTRACT_REPO 里找不到 tag $TAG。用 A2A_CONTRACT_DIR 指向契约仓库"
-fi
+# 契约就在仓库里，副本里也有一份，和要测的代码是同一个提交，不用再从别处导出。
+# 设 A2A_CONTRACT_REQUIRED：契约用例和轨迹评测里的契约用例找不到契约时失败，不跳过
+CONTRACT="$COPY/a2a-contract"
+[ -f "$CONTRACT/fixtures/index.json" ] || fail "副本里没有 a2a-contract/fixtures/index.json"
+RUN_ENV+=("A2A_CONTRACT_DIR=$CONTRACT" A2A_CONTRACT_REQUIRED=1)
 
 free_port() {
     "$PY" -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])'
@@ -126,6 +120,11 @@ if [ "$FULL" = 1 ]; then
         "TEST_REDIS_URL=redis://127.0.0.1:$REDIS_PORT/0"
         "TEST_KAFKA_BOOTSTRAP=localhost:$KAFKA_PORT")
 fi
+
+step "契约自检（a2a-contract/tools/check_contract.py）"
+# 和 CI 的 A2A contract job 是同一条命令。要 jsonschema、referencing，后端 venv 里经 mcp 已经带着。
+# 副本里没有 .git，版本段里"tag 打没打"那一行会跳过，不影响判定
+"${RUN_ENV[@]}" "$PY" "$CONTRACT/tools/check_contract.py"
 
 cd "$COPY/backend"
 
