@@ -21,6 +21,9 @@ CONSOLE="${CONSOLE:-http://127.0.0.1:5174}"
 # compose 项目名就是仓库目录名 ai-helpdesk，网络名是 <项目>_<网络>
 CUSTOMER_NET="${CUSTOMER_NET:-ai-helpdesk_ai-helpdesk-network}"
 SQL_NET="${SQL_NET:-ai-helpdesk_sql-net}"
+# 这个脚本在主检出的 .claude/skills/deploy/scripts/ 下；控制台的 Key 文件在主检出的 deploy/secrets/console/
+ROOT="${ROOT:-$(cd "$(dirname "$0")/../../../.." && pwd)}"
+CONSOLE_KEY_FILE="${CONSOLE_KEY_FILE:-$ROOT/deploy/secrets/console/sql_agent_key}"
 
 FAILED=0
 ok() { printf '  ok    %s\n' "$1"; }
@@ -104,6 +107,32 @@ check_health "客户实例配置对得上" "$CUSTOMER" "$IS_CUSTOMER"
 echo "控制台"
 check_code "$CONSOLE/" 200
 check_health "控制台的 /api 通到员工实例" "$CONSOLE/api" '.status == "ok" and .event_log.instance == "staff"'
+# 数据页面：/sql-api/ 由控制台的 nginx 带上 console（admin）那把 Key 转给 SQL Agent。
+# whoami 不查库、不调模型，认出是 console 且是管理员，就说明 Key 在服务端加上了
+whoami="$(curl -s -m 5 "$CONSOLE/sql-api/whoami")"
+if printf '%s' "$whoami" | jq -e '.identity.caller == "console" and .identity.is_admin == true' >/dev/null 2>&1; then
+    ok "控制台的 /sql-api 带着管理员 Key 通到 SQL Agent"
+else
+    bad "控制台的 /sql-api/whoami → $(printf '%s' "$whoami" | head -c 160)"
+fi
+# Key 只在控制台的容器里：页面、JS 包和响应头里都不能有它。拿 Key 文件当 grep 的模式（-f），不进命令行、不打印
+if [ -s "$CONSOLE_KEY_FILE" ]; then
+    # 模式里不能有空行：空模式匹配一切，会报"泄露"
+    key_pattern() { grep -v '^[[:space:]]*$' "$CONSOLE_KEY_FILE"; }
+    leaked=0
+    page="$(curl -s -m 5 "$CONSOLE/")"
+    for asset in / $(printf '%s' "$page" | grep -oE '/assets/[A-Za-z0-9._-]+\.(js|css)' | sort -u); do
+        if curl -s -m 10 "$CONSOLE$asset" | grep -qF -f <(key_pattern); then leaked=1; fi
+    done
+    if curl -s -m 5 -D - -o /dev/null "$CONSOLE/sql-api/whoami" | grep -qF -f <(key_pattern); then leaked=1; fi
+    if [ "$leaked" = 0 ]; then
+        ok "页面、JS 包和 /sql-api 的响应头里都没有控制台的 Key"
+    else
+        bad "控制台的 Key 出现在了浏览器拿得到的内容里"
+    fi
+else
+    bad "缺 $CONSOLE_KEY_FILE（控制台带给 SQL Agent 的 Key）"
+fi
 
 echo "SQL Agent"
 readyz="$(sql_agent_get /readyz)"

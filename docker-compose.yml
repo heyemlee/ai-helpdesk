@@ -308,8 +308,9 @@ services:
   # 前端容器内的 Nginx 把 /api/ 反代到 ai-helpdesk:8000，走 Docker 内网，
   # 因此不需要 host.docker.internal，也不受宿主机端口占用影响。
   #
-  # 只挂 sql-net：它要转发的员工实例和 SQL Agent 都在上面。控制台背后是没有 Key 的员工实例
-  # （以后还会替浏览器带上 SQL Agent 的管理员 Key），客户实例所在的网络不该连得到它。
+  # 只挂 sql-net：它要转发的员工实例和 SQL Agent 都在上面。控制台背后是没有 Key 的员工实例，
+  # 它的 nginx 还替浏览器带上 SQL Agent 的管理员 Key（/sql-api/），所以连得到控制台就等于管理员：
+  # 客户实例所在的网络不该连得到它（backend/tests/test_deployment_compose.py 断言）。
   # 第一次切过来时，员工实例要先挂上 sql-net 再重建前端，不然它找不到 ai-helpdesk
   frontend:
     build:
@@ -322,6 +323,17 @@ services:
       - "127.0.0.1:5174:80"
     environment:
       - API_UPSTREAM=ai-helpdesk:8000
+      # 数据页面：/sql-api/ 去掉前缀转给 SQL Agent（frontend/docker/templates/default.conf.template）
+      - API_SQL_UPSTREAM=sql-agent:8000
+    # 控制台那把 SQL Agent Key（deploy/secrets/sql_agent_keys.json 里 caller=console、admin 的那一把）
+    # 单独放在 deploy/secrets/console/sql_agent_key（不进 git，0600），只读挂进来，由
+    # frontend/docker/entrypoint/16-sql-api-key.envsh 读出来交给 nginx。浏览器拿不到它。
+    #
+    # 不用 compose 的 secrets：文件不在时容器直接起不来，整个控制台跟着没了；目录挂载在文件不在时
+    # 照常起，只有数据页面回 401。也不挂整个 deploy/secrets：那里的策略文件里有每一把 Key。
+    # 不写进 environment：写在这里就进了 docker inspect 和 compose 的解析结果。
+    volumes:
+      - ./deploy/secrets/console:/run/secrets/console:ro
     depends_on:
       ai-helpdesk:
         condition: service_healthy

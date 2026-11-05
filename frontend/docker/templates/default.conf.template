@@ -52,4 +52,35 @@ server {
         proxy_send_timeout 120s;
         proxy_read_timeout 120s;
     }
+
+    # ── SQL Agent（数据页面）──────────────────────────────────────────────────
+    # 浏览器只认 /sql-api/：去掉前缀转给 SQL Agent（compose 里是 sql-agent:8000，只在 sql-net 上），
+    # **在这里替浏览器加上控制台那把管理员 Key**。Key 只在这个容器里：从只读挂进来的
+    # /run/secrets/console/sql_agent_key 读出来（docker/entrypoint/16-sql-api-key.envsh），
+    # 浏览器拿不到，JS 包里也没有；浏览器自己带的 X-API-Key 被下面这行覆盖掉。
+    #
+    # 代价是"连得到控制台就是管理员"：控制台只绑本机，在容器之间只挂 sql-net（合仓设计 §3.3，
+    # backend/tests/test_deployment_compose.py 断言）。没配 Key 时这一行是空值，nginx 不发这个头，
+    # SQL Agent 回 401，页面说"控制台的 Key 要管理员核对"。
+    location /sql-api/ {
+        set $sql_upstream "${API_SQL_UPSTREAM}";
+        rewrite ^/sql-api/(.*)$ /$1 break;
+        proxy_pass http://$sql_upstream;
+
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-API-Key "${API_SQL_KEY}";
+
+        # 问数走 A2A 的 message/stream（SSE）：不缓冲，进度一来就往浏览器送。
+        # 读超时要盖过流的硬上限（契约里是 90 秒）和一次 /query 的最长耗时
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_connect_timeout 10s;
+        proxy_send_timeout 180s;
+        proxy_read_timeout 180s;
+    }
 }

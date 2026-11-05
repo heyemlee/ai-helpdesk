@@ -4,6 +4,7 @@
 #
 #   scripts/k8s-up.sh
 #   kubectl -n aihd port-forward svc/api-staff 38080:8000     # API
+#   kubectl -n aihd port-forward svc/console 35174:80         # 控制台（含数据页面）
 #   scripts/k8s-down.sh                                         # 整个集群删掉
 #
 # 需要 docker、kind（brew install kind）、kubectl。KEDA 的版本钉在 KEDA_VERSION。
@@ -26,10 +27,12 @@ RELEASE=$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo dev)
 docker build -t aihd/backend:dev --target production --build-arg AI_HELPDESK_RELEASE="$RELEASE" "$ROOT/backend"
 docker build -t aihd/sql-agent:dev -f "$ROOT/ai-sql-agent/deploy/Dockerfile" \
   --build-arg AI_SQL_RELEASE="$RELEASE" "$ROOT/ai-sql-agent"
+docker build -t aihd/frontend:dev --target production "$ROOT/frontend"
 # 自己的镜像本地构建、直接装进节点。pgvector 和 redis 由节点自己去 Docker Hub 拉：
 # Docker Desktop 的 containerd 镜像库里它们是多平台镜像，kind load 会报 content digest not found
 kind load docker-image aihd/backend:dev --name "$CLUSTER"
 kind load docker-image aihd/sql-agent:dev --name "$CLUSTER"
+kind load docker-image aihd/frontend:dev --name "$CLUSTER"
 
 kubectl apply --server-side -f \
   "https://github.com/kedacore/keda/releases/download/v${KEDA_VERSION}/keda-${KEDA_VERSION}.yaml" >/dev/null
@@ -67,7 +70,7 @@ fi
 
 # 镜像换了标签没变（都是 :dev）：重启一下才会用上刚装进去的那一个
 DEPLOYS="mock-llm api-staff api-customer worker-staff worker-customer
-         projector-staff projector-customer sampler-staff sampler-customer $SQL_AGENT"
+         projector-staff projector-customer sampler-staff sampler-customer console $SQL_AGENT"
 for deploy in $DEPLOYS; do kubectl -n aihd rollout restart "deploy/$deploy" >/dev/null; done
 for deploy in $DEPLOYS; do
   kubectl -n aihd rollout status "deploy/$deploy" --timeout=300s
@@ -75,4 +78,5 @@ done
 kubectl -n aihd get pods,scaledobjects
 echo
 echo "API:   kubectl -n aihd port-forward svc/api-staff 38080:8000"
+echo "控制台: kubectl -n aihd port-forward svc/console 35174:80"
 echo "演练:  scripts/k8s-drill.sh            # 加 --kafka 对账事件日志那一侧"

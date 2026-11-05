@@ -26,8 +26,10 @@ resources:
   # 每个实例的投影和采样消费者
   - kafka.yaml
   - event-consumers.yaml
-  # SQL Agent：1 副本、状态卷、业务数据卷，以及只放行员工 api 和 worker 的 NetworkPolicy
+  # SQL Agent：1 副本、状态卷、业务数据卷，以及只放行员工 api、worker 和控制台的 NetworkPolicy
   - sql-agent.yaml
+  # 控制台：替浏览器带上 SQL Agent 的管理员 Key，所以不放行任何入站，用 port-forward 打开
+  - console.yaml
 
 configMapGenerator:
   - name: backend-config
@@ -60,11 +62,17 @@ secretGenerator:
   - name: sql-agent-client
     envs:
       - config/sql-agent-client.env
+  # 控制台那一把（config/sql_agent_keys.json 里 caller=console 的），只挂给控制台
+  - name: sql-agent-console-key
+    files:
+      - sql_agent_key=config/sql_agent_console_key
 
 images:
   - name: aihd/backend
     newTag: dev
   - name: aihd/sql-agent
+    newTag: dev
+  - name: aihd/frontend
     newTag: dev
 
 labels:

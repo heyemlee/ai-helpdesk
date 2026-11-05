@@ -161,3 +161,60 @@ class TestOnlyTheStaffSideReachesTheSqlAgent:
         assert env["AI_SQL_DEPLOYMENT_SCOPE"] == "internal_single_tenant"
         assert env["AI_SQL_AUTH_MODE"] == "api_key"
         assert env["AI_SQL_PGVECTOR_DSN"] == ""
+
+
+FRONTEND = COMPOSE.parent / "frontend"
+
+
+class TestTheConsoleCarriesTheSqlAgentKeyServerSide:
+    """
+    控制台的 nginx 替浏览器带上 SQL Agent 的管理员 Key（合仓设计 §3.9，数据页面走 /sql-api/）。
+
+    和上面几组一样只靠配置守着：写错了页面照样能用，只是 Key 跑到了浏览器看得到的地方（JS 包、
+    docker inspect、compose 的解析结果），或者浏览器自己带的 Key 被原样转了过去。
+    """
+
+    @pytest.fixture
+    def sql_api_block(self) -> str:
+        template = (FRONTEND / "docker" / "templates" / "default.conf.template").read_text(encoding="utf-8")
+        match = re.search(r"location /sql-api/ \{(.*?)\n    \}", template, re.S)
+        assert match, "模板里没有 location /sql-api/"
+        return match.group(1)
+
+    def test_the_console_forwards_to_the_sql_agent_service(self):
+        env = dict(e.split("=", 1) for e in _list_entries("environment")["frontend"])
+        assert env["API_SQL_UPSTREAM"] == "sql-agent:8000"
+
+    def test_the_key_is_never_an_environment_value(self):
+        """compose 的 environment、Dockerfile 的 ENV 里都不该出现 Key：那两处 docker inspect 看得见。"""
+        names = [e.split("=", 1)[0] for e in _list_entries("environment")["frontend"]]
+        assert "API_SQL_KEY" not in names
+        dockerfile = (FRONTEND / "Dockerfile").read_text(encoding="utf-8")
+        assert not re.search(r"^\s*(ENV|ARG)\b.*API_SQL_KEY", dockerfile, re.M)
+
+    def test_only_the_console_key_directory_is_mounted(self):
+        """deploy/secrets 整个挂进来的话，SQL Agent 的策略文件和员工那一把 Key 也跟着进了控制台。"""
+        assert _list_entries("volumes")["frontend"] == ["./deploy/secrets/console:/run/secrets/console:ro"]
+
+    def test_nginx_overwrites_whatever_key_the_browser_sends(self, sql_api_block):
+        assert 'proxy_set_header X-API-Key "${API_SQL_KEY}";' in sql_api_block
+        assert "set $sql_upstream \"${API_SQL_UPSTREAM}\";" in sql_api_block
+
+    def test_the_stream_is_not_buffered_and_outlives_the_contract_limit(self, sql_api_block):
+        """A2A 的 message/stream 是 SSE；契约里流的硬上限是 90 秒。"""
+        assert "proxy_buffering off;" in sql_api_block
+        timeout = re.search(r"proxy_read_timeout (\d+)s;", sql_api_block)
+        assert timeout and int(timeout.group(1)) >= 120
+
+    def test_the_key_loader_always_defines_the_variable(self):
+        """
+        变量没定义的话 envsubst 不替换，配置里留下字面量 ${API_SQL_KEY}，被当成 Key 发出去。
+        envsubst 只放行 API_ 开头的变量；入口只 source 可执行的 .envsh。
+        """
+        loader = FRONTEND / "docker" / "entrypoint" / "16-sql-api-key.envsh"
+        text = loader.read_text(encoding="utf-8")
+        assert "export API_SQL_KEY" in text
+        assert "/run/secrets/console/sql_agent_key" in text
+        dockerfile = (FRONTEND / "Dockerfile").read_text(encoding="utf-8")
+        assert "COPY --chmod=0755 docker/entrypoint/16-sql-api-key.envsh /docker-entrypoint.d/" in dockerfile
+        assert "NGINX_ENVSUBST_FILTER='^(API_|NGINX_LOCAL_RESOLVERS)'" in dockerfile

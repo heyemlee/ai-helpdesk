@@ -5,7 +5,7 @@
 # 模型连接都是每个副本各一份，两个副本就是两份互不相通的历史。要多副本得先把状态移进一个
 # 它自己的 Postgres，另议。
 #
-# 谁连得到它由下面的 NetworkPolicy 定：只有员工实例的 api 和 worker。**NetworkPolicy 要集群的网络插件
+# 谁连得到它由下面的 NetworkPolicy 定：只有员工实例的 api 和 worker，以及控制台。**NetworkPolicy 要集群的网络插件
 # 支持才生效**，不支持的插件会照单全收、什么也不拦，而且没有任何报错——第二道还有 API Key。
 #
 # 语义层和四个业务库是生成出来的，不在 git 里：放进 sql-agent-data 卷（semantic/、simple/，和 compose 的
@@ -123,7 +123,8 @@ spec:
           persistentVolumeClaim:
             claimName: sql-agent-data
 ---
-# 只放行员工实例的 api 和 worker。客户实例、事件消费者、Postgres 都连不到它。
+# 只放行员工实例的 api 和 worker，以及控制台（它的 /sql-api/ 带着管理员 Key，自己不放行任何入站，
+# 见 console.yaml）。客户实例、事件消费者、Postgres 都连不到它。
 # 出站不限：它要连模型（这里是 mock-llm，真部署是外面的模型服务）。
 # 管的是直连：api-customer 还能调 api-staff 的 Service，经员工实例间接委派（员工实例没开 Key），
 # 和 compose 那边一样这次不堵
@@ -142,7 +143,7 @@ spec:
             matchExpressions:
               - key: app.kubernetes.io/component
                 operator: In
-                values: ["api-staff", "worker-staff"]
+                values: ["api-staff", "worker-staff", "console"]
       ports:
         - port: 8000
           protocol: TCP

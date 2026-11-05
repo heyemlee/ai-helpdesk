@@ -178,6 +178,12 @@ check_env_file() {
     if [ ! -f "$DEPLOY/secrets/sql_agent_keys.json" ]; then
         print_warn "缺 deploy/secrets/sql_agent_keys.json（SQL Agent 的 Key），模板见 deploy/sql-agent/sql_agent_keys.example.json"
     fi
+    # 控制台的数据页面（/sql-api/）用 caller=console 那一把，单独放一个文件挂进前端容器。缺了控制台照常起，
+    # 只是数据页面回 401。从 Key 文件里取出来写进去（不打印）：
+    #   mkdir -p deploy/secrets/console && (umask 077 && python3 -c 'import json,sys; print(next(k["key"] for k in json.load(open("deploy/secrets/sql_agent_keys.json"))["keys"] if k.get("caller") == "console"), end="")' > deploy/secrets/console/sql_agent_key)
+    if [ -f "$DEPLOY/secrets/sql_agent_keys.json" ] && [ ! -s "$DEPLOY/secrets/console/sql_agent_key" ]; then
+        print_warn "缺 deploy/secrets/console/sql_agent_key（控制台数据页面用的 Key），做法见 scripts/docker-deploy.sh 的 check_env_file"
+    fi
     if [ ! -d "$DEPLOY/sql-agent/data/semantic" ] || [ ! -d "$DEPLOY/sql-agent/data/simple" ]; then
         print_warn "缺 deploy/sql-agent/data/semantic 或 simple（SQL Agent 的语义层和业务库，生成方法见 ai-sql-agent/tools/simple_erp/README.md）"
     fi

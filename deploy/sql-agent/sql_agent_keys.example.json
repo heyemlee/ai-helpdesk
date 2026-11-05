@@ -9,7 +9,7 @@
       "roles": ["support"]
     },
     {
-      "$comment": "控制台的 nginx 在服务端替浏览器带上的管理员 Key（统一控制台那一步才用上），浏览器拿不到",
+      "$comment": "控制台的 nginx 在服务端替浏览器带上的管理员 Key（数据页面的 /sql-api/），浏览器拿不到。同一个值单独写进 deploy/secrets/console/sql_agent_key（不进 git，0600），挂进前端容器；做法见 scripts/docker-deploy.sh 的 check_env_file",
       "key": "REPLACE_ME",
       "caller": "console",
       "user_id": "console",
