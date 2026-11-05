@@ -8,7 +8,7 @@ import { useCallback, useEffect, useState } from 'react'
  * 有个位置。hash 不经过服务器，开发代理、nginx 和后端的静态挂载都不用配。
  */
 export type View = 'chat' | 'knowledge' | 'tickets' | 'data' | 'admin'
-export type AdminTab = 'overview' | 'models' | 'sops' | 'monitor' | 'eval' | 'inspector'
+export type AdminTab = 'overview' | 'models' | 'sql' | 'sops' | 'monitor' | 'eval' | 'inspector'
 export type KnowledgeMode = 'browse' | 'ask'
 /** 数据（SQL Agent）的几页：问数、数据浏览、查询历史，以及一次查询的经过 */
 export type DataPage = 'ask' | 'explore' | 'history' | 'run'
@@ -32,7 +32,7 @@ export type DataRoute =
   | { view: 'data'; page: 'history' }
   | { view: 'data'; page: 'run'; runId: string }
 
-export const ADMIN_TABS: AdminTab[] = ['overview', 'models', 'sops', 'monitor', 'eval', 'inspector']
+export const ADMIN_TABS: AdminTab[] = ['overview', 'models', 'sql', 'sops', 'monitor', 'eval', 'inspector']
 
 export function parseRoute(hash: string): Route {
   const mark = hash.indexOf('?')

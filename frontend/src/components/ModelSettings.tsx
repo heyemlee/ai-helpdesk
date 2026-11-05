@@ -116,7 +116,14 @@ function readFailure(error: unknown): { code: string; message: string; test?: Mo
  * 能不能改由后端判（只认本机控制台发来的请求），这里只照着它给的 editable 显示表单。
  * 确认一律在页面里做，不用 window.confirm：有的内嵌浏览器不弹它，保存会被悄悄取消。
  */
-export function ModelSettings({ base }: { base: string }) {
+export function ModelSettings({ base, sql }: {
+  base: string
+  /**
+   * 第二栏：SQL Agent 的模型连接（SqlModelSettings）。给了就把页面分成两栏——客服助手、SQL Agent，
+   * 各用各的模型；宽屏左右，窄屏上下。
+   */
+  sql?: ReactNode
+}) {
   const { t } = useT()
   const status = useModelStatus(base)
   const health = useHealth(base).data
@@ -152,7 +159,20 @@ export function ModelSettings({ base }: { base: string }) {
         <h2 className="page-title">{t('ms.title')}</h2>
         <p className="page-lede">{t('ms.lede')}</p>
       </div>
-      {body}
+      {sql ? (
+        <div className="model-columns">
+          <section className="model-column" aria-labelledby="model-column-helpdesk">
+            <h3 id="model-column-helpdesk" className="model-column-title">{t('sq.model.columns.helpdesk')}</h3>
+            <p className="field-hint">{t('sq.model.columns.helpdesk.hint')}</p>
+            {body}
+          </section>
+          <section className="model-column" aria-labelledby="model-column-sql">
+            <h3 id="model-column-sql" className="model-column-title">{t('sq.model.columns.sql')}</h3>
+            <p className="field-hint">{t('sq.model.columns.sql.hint')}</p>
+            {sql}
+          </section>
+        </div>
+      ) : body}
     </div></div>
   )
 }
@@ -160,7 +180,7 @@ export function ModelSettings({ base }: { base: string }) {
 // ── 现在用的是哪个模型 ────────────────────────────────────────────────────────
 
 /** 模型名放大，接口、Key、来源放在下面一行小字。 */
-function InUse({ name, state, meta }: { name: ReactNode; state?: ReactNode; meta: ReactNode[] }) {
+export function InUse({ name, state, meta }: { name: ReactNode; state?: ReactNode; meta: ReactNode[] }) {
   const { t } = useT()
   return (
     <div className="model-now">
@@ -316,7 +336,7 @@ function TestReport({ result, saved }: { result: ModelTestResult | null; saved?:
 }
 
 /** 页面里的确认条，代替 window.confirm。 */
-function ConfirmBar({ children, confirm, onConfirm, onCancel }: {
+export function ConfirmBar({ children, confirm, onConfirm, onCancel }: {
   children: ReactNode; confirm: string; onConfirm: () => void; onCancel: () => void
 }) {
   const { t } = useT()

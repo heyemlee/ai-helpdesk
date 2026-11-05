@@ -18,6 +18,9 @@ import type {
   CancelResult, Catalog, CatalogTable, FeedbackStats, Readiness, RowsPage, RunEventsPage, RunRecord,
   SchemaStatus, TableProfile, WhoAmI,
 } from './types'
+import type {
+  SqlEmbeddingBody, SqlModelBody, SqlModelList, SqlModelSaved, SqlModelStatus, SqlProbeReport,
+} from './types'
 
 export const SQL_API_BASE: string = import.meta.env.VITE_SQL_API_BASE_URL || '/sql-api'
 
@@ -331,4 +334,27 @@ export async function streamQuery(question: string, { userId, sessionId, signal,
   if (!result || state !== 'completed') throw new SqlApiError({ code: 'stream_interrupted' })
   if (!result.trace_id && typeof final?.metadata?.trace_id === 'string') result.trace_id = final.metadata.trace_id
   return { payload: result, stages, runId }
+}
+
+// ── 模型连接（管理员）────────────────────────────────────────────────────────
+
+/**
+ * SQL Agent 用哪个模型回答、哪个 Embedding 做表结构检索（/admin/model …）。
+ *
+ * 表单里填的模型 Key 只在这一次请求的请求体里，交给 SQL Agent 保存；这些接口都不把它带回来，
+ * 页面也不存它（不进 localStorage / sessionStorage）。留空表示接着用现有的那把。
+ * /models 只读接口的模型清单，不调模型；/test 会真的调一次模型（每个模型名一条极短的请求）。
+ */
+export const sqlModelApi = {
+  status: () => request<SqlModelStatus>('GET', '/admin/model'),
+  listModels: (body: SqlModelBody) => request<SqlModelList>('POST', '/admin/model/models', { body }),
+  test: (body: SqlModelBody) => request<SqlProbeReport>('POST', '/admin/model/test', { body }),
+  save: (body: SqlModelBody) => request<SqlModelSaved>('PUT', '/admin/model', { body }),
+  clear: () => request<SqlModelSaved>('DELETE', '/admin/model'),
+  listEmbeddingModels: (body: Pick<SqlEmbeddingBody, 'base_url' | 'api_key'>) =>
+    request<SqlModelList>('POST', '/admin/model/embedding/models', { body }),
+  testEmbedding: (body: SqlEmbeddingBody) => request<SqlProbeReport>('POST', '/admin/model/embedding/test', { body }),
+  /** 要几秒到几十秒：先测，再用新模型把检索索引整个重建，全部成功才换上 */
+  saveEmbedding: (body: SqlEmbeddingBody) => request<SqlModelSaved>('PUT', '/admin/model/embedding', { body }),
+  clearEmbedding: () => request<SqlModelSaved>('DELETE', '/admin/model/embedding'),
 }

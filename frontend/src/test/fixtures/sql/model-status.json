@@ -1,0 +1,71 @@
+{
+  "editable": true,
+  "reason": "",
+  "source": "server",
+  "provider": "openai",
+  "chat_model": "gpt-5.6-luna",
+  "coder_model": "gpt-5.6-luna",
+  "key_configured": false,
+  "embedding": {
+    "source": "server",
+    "backend": "local",
+    "model": "local_hash",
+    "dimensions": 1024,
+    "key_configured": false,
+    "active": {
+      "backend": "local",
+      "model": "local_hash",
+      "dimensions": 1024
+    },
+    "fallback": "",
+    "base_url": "",
+    "endpoint": "",
+    "key_hint": "",
+    "reusable_key_addresses": [],
+    "saved_at": "",
+    "saved_by": "",
+    "store_problem": "",
+    "server": {
+      "backend": "local",
+      "model": "local_hash",
+      "dimensions": 1024
+    },
+    "defaults": {
+      "base_url": "https://api.openai.com/v1",
+      "model": "text-embedding-3-small",
+      "dimensions": 1024
+    }
+  },
+  "base_url": "https://api.openai.com/v1",
+  "endpoint": "https://api.openai.com/v1/chat/completions",
+  "custom_endpoint": false,
+  "key_hint": "",
+  "saved_at": "",
+  "saved_by": "",
+  "store_problem": "",
+  "server": {
+    "provider": "openai",
+    "chat_model": "gpt-5.6-luna",
+    "coder_model": "gpt-5.6-luna",
+    "key_configured": false
+  },
+  "providers": {
+    "anthropic": {
+      "base_url": "https://api.anthropic.com",
+      "official_base_url": "https://api.anthropic.com",
+      "chat_model": "claude-sonnet-5",
+      "coder_model": "claude-sonnet-5",
+      "key_configured": false,
+      "key_address": "https://api.anthropic.com"
+    },
+    "openai": {
+      "base_url": "https://api.openai.com/v1",
+      "official_base_url": "https://api.openai.com/v1",
+      "chat_model": "gpt-5.6-luna",
+      "coder_model": "gpt-5.6-luna",
+      "key_configured": false,
+      "key_address": "https://api.openai.com"
+    }
+  },
+  "access_faults": []
+}

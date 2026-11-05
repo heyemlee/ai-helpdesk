@@ -7,6 +7,7 @@ import { useT } from '@/i18n'
 import type { Key } from '@/i18n/catalog'
 import { fallbackAgent, type ChatMessage } from '@/hooks/useChatStream'
 import type { RoutingConfig, TrajectoryEntry } from '@/api/types'
+import { RunLink } from './RunLink'
 
 const TOOL_NAMES: Record<string, Key> = {
   knowledge_search: 'lm.tools.name.knowledge_search',
@@ -164,6 +165,7 @@ export function TurnExplanation({ message, routingConfig, onInspect }: {
     ? <>
         {t(dataKey, { dbs, reason: data?.reason || t('lm.data.noReason') })}
         {data?.trace_id && <> <span className="mono">trace {data.trace_id}</span></>}
+        {data?.run_id && <> <RunLink runId={data.run_id} /></>}
       </>
     : t('lm.data.unknown')])
 
@@ -191,6 +193,7 @@ export function TurnExplanation({ message, routingConfig, onInspect }: {
               {' → '}{toolOutcome(c, t)}
               {c.dedup && <> {t('lm.tools.dedup')}</>}
               {(c.latency_ms ?? 0) >= 1000 && <> {t('lm.tools.took', { t: ms(c.latency_ms ?? 0) })}</>}
+              {typeof c.trace?.run_id === 'string' && c.trace.run_id && <> <RunLink runId={c.trace.run_id} /></>}
             </span>
           )
         })}

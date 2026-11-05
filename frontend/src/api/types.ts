@@ -64,6 +64,8 @@ export interface BusinessDataTrace {
   outcome?: BusinessDataOutcome | string
   databases?: string[]
   trace_id?: string
+  /** SQL Agent 那边这次查询的 run（A2A 的 taskId、/query 的 X-Run-Id）；没委派或没拿到是空串 */
+  run_id?: string
   execution_status?: string
   has_risk?: boolean
   degraded?: boolean

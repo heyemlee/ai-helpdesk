@@ -11,6 +11,7 @@
  * 工单和通知的措辞只转述后端记录的状态：建了、排队中、已送达、失败。
  * "已有人接手""稍后回电"这类话没有任何后端字段支撑，目录里不收。
  */
+import { SQ_ADMIN_EN, SQ_ADMIN_ZH } from './sq-admin'
 import { SQ_ASK_EN, SQ_ASK_ZH } from './sq-ask'
 import { SQ_COMMON_EN, SQ_COMMON_ZH } from './sq-common'
 import { SQ_EXPLORE_EN, SQ_EXPLORE_ZH } from './sq-explore'
@@ -238,6 +239,7 @@ export const EN = {
   'lm.run.degraded': 'Backlog was {backlog} (level {level} starts at {threshold}), so this turn ran with: {what}.',
   'lm.data.noReason': 'no reason given',
   'lm.data.unknown': 'This server does not report whether order data was queried.',
+  'lm.data.openRun': 'See this query',
   'lm.tools': 'Lookups while answering',
   'lm.tools.none': 'The specialist answered from the material fetched beforehand and called no tool.',
   'lm.tools.calls': 'The specialist looked things up itself {n} time:|The specialist looked things up itself {n} times:',
@@ -557,6 +559,9 @@ export const EN = {
   'in.combined': 'Combined',
   'in.clarify': 'Clarifying question',
   'in.total': 'Total latency',
+  'in.data': 'Order data delegation',
+  'in.data.outcome': 'Outcome',
+  'in.data.dbs': 'Databases',
   'in.policy': 'Answer policy blocks',
   'in.evidence': 'Matched on:',
   'in.raw': 'Raw routing decision',
@@ -757,6 +762,7 @@ export const EN = {
   ...SQ_COMMON_EN,
   ...SQ_EXPLORE_EN,
   ...SQ_ASK_EN,
+  ...SQ_ADMIN_EN,
 } as const
 
 export type Key = keyof typeof EN
@@ -973,6 +979,7 @@ export const ZH: Record<Key, string> = {
   'lm.run.degraded': '当时积压 {backlog} 条（第 {level} 档从 {threshold} 条开始），这一轮按精简方式处理：{what}。',
   'lm.data.noReason': '未说明原因',
   'lm.data.unknown': '服务端没有报告本轮是否查询了订单数据。',
+  'lm.data.openRun': '查看这次查询',
   'lm.tools': '作答时查询',
   'lm.tools.none': '专家直接用回答前预取的资料作答，没有再调工具。',
   'lm.tools.calls': '专家作答时自己查了 {n} 次：',
@@ -1286,6 +1293,9 @@ export const ZH: Record<Key, string> = {
   'in.combined': '综合',
   'in.clarify': '澄清追问',
   'in.total': '总耗时',
+  'in.data': '订单数据委派',
+  'in.data.outcome': '结果',
+  'in.data.dbs': '查过的库',
   'in.policy': '答案策略拦截',
   'in.evidence': '命中依据：',
   'in.raw': '原始路由决策',
@@ -1483,6 +1493,7 @@ export const ZH: Record<Key, string> = {
   ...SQ_COMMON_ZH,
   ...SQ_EXPLORE_ZH,
   ...SQ_ASK_ZH,
+  ...SQ_ADMIN_ZH,
 }
 
 export const CATALOG = { en: EN, zh: ZH }
