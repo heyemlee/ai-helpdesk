@@ -297,6 +297,35 @@ class TestRedisIsBackedUpAsAWholeDirectory:
         assert "不会" in proc.stdout and "Redis" in proc.stdout
 
 
+class TestSqlAgentState:
+    """
+    SQL Agent 的状态（audit.db、runs.db、memory.db 都是 WAL 模式，外加 model_settings.json）。
+    进程一直在写，直接拷文件拿到的可能缺着还在 -wal 里的那部分，而且拷的时候不会报错。
+    """
+
+    def test_backup_goes_through_the_sqlite_online_backup(self):
+        """和 sqlite3 命令行的 .backup 是同一个接口；镜像里没有命令行，用 Python 的。"""
+        code = _script_code()
+        assert "source.backup(target)" in code
+        assert "docker cp ai-helpdesk-sql-agent:/app/state" not in code
+
+    def test_state_is_replaced_while_the_sql_agent_is_stopped(self, fake_repo):
+        """停着换（跑着的进程会接着往旧库和旧 WAL 里写），换完再起；起之前配置已经恢复好。"""
+        state = fake_repo["backup"] / "sql-agent-state"
+        state.mkdir()
+        (state / "audit.db").write_bytes(b"sqlite")
+        cmds = _run_restore(fake_repo)
+        stop = _index_of(cmds, "stop", "sql-agent")
+        replace = _index_of(cmds, "run --rm", "fake_redis_volume:/state")
+        start = _index_of(cmds, "start", "sql-agent")
+        assert stop < replace < start
+        assert "chown -R 10001:10001" in cmds[replace], "拷进去的文件要归镜像里的 ai_sql，不然它写不了自己的库"
+
+    def test_an_old_backup_without_it_leaves_the_state_alone(self, fake_repo):
+        cmds = _run_restore(fake_repo)
+        assert not any(":/state" in cmd for cmd in cmds)
+
+
 class TestRestoreStopsOnFailure:
     def test_a_failing_psql_does_not_print_success(self, fake_repo):
         """

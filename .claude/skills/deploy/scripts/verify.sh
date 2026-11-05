@@ -4,12 +4,18 @@
 # 最要紧的是第一项：:80 必须转到客户实例。2026-10-18 重建后端时两个容器的 IP 对调，
 # 80 有约 98 秒转到了员工实例（没有 API key、能查订单）。那段时间 /health 照样返回 ok，
 # 只有比对实例名才看得出来。
+#
+# SQL Agent 不发布宿主机端口，它的探针在它自己的容器里跑。"客户实例连不到它"用一个挂在客户实例
+# 网络上的一次性容器来试（用客户实例的镜像，跑完就删），不进客户实例的容器。
 set -uo pipefail
 
 EDGE="${EDGE:-http://127.0.0.1:80}"
 STAFF="${STAFF:-http://127.0.0.1:8080}"
 CUSTOMER="${CUSTOMER:-http://127.0.0.1:8081}"
 CONSOLE="${CONSOLE:-http://127.0.0.1:5174}"
+# compose 项目名就是仓库目录名 ai-helpdesk，网络名是 <项目>_<网络>
+CUSTOMER_NET="${CUSTOMER_NET:-ai-helpdesk_ai-helpdesk-network}"
+SQL_NET="${SQL_NET:-ai-helpdesk_sql-net}"
 
 FAILED=0
 ok() { printf '  ok    %s\n' "$1"; }
@@ -17,13 +23,16 @@ bad() { printf '  FAIL  %s\n' "$1"; FAILED=1; }
 
 IS_CUSTOMER='.status == "ok" and .event_log.instance == "customer" and .event_log.mode == "full"
     and .event_log.read == false and .event_log.dropped == 0 and .event_log.retention.body_days == 14
-    and .tool_loop.enabled == false and .memory.cross_session == false'
+    and .tool_loop.enabled == false and .memory.cross_session == false
+    and .capabilities.business_data == false'
 IS_STAFF='.status == "ok" and .event_log.instance == "staff" and .event_log.mode == "full"
     and .event_log.read == true and .event_log.dropped == 0
-    and .tool_loop.enabled == true and .memory.cross_session == true'
+    and .tool_loop.enabled == true and .memory.cross_session == true
+    and .capabilities.business_data == true'
 SUMMARY='{status, instance: .event_log.instance, mode: .event_log.mode, read: .event_log.read,
     dropped: .event_log.dropped, body_days: .event_log.retention.body_days,
-    tool_loop: .tool_loop.enabled, cross_session: .memory.cross_session}'
+    tool_loop: .tool_loop.enabled, cross_session: .memory.cross_session,
+    business_data: .capabilities.business_data}'
 
 check_health() {
     local name="$1" url="$2" want="$3" body summary
@@ -57,6 +66,24 @@ check_blocked() {
     esac
 }
 
+# 在 SQL Agent 自己的容器里请求它自己，打印"状态码 响应体"
+sql_agent_get() {
+    docker exec ai-helpdesk-sql-agent python -c '
+import sys, urllib.error, urllib.request
+try:
+    response = urllib.request.urlopen("http://127.0.0.1:8000" + sys.argv[1], timeout=5)
+    print(response.status, response.read().decode())
+except urllib.error.HTTPError as error:
+    print(error.code, error.read().decode())
+' "$1" 2>/dev/null
+}
+
+# 容器挂在哪些网络上（空格分隔、排好序）
+networks_of() {
+    docker inspect --format '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}} {{end}}' "$1" 2>/dev/null |
+        tr ' ' '\n' | sed '/^$/d' | sort | tr '\n' ' ' | sed 's/ $//'
+}
+
 echo "入口 :80（客户唯一的入口）"
 check_health ":80 转到客户实例，配置对得上" "$EDGE" "$IS_CUSTOMER"
 # nginx 白名单只放行 /chat、/chat/stream、/runs/<id> 和 /health。GET /chat 回 405 说明路由通到了后端
@@ -73,12 +100,67 @@ echo "控制台"
 check_code "$CONSOLE/" 200
 check_health "控制台的 /api 通到员工实例" "$CONSOLE/api" '.status == "ok" and .event_log.instance == "staff"'
 
+echo "SQL Agent"
+readyz="$(sql_agent_get /readyz)"
+if [ "${readyz%% *}" = 200 ] && printf '%s' "${readyz#* }" | jq -e '.ready == true and .checks.auth_mode == "api_key"' >/dev/null 2>&1; then
+    ok "/readyz 就绪，鉴权是 api_key"
+else
+    bad "/readyz → ${readyz:-没有响应}"
+fi
+history="$(sql_agent_get /history)"
+if [ "${history%% *}" = 401 ]; then
+    ok "不带 Key 的 /history → 401"
+else
+    bad "不带 Key 的 /history → ${history%% *}，应该是 401"
+fi
+
+echo "网络隔离"
+published="$(docker inspect --format '{{json .HostConfig.PortBindings}}' ai-helpdesk-sql-agent 2>/dev/null)"
+case "$published" in
+    "{}"|"null") ok "SQL Agent 没有发布宿主机端口" ;;
+    *) bad "SQL Agent 发布了宿主机端口：${published:-容器不存在}" ;;
+esac
+want_networks() {
+    local container="$1" want="$2" got
+    got="$(networks_of "$container")"
+    if [ "$got" = "$want" ]; then
+        ok "$container 只在 $want"
+    else
+        bad "$container 在 ${got:-（容器不存在）}，应该只在 $want"
+    fi
+}
+want_networks ai-helpdesk-sql-agent "$SQL_NET"
+want_networks ai-helpdesk-frontend "$SQL_NET"
+for container in ai-helpdesk-customer ai-helpdesk-nginx ai-helpdesk-postgres; do
+    want_networks "$container" "$CUSTOMER_NET"
+done
+# 对照：同一个探针站在 sql-net 上要连得通，不然下面"连不到"什么也说明不了
+code="$(docker run --rm --network "$SQL_NET" --entrypoint curl ai-helpdesk-ai-helpdesk-customer:latest \
+    -s -m 3 -o /dev/null -w '%{http_code}' http://sql-agent:8000/health 2>/dev/null)"
+if [ "$code" = 200 ]; then
+    ok "对照：sql-net 上连得到 sql-agent:8000"
+else
+    bad "对照：sql-net 上 sql-agent:8000/health → $code，应该是 200"
+fi
+# 站在客户实例的网络上连：服务名应当解析不到，宿主机的 8000 上也应当什么都没有
+# （发布过端口、或者旧进程还在跑，都会从 host.docker.internal 连得上）
+for url in http://sql-agent:8000/health http://host.docker.internal:8000/health; do
+    code="$(docker run --rm --network "$CUSTOMER_NET" --entrypoint curl ai-helpdesk-ai-helpdesk-customer:latest \
+        -s -m 3 -o /dev/null -w '%{http_code}' "$url" 2>/dev/null)"
+    if [ "$code" = 000 ]; then
+        ok "客户实例的网络上连不到 $url"
+    else
+        bad "客户实例的网络上 $url → $code"
+    fi
+done
+
 echo "容器"
-for container in ai-helpdesk-app ai-helpdesk-customer ai-helpdesk-frontend ai-helpdesk-nginx; do
+for container in ai-helpdesk-app ai-helpdesk-customer ai-helpdesk-frontend ai-helpdesk-nginx ai-helpdesk-sql-agent; do
     health="$(docker inspect --format '{{.State.Health.Status}}' "$container" 2>/dev/null)"
     image="$(docker inspect --format '{{slice .Image 7 19}}' "$container" 2>/dev/null)"
     release="$(docker inspect --format '{{json .Config.Env}}' "$container" 2>/dev/null |
-        jq -r '[.[] | select(startswith("AI_HELPDESK_RELEASE=")) | ltrimstr("AI_HELPDESK_RELEASE=")] | first // "-"')"
+        jq -r '[.[] | select(startswith("AI_HELPDESK_RELEASE=") or startswith("AI_SQL_RELEASE="))
+            | sub("^[A-Z_]+=" ; "")] | first // "-"')"
     if [ "$health" = healthy ]; then
         ok "$container  镜像 $image  版本 $release"
     else

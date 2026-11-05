@@ -1,0 +1,11 @@
+{
+  "$comment": "本地集群用的固定值，结构同 deploy/sql-agent/sql_agent_keys.example.json。员工实例那一把同时在 sql-agent-client.env 里",
+  "keys": [
+    {"key": "local-staff-key", "caller": "ai-helpdesk", "user_id": "ai-helpdesk", "roles": ["support"]},
+    {"key": "local-console-key", "caller": "console", "user_id": "console", "roles": ["admin"], "is_admin": true}
+  ],
+  "policies": {
+    "support": {"allow_tables": ["erp_db.*", "prod_db.*", "svc_db.*", "wms_db.*"]},
+    "admin": {"allow_tables": ["erp_db.*", "prod_db.*", "svc_db.*", "wms_db.*"]}
+  }
+}

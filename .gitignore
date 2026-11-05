@@ -29,6 +29,11 @@ dist/
 *.pem
 # Nginx 证书目录（scripts/docker-deploy.sh install 会创建）
 deploy/nginx/ssl/
+# SQL Agent（docker-compose.yml 的 sql-agent）：模型凭据、Key 和数据权限、语义层和业务库。
+# 模板 deploy/sql-agent/*.example* 要入库
+deploy/sql-agent/sql-agent.env
+deploy/sql-agent/data/
+deploy/secrets/
 
 # ── 运行时数据 ────────────────────────────────────────────────────────────────
 # backend/data/ 下只有演示知识库、评测基线和检索评测用例进版本库。
@@ -52,8 +57,8 @@ backend/logs/
 *.db-shm
 *.sqlite3
 
-# scripts/docker-deploy.sh backup 的产物：Redis AOF、Postgres dump、.env 副本。
-# 其中含真实对话数据和密钥，每次备份约 2MB。
+# scripts/docker-deploy.sh backup 的产物：Redis AOF、Postgres dump、.env 副本、deploy/、
+# SQL Agent 的状态（审计、运行记录、对话记忆、模型连接）。其中含真实对话数据和密钥。
 backups/
 
 # ── 私有资料 ─────────────────────────────────────────────────────────────────

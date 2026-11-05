@@ -25,20 +25,27 @@ RUN pip install --prefix=/install --no-deps .
 # ---- 运行阶段 ----
 FROM python:${PYTHON_VERSION}-slim
 
+# 这是哪一版：构建时传提交号（ai-helpdesk 的 deploy skill、docker-compose.yml 都会传），
+# span 的 service.version 和部署核对读它。手动构建没传时是 dev
+ARG AI_SQL_RELEASE=dev
+
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     AI_SQL_LOG_FORMAT=json \
-    AI_SQL_AUTH_MODE=api_key
+    AI_SQL_AUTH_MODE=api_key \
+    AI_SQL_RELEASE=${AI_SQL_RELEASE}
 
 # 非 root 运行
 RUN useradd --create-home --uid 10001 ai_sql
 
 COPY --from=builder /install /usr/local
 
-# 工作目录只放运行期产物（记忆库、审计库、Demo 数据）；代码已装进 site-packages
+# 工作目录只放运行期产物（记忆库、审计库、Demo 数据）；代码已装进 site-packages。
+# /app/state 是给持久卷的挂载点（ai-helpdesk 的 docker-compose.yml 把状态都放这里）：
+# 镜像里先建好、归 ai_sql 所有，新建的命名卷第一次挂上来时会带上这个属主
 WORKDIR /app
 COPY .env.example /app/.env.example
-RUN mkdir -p /app/runtime_data && chown -R ai_sql:ai_sql /app
+RUN mkdir -p /app/runtime_data /app/state && chown -R ai_sql:ai_sql /app
 
 USER ai_sql
 

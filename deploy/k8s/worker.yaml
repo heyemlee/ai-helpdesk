@@ -37,6 +37,8 @@ spec:
                 name: staff-config
             - secretRef:
                 name: backend-secrets
+            - secretRef:
+                name: sql-agent-client
           env:
             - name: AI_HELPDESK_ROLE
               value: worker

@@ -1,0 +1,17 @@
+# 演练用的 OTel Collector（docker-compose.yml 的 otel-collector，--profile sql-agent）：
+# 收 OTLP/HTTP，原样打进自己的日志，不存。生产那一份在 deploy/otel/，导到 Tempo。
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+exporters:
+  debug:
+    verbosity: detailed
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug]

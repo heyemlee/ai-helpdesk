@@ -64,6 +64,10 @@ class TestCustomerInstanceIsCutOffFromStaffData:
         """留空 = 委派整块不注册。必须是显式的空值，不写的话会从 backend/.env 继承。"""
         assert env["SQL_AGENT_URL"] == ""
 
+    def test_it_holds_no_sql_agent_key(self, env):
+        """员工实例的 Key 也在 backend/.env 里：客户实例这里清空，网络和 Key 两道隔离各自成立。"""
+        assert env["SQL_AGENT_API_KEY"] == ""
+
     def test_it_keeps_no_cross_session_memory(self, env):
         assert env["ENABLE_CROSS_SESSION_MEMORY"] == "false"
 
@@ -107,3 +111,53 @@ class TestEventLogIsSplitByInstance:
         assert (customer.mode, customer.instance, customer.read, customer.body_days,
                 customer.row_days) == ("full", "customer", False, 14, 180)
         assert staff.warnings == customer.warnings == ()
+
+
+class TestOnlyTheStaffSideReachesTheSqlAgent:
+    """
+    SQL Agent 的网络边界（docs 里的两道隔离：网络 + API Key）。网络这一道全靠下面这几行配置：
+    写错了，服务照样起得来、照样能用，只是客户实例连得到 SQL Agent 了，而且没有任何症状。
+    """
+
+    @pytest.fixture
+    def networks(self) -> dict[str, list[str]]:
+        networks = _list_entries("networks")
+        assert "sql-agent" in networks and "ai-helpdesk" in networks, "没读到网络，这组用例没验到东西"
+        return networks
+
+    def test_the_sql_agent_publishes_no_port(self):
+        """发布了宿主机端口，任何容器都能经 host.docker.internal 连到它，网络隔离就白做了。"""
+        ports = _list_entries("ports")
+        assert "ai-helpdesk" in ports, "没读到端口，这条用例没验到东西"
+        assert "sql-agent" not in ports
+
+    def test_the_customer_instance_and_nginx_are_not_on_sql_net(self, networks):
+        for service in ("ai-helpdesk-customer", "nginx"):
+            assert "sql-net" not in networks[service], service
+
+    def test_postgres_is_not_on_sql_net(self, networks):
+        """两个实例都用超级用户连 postgres：挂上来的话，它就是从客户实例进 sql-net 的跳板。"""
+        assert "sql-net" not in networks["postgres"]
+
+    def test_the_console_is_only_on_sql_net(self, networks):
+        """控制台背后是没有 Key 的员工实例（以后还替浏览器带 SQL Agent 的管理员 Key），客户实例不该连得到它。"""
+        assert networks["frontend"] == ["sql-net"]
+
+    def test_the_staff_instance_delegates_to_the_sql_agent_service_by_default(self, networks):
+        env = dict(e.split("=", 1) for e in _list_entries("environment")["ai-helpdesk"])
+        assert env["SQL_AGENT_URL"] == "${AI_HELPDESK_SQL_AGENT_URL:-http://sql-agent:8000}"
+        assert "sql-net" in networks["ai-helpdesk"]
+
+    def test_the_sql_agent_is_only_on_sql_net(self, networks):
+        assert networks["sql-agent"] == ["sql-net"]
+
+    def test_the_production_settings_are_pinned_in_compose(self):
+        """
+        写在 environment 里的值压过 env 文件，所以生产模式、鉴权、状态不进 Postgres 这几项改不动。
+        生产模式下 SQL Agent 的就绪检查不过就不启动；开发模式下同样的问题只记一条警告。
+        """
+        env = dict(e.split("=", 1) for e in _list_entries("environment")["sql-agent"])
+        assert env["AI_SQL_APP_ENV"] == "production"
+        assert env["AI_SQL_DEPLOYMENT_SCOPE"] == "internal_single_tenant"
+        assert env["AI_SQL_AUTH_MODE"] == "api_key"
+        assert env["AI_SQL_PGVECTOR_DSN"] == ""

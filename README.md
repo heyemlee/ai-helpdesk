@@ -79,7 +79,7 @@ A question reaches the staff instance from the console, or the customer instance
 | Guardrails, identity | Rule-based answer policy · confidence gates · HMAC user tokens                   | Sentence-level checks, handoff decisions and signed user identities                                                                                                                                                                            |
 | Console              | React 18 · TypeScript · Vite 6 · TanStack Query 5 · Tailwind CSS 4               | SSE read from a `fetch` stream (EventSource can't POST), streamed Markdown and Learning mode, in English and Chinese                                                                                                                           |
 | Observability        | OpenTelemetry · Prometheus · Grafana · Tempo · Loki                              | Traces per request, metrics, logs and alert rules, next to the monitor's Z-score anomaly checks                                                                                                                                                |
-| Delivery, quality    | Docker Compose · Nginx · Kubernetes · KEDA · GitHub Actions · pytest · unittest · Ruff · Vitest · k6 | 12 services in one deploy, or Kustomize manifests with KEDA-scaled workers; one CI runs both agents' tests against pgvector (the support agent's also against Redis and Kafka), the contract self-check and three image builds; k6 and a chaos drill for queued mode |
+| Delivery, quality    | Docker Compose · Nginx · Kubernetes · KEDA · GitHub Actions · pytest · unittest · Ruff · Vitest · k6 | 13 services in one deploy, or Kustomize manifests with KEDA-scaled workers; one CI runs both agents' tests against pgvector (the support agent's also against Redis and Kafka), the contract self-check and three image builds; k6 and a chaos drill for queued mode |
 
 ## Features
 
@@ -242,15 +242,15 @@ One CI runs five required jobs on every pull request: Ruff and 1,630 support-age
 ## Deploy
 
 ```bash
-docker compose up -d --build                    # 12 services; only Nginx :80 listens beyond localhost
-scripts/docker-deploy.sh backup                 # Postgres, Redis, env files and deploy/ config
+docker compose up -d --build                    # 13 services; only Nginx :80 listens beyond localhost
+scripts/docker-deploy.sh backup                 # Postgres, Redis, the SQL agent's SQLite state, env files and deploy/
 scripts/docker-deploy.sh restore backups/<dir>  # restore and restart; a drill took 17 s
 docker compose -f docker-compose.yml -f docker-compose.queued.yml up -d --build   # queued mode: api + worker per instance
 docker compose -f docker-compose.yml -f docker-compose.kafka.yml up -d --build    # event log on Kafka (queued too: see docker-compose.queued-kafka.yml)
 scripts/k8s-up.sh                               # kind cluster: manifests, KEDA, Kafka, mock model
 ```
 
-The SQL agent deploys on its own for now, from `ai-sql-agent/` ([deploy](ai-sql-agent/README.md#deploy)); the staff instance reaches it at `SQL_AGENT_URL`.
+The SQL agent is the `sql-agent` service in the same compose file, started in production mode with API keys. It sits only on its own network, `sql-net`, with no host port, together with the staff instance, the console, Prometheus and the OTel Collector; the customer instance, Nginx and Postgres can't reach it. Its model settings go in `deploy/sql-agent/sql-agent.env`, its keys in `deploy/secrets/sql_agent_keys.json` (templates next to them), and its semantic layer and business databases in `deploy/sql-agent/data/`.
 
 In production mode the service refuses to start without the admin key, the user-signing secret, chat protection and a declared deployment scope. It is single-tenant by design; [deployment boundaries](docs/deployment-boundaries.md) explains what that covers.
 

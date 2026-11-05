@@ -168,6 +168,19 @@ check_env_file() {
     else
         print_info "环境变量配置文件已存在"
     fi
+
+    # SQL Agent（docker-compose.yml 的 sql-agent）自己的 env 文件和 Key 文件。缺了不影响别的服务，
+    # 只是它起不来（生产就绪检查不过）。Key 不在这里替你生成：员工实例那一把要同时写进 backend/.env
+    if [ ! -f "$DEPLOY/sql-agent/sql-agent.env" ] && [ -f "$DEPLOY/sql-agent/sql-agent.env.example" ]; then
+        cp "$DEPLOY/sql-agent/sql-agent.env.example" "$DEPLOY/sql-agent/sql-agent.env"
+        print_warn "已创建 deploy/sql-agent/sql-agent.env，请填 SQL Agent 的模型凭据"
+    fi
+    if [ ! -f "$DEPLOY/secrets/sql_agent_keys.json" ]; then
+        print_warn "缺 deploy/secrets/sql_agent_keys.json（SQL Agent 的 Key），模板见 deploy/sql-agent/sql_agent_keys.example.json"
+    fi
+    if [ ! -d "$DEPLOY/sql-agent/data/semantic" ] || [ ! -d "$DEPLOY/sql-agent/data/simple" ]; then
+        print_warn "缺 deploy/sql-agent/data/semantic 或 simple（SQL Agent 的语义层和业务库，生成方法见 ai-sql-agent/tools/simple_erp/README.md）"
+    fi
 }
 
 # 函数：构建镜像
@@ -237,6 +250,19 @@ view_logs() {
     fi
 }
 
+# 容器在不在（不管跑没跑）。SQL Agent 是后加的服务：没建过它的环境里 `compose start` 会报错
+has_container() {
+    docker inspect "$1" > /dev/null 2>&1
+}
+
+# SQL Agent 不发布宿主机端口（发布了的话，任何容器都能经 host.docker.internal 连到它），
+# 只能在它自己的容器里探。/readyz 查的是它的依赖：记忆库、审计库、模型凭据
+sql_agent_ready() {
+    compose exec -T sql-agent python -c \
+        "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/readyz', timeout=5)" \
+        > /dev/null 2>&1
+}
+
 # 函数：健康检查
 health_check() {
     print_info "执行健康检查..."
@@ -296,6 +322,13 @@ health_check() {
     else
         print_error "✗ Prometheus 不健康"
     fi
+
+    # 检查 SQL Agent
+    if sql_agent_ready; then
+        print_info "✓ SQL Agent 就绪"
+    else
+        print_error "✗ SQL Agent 不就绪（docker logs ai-helpdesk-sql-agent 里找 production_readiness）"
+    fi
 }
 
 # 函数：清理资源
@@ -311,6 +344,47 @@ cleanup() {
     else
         print_info "清理已取消"
     fi
+}
+
+# SQL Agent 的状态：审计和反馈（audit.db）、运行记录（runs.db）、对话记忆（memory.db），外加页面上保存的
+# 模型连接（model_settings.json，明文 Key）。三个库都是 WAL 模式、进程一直在写，**不能直接拷文件**——
+# 拷到的可能缺着还在 -wal 里的那部分。用 SQLite 的在线备份接口（和 sqlite3 命令行的 .backup 是同一个；
+# 镜像里没有 sqlite3 命令行，用 Python 的），在容器里备好再拷出来。
+#
+# 语义层、业务库和 Key 文件在 deploy/ 下，随整个 deploy/ 一起备份：业务库只读挂载、没有进程在写，拷文件就是一致的
+backup_sql_agent_state() {
+    local dest="$1/sql-agent-state"
+
+    if [ "$(docker inspect --format '{{.State.Running}}' ai-helpdesk-sql-agent 2>/dev/null)" != "true" ]; then
+        print_warn "SQL Agent 没在运行，它的状态没有备份"
+        return 0
+    fi
+
+    docker exec -i ai-helpdesk-sql-agent python - <<'PY'
+import os
+import shutil
+import sqlite3
+
+state, out = "/app/state", "/tmp/sql-agent-backup"
+shutil.rmtree(out, ignore_errors=True)
+os.makedirs(out, mode=0o700)
+for name in ("audit.db", "runs.db", "memory.db"):
+    path = os.path.join(state, name)
+    if not os.path.exists(path):
+        continue
+    source = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    target = sqlite3.connect(os.path.join(out, name))
+    source.backup(target)
+    target.close()
+    source.close()
+settings = os.path.join(state, "model_settings.json")
+if os.path.exists(settings):
+    shutil.copy2(settings, out)
+PY
+    # dest 先建好、源路径带 /.：和 Redis 那里一样，docker cp 的语义取决于 dest 存不存在
+    mkdir -p "$dest"
+    docker cp ai-helpdesk-sql-agent:/tmp/sql-agent-backup/. "$dest"
+    docker exec ai-helpdesk-sql-agent rm -rf /tmp/sql-agent-backup
 }
 
 # 函数：备份数据
@@ -382,7 +456,33 @@ backup_data() {
     fi
     cp -r "$DEPLOY" "$backup_dir/deploy"
 
+    backup_sql_agent_state "$backup_dir"
+
     print_info "备份完成: $backup_dir"
+}
+
+# SQL Agent 的状态换成备份里的那一份（backup_sql_agent_state 的反过程）。调用时 SQL Agent 已经停了，
+# 所以和 Redis 一样用挂同一个卷的临时容器：先删旧库（连同 -wal、-shm，不删的话旧的 WAL 会被
+# 回放到新库上），再拷进去，属主改回镜像里的 ai_sql（uid 10001），模型连接文件改回 0600。
+# 备份里没有这一份（旧备份、当时 SQL Agent 没在跑）就不动它
+restore_sql_agent_state() {
+    local backup_dir="$1" volume
+
+    if [ ! -d "$backup_dir/sql-agent-state" ]; then
+        print_warn "备份里没有 SQL Agent 的状态，它的状态没有改动"
+        return 0
+    fi
+    volume="$(docker inspect ai-helpdesk-sql-agent \
+        --format '{{range .Mounts}}{{if eq .Destination "/app/state"}}{{.Name}}{{end}}{{end}}' 2>/dev/null)"
+    if [ -z "$volume" ]; then
+        print_warn "找不到 SQL Agent 的状态卷（容器还没建过），它的状态没有恢复：先起一次 sql-agent 再恢复"
+        return 0
+    fi
+    if ! docker run --rm -v "$volume:/state" -v "$backup_dir/sql-agent-state:/backup:ro" alpine:3.20 \
+            sh -c 'rm -f /state/*.db /state/*.db-wal /state/*.db-shm /state/model_settings.json && cp -a /backup/. /state/ && chown -R 10001:10001 /state && { [ ! -f /state/model_settings.json ] || chmod 600 /state/model_settings.json; }'; then
+        print_error "SQL Agent 的状态没能恢复（卷 $volume）"
+        return 1
+    fi
 }
 
 # 函数：恢复数据
@@ -422,12 +522,20 @@ restore_data() {
         #      （跑着的 Redis 不会去读磁盘上的 rdb，而且退出时会用内存里的数据
         #      把它覆盖掉——照原样 cp 进去等于什么都没做）；
         #   3. 最后再把应用拉起来。
-        print_info "1/3 停止应用（数据库保持运行）..."
+        #
+        # SQL Agent 也一起停：它的状态要整个换掉（第 4 步），而且下面整个替换 deploy/ 时，
+        # 它挂着的语义层、业务库和 Key 文件会失效。没建过它的环境里不碰它（compose start 会报错）。
+        local apps=(ai-helpdesk ai-helpdesk-customer frontend nginx)
+        if has_container ai-helpdesk-sql-agent; then
+            apps+=(sql-agent)
+        fi
+
+        print_info "1/4 停止应用（数据库保持运行）..."
         # 两个应用实例（员工 ai-helpdesk、客户 ai-helpdesk-customer）都写同一个库，
         # 恢复期间都得停；只停一个，另一个会在恢复途中继续写。
-        compose stop ai-helpdesk ai-helpdesk-customer frontend nginx
+        compose stop "${apps[@]}"
 
-        print_info "2/3 恢复 Postgres..."
+        print_info "2/4 恢复 Postgres..."
         compose up -d postgres
         # 等它真的能接连接再灌，刚 up 的容器可能还在初始化
         local ready=0
@@ -441,7 +549,7 @@ restore_data() {
         done
         if [ "$ready" -ne 1 ]; then
             print_error "Postgres 未能就绪，恢复中止（数据未改动）"
-            compose start ai-helpdesk ai-helpdesk-customer frontend nginx
+            compose start "${apps[@]}"
             return 1
         fi
         if ! compose exec -T postgres psql -U "${POSTGRES_USER:-aihelpdesk}" \
@@ -455,13 +563,13 @@ restore_data() {
             # "请检查 postgres.sql"。真实事故里这是最坏的形态：**你以为你在恢复，
             # 实际上你刚把服务停了，而且没人告诉你**。
             print_warn "数据未改动。正在把应用拉回原状态..."
-            compose start ai-helpdesk ai-helpdesk-customer frontend nginx
+            compose start "${apps[@]}"
             print_error "恢复未完成，服务已按原样拉起。旧格式备份（无 --clean 的 "
             print_error "pg_dump）无法恢复到非空库，请用新备份或先清空目标库。"
             return 1
         fi
 
-        print_info "3/3 恢复 Redis..."
+        print_info "3/4 恢复 Redis..."
         compose stop redis
         if [ -d "$backup_dir/redis-data" ]; then
             # 先清空再灌：AOF 是**目录**（appendonlydir/ 里有 manifest + base + incr），
@@ -477,18 +585,18 @@ restore_data() {
                 --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Name}}{{end}}{{end}}' 2>/dev/null)"
             if [ -z "$redis_volume" ]; then
                 print_error "找不到 Redis 的 /data 卷，恢复中止"
-                compose start redis ai-helpdesk ai-helpdesk-customer frontend nginx
+                compose start redis "${apps[@]}"
                 return 1
             fi
             if ! docker run --rm -v "$redis_volume:/data" alpine:3.20 \
                     sh -c 'rm -rf /data/appendonlydir /data/dump.rdb'; then
                 print_error "清空 Redis 数据目录失败"
-                compose start redis ai-helpdesk ai-helpdesk-customer frontend nginx
+                compose start redis "${apps[@]}"
                 return 1
             fi
             if ! docker cp "$backup_dir/redis-data/." ai-helpdesk-redis:/data; then
                 print_error "Redis 数据目录拷入失败"
-                compose start redis ai-helpdesk ai-helpdesk-customer frontend nginx
+                compose start redis "${apps[@]}"
                 return 1
             fi
         elif [ -f "$backup_dir/dump.rdb" ]; then
@@ -503,6 +611,11 @@ restore_data() {
             return 1
         fi
         compose start redis
+
+        # 这一步失败也接着恢复配置、拉起服务（Postgres 和 Redis 已经换过了，停在这里更糟），最后明说
+        local partial=0
+        print_info "4/4 恢复 SQL Agent 的状态..."
+        restore_sql_agent_state "$backup_dir" || partial=1
 
         # 恢复配置
         cp "$backup_dir/.env" "$ENV_FILE"
@@ -525,8 +638,12 @@ restore_data() {
         fi
 
         # 启动服务
-        compose start ai-helpdesk ai-helpdesk-customer frontend nginx
+        compose start "${apps[@]}"
 
+        if [ "$partial" -eq 1 ]; then
+            print_error "恢复没有全部完成：Postgres、Redis 和配置已恢复，SQL Agent 的状态还是恢复之前的那一份"
+            return 1
+        fi
         print_info "恢复完成"
     else
         print_info "恢复已取消"

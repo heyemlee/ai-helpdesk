@@ -66,8 +66,10 @@ services:
       - ./deploy/prometheus/alerts:/etc/prometheus/alerts:ro
       - prometheus-data:/prometheus
     restart: unless-stopped
+    # sql-net：抓 sql-agent:8000/metrics（不用 Key，只有 sql-net 上的服务连得到它）
     networks:
       - ai-helpdesk-network
+      - sql-net
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:9090/-/healthy || exit 1"]
       interval: 30s
@@ -105,10 +107,11 @@ services:
       # 观测：JSON 日志给 Promtail/Loki，trace 发 OTel Collector
       - LOG_FORMAT=json
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
-      # 员工实例：订单类问题委派给同机的 ai-sql-agent。backend/.env 里的
-      # SQL_AGENT_URL 是给本机直跑用的（127.0.0.1:8000），在容器里会指回容器自己，
-      # 所以这里固定成宿主机地址。
-      - SQL_AGENT_URL=${AI_HELPDESK_SQL_AGENT_URL:-http://host.docker.internal:8000}
+      # 员工实例：订单类问题委派给下面的 sql-agent 服务（经 sql-net，不出宿主机）。
+      # Key 在 backend/.env 的 SQL_AGENT_API_KEY。backend/.env 里的 SQL_AGENT_URL 是给本机直跑用的
+      # （127.0.0.1:8000），在容器里会指回容器自己，所以这里固定。仓库根 .env 里设了
+      # AI_HELPDESK_SQL_AGENT_URL 时用那个地址（比如切换期间指回宿主机上的旧进程）
+      - SQL_AGENT_URL=${AI_HELPDESK_SQL_AGENT_URL:-http://sql-agent:8000}
       # 控制台"管理与诊断 → 模型连接"保存的配置（backend/app/core/model_settings.py）。
       # 文件里有明文 Key，权限 0600；目录不进版本库（.gitignore 的 backend/data/*）。
       - AI_HELPDESK_MODEL_SETTINGS_PATH=/app/data/runtime/model_settings.json
@@ -123,14 +126,18 @@ services:
       - ./backend/logs:/app/logs
       # 两个实例挂同一个目录：员工实例在控制台保存，客户实例几秒内跟上
       - ./backend/data/runtime:/app/data/runtime
+    # 不 depends_on sql-agent：委派是增强项。SQL Agent 起不来时员工实例照常启动，
+    # 订单类问题靠熔断退回知识库和 SOP
     depends_on:
       redis:
         condition: service_healthy
       postgres:
         condition: service_healthy
     restart: unless-stopped
+    # sql-net 上是 SQL Agent 和控制台。排队模式的 worker 用 extends 抄这一份，也在两个网络上
     networks:
       - ai-helpdesk-network
+      - sql-net
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
       interval: 30s
@@ -183,6 +190,9 @@ services:
       # 宿主机的同名变量。这里的空值会覆盖 env_file 里的值；镜像里没有 .env
       # （.dockerignore 排除了它），load_dotenv 也不覆盖已存在的变量。
       - SQL_AGENT_URL=
+      # 员工实例调 SQL Agent 的 Key 也在 backend/.env 里，这里清掉：客户实例在网络上连不到
+      # SQL Agent（不在 sql-net 上），手里也不该有能用的 Key，两道隔离各自成立
+      - SQL_AGENT_API_KEY=
       # 关掉跨会话记忆，理由见这个服务开头的说明。
       - ENABLE_CROSS_SESSION_MEMORY=false
       # 工具循环只在员工实例上开（见 docs/evaluation/tool-loop-ab.md）。backend/.env
@@ -218,10 +228,85 @@ services:
       retries: 3
       start_period: 90s
 
+  # ── SQL Agent（ai-sql-agent/）：员工实例委派过来的订单、生产、库存、账款查询 ──────────
+  # 业务库连接、执行模型写的 SQL 都只在这里；面向客户的进程手里没有业务库。
+  #
+  # 只挂 sql-net，**不发布宿主机端口**：发布了的话，任何容器都能经 host.docker.internal 连到它，
+  # 网络隔离就白做了。要直接看它就 `docker exec ai-helpdesk-sql-agent …`。连得到它的只有
+  # 员工实例（含排队模式的 worker）、控制台、Prometheus 和 OTel Collector；客户实例、nginx、
+  # postgres 都不在 sql-net 上。第二道是 API Key（下面的 secrets）。
+  #
+  # 按生产模式启动：ai_sql_agent.api.app.check_production_readiness 有一项不过就不启动
+  # （没有模型凭据、没开 Key、Key 带 can_impersonate、策略里写了语义层没有的库……），
+  # 日志里是 production_readiness.failed。下面这几项写死在这里，env 文件改不动它们。
+  #
+  # 模型凭据和模型名在它自己的 env 文件 deploy/sql-agent/sql-agent.env（不进 git，模板是同目录的
+  # .example）。**不要共用 backend/.env**：SQL Agent 也认不带前缀的 OPENAI_API_KEY、
+  # OPENAI_BASE_URL、MODEL_PROVIDER，共用会把客服的模型配置带过去。文件不在时其它服务照常，
+  # 只有它起不来（没有模型凭据）。
+  #
+  # 状态（审计和反馈、运行记录、对话记忆、页面保存的模型连接）都是 SQLite，在 sql-agent-state 卷里，
+  # 不放进客服的 Postgres：那个库用超级用户连，客户实例的账号能读到。只开一个副本：
+  # 状态和模型连接文件是每个副本各一份。备份用 SQLite 的在线备份（scripts/docker-deploy.sh backup）。
+  #
+  # 语义层和四个业务库（生成出来的，不在 git 里）放在 deploy/sql-agent/data/（semantic/、simple/），
+  # 只读挂载。语义层里的 db_path 是相对路径 runtime_data/simple/*.db，按工作目录 /app 解析，
+  # 所以业务库挂在 /app/runtime_data/simple。
+  sql-agent:
+    build:
+      context: ./ai-sql-agent
+      dockerfile: deploy/Dockerfile
+      args:
+        # 和后端一样记下是哪一版（span 的 service.version、deploy skill 的核对都读它）
+        AI_SQL_RELEASE: ${AI_HELPDESK_RELEASE:-dev}
+    container_name: ai-helpdesk-sql-agent
+    env_file:
+      - path: ./deploy/sql-agent/sql-agent.env
+        required: false
+    environment:
+      - AI_SQL_APP_ENV=production
+      # 只在组织内部用：所有 Key 看到的数据范围相同，Key 不能带 can_impersonate
+      - AI_SQL_DEPLOYMENT_SCOPE=internal_single_tenant
+      - AI_SQL_AUTH_MODE=api_key
+      - AI_SQL_API_KEYS_FILE=/run/secrets/sql_agent_keys.json
+      - AI_SQL_UNKNOWN_ROLE_POLICY=deny
+      - AI_SQL_SEMANTIC_DIR=/app/semantic
+      # 状态留在 SQLite：显式清空，env 文件里写了也不会连到别的 Postgres 上去
+      - AI_SQL_PGVECTOR_DSN=
+      - AI_SQL_AUDIT_DB_PATH=/app/state/audit.db
+      - AI_SQL_RUNS_DB_PATH=/app/state/runs.db
+      - AI_SQL_MEMORY_DB_PATH=/app/state/memory.db
+      - AI_SQL_MODEL_SETTINGS_PATH=/app/state/model_settings.json
+      - AI_SQL_LOG_FORMAT=json
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+      - OTEL_SERVICE_NAME=ai-sql-agent
+    secrets:
+      # Key 和数据权限策略。结构见 deploy/sql-agent/sql_agent_keys.example.json
+      - source: sql_agent_keys
+        target: sql_agent_keys.json
+    volumes:
+      - sql-agent-state:/app/state
+      - ./deploy/sql-agent/data/semantic:/app/semantic:ro
+      - ./deploy/sql-agent/data/simple:/app/runtime_data/simple:ro
+    restart: unless-stopped
+    networks:
+      - sql-net
+    # 看 /readyz（记忆库、审计库、模型凭据），不只是进程在不在：`up --wait` 过了就是能接查询了
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/readyz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
   # ── 前端控制台（Vite 构建 + Nginx 托管）──────────────────────────────────────
   # 和后端放在同一个 compose 里，`docker compose up` 一条命令起全栈。
   # 前端容器内的 Nginx 把 /api/ 反代到 ai-helpdesk:8000，走 Docker 内网，
   # 因此不需要 host.docker.internal，也不受宿主机端口占用影响。
+  #
+  # 只挂 sql-net：它要转发的员工实例和 SQL Agent 都在上面。控制台背后是没有 Key 的员工实例
+  # （以后还会替浏览器带上 SQL Agent 的管理员 Key），客户实例所在的网络不该连得到它。
+  # 第一次切过来时，员工实例要先挂上 sql-net 再重建前端，不然它找不到 ai-helpdesk
   frontend:
     build:
       context: ./frontend
@@ -238,7 +323,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     networks:
-      - ai-helpdesk-network
+      - sql-net
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost/ || exit 1"]
       interval: 30s
@@ -284,8 +369,10 @@ services:
     depends_on:
       - tempo
     restart: unless-stopped
+    # sql-net：SQL Agent 的 span 从这里进
     networks:
       - ai-helpdesk-network
+      - sql-net
 
   # ── Grafana Tempo（trace 存储）──────────────────────────────────────────────
   tempo:
@@ -370,6 +457,12 @@ networks:
     ipam:
       config:
         - subnet: 172.28.0.0/16
+  # SQL Agent 所在的网络。上面只有 SQL Agent、员工实例（和它的 worker）、控制台、Prometheus、
+  # OTel Collector。**postgres 不挂这里**：两个实例都用超级用户连它，挂上来的话，客户实例一旦被攻破，
+  # 就能借 COPY … TO PROGRAM 在 postgres 容器里执行命令，从那里进到这个网络。
+  # 不设 internal：SQL Agent 要出网调模型
+  sql-net:
+    driver: bridge
 
 # ── 数据卷 ──────────────────────────────────────────────────────────────────
 volumes:
@@ -380,3 +473,12 @@ volumes:
   loki-data:
   grafana-data:
   nginx-logs:
+  # SQL Agent 的状态：audit.db、runs.db、memory.db、model_settings.json（明文 Key，0600）
+  sql-agent-state:
+
+# ── 密钥 ────────────────────────────────────────────────────────────────────
+secrets:
+  # SQL Agent 的 Key 和数据权限策略（不进 git）。员工实例那一把同时写进 backend/.env 的 SQL_AGENT_API_KEY。
+  # 是绑定挂载进去的：Docker Desktop 上文件 0600 就行；Linux 宿主机上要让容器里的 uid 10001 读得到
+  sql_agent_keys:
+    file: ./deploy/secrets/sql_agent_keys.json

@@ -79,7 +79,7 @@
 | 护栏与身份     | 纯规则的答案策略 · 置信度门槛 · HMAC 用户令牌                          | 逐句检查、转人工判定、签名的用户身份                                                                                                                            |
 | 工作台         | React 18 · TypeScript · Vite 6 · TanStack Query 5 · Tailwind CSS 4     | 从 `fetch` 流里读 SSE（EventSource 不支持 POST）、流式 Markdown 和学习模式，中英文界面                                                                          |
 | 可观测性       | OpenTelemetry · Prometheus · Grafana · Tempo · Loki                    | 每个请求的链路追踪、指标、日志和告警规则，另有监控的 Z-score 异常检测                                                                                           |
-| 交付与质量     | Docker Compose · Nginx · Kubernetes · KEDA · GitHub Actions · pytest · unittest · Ruff · Vitest · k6 | 一次部署 12 个服务，或者用 Kustomize 清单、worker 由 KEDA 扩缩；一套 CI 连 pgvector 跑两个 Agent 的测试（客服的还连 Redis 和 Kafka），并跑契约自检和三个镜像的构建；排队模式另有 k6 压测和故障演练 |
+| 交付与质量     | Docker Compose · Nginx · Kubernetes · KEDA · GitHub Actions · pytest · unittest · Ruff · Vitest · k6 | 一次部署 13 个服务，或者用 Kustomize 清单、worker 由 KEDA 扩缩；一套 CI 连 pgvector 跑两个 Agent 的测试（客服的还连 Redis 和 Kafka），并跑契约自检和三个镜像的构建；排队模式另有 k6 压测和故障演练 |
 
 ## 功能
 
@@ -242,15 +242,15 @@ loadtest/run.sh <名字>                      # 用 k6 压演练那一套；WORK
 ## 部署
 
 ```bash
-docker compose up -d --build                    # 12 个服务；只有 80 端口的 Nginx 对外监听
-scripts/docker-deploy.sh backup                 # 备份 Postgres、Redis、env 文件和 deploy/ 配置
+docker compose up -d --build                    # 13 个服务；只有 80 端口的 Nginx 对外监听
+scripts/docker-deploy.sh backup                 # 备份 Postgres、Redis、SQL Agent 的 SQLite 状态、env 文件和 deploy/
 scripts/docker-deploy.sh restore backups/<dir>  # 恢复并重启；恢复演练用时 17 秒
 docker compose -f docker-compose.yml -f docker-compose.queued.yml up -d --build   # 排队模式：每个实例一个 api、一个 worker
 docker compose -f docker-compose.yml -f docker-compose.kafka.yml up -d --build    # 事件日志走 Kafka（排队模式再叠：见 docker-compose.queued-kafka.yml）
 scripts/k8s-up.sh                               # kind 集群：清单、KEDA、Kafka、假模型
 ```
 
-SQL Agent 目前单独部署，从 `ai-sql-agent/` 起（见[部署](ai-sql-agent/README.zh-CN.md#部署)）；员工实例通过 `SQL_AGENT_URL` 连它。
+SQL Agent 是同一个 compose 里的 `sql-agent` 服务，按生产模式启动、只认 API Key。它只挂自己的网络 `sql-net`，不发布宿主机端口；同在这个网络上的是员工实例、控制台、Prometheus 和 OTel Collector，客户实例、Nginx 和 Postgres 都连不到它。它的模型配置放 `deploy/sql-agent/sql-agent.env`，Key 放 `deploy/secrets/sql_agent_keys.json`（模板在旁边），语义层和业务库放 `deploy/sql-agent/data/`。
 
 生产模式下，缺管理钥匙、用户签名密钥、对话保护或部署范围声明中的任何一项，服务都拒绝启动。系统按单租户设计，具体范围见[部署边界](docs/deployment-boundaries.zh-CN.md)。
 
