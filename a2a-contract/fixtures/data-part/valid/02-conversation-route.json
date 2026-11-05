@@ -1,0 +1,12 @@
+{
+  "route": "data_qa",
+  "confidence": 0.82,
+  "queried_database": false,
+  "execution_status": "not_applicable",
+  "has_risk": false,
+  "degraded": false,
+  "degrade_reason": "",
+  "selected_databases": [],
+  "trace_id": "7c1a0b93d4e84f21",
+  "steps": []
+}

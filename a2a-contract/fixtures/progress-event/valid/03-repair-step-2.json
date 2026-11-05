@@ -1,0 +1,21 @@
+{
+  "jsonrpc": "2.0",
+  "id": "req-1",
+  "result": {
+    "kind": "status-update",
+    "taskId": "6f2344a1b2c34d56",
+    "contextId": "s_ab12cd34",
+    "final": false,
+    "status": {
+      "state": "working",
+      "timestamp": "2026-09-04T12:00:29.100Z",
+      "message": {
+        "kind": "message", "role": "agent", "messageId": "m-0007",
+        "taskId": "6f2344a1b2c34d56", "contextId": "s_ab12cd34",
+        "parts": [{"kind": "text", "text": "查询出错，正在重试"}]
+      }
+    },
+    "metadata": {"stage": "repair", "trace_id": "e620e55f2e294505",
+                 "step": 2, "database": "wms_db"}
+  }
+}

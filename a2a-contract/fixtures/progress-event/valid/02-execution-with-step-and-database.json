@@ -1,0 +1,21 @@
+{
+  "jsonrpc": "2.0",
+  "id": "req-1",
+  "result": {
+    "kind": "status-update",
+    "taskId": "6f2344a1b2c34d56",
+    "contextId": "s_ab12cd34",
+    "final": false,
+    "status": {
+      "state": "working",
+      "timestamp": "2026-09-04T12:00:24.900Z",
+      "message": {
+        "kind": "message", "role": "agent", "messageId": "m-0005",
+        "taskId": "6f2344a1b2c34d56", "contextId": "s_ab12cd34",
+        "parts": [{"kind": "text", "text": "正在查询数据库（erp_db）"}]
+      }
+    },
+    "metadata": {"stage": "execution", "trace_id": "e620e55f2e294505",
+                 "step": 1, "database": "erp_db"}
+  }
+}

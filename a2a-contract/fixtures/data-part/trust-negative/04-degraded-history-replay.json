@@ -1,0 +1,16 @@
+{
+  "route": "database_query", "confidence": 0.7,
+  "queried_database": true,
+  "execution_status": "success",
+  "has_risk": false,
+  "degraded": true,
+  "degrade_reason": "模型不可用，回放了最近一条同类问题的历史 SQL",
+  "selected_databases": ["erp_db"],
+  "trace_id": "4d5e6f708192a3b4",
+  "steps": [{"database": "erp_db",
+             "sql": "SELECT job_no, ship_date FROM job WHERE job_no = 'J25-00003'",
+             "final_sql": "SELECT job_no, ship_date FROM job WHERE job_no = 'J25-00003'",
+             "success": true, "row_count": 1, "truncated": false,
+             "rows": [{"job_no": "J25-00003", "ship_date": "2026-09-15"}],
+             "error": null, "repair_attempts": [], "risk_findings": []}]
+}

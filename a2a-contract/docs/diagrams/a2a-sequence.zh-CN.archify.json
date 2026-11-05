@@ -1,0 +1,128 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "AI Helpdesk × AI SQL Agent · A2A 协作",
+    "locale": "zh-CN",
+    "viewBox": [
+      1080,
+      530
+    ],
+    "column_fit": "spread",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    {
+      "id": "console",
+      "type": "frontend",
+      "label": "客服控制台",
+      "sublabel": "React · SSE"
+    },
+    {
+      "id": "helpdesk",
+      "type": "backend",
+      "label": "AI Helpdesk",
+      "sublabel": "意图路由 · A2A Client"
+    },
+    {
+      "id": "sqlagent",
+      "type": "backend",
+      "label": "AI SQL Agent",
+      "sublabel": "Text2SQL · A2A Server"
+    },
+    {
+      "id": "business",
+      "type": "database",
+      "label": "业务数据库",
+      "sublabel": "只读连接 · 表列权限"
+    }
+  ],
+  "messages": [
+    {
+      "id": "question",
+      "from": "console",
+      "to": "helpdesk",
+      "y": 160,
+      "label": "POST /chat/stream"
+    },
+    {
+      "id": "discover",
+      "from": "helpdesk",
+      "to": "sqlagent",
+      "y": 188,
+      "label": "GET /.well-known/agent.json"
+    },
+    {
+      "id": "capability",
+      "from": "sqlagent",
+      "to": "helpdesk",
+      "y": 216,
+      "label": "capabilities.streaming = true",
+      "variant": "return"
+    },
+    {
+      "id": "delegate",
+      "from": "helpdesk",
+      "to": "sqlagent",
+      "y": 244,
+      "label": "message/stream · POST /a2a",
+      "variant": "emphasis"
+    },
+    {
+      "id": "task",
+      "from": "sqlagent",
+      "to": "helpdesk",
+      "y": 272,
+      "label": "task → status-update",
+      "variant": "return"
+    },
+    {
+      "id": "progress",
+      "from": "helpdesk",
+      "to": "console",
+      "y": 300,
+      "label": "progress · SSE",
+      "variant": "return"
+    },
+    {
+      "id": "query",
+      "from": "sqlagent",
+      "to": "business",
+      "y": 328,
+      "label": "权限校验 → 只读 SQL",
+      "variant": "security"
+    },
+    {
+      "id": "rows",
+      "from": "business",
+      "to": "sqlagent",
+      "y": 356,
+      "label": "结果集 → 结果风险检查",
+      "variant": "return"
+    },
+    {
+      "id": "artifact",
+      "from": "sqlagent",
+      "to": "helpdesk",
+      "y": 384,
+      "label": "artifact-update · text + data",
+      "variant": "return"
+    },
+    {
+      "id": "terminal",
+      "from": "sqlagent",
+      "to": "helpdesk",
+      "y": 412,
+      "label": "completed · final = true",
+      "variant": "return"
+    },
+    {
+      "id": "answer",
+      "from": "helpdesk",
+      "to": "console",
+      "y": 440,
+      "label": "证据判定 → 安全回答 / 转人工",
+      "variant": "security"
+    }
+  ]
+}

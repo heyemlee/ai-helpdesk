@@ -1,0 +1,12 @@
+{
+  "jsonrpc": "2.0",
+  "id": "req-1",
+  "result": {
+    "kind": "status-update",
+    "taskId": "6f2344a1b2c34d56",
+    "contextId": "s_ab12cd34",
+    "final": true,
+    "status": {"state": "completed", "timestamp": "2026-09-04T12:00:09.120Z"},
+    "metadata": {"trace_id": "e620e55f2e294505"}
+  }
+}

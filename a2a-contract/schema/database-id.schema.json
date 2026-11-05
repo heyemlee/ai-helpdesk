@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/heyemlee/a2a-contract/schema/database-id.schema.json",
+  "title": "database 业务库标识符",
+  "description": "契约 §4.5（v1.6 起）。契约面是**形状**，不是闭集——具体有哪几个库随部署配置（AI_SQL_SEMANTIC_DIR）走，由服务端声明清单。新增标识符不算契约变更，删除/改名算。下面的 $defs 是断言用的具名集合，不是契约面本身。",
+  "type": "string",
+  "pattern": "^[a-z][a-z0-9_]*_db$",
+  "$defs": {
+    "current-2026-09-04": {
+      "$comment": "当前生效清单。ai-sql-agent/.env:58 → AI_SQL_SEMANTIC_DIR=sim_erp/semantic；启动日志 semantic.loaded 可自证。断言『实际会发出什么』用这一组。",
+      "enum": ["erp_db", "prod_db", "svc_db", "wms_db"]
+    },
+    "retired-v1.6": {
+      "$comment": "v1.6 从契约里移除的两个：mes_db 是 prod_db 的旧名（prod_db.yaml 的 description 自称『生产系统（MES）』），pm_db 的职责本就在 erp_db（项目=job，变更单=change_order）。二者从未在任何部署里存在过，只留在 benchmark 夹具里。",
+      "enum": ["mes_db", "pm_db"]
+    },
+    "known": {
+      "$comment": "current ∪ retired。调用方的中文映射表至少要覆盖到这里——退役的两个仍保留映射，因为 benchmark 夹具和历史 trace 里还会出现。表外标识符必须退化为显示原始值，不得崩溃。",
+      "enum": ["erp_db", "prod_db", "svc_db", "wms_db", "mes_db", "pm_db"]
+    }
+  }
+}
