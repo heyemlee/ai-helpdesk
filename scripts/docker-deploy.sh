@@ -360,10 +360,19 @@ backup_sql_agent_state() {
         return 0
     fi
 
-    # 在跑（不是在反复重启的间隙）就在容器里做在线备份。exec 不进去也不能让整个备份停在这里
-    # （set -e），退到下面直接拷卷
-    if [ "$(docker inspect --format '{{.State.Running}} {{.State.Restarting}}' ai-helpdesk-sql-agent 2>/dev/null)" = "true false" ] &&
-        docker exec -i ai-helpdesk-sql-agent python - <<'PY'
+    # 停着、或者在反复重启（比如 sql-agent.env 改坏了、就绪检查不过；这时 Running 也是 true，
+    # 要看 Restarting）：进程没在正常写，直接拷卷里的文件，连同可能剩下的 -wal 一起拷，
+    # 下次打开时 SQLite 会把它补进去
+    if [ "$(docker inspect --format '{{.State.Running}} {{.State.Restarting}}' ai-helpdesk-sql-agent 2>/dev/null)" != "true false" ]; then
+        print_warn "SQL Agent 没在正常运行，直接从它的卷里拷状态文件"
+        mkdir -p "$dest"
+        docker cp ai-helpdesk-sql-agent:/app/state/. "$dest"
+        return 0
+    fi
+
+    # 在跑就在容器里做在线备份。它没成功时不能退回去拷文件：进程正在写，拷到的可能是半截，
+    # 而备份看起来是完整的。明说失败，"备份完成"也就不会出现
+    if ! docker exec -i ai-helpdesk-sql-agent python - <<'PY'
 import os
 import shutil
 import sqlite3
@@ -385,18 +394,13 @@ if os.path.exists(settings):
     shutil.copy2(settings, out)
 PY
     then
-        # dest 先建好、源路径带 /.：和 Redis 那里一样，docker cp 的语义取决于 dest 存不存在
-        mkdir -p "$dest"
-        docker cp ai-helpdesk-sql-agent:/tmp/sql-agent-backup/. "$dest"
-        docker exec ai-helpdesk-sql-agent rm -rf /tmp/sql-agent-backup
-        return 0
+        print_error "SQL Agent 在运行，在线备份却没成功：它的状态没有备份（上面的 Postgres、Redis 和配置已经备好）"
+        return 1
     fi
-
-    # 停着、在反复重启（比如 sql-agent.env 改坏了、就绪检查不过），或者 exec 不进去：进程没在正常写，
-    # 直接拷卷里的文件，连同可能剩下的 -wal 一起拷，下次打开时 SQLite 会把它补进去
-    print_warn "SQL Agent 没在正常运行，直接从它的卷里拷状态文件"
+    # dest 先建好、源路径带 /.：和 Redis 那里一样，docker cp 的语义取决于 dest 存不存在
     mkdir -p "$dest"
-    docker cp ai-helpdesk-sql-agent:/app/state/. "$dest"
+    docker cp ai-helpdesk-sql-agent:/tmp/sql-agent-backup/. "$dest"
+    docker exec ai-helpdesk-sql-agent rm -rf /tmp/sql-agent-backup
 }
 
 # 函数：备份数据
@@ -414,6 +418,9 @@ backup_data() {
     print_info "备份数据到 $backup_dir..."
 
     mkdir -p "$backup_dir"
+    # 没备完之前一直带着这个标记。中途失败（set -e 停在半路）留下的半份目录，恢复时会被认出来、拒绝：
+    # 不然拿它恢复，缺的那几样（比如 SQL Agent 的状态）会被悄悄跳过，屏幕上照样是"恢复完成"
+    echo "备份没有完成（开始于 $(date)）" > "$backup_dir/INCOMPLETE"
 
     # 备份 Redis 数据
     compose exec -T redis redis-cli --no-auth-warning -a "$REDIS_PASSWORD" SAVE
@@ -470,6 +477,7 @@ backup_data() {
 
     backup_sql_agent_state "$backup_dir"
 
+    rm -f "$backup_dir/INCOMPLETE"
     print_info "备份完成: $backup_dir"
 }
 
@@ -512,6 +520,11 @@ restore_data() {
 
     if [ ! -d "$backup_dir" ]; then
         print_error "备份目录不存在: $backup_dir"
+        exit 1
+    fi
+
+    if [ -f "$backup_dir/INCOMPLETE" ]; then
+        print_error "这份备份当时没有备完（$backup_dir/INCOMPLETE），不能拿来恢复"
         exit 1
     fi
 
@@ -637,8 +650,9 @@ restore_data() {
         fi
         if [ -d "$backup_dir/deploy" ]; then
             # SQL Agent 的 Key、env 文件、语义层和业务库都在 deploy/ 下、都不进 git：备份里没有的
-            # （比如 SQL Agent 进 compose 之前的备份）先挪开、换完再放回来，不跟着整个 deploy/ 删掉
-            local keep="$ROOT/.restore-keep.$$" path
+            # （比如 SQL Agent 进 compose 之前的备份）先挪开、换完再放回来，不跟着整个 deploy/ 删掉。
+            # 暂存在 backups/ 下（被 git 忽略，和备份放在一起）
+            local keep="$ROOT/backups/.restore-keep.$$" path
             for path in secrets sql-agent/sql-agent.env sql-agent/data; do
                 if [ -e "$DEPLOY/$path" ] && [ ! -e "$backup_dir/deploy/$path" ]; then
                     mkdir -p "$keep/$(dirname "$path")"
@@ -646,7 +660,11 @@ restore_data() {
                 fi
             done
             rm -rf "$DEPLOY"
-            cp -r "$backup_dir/deploy" "$DEPLOY"
+            if ! cp -r "$backup_dir/deploy" "$DEPLOY"; then
+                print_error "deploy/ 没能从备份拷回来，恢复中止；服务停着"
+                [ -d "$keep" ] && print_error "SQL Agent 的 Key、env 文件和数据暂存在 $keep，别删"
+                return 1
+            fi
             for path in secrets sql-agent/sql-agent.env sql-agent/data; do
                 if [ -e "$keep/$path" ]; then
                     mkdir -p "$DEPLOY/$(dirname "$path")"
