@@ -1,22 +1,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Sequence
+from typing import List, Optional, Sequence
 
 from ai_sql_agent.retrieval.bm25 import BM25Index
 from ai_sql_agent.retrieval.embedding_client import (
     AliyunEmbeddingClient,
-    AliyunEmbeddingConfig,
 )
 from ai_sql_agent.retrieval.graph_builder import build_schema_graph
 from ai_sql_agent.retrieval.keyword_extractor_client import (
     AliyunKeywordExtractor,
-    AliyunKeywordExtractorConfig,
 )
 from ai_sql_agent.retrieval.objects import SchemaHit
 from ai_sql_agent.retrieval.rerank_client import (
     AliyunRerankClient,
-    AliyunRerankConfig,
     RerankDocument,
     RerankResult,
 )

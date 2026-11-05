@@ -19,8 +19,6 @@ SNAPSHOT = "snapshot"
 UNKNOWN = "unknown"
 """说不清楚。契约 §4.6.4：调用方按不可信处置，不得表述任何时点。"""
 
-VALID_SOURCES = (QUERY_TIME, SNAPSHOT, UNKNOWN)
-
 
 def now_rfc3339() -> str:
     return (

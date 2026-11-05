@@ -6,7 +6,7 @@ import sqlite3
 import threading
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator, List, Optional, Protocol
+from typing import Iterator, List, Protocol
 
 from ai_sql_agent.core import get_logger, get_settings, log_event
 

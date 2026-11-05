@@ -80,9 +80,6 @@ class PromptBudgetManager:
     def fit_memory(self, text: str) -> str:
         return trim_to_tokens(text, self.config.memory_budget, keep="tail")
 
-    def fit_schema(self, text: str) -> str:
-        return trim_to_tokens(text, self.config.schema_budget, keep="head")
-
     def fit_schema_sections(self, sections: list, separator: str = "\n\n") -> str:
         """
         **按库**分配 Schema 预算，而不是把拼好的整段做头部截断。
@@ -135,15 +132,12 @@ class PromptBudgetManager:
             if quotas[i] > 0
         )
 
-    def fit_plan(self, text: str) -> str:
-        return trim_to_tokens(text, self.config.plan_budget, keep="head")
-
 
 def columns_in_prompt(schema_context: str) -> list:
     """
     从**裁剪后**的 Schema 文本里解析出模型真正看得到的字段，形如 `db.table.column`。
 
-    为什么需要它：`fit_schema` 是按字符对整段文本做头部截断的，超出预算的部分
+    为什么需要它：Schema 上下文要过 Token 预算裁剪（`fit_schema_sections`），超出预算的部分
     直接消失，可能把一张表从中间切断。而字段召回率一直是拿检索输出
     （`retrieved_columns`，裁剪**之前**）算的——检索召回了、但被预算裁掉、
     模型压根没看到的字段，也算进了召回率。

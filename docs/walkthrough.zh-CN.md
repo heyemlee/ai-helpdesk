@@ -826,7 +826,7 @@ def retrieve(self, query, keywords=None, access=None):
 
 `schema_budget.py` 的模块 docstring 值得整段读:
 
-> 为什么需要这一层:`fit_schema` 是对渲染好的整段文本做**字符级截断**的。
+> 为什么需要这一层:原先的预算裁剪是对渲染好的整段文本做**字符级截断**的。
 > 超预算时它砍掉的是「排在后面的字符」,而不是「最不相关的字段」——
 > 一张表可能被从中间切断,规划模型随后写出「Schema 未提供完整表结构」,
 > 再生成 `SELECT project_code FROM project WHERE 0`。

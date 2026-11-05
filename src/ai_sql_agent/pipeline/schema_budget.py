@@ -1,6 +1,6 @@
 """让 Schema 图适配 Token 预算——按相关性丢字段，而不是按字符位置切文本。
 
-为什么需要这一层：`fit_schema` 是对渲染好的整段文本做字符级截断的。
+为什么需要这一层：原先的预算裁剪是对渲染好的整段文本做字符级截断的。
 超预算时它砍掉的是「排在后面的字符」，而不是「最不相关的字段」——
 一张表可能被从中间切断，规划模型随后写出「Schema 未提供完整表结构」，
 再生成 `SELECT project_code FROM project WHERE 0`。
@@ -18,7 +18,7 @@
 from __future__ import annotations
 
 import copy
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 from .token_budget import estimate_tokens
 

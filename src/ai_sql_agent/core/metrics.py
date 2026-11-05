@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import threading
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 Labels = Tuple[Tuple[str, str], ...]
 

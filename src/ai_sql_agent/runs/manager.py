@@ -77,10 +77,6 @@ class RunRecorder:
         if event_type in FLUSH_ON:
             self.flush()
 
-    @property
-    def last_seq(self) -> int:
-        return self._seq
-
     def flush(self) -> None:
         with self._lock:
             pending, self._buffer = self._buffer, []
@@ -247,10 +243,6 @@ class RunManager:
         if stored is None:
             return None
         return (stored.get("caller", ""), stored.get("user_id", ""))
-
-    def active_ids(self) -> List[str]:
-        with self._lock:
-            return list(self._active)
 
     # ------------------------------------------------------------------
     # 查询

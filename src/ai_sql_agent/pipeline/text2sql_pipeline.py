@@ -79,7 +79,6 @@ from .embedding import describe_embedding, local_embedding_client, schema_embedd
 from .local_clients import (
     HybridKeywordExtractor,
     build_schema_glossary,
-    SimpleKeywordExtractor,
 )
 from .objects import DatabaseConfig, PipelineConfig, PipelineResult, StepExecutionLog
 from .short_path import decide_short_path
@@ -153,8 +152,6 @@ def column_budget_for(embedding_client) -> tuple:
         return REMOTE_COLUMN_BUDGET
     return LOCAL_COLUMN_BUDGET
 
-# CoT 规划在 Schema 不足以回答时输出的占位数据库名
-_MISSING_DATABASE = "缺失"
 
 _logger = get_logger("pipeline")
 

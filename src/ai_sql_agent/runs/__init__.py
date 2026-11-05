@@ -8,12 +8,11 @@
 A2A 的进度帧不从这里来：契约面仍然是 `trace.stage()` 的 sink（a2a-contract §4.5 / §8.2），
 事件日志是新增的旁路，不改线上格式。
 """
-from .events import EVENT_TYPES, RunEvent
+from .events import RunEvent
 from .manager import RunManager, RunRecorder, runs_of
 from .store import NullRunStore, PostgresRunStore, SQLiteRunStore, create_run_store
 
 __all__ = [
-    "EVENT_TYPES",
     "NullRunStore",
     "PostgresRunStore",
     "RunEvent",

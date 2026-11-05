@@ -19,20 +19,8 @@ STAGE_FINISHED = "stage.finished"
 MODEL_CALL = "model.call"
 TOOL_SQL = "tool.sql"
 
-EVENT_TYPES = (
-    RUN_STARTED,
-    STAGE_STARTED,
-    STAGE_FINISHED,
-    MODEL_CALL,
-    TOOL_SQL,
-    RUN_CANCEL_REQUESTED,
-    RUN_FINISHED,
-)
-
 FLUSH_ON = frozenset({STAGE_FINISHED, RUN_CANCEL_REQUESTED, RUN_FINISHED})
 """遇到这几类事件就把缓冲落库：一次请求十几次提交，崩溃最多丢掉当前 stage 的事件。"""
-
-RUN_STATUSES = ("running", "completed", "failed", "cancelled", "interrupted")
 
 _STRING_LIMITS = {"sql": 8192, "final_sql": 8192, "error": 1024}
 _DEFAULT_STRING_LIMIT = 1024

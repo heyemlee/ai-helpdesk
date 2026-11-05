@@ -161,7 +161,7 @@ class PromptVisibilityTest(unittest.TestCase):
     """
     字段召回率必须按「进 Prompt」算，不是按「被检索到」算。
 
-    Schema 图受 Token 预算裁剪，`fit_schema` 是对整段文本做头部截断的。
+    Schema 图受 Token 预算裁剪，超出预算的部分直接被截掉。
     检索命中但被裁掉的字段，模型压根看不到，对下游等于不存在——
     按检索输出算召回率会把这类字段算成命中，指标越高越危险，
     因为它掩盖的恰恰是「模型没拿到字段」这个真实失败原因。

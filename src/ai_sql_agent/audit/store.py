@@ -5,7 +5,7 @@ import logging
 import sqlite3
 import threading
 from contextlib import contextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator, List, Optional, Protocol, Tuple
 

@@ -164,8 +164,8 @@ A gold column counts as recalled only if it appears in the schema context
 **after token-budget trimming** (`PipelineResult.prompt_columns`), not in the
 retrieval output (`retrieved_columns`).
 
-This distinction is not pedantry; it was learned the hard way. `fit_schema`
-truncated the rendered schema text at the character level, and anything over
+This distinction is not pedantry; it was learned the hard way. The old budget
+step cut the rendered schema text at the character level, and anything over
 budget simply vanished. One measured cross-database query retrieved 46 columns,
 **10 of which were trimmed away**, and recall still reported 100% — while the
 planning model wrote, in that same call:

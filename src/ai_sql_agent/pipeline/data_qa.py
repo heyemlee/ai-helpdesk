@@ -37,11 +37,6 @@ class RuleBasedDataQAClient:
             definitions if definitions is not None else _load_metric_definitions()
         )
 
-    @property
-    def BUSINESS_DEFINITIONS(self) -> Dict[str, str]:
-        """兼容旧调用方的别名。"""
-        return self.definitions
-
     def answer(self, query: str, context: ConversationMemoryContext) -> str:
         if any(term in query for term in ("什么是", "含义", "定义", "口径", "什么意思")):
             for name, definition in self.definitions.items():

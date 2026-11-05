@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Callable, List, Optional, Sequence
+from typing import Callable, List, Sequence
 
 from ai_sql_agent.auth import extract_referenced_tables
 from ai_sql_agent.retrieval.tokenizer import tokenize

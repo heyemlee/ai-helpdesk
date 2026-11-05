@@ -295,15 +295,6 @@ class ModelAccessRegistry:
         """只列永久性的（凭证被拒、额度耗尽、模型无权限）。基准入口据此中止。"""
         return [item for item in self.snapshot() if item["permanent"]]
 
-    def is_blocked(self, key: AccessKey, model: str = "") -> bool:
-        """这组凭证当前是否有**永久性**的不可用状态。只看不改，不计数。"""
-        with self._lock:
-            for slot in {"", model or ""}:
-                entry = self._blocks.get((key, slot))
-                if entry is not None and entry.permanent:
-                    return True
-        return False
-
     def reset_all(self) -> int:
         """清掉所有状态，返回清掉了几条。只给测试、重启之外的管理员复位用。"""
         with self._lock:

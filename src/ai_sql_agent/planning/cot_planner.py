@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from typing import Iterator, List, Optional
 
 from .objects import CotPlanningRequest, CotPlanningResult, CotPlanningStep, FewShotExample
@@ -127,9 +126,3 @@ class CotPlanner:
         raise TypeError(
             "schema_graph 必须是字符串，或带有 to_prompt_context() 方法的对象。"
         )
-
-    def _clean(self, value: str) -> str:
-        """
-        清理解析结果。
-        """
-        return value.strip().rstrip(",").strip()

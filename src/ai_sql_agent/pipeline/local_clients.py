@@ -148,21 +148,14 @@ class SimpleKeywordExtractor:
             "物料编码", "项目编号", "项目总数",
         ]
 
-    # 提问里的功能词，不承载业务语义，不该进关键词
-    _STOPWORDS = frozenset({
-        "查询", "统计", "列出", "看看", "找出", "筛选", "多少", "哪些", "是多少",
-        "的", "了", "吗", "呢", "有", "和", "与", "在", "为", "超过", "大于",
-        "小于", "低于", "高于", "期间", "之后", "之前", "以及", "并且",
-    })
-
     def extract(self, query: str) -> List[str]:
         """
         从用户 Query 中抽取关键词。
 
         两路合并：
         1. **短语表命中**——业务指标、字段别名这类固定说法，精确可控；
-        2. **候选词兜底**——短语表覆盖不到的词（尤其是枚举取值，如「板材类供应商」
-           里的「板材」）按字符 n-gram 补出来。
+        2. **取值词兜底**——短语表覆盖不到的枚举取值（如「板材类供应商」里的「板材」），
+           从元数据声明过的取值里匹配出来，见 `value_vocabulary()`。
 
         没有第 2 路时，用户以字段**取值**提问会完全召不回——取值不在字段名也不在
         别名里，只出现在样例值中，短语表不可能穷举。
@@ -189,35 +182,6 @@ class SimpleKeywordExtractor:
             keywords.append(query)
 
         return keywords
-
-    def _candidate_terms(self, query: str) -> List[str]:
-        """
-        从查询里切出候选业务词。
-
-        只保留 2-4 字的中文片段，跳过停用词与已被更长短语覆盖的片段。
-        """
-        candidates: List[str] = []
-
-        for span in re.findall(r"[\u4e00-\u9fff]+", query):
-            if span in self._STOPWORDS:
-                continue
-            # 整段本身先作为候选
-            if 2 <= len(span) <= 4 and span not in self._STOPWORDS:
-                candidates.append(span)
-            # 再切 2-3 字滑窗，捞出「板材类供应商」里的「板材」
-            for size in (2, 3):
-                for i in range(len(span) - size + 1):
-                    piece = span[i:i + size]
-                    if piece not in self._STOPWORDS:
-                        candidates.append(piece)
-
-        seen = set()
-        unique = []
-        for c in candidates:
-            if c not in seen:
-                seen.add(c)
-                unique.append(c)
-        return unique[:4]
 
 
 def build_schema_glossary(business_metas: dict, max_chars: int = 6000) -> str:

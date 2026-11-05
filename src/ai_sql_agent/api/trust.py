@@ -93,38 +93,6 @@ def _derive_status(payload: Dict[str, Any], steps: List[Any]) -> str:
     return "success" if total > 0 else "no_data"
 
 
-CURRENCY_CONTRACT = "contract"
-CURRENCY_DEPLOYMENT = "deployment_config"
-CURRENCY_UNKNOWN = "unknown"
-
-
-def currency_of(
-    payload: Dict[str, Any], *, deployment_default: Optional[str] = None
-) -> Tuple[Optional[str], str]:
-    """
-    取币种（§4.6.5），返回 `(币种, 来源)`。来源即契约的 `currency_source`。
-
-    v1.6/v1.7 这里写的是「**不得**回退到自己的全局常量」。那条禁令**过头了**：
-    照它执行等于删掉调用方的 `SQL_AGENT_CURRENCY`，而那个常量当初就是为了堵一次
-    已经发生过的事故——下游只返回数字，中文回答**默认写成「元」**，
-    接美国厂的库时报给 builder 的金额带了错误的币种。
-    **删掉它并不会让语言的默认值消失，只会让它变回隐式的。**
-
-    v1.8 因此改成按来源三分。关键区分是：危险的不是「用了配置值」，
-    是「**把配置值说成系统核实过的事实**」。所以来源必须跟着币种一起往上传，
-    并写进给用户的那句话里。
-
-    第三档（`unknown`）**不是沉默**——沉默正是事故的形态。它是一条主动指令：
-    只写数字、不补任何符号，并主动禁止语言的默认值。
-    """
-    declared = payload.get("currency")
-    if isinstance(declared, str) and len(declared) == 3 and declared.isupper():
-        return declared, CURRENCY_CONTRACT
-    if deployment_default:
-        return deployment_default, CURRENCY_DEPLOYMENT
-    return None, CURRENCY_UNKNOWN
-
-
 def result_truncated_of(payload: Dict[str, Any]) -> bool:
     """§4.6.3。顶层字段优先；没有就看 `any(steps[].truncated)`。缺失按 True。"""
     if isinstance(payload.get("result_truncated"), bool):
