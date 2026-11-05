@@ -263,7 +263,10 @@ function ChatCard({ status }: { status: SqlModelStatus }) {
   const listEnabled = status.editable && (!!target.key || canKeepKey(status, { provider: target.provider, baseUrl: target.baseUrl }))
   const list = useModelList('chat', target, listEnabled)
   const listed = list.data?.ok ? list.data.models : []
-  const options = listed.length ? listed : [current?.chat_model, current?.coder_model].filter(Boolean) as string[]
+  // 读不到清单时退回表单里选的那个协议上配过的模型名——不是现在在用的那个协议的：
+  // 从 Anthropic 换到 OpenAI 时，下拉框里冒出 claude-* 的话，选了存下去就是一份不通的连接
+  const selected = status.providers?.[form.provider]
+  const options = listed.length ? listed : [selected?.chat_model, selected?.coder_model].filter(Boolean) as string[]
 
   const settle = (next: SqlModelForm, key: string, force = false) => setTarget((prev) => (
     !force && prev.provider === next.provider && prev.baseUrl === next.baseUrl.trim() && prev.key === key.trim()

@@ -100,6 +100,19 @@ describe('SQL Agent 的模型连接', () => {
     expect(JSON.stringify(stored.mock.calls)).not.toContain('sk-new-key')
   })
 
+  it('换了协议又读不到清单：下拉框里是那个协议配过的模型，不是现在在用的协议的', async () => {
+    serve({ 'GET /sql-api/admin/model': () => json(withKey()) })
+    show()
+    const card = (await screen.findByRole('heading', { name: 'Model connection' })).closest('section') as HTMLElement
+    const other = Object.keys(recorded.providers).find((name) => name !== recorded.provider)!
+    const otherModel = recorded.providers[other as keyof typeof recorded.providers].chat_model
+    await userEvent.click(within(card).getByText('Connection settings'))
+    await userEvent.selectOptions(within(card).getByRole('combobox', { name: 'Protocol' }), other)
+    const picker = card.querySelector('#sq-chat-model') as HTMLSelectElement
+    await waitFor(() => expect([...picker.options].map((option) => option.value)).toContain(otherModel))
+    expect([...picker.options].map((option) => option.value)).not.toContain(recorded.chat_model)
+  })
+
   it('测试没通过就不存，给一个"仍然保存"', async () => {
     const failed = { ...OK_REPORT, ok: false, results: [{ ...OK_REPORT.results[0]!, ok: false, outcome: 'auth', status_code: 401, message: 'invalid key' }] }
     const calls = serve({
