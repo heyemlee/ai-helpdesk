@@ -87,9 +87,15 @@ export const stringAttr = (attrs: Record<string, unknown>, key: string): string 
 export const rowDuration = (row: TimelineRow): number | null =>
   (row.finished ? numberAttr(row.finished.attrs, 'duration_ms') : null)
 
-/** 这一行的结局：ok / error / cancelled；还没结束是 running */
-export const rowStatus = (row: TimelineRow): string =>
-  (row.finished ? stringAttr(row.finished.attrs, 'status') || 'ok' : 'running')
+/**
+ * 这一行的结局：ok / error / cancelled。没有 stage.finished 的行：run 还在跑、这一行又开了头，是 running；
+ * 别的情况（run 已经结束，或者是不属于任何阶段的零散事件）说不出结局，返回空串，页面上不画状态。
+ * 以前一律写 running，结束了的 run 里不在阶段内的那次模型调用会一直挂着"进行中"。
+ */
+export const rowStatus = (row: TimelineRow, live = false): string => {
+  if (row.finished) return stringAttr(row.finished.attrs, 'status') || 'ok'
+  return live && row.started ? 'running' : ''
+}
 
 /** run 的总耗时（毫秒）：结束时间减开始时间，任一缺失就是 null */
 export function runDuration(createdAt?: string | null, finishedAt?: string | null): number | null {
