@@ -397,6 +397,33 @@ class TestSqlAgentState:
         assert "在线备份却没成功" in proc.stdout + proc.stderr
         cmds = fake_repo["cmdlog"].read_text().splitlines()
         assert not any("ai-helpdesk-sql-agent:/app/state" in cmd for cmd in cmds)
+        # 留下的半份目录带着标记，恢复时会被拒绝
+        (partial,) = (fake_repo["root"] / "backups").iterdir()
+        assert (partial / "INCOMPLETE").is_file()
+
+    def test_a_finished_backup_carries_no_incomplete_marker(self, fake_repo):
+        env = dict(os.environ)
+        env["PATH"] = f"{fake_repo['bin']}:{env['PATH']}"
+        env["CMDLOG"] = str(fake_repo["cmdlog"])
+        proc = subprocess.run(["bash", str(fake_repo["script"]), "backup"],
+                              capture_output=True, text=True, env=env, timeout=120)
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        (done,) = (fake_repo["root"] / "backups").iterdir()
+        assert not (done / "INCOMPLETE").exists()
+
+    def test_an_incomplete_backup_is_refused_before_anything_stops(self, fake_repo):
+        (fake_repo["backup"] / "INCOMPLETE").write_text("x")
+        env = dict(os.environ)
+        env["PATH"] = f"{fake_repo['bin']}:{env['PATH']}"
+        env["CMDLOG"] = str(fake_repo["cmdlog"])
+        proc = subprocess.run(
+            ["bash", str(fake_repo["script"]), "restore", str(fake_repo["backup"])],
+            input="y\n", capture_output=True, text=True, env=env, timeout=120,
+        )
+        assert proc.returncode != 0
+        assert "没有备完" in proc.stdout + proc.stderr
+        log = fake_repo["cmdlog"]
+        assert not log.exists() or not any(" stop" in f" {cmd}" for cmd in log.read_text().splitlines())
 
     def test_sql_agent_files_missing_from_an_old_backup_survive_the_deploy_swap(self, fake_repo):
         """

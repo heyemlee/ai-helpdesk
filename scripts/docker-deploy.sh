@@ -418,6 +418,9 @@ backup_data() {
     print_info "备份数据到 $backup_dir..."
 
     mkdir -p "$backup_dir"
+    # 没备完之前一直带着这个标记。中途失败（set -e 停在半路）留下的半份目录，恢复时会被认出来、拒绝：
+    # 不然拿它恢复，缺的那几样（比如 SQL Agent 的状态）会被悄悄跳过，屏幕上照样是"恢复完成"
+    echo "备份没有完成（开始于 $(date)）" > "$backup_dir/INCOMPLETE"
 
     # 备份 Redis 数据
     compose exec -T redis redis-cli --no-auth-warning -a "$REDIS_PASSWORD" SAVE
@@ -474,6 +477,7 @@ backup_data() {
 
     backup_sql_agent_state "$backup_dir"
 
+    rm -f "$backup_dir/INCOMPLETE"
     print_info "备份完成: $backup_dir"
 }
 
@@ -516,6 +520,11 @@ restore_data() {
 
     if [ ! -d "$backup_dir" ]; then
         print_error "备份目录不存在: $backup_dir"
+        exit 1
+    fi
+
+    if [ -f "$backup_dir/INCOMPLETE" ]; then
+        print_error "这份备份当时没有备完（$backup_dir/INCOMPLETE），不能拿来恢复"
         exit 1
     fi
 
