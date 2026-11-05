@@ -23,10 +23,10 @@ model management, cancellable runs with an event log, evals and tracing, in one 
 </div>
 
 <p align="center">
-  <img src="docs/screenshots/ask.webp" width="960" alt="With learning mode on, the console asks which rush orders are still in production and when they are due; stage events stream in while the agent works, the answer lists six orders with customer, delivery date and contract amount, and the walkthrough shows step 1 reading one database and step 2 reading another with step 1's order numbers written into its SQL" />
+  <img src="docs/screenshots/ask.webp" width="960" alt="Data, Ask in the unified console with Explain each step on: the question How many orders are in each status? comes back as Data found, six statuses from the orders and customers database drawn as bars with their counts, with buttons to copy the answer, ask again or see how the query ran" />
 </p>
 
-<p align="center"><sub>Made-up data in four SQLite databases. The plan and SQL are replayed for the recording; the rows come from running that SQL.</sub></p>
+<p align="center"><sub>The Data section of the repository's console (<code>frontend/</code>). Made-up data in four SQLite databases; the question was asked live.</sub></p>
 
 ## Highlights
 
@@ -91,10 +91,10 @@ DSN, audit, feedback, run records and both vector indexes move to PostgreSQL + p
 ### The agent loop
 
 <p align="center">
-  <img src="docs/screenshots/agent.webp" width="960" alt="In learning mode, after an answer about rush orders, the follow-up “Which of these is due first?” is answered from the conversation, and the Understand step explains that the router chose the conversation and no query ran; then a question about materials below safety stock fails on a column the table does not have and is repaired, and the Write the SQL and Run it steps show the SQL before and after the repair and the repair attempt" />
+  <img src="docs/screenshots/agent.webp" width="960" alt="How this query ran, for the same question: each stage of the loop in order (keyword extraction, finding the right tables with the embedding model, planning, writing the query, running it on the orders database with the SQL shown, checking the result), each with its model calls, tokens and time" />
 </p>
 
-<p align="center"><sub>Made-up data, with learning mode on. The plan, SQL and follow-up answer are replayed; the repair is the project's own repair loop run on that data, on its rule-based path.</sub></p>
+<p align="center"><sub>Every run keeps an event log (<code>GET /runs/{id}/events</code>); the console's run page lays it out by stage. A delegated question from the support assistant links straight to this page.</sub></p>
 
 - **Understand.** The router picks between querying and answering from the conversation; pronouns and phrases like
   "last quarter" are resolved before retrieval.
