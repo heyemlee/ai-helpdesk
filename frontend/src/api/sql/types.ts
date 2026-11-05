@@ -293,3 +293,125 @@ export interface Readiness {
   ready: boolean
   checks: Record<string, unknown>
 }
+
+// ── 模型连接（/admin/model …）：只有管理员拿得到；能改的请求才有地址、Key 末四位、谁存的 ─────────
+
+export interface SqlProviderEntry {
+  base_url: string
+  official_base_url: string
+  chat_model: string
+  coder_model: string
+  key_configured: boolean
+  /** 现有那把 Key 交给的是哪台主机（协议 + 主机 + 端口）：同一台主机上换模型可以不重填 */
+  key_address: string
+}
+
+export interface SqlAccessFault {
+  permanent: boolean
+  /** credential：这把 Key 被拒了；model：这把 Key 不能用这个模型 */
+  scope: 'credential' | 'model' | string
+  status_code?: number | null
+  [key: string]: unknown
+}
+
+export interface SqlEmbeddingStatus {
+  source: 'page' | 'server' | string
+  /** local：本地哈希向量（没有语义）；remote：OpenAI 兼容的 /embeddings */
+  backend: 'local' | 'remote' | string
+  model: string
+  dimensions: number
+  key_configured: boolean
+  /** 检索索引实际在用的：配的是远端、启动时它调不通的话，这里是 local */
+  active: { backend?: string; model?: string; dimensions?: number }
+  fallback: string
+  base_url?: string
+  endpoint?: string
+  key_hint?: string
+  reusable_key_addresses?: string[]
+  saved_at?: string
+  saved_by?: string
+  store_problem?: string
+  server?: { backend: string; model: string; dimensions: number }
+  defaults?: { base_url: string; model: string; dimensions: number }
+}
+
+/** GET /admin/model。Key 本身从来不在里面 */
+export interface SqlModelStatus {
+  editable: boolean
+  /** 不能改的原因：disabled（服务没开页面配置）/ local_only（没开鉴权，只能在本机改） */
+  reason: string
+  source: 'page' | 'server' | string
+  provider: 'anthropic' | 'openai'
+  chat_model: string
+  coder_model: string
+  key_configured: boolean
+  embedding: SqlEmbeddingStatus
+  base_url?: string
+  endpoint?: string
+  custom_endpoint?: boolean
+  key_hint?: string
+  saved_at?: string
+  saved_by?: string
+  store_problem?: string
+  server?: { provider: string; chat_model: string; coder_model: string; key_configured: boolean }
+  providers?: Record<'anthropic' | 'openai', SqlProviderEntry>
+  access_faults?: SqlAccessFault[]
+}
+
+/** 保存 / 测试 / 读模型清单的请求体。api_key 留空 = 接着用现有的那把 */
+export interface SqlModelBody {
+  provider: 'anthropic' | 'openai'
+  base_url: string
+  api_key: string
+  chat_model: string
+  coder_model: string
+}
+
+/** Embedding 的请求体。dimensions 是 0 = 用默认值 */
+export interface SqlEmbeddingBody {
+  base_url: string
+  api_key: string
+  model: string
+  dimensions: number
+}
+
+/** 连接测试的一项：对话模型和 SQL 模型同名时只测一次（roles 里两个都有） */
+export interface SqlProbeResult {
+  roles: string[]
+  model: string
+  ok: boolean
+  outcome: string
+  status_code: number | null
+  message: string
+  duration_ms: number
+  dimensions?: number
+}
+
+export interface SqlProbeReport {
+  ok: boolean
+  endpoint: string
+  provider?: string
+  results: SqlProbeResult[]
+  warnings: string[]
+}
+
+/** POST …/models：这个接口提供哪些模型（给下拉框）。读不到不算接口错误，outcome 说为什么 */
+export interface SqlModelList {
+  ok: boolean
+  models: string[]
+  total: number
+  outcome: string
+  status_code: number | null
+  message: string
+  duration_ms?: number
+}
+
+export interface SqlModelSaved {
+  saved?: boolean
+  cleared?: boolean
+  warnings?: string[]
+  status: SqlModelStatus
+  /** Embedding 保存时：先测一次，再用新模型把检索索引整个重建 */
+  test?: SqlProbeReport
+  rebuild?: { texts: number; duration_ms: number }
+}

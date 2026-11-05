@@ -11,6 +11,7 @@
  * 工单和通知的措辞只转述后端记录的状态：建了、排队中、已送达、失败。
  * "已有人接手""稍后回电"这类话没有任何后端字段支撑，目录里不收。
  */
+import { SQ_ADMIN_EN, SQ_ADMIN_ZH } from './sq-admin'
 import { SQ_ASK_EN, SQ_ASK_ZH } from './sq-ask'
 import { SQ_COMMON_EN, SQ_COMMON_ZH } from './sq-common'
 import { SQ_EXPLORE_EN, SQ_EXPLORE_ZH } from './sq-explore'
@@ -761,6 +762,7 @@ export const EN = {
   ...SQ_COMMON_EN,
   ...SQ_EXPLORE_EN,
   ...SQ_ASK_EN,
+  ...SQ_ADMIN_EN,
 } as const
 
 export type Key = keyof typeof EN
@@ -1491,6 +1493,7 @@ export const ZH: Record<Key, string> = {
   ...SQ_COMMON_ZH,
   ...SQ_EXPLORE_ZH,
   ...SQ_ASK_ZH,
+  ...SQ_ADMIN_ZH,
 }
 
 export const CATALOG = { en: EN, zh: ZH }

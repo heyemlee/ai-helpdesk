@@ -8,6 +8,7 @@ import { EvalPanel } from './EvalPanel'
 import { Icon } from './Icon'
 import { ModelSettings } from './ModelSettings'
 import { MonitorPanel } from './MonitorPanel'
+import { SqlModelSettings } from './SqlModelSettings'
 import { agentDisplayName, agentLabel, dateTime } from '@/lib/format'
 import { explainError } from '@/lib/errors'
 import { llmReasonKey, llmRecovery } from '@/lib/llm'
@@ -63,7 +64,8 @@ export function AdminPanel({ base, tab, settings, streaming, onSave, inspector, 
       </div>
 
       {tab === 'monitor' && <MonitorPanel base={base} />}
-      {tab === 'models' && <ModelSettings base={base} />}
+      {/* 两栏：客服助手、SQL Agent，各用各的模型 */}
+      {tab === 'models' && <ModelSettings base={base} sql={<SqlModelSettings />} />}
       {tab === 'eval' && <EvalPanel base={base} />}
       {tab === 'overview' && (
         <div className="page scroll"><div className="page-inner">
