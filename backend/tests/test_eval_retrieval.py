@@ -282,7 +282,16 @@ class FakeModel:
 
 @pytest.fixture
 def fake_model(monkeypatch):
-    """之后造出来的模型客户端都接到 FakeModel 上。模型连接按 .env 的口径给一份 openai 的。"""
+    """
+    之后造出来的模型客户端都接到 FakeModel 上。模型连接按 .env 的口径给一份 openai 的。
+
+    脚本一导入就会读 backend/.env（在主检出里直接跑 pytest 时它是真的）。对话模型的客户端
+    都换掉了，可 cross-encoder 重排和远端 Embedding 用的是自己的 httpx：配了 RERANK_* 或
+    EMBEDDING_* 的话，它们会拿真 Key 把语料和问题发出去。所以这两组一律清掉，两个开关也钉成
+    默认值——不然用例走哪条路要看这台机器的 .env。
+    """
+    import os
+
     from app.core import llm_utils
 
     model = FakeModel()
@@ -295,7 +304,11 @@ def fake_model(monkeypatch):
         return kwargs
 
     monkeypatch.setattr(llm_utils, "anthropic_client_kwargs", _kwargs)
+    for name in [n for n in os.environ if n.startswith(("RERANK_", "EMBEDDING_"))]:
+        monkeypatch.delenv(name)
     monkeypatch.delenv("AI_HELPDESK_MODEL_SETTINGS_PATH", raising=False)
+    monkeypatch.setenv("ENABLE_INTENT_FAST_PATH", "true")
+    monkeypatch.setenv("ENABLE_ANSWER_POLICY", "true")
     monkeypatch.setenv("LLM_PROVIDER", "openai")
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setenv("OPENAI_BASE_URL", "https://fake-model.test/v1")
@@ -314,6 +327,8 @@ async def test_full_chain_judges_the_final_answer_offline(ev, tmp_path, capsys, 
     report = json.loads((tmp_path / "out.json").read_text(encoding="utf-8"))
     assert report["mode"] == "full_chain"
     assert (report["model"], report["provider"], report["model_source"]) == ("fake-model", "openai", "env")
+    # 重排走的是模型（假模型那一路），没有远端 cross-encoder
+    assert report["reranker"] == "llm_listwise"
     assert report["planned"] == 3 and report["incomplete"] == ""
     cases = {c["id"]: c for c in report["cases"]}
 

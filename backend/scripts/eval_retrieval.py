@@ -630,6 +630,7 @@ class _Chain:
     orchestrator: Any
     tools: _ProbedTools
     deps: Any
+    reranker: str     # llm_listwise，或者配了远端的 cross_encoder:<模型>
 
 
 def _build_chain(kb: KnowledgeBase, embedder: _CachedEmbedder) -> _Chain:
@@ -673,8 +674,10 @@ def _build_chain(kb: KnowledgeBase, embedder: _CachedEmbedder) -> _Chain:
         policy=AnswerPolicy(enabled=os.getenv("ENABLE_ANSWER_POLICY", "true").lower() != "false"),
         recognizer=recognizer, replicas=1,
     )
+    # 和服务一样按 RERANK_* 取：配了远端 cross-encoder 就会真的调它（它用自己的 httpx）
+    reranker = Reranker.from_env()
     tools = _ProbedTools(api_key=cfg["api_key"], base_url=base_url, model=cfg["model"],
-                         shared_state=None, reranker=Reranker.from_env())
+                         shared_state=None, reranker=reranker)
     tools.register(Tool(
         name="knowledge_search",
         description="搜索知识库（稠密向量 + 关键词双路混合检索，RRF 融合）",
@@ -694,7 +697,7 @@ def _build_chain(kb: KnowledgeBase, embedder: _CachedEmbedder) -> _Chain:
 
     deps = TurnDeps(load_memory=no_memory, recognize_intent=orchestrator.recognize_intent,
                     outage_reason=orchestrator.llm_unavailable_reason, prefetch=Prefetch(tool_manager=tools))
-    return _Chain(cfg=cfg, orchestrator=orchestrator, tools=tools, deps=deps)
+    return _Chain(cfg=cfg, orchestrator=orchestrator, tools=tools, deps=deps, reranker=reranker.backend)
 
 
 def _hit(titles: list[str], case: Case) -> bool:
@@ -869,7 +872,7 @@ async def _full_chain(args: argparse.Namespace, cases: list[Case], kb: Knowledge
     cfg = chain.cfg
     known = _known_text(chunks)
     print(f"完整链路 | 对话模型 {cfg['model']}（{cfg['provider']}，来源 {cfg['source']}）| "
-          f"Embedding {embedder.backend} {embedder.dim} 维 | 后端 {where}")
+          f"Embedding {embedder.backend} {embedder.dim} 维 | 重排 {chain.reranker} | 后端 {where}")
     print(f"语料 {stats['total_documents']} 篇 / {stats['total_chunks']} 个片段 | 跑 {len(run)} 条："
           f"带数字或编号 {sum(1 for c in run if c.facts)}，没有答案 {sum(1 for c in run if not c.answerable)}；"
           f"未判 {skipped} 条 | 一条一条串着跑\n")
@@ -898,7 +901,7 @@ async def _full_chain(args: argparse.Namespace, cases: list[Case], kb: Knowledge
         pathlib.Path(args.json).write_text(json.dumps({
             "mode": "full_chain", "suite": args.suite, "backend": kb.backend,
             "model": cfg["model"], "provider": cfg["provider"], "model_source": cfg["source"],
-            "embedding": {"backend": embedder.backend, "dim": embedder.dim},
+            "embedding": {"backend": embedder.backend, "dim": embedder.dim}, "reranker": chain.reranker,
             "top_k": args.top_k, "corpus": stats,
             "planned": len(run), "not_judged": skipped,
             "incomplete": incomplete,

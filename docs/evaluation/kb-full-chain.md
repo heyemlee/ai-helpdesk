@@ -49,7 +49,7 @@ From `backend/`, with the model connection the service uses:
 .venv/bin/python scripts/eval_retrieval.py --full-chain --embedding env --only v-01,n-06
 ```
 
-This calls the chat model. A case on the rewrite-and-rerank path takes four calls (intent, rewrite, rerank, answer) and two more when the reranker asks for the corrective round; a case the rules answer directly takes one. The 78 judged cases come to roughly 300–400 calls. `--embedding env` also embeds the corpus and every query with the remote embedding model; `--embedding local` keeps the dense leg offline but measures a different ranking from production's.
+This calls the chat model. A case on the rewrite-and-rerank path takes four calls (intent, rewrite, rerank, answer) and two more when the reranker asks for the corrective round; a case the rules answer directly takes one. The 78 judged cases come to roughly 300–400 calls. `--embedding env` also embeds the corpus and every query with the remote embedding model; `--embedding local` keeps the dense leg offline but measures a different ranking from production's. Reranking follows `RERANK_*` as the service does: with a cross-encoder configured it is called too, and the report's `reranker` field says which one ran.
 
 ## Offline check
 
