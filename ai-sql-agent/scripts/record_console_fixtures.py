@@ -7,7 +7,9 @@
 
 全程离线：
 - 用内置的演示库和演示元数据（AI_SQL_SEMANTIC_DIR 清空），不碰任何真实业务库；
-- 模型凭据全部清空、页面保存的模型连接关掉，链路走 Mock，不发一次模型请求；
+- 环境从空白开始：AI_SQL_ 开头的、设置里认的不带前缀的别名（对话、rerank、Embedding 的 Key 和地址）、
+  OTEL_ 开头的一律先删掉，Embedding 固定本地哈希、页面保存的模型连接关掉。shell 里导出过哪个服务的 Key
+  都不会出网；启动后再核对一遍，还有凭据就不录；
 - 审计、运行记录、对话记忆都写进临时目录，跑完就删；
 - 不读 ai-sql-agent/.env（关掉 pydantic-settings 的 env_file）。
 
@@ -30,16 +32,25 @@ OUT = ROOT / "frontend" / "src" / "test" / "fixtures" / "sql"
 KEY = "console-fixture-key"
 
 
+# 设置里认的不带前缀的别名（ai_sql_agent/core/settings.py 的 AliasChoices）：服务商、Key、地址
+_ALIASES = (
+    "MODEL_PROVIDER", "OPENAI_API_KEY", "OPENAI_BASE_URL", "ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL",
+    "EMBEDDING_API_KEY", "DASHSCOPE_API_KEY", "DASHSCOPE_WORKSPACE_ID", "DASHSCOPE_RERANK_URL",
+    "MODEL_CHAT_URL", "MODEL_EMBEDDING_URL",
+)
+
+
 def _isolate(tmp: Path) -> None:
     (tmp / "keys.json").write_text(json.dumps({
         "keys": [{"key": KEY, "caller": "console", "user_id": "console",
                   "roles": ["admin"], "is_admin": True}],
         "policies": {"admin": {"allow_tables": ["*"]}},
     }), encoding="utf-8")
-    for name in ("AI_SQL_OPENAI_API_KEY", "OPENAI_API_KEY", "AI_SQL_ANTHROPIC_API_KEY",
-                 "ANTHROPIC_API_KEY", "AI_SQL_PGVECTOR_DSN"):
-        os.environ[name] = ""
+    for name in list(os.environ):
+        if name.startswith(("AI_SQL_", "OTEL_")) or name in _ALIASES:
+            del os.environ[name]
     os.environ.update({
+        "AI_SQL_EMBEDDING_BACKEND": "local",
         "AI_SQL_MODEL_SETTINGS_ENABLED": "false",
         "AI_SQL_AUTH_MODE": "api_key",
         "AI_SQL_API_KEYS_FILE": str(tmp / "keys.json"),
@@ -51,9 +62,16 @@ def _isolate(tmp: Path) -> None:
     from ai_sql_agent.core.settings import SqlAgentSettings
 
     SqlAgentSettings.model_config["env_file"] = None
-    from ai_sql_agent.core import reload_settings
+    from ai_sql_agent.core import get_settings, reload_settings
 
     reload_settings()
+    settings = get_settings()
+    leftover = [name for name, value in (
+        ("chat", settings.resolved_chat_api_key()), ("embedding", settings.resolved_embedding_api_key()),
+        ("rerank", settings.resolved_rerank_api_key()), ("rerank_url", settings.resolved_rerank_url()),
+    ) if value]
+    if leftover or settings.embedding_backend != "local":
+        raise SystemExit(f"还有能出网的模型配置（{', '.join(leftover) or 'embedding_backend'}），不录")
 
 
 def _save(name: str, payload) -> None:

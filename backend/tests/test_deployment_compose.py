@@ -237,3 +237,15 @@ class TestTheConsoleCarriesTheSqlAgentKeyServerSide:
         dockerfile = (FRONTEND / "Dockerfile").read_text(encoding="utf-8")
         assert "COPY --chmod=0755 docker/entrypoint/16-sql-api-key.envsh /docker-entrypoint.d/" in dockerfile
         assert "NGINX_ENVSUBST_FILTER='^(API_|NGINX_LOCAL_RESOLVERS)'" in dockerfile
+
+
+def test_the_k8s_console_names_its_upstreams_in_full():
+    """
+    nginx 按变量转发时用自己的 resolver 解析，不认 search 域：k8s 里写短名字（sql-agent）只会 NXDOMAIN，
+    控制台打得开、数据页面和员工接口全是 502。compose 里 Docker 的 DNS 认短名字，所以只有 k8s 要写全名。
+    """
+    console = (COMPOSE.parent / "deploy" / "k8s" / "console.yaml").read_text(encoding="utf-8")
+    upstreams = dict(re.findall(r"- name: (API_\w*UPSTREAM)\s+value: (\S+)", console))
+    assert set(upstreams) == {"API_UPSTREAM", "API_SQL_UPSTREAM"}
+    for name, value in upstreams.items():
+        assert value.endswith(".svc.cluster.local:8000"), (name, value)

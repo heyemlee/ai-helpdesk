@@ -40,11 +40,14 @@ spec:
       containers:
         - name: console
           image: aihd/frontend
+          # 写全名：nginx 按变量转发时用它自己的 resolver 在请求时解析，不认 /etc/resolv.conf 里的
+          # search 域，短名字（sql-agent）发给 CoreDNS 只会是 NXDOMAIN。compose 里 Docker 的 DNS 认短名字。
+          # 命名空间是 kustomization.yaml 的 aihd，集群域是 kind 默认的 cluster.local
           env:
             - name: API_UPSTREAM
-              value: api-staff:8000
+              value: api-staff.aihd.svc.cluster.local:8000
             - name: API_SQL_UPSTREAM
-              value: sql-agent:8000
+              value: sql-agent.aihd.svc.cluster.local:8000
           ports:
             - containerPort: 80
               name: http
