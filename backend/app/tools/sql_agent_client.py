@@ -5,8 +5,8 @@ ai-sql-agent 委派客户端。
 业务库里，不在知识库里。ai-sql-agent 是另一个已经跑起来的服务，能把这句
 人话翻成只读 SQL 查出来。这个模块负责把问题递过去、把答案接回来。
 
-**两条 transport，默认 `/query`。** 两边的约定在独立仓库 `a2a-contract` 的
-`a2a-streaming-contract.md` 里（v1.13，tag v1.13 / commit be35cfb）。`/query` 是
+**两条 transport，默认 `/query`。** 两边的约定在本仓库 `a2a-contract/` 的
+`a2a-streaming-contract.md` 里（v1.13，tag a2a-contract/v1.13 / commit be35cfb）。`/query` 是
 ai-sql-agent 的同步接口，鉴权、限流、审计、trace_id 一应俱全，链路最早就是靠它
 打通的；`SQL_AGENT_TRANSPORT=a2a` 时改走 A2A（`message/stream` / `message/send`，
 客户端在 `a2a_client.py`），查询阶段能实时传回前端。默认仍是 `query`：它跑得久、

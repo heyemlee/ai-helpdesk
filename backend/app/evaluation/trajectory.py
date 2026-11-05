@@ -152,12 +152,12 @@ def validate(cases: list[TrajectoryCase]) -> list[str]:
 
 def contract_dir(env: dict[str, str] | None = None) -> Path | None:
     """
-    找 a2a-contract 仓库。显式配了 A2A_CONTRACT_DIR 就只认它、不回退（指错时悄悄换成
-    另一个副本，结果照样出来，但用的是别的东西）；没配就按本地惯例找同级目录。
+    找 a2a-contract。显式配了 A2A_CONTRACT_DIR 就只认它、不回退（指错时悄悄换成
+    另一个副本，结果照样出来，但用的是别的东西）；没配就读本仓库的 a2a-contract/。
     """
     env = os.environ if env is None else env
     explicit = env.get("A2A_CONTRACT_DIR", "").strip()
-    candidates = [Path(explicit)] if explicit else [Path(__file__).resolve().parents[3].parent / "a2a-contract"]
+    candidates = [Path(explicit)] if explicit else [Path(__file__).resolve().parents[3] / "a2a-contract"]
     for path in candidates:
         if (path / "fixtures" / "index.json").is_file():
             return path
@@ -210,7 +210,7 @@ class StubToolManager:
             payload = dict(rule["payload"])
         else:
             if self.fixtures is None:
-                raise RuntimeError("找不到 a2a-contract 仓库：设 A2A_CONTRACT_DIR，或把它放在本仓库同级目录")
+                raise RuntimeError("找不到 a2a-contract：它应该在本仓库的 a2a-contract/ 下，或用 A2A_CONTRACT_DIR 指过去")
             payload = self.fixtures.load(str(rule["fixture"]))
         data = normalize_delegation_result(payload, answer=str(rule.get("answer") or ""))
         return ToolResult(success=True, data=data, tool_name=name)

@@ -11,6 +11,10 @@ on:
   # 不必靠推一个空提交去骗触发。
   workflow_dispatch:
 
+# 一个仓库三部分：backend/、frontend/ 是客服，ai-sql-agent/ 是 SQL Agent，a2a-contract/ 是两者之间的契约。
+# 每个 PR 五个 job 全跑，**都不加 paths 过滤**：分支保护按 job 的 name 匹配必需检查，
+# 被过滤掉不跑的必需检查会一直挂在"等待"，PR 永远合不进去。改 job 的 name 要同步改分支保护。
+
 jobs:
   backend:
     name: Backend (pytest + ruff)
@@ -80,11 +84,12 @@ jobs:
           cache-dependency-path: backend/requirements*.txt
 
       - name: Install dependencies
-        # requirements-dev.txt 带着 requirements.txt 一起解析，钉版不会被开发依赖升上去
+        # requirements-dev.txt 带着 requirements.txt 一起解析，钉版不会被开发依赖升上去。
+        # jsonschema、referencing 是契约用例做 schema 校验用的，只在测试里用；没装的话那几条会被跳过
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
-          pip install ruff
+          pip install ruff jsonschema referencing
 
       - name: Lint
         run: ruff check .
@@ -96,6 +101,10 @@ jobs:
           TEST_POSTGRES_DSN: postgresql://test:test@localhost:5432/test
           TEST_REDIS_URL: redis://localhost:6379/0
           TEST_KAFKA_BOOTSTRAP: localhost:9092
+          # 契约从仓库里读。以前这个 job 不设它，契约用例和轨迹评测里的契约用例在这里全部跳过；
+          # 设了 REQUIRED，找不到契约就失败，不再静默跳过
+          A2A_CONTRACT_DIR: ${{ github.workspace }}/a2a-contract
+          A2A_CONTRACT_REQUIRED: "1"
         run: pytest -q
 
   frontend:
@@ -134,26 +143,21 @@ jobs:
         run: npm run build
 
   contract:
-    name: A2A contract fixtures (cross-repo)
+    name: A2A contract
     runs-on: ubuntu-latest
-    # 跨仓库契约用例：把 a2a-contract 的 golden fixtures 喂进本仓库的消费路径。
+    # 契约自检，加上客服这一侧的契约用例；SQL Agent 那一侧的契约用例在 SQL Agent job 里跑。
     # 单独一个 job 而不是并进 backend，是因为它的失败含义不同：backend 挂了是
-    # "本仓库的代码坏了"，这里挂了是"两侧对契约的理解分叉了"。
+    # "客服的代码坏了"，这里挂了是"契约自己坏了，或者客服对契约的理解分叉了"。
     #
-    # 用例清单只有一份（契约仓库的 fixtures/index.json）。**不要把 fixture 拷进
-    # 本仓库**——拷贝就是副本，副本会漂，这份契约已经为此翻过一次车。
+    # 契约和两侧代码在同一个仓库里，同一个提交，不再按 tag 拉取。用例清单只有一份
+    # （a2a-contract/fixtures/index.json）。**不要把 fixture 拷进 backend/ 或 ai-sql-agent/**——
+    # 拷贝就是副本，副本会漂，这份契约已经为此翻过一次车。
     steps:
       - uses: actions/checkout@v4
-
-      - name: Checkout a2a-contract (pinned tag)
-        uses: actions/checkout@v4
         with:
-          repository: heyemlee/a2a-contract
-          # 钉在 tag 上，不跟 main（契约附录 B）。升 tag 是一次要过评审的改动：
-          # 它可能同时改断言口径和 fixture 内容。
-          # tag 也写在 tests/test_contract_fixtures.py 的 PINNED_TAG 里，两处要一起改。
-          ref: v1.13
-          path: .contract
+          # 自检的版本段会看这一版的 tag 在不在。浅克隆不带 tag，取不到就跳过那一行提示
+          # （不影响判定），带上更有信息量
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
@@ -166,18 +170,155 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          # schema 校验只在测试里用，不进生产依赖
+          # schema 校验只在测试和自检里用，不进生产依赖
           pip install jsonschema referencing
+
+      - name: Contract self-check (schema, fixtures, links, version)
+        # 判据全在 tools/check_contract.py 一处，这里不写第二份断言
+        run: python a2a-contract/tools/check_contract.py
 
       - name: Consumer tests against the contract fixtures
         working-directory: backend
         env:
           ANTHROPIC_API_KEY: test-key
-          A2A_CONTRACT_DIR: ${{ github.workspace }}/.contract
-          # 契约仓库没拉下来时**失败**而不是跳过。一个"没拉到就自动跳过"的
+          A2A_CONTRACT_DIR: ${{ github.workspace }}/a2a-contract
+          # 找不到契约时**失败**而不是跳过。一个"找不到就自动跳过"的
           # 门禁等于没有门禁，而且它坏掉的时候测试报告是绿的。
           A2A_CONTRACT_REQUIRED: "1"
         run: pytest -q tests/test_contract_fixtures.py
+
+  sql-agent:
+    name: SQL Agent (tests + gate smoke)
+    runs-on: ubuntu-latest
+    # 原 ai-sql-agent 仓库 CI 的 test job 搬过来，工作目录换成 ai-sql-agent/。
+    # 它和客服各用各的环境：Python 3.11、pyproject.toml 钉版、unittest 入口。
+    defaults:
+      run:
+        working-directory: ai-sql-agent
+
+    # 集成测试用的 pgvector；未启动时相关用例会自动跳过
+    services:
+      pgvector:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: ai_sql
+          POSTGRES_PASSWORD: ai_sql
+          POSTGRES_DB: ai_sql
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ai_sql"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # 离线跑：模型走 Mock，不需要任何 API Key
+      AI_SQL_LOG_LEVEL: ERROR
+      AI_SQL_PGVECTOR_DSN: postgresql://ai_sql:ai_sql@localhost:5432/ai_sql
+      # 契约从仓库里读，找不到就失败
+      A2A_CONTRACT_DIR: ${{ github.workspace }}/a2a-contract
+      A2A_CONTRACT_REQUIRED: "1"
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: ai-sql-agent/pyproject.toml
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: 单元测试 + pgvector 集成测试 + 契约用例
+        run: python -m unittest discover -s tests -v
+
+      - name: 精简业务库迁移与目录测试
+        # unittest discover does not collect pytest functions or fixtures.
+        run: python -m pytest tests/test_simple_erp.py -q
+
+      - name: 契约用例确实跑到了（不是整组 skip）
+        # 找不到契约时那组用例会 skip（设了 A2A_CONTRACT_REQUIRED 时直接导入失败）。
+        # skip 不是通过——契约断言静默消失，正是这套东西要防的那类事故。
+        run: |
+          python - <<'PY'
+          import unittest, sys
+          sys.path.insert(0, "tests")
+          suite = unittest.defaultTestLoader.loadTestsFromNames(
+              ["test_contract_fixtures", "test_business_outcome"]
+          )
+          result = unittest.TextTestRunner(verbosity=1).run(suite)
+          if not result.testsRun or result.skipped:
+              print(f"契约用例被跳过了 {len(result.skipped)} 条：", file=sys.stderr)
+              for case, reason in result.skipped:
+                  print(f"  {case}: {reason}", file=sys.stderr)
+              sys.exit(1)
+          sys.exit(0 if result.wasSuccessful() else 1)
+          PY
+
+      - name: 端到端 Demo（单库 + 跨库，离线 Mock 模型）
+        run: python examples/end_to_end.py
+
+      - name: 长短期记忆 Demo
+        run: python examples/memory_end_to_end.py
+
+      - name: 语义元数据校验（导出模板 → 校验 → 与 Demo 库比对结构）
+        run: |
+          python -m ai_sql_agent.semantic export /tmp/semantic
+          python -m ai_sql_agent.semantic validate /tmp/semantic
+          # 内置元数据必须自洽：它同时是接真实库时的模板，
+          # 模板本身有错的话，照着改出来的也是错的
+          python -m ai_sql_agent.semantic show
+
+      - name: 反馈回路冒烟
+        run: |
+          python -m ai_sql_agent.feedback stats
+          python -m ai_sql_agent.feedback export-dataset /tmp/fb.json
+
+      - name: 评测冒烟
+        run: python -m benchmark.run_benchmark --smoke
+
+      - name: 发布门禁（冒烟样本）
+        # --smoke 是**显式**的：CI 没有模型凭证，不加这个标记 gate 会直接失败，
+        # 而不是像以前那样静默降级成冒烟再报「通过发布门禁」。
+        run: python -m benchmark.gate --repeat 3 --smoke
+
+      - name: 发布门禁不做静默降级（负面用例）
+        run: |
+          if python -m benchmark.gate --repeat 1 >/dev/null 2>&1; then
+            echo "没有模型凭证却通过了完整门禁——静默降级又回来了" >&2
+            exit 1
+          fi
+
+      - name: 环境自检
+        run: python scripts/check_env.py
+
+      - name: 只读账号工具（正反两面都要验）
+        run: |
+          set -euo pipefail
+          python -m ai_sql_agent.ops sql --database ai_sql > /dev/null
+          RO_PASSWORD="ci-$RANDOM$RANDOM"
+          python -m ai_sql_agent.ops provision \
+            --admin-dsn "$AI_SQL_PGVECTOR_DSN" \
+            --database ai_sql --role ai_sql_ro_ci --password "$RO_PASSWORD"
+
+          # 反例：管理员账号**必须**被判为不合格。
+          # 这里原来写的是 `... && exit 1 || true`——`|| true` 把整条语句的
+          # 退出码抹平成 0，所以无论体检说什么，这一步都通过。
+          # 一个永远通过的断言比没有断言更糟：它看起来像有人在把关。
+          if python -m ai_sql_agent.ops audit --dsn "$AI_SQL_PGVECTOR_DSN" > /dev/null 2>&1; then
+            echo "只读体检把一个超级用户判成了合格——体检失效了" >&2
+            exit 1
+          fi
+
+          # 正例：刚建出来的只读角色**必须**被判为合格。
+          # 只验反例的话，一个「永远说不合格」的实现也能过。
+          python -m ai_sql_agent.ops audit \
+            --dsn "postgresql://ai_sql_ro_ci:${RO_PASSWORD}@localhost:5432/ai_sql"
 
   images:
     name: Docker images
@@ -185,9 +326,44 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # 只构建不推送：验证两个 Dockerfile 始终可构建
+      # 只构建不推送：验证三个 Dockerfile 始终可构建
       - name: Build frontend image
         run: docker build -t ai-helpdesk-frontend:ci frontend
 
       - name: Build backend image
         run: docker build -t ai-helpdesk:ci --target production backend
+
+      - name: Build SQL Agent image
+        run: docker build -f ai-sql-agent/deploy/Dockerfile -t ai-sql-agent:ci ai-sql-agent
+
+      - name: SQL Agent smoke (api_key auth, no external dependencies)
+        # 无 Key 返回 401，有 Key 返回 200，/metrics 有数据
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/api_keys.json <<'JSON'
+          {"keys": [{"key": "ci-smoke-key", "caller": "ci", "user_id": "ci"}]}
+          JSON
+          docker run -d --name ai-sql-agent-ci -p 8000:8000 \
+            -e AI_SQL_AUTH_MODE=api_key \
+            -e AI_SQL_API_KEYS_FILE=/run/secrets/api_keys.json \
+            -v /tmp/api_keys.json:/run/secrets/api_keys.json:ro \
+            ai-sql-agent:ci
+          for i in $(seq 1 30); do
+            curl -fs localhost:8000/health && break
+            sleep 2
+          done
+          curl -fs localhost:8000/readyz
+          echo
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST localhost:8000/query \
+            -H 'Content-Type: application/json' \
+            -d '{"user_id":"ci","session_id":"s","query":"你好"}')" = "401"
+          curl -fs -X POST localhost:8000/query \
+            -H 'Content-Type: application/json' \
+            -H 'X-API-Key: ci-smoke-key' \
+            -d '{"user_id":"ci","session_id":"s","query":"查询准时率低于0.9的供应商名称"}' > /dev/null
+          # 先取下来再判断非空：直接 `curl | head` 时 curl 失败会被管道吞掉
+          metrics="$(curl -fs localhost:8000/metrics)"
+          test -n "$metrics"
+          head -n 5 <<< "$metrics"
+          docker rm -f ai-sql-agent-ci

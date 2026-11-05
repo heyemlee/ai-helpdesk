@@ -3,14 +3,15 @@
 # 先起 ai-sql-agent 并等它就绪，再带上 SQL_AGENT_URL 运行 scripts/dev.sh。
 # Ctrl-C 一次停掉全部；两边的启动脚本都会先停掉自己上一轮的进程，重复运行不会撞端口。
 #
-# ai-sql-agent 的位置：SQL_AGENT_DIR > 同级目录 ../ai-sql-agent（和测试找 ../a2a-contract 的规则一样）。
+# ai-sql-agent 的位置：SQL_AGENT_DIR > 本仓库的 ai-sql-agent/。它用自己目录下的 .venv（Python 3.11）和 .env，
+# 第一次先建：cd ai-sql-agent && uv venv --python 3.11 && uv pip install -e ".[dev]"。
 # 端口：ai-sql-agent 读它自己 .env 的 AI_SQL_PORT（默认 8000），ai-helpdesk 读 backend/.env 的 API_PORT。
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SQL_AGENT_DIR="${SQL_AGENT_DIR:-$ROOT/../ai-sql-agent}"
+SQL_AGENT_DIR="${SQL_AGENT_DIR:-$ROOT/ai-sql-agent}"
 if [ ! -x "$SQL_AGENT_DIR/scripts/run_api.sh" ]; then
-  echo "找不到 ai-sql-agent（$SQL_AGENT_DIR/scripts/run_api.sh）。放到同级目录，或者设置 SQL_AGENT_DIR。" >&2
+  echo "找不到 ai-sql-agent（$SQL_AGENT_DIR/scripts/run_api.sh）。它应该在本仓库的 ai-sql-agent/ 下，或者设置 SQL_AGENT_DIR。" >&2
   exit 1
 fi
 SQL_AGENT_DIR="$(cd "$SQL_AGENT_DIR" && pwd)"

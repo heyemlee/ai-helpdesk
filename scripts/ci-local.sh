@@ -3,28 +3,32 @@
 # 推之前在本机跑一遍 CI 的必过门禁。
 #
 # 算数的是 GitHub Actions：每个 PR 和 main 上都跑，main 开了分支保护，改动要走 PR，
-# 下面四个 job 都过了才能合。这个脚本让你不用推就能提前看到结果。
+# 下面五个 job 都过了才能合。这个脚本让你不用推就能提前看到结果。
 #
 # 它不碰工作区。生产的 Docker Compose 和练习环境共用这个工作区，从它起的后端还挂着
 # frontend/dist，所以每一步都在一次性副本里跑：副本只有 git 认识的文件（包括没提交的改动），
-# 环境变量从空开始。真实的 backend/.env、frontend/node_modules 和 frontend/dist 都用不到，
-# 跑完 git status 不变。
+# 环境变量从空开始。真实的 backend/.env、ai-sql-agent/.env、frontend/node_modules 和
+# frontend/dist 都用不到，跑完 git status 不变。
 #
 # 步骤和 .github/workflows/ci.yml 的 job 一一对应，改了那边这边也要跟着改：
 #
-#   backend   .claude/skills/test-backend/scripts/run.sh：ruff + pytest。默认离线，
-#             要 Postgres、Redis、Kafka 的用例跳过；--full 起一次性容器真跑（要 Docker，沙箱外跑）
-#   contract  和 backend 是同一次 run.sh、同一次 pytest：契约用例从钉住的 tag 导出
-#             （tests/test_contract_fixtures.py 的 PINNED_TAG），找不到 tag 就失败
-#   frontend  npm ci → typecheck → test → build
-#   images    在另一份副本里构建两个镜像。默认跳过，--with-images 打开（要 Docker 引擎在跑）
+#   backend    .claude/skills/test-backend/scripts/run.sh：ruff + pytest。默认离线，
+#              要 Postgres、Redis、Kafka 的用例跳过；--full 起一次性容器真跑（要 Docker，沙箱外跑）
+#   contract   和 backend 是同一次 run.sh：契约自检（a2a-contract/tools/check_contract.py），
+#              契约用例读副本里的 a2a-contract/，找不到就失败
+#   sql-agent  .claude/skills/test-backend/scripts/run-sql-agent.sh：unittest + test_simple_erp.py，
+#              确认契约用例没跳过；--full 起一次性 pgvector。有的用例要绑本机端口、要 node，沙箱外跑。
+#              CI 那个 job 后面的 Demo、评测冒烟、门禁冒烟、只读账号工具这里不跑
+#   frontend   npm ci → typecheck → test → build
+#   images     在另一份副本里构建三个镜像。默认跳过，--with-images 打开（要 Docker 引擎在跑）。
+#              CI 里 SQL Agent 镜像起来后的冒烟这里不跑
 #
-# 还有一处和 CI 不同：Python 和 Node 用本机的（backend/.venv、PATH 上的 node），
-# CI 钉在 Python 3.12、Node 24。
+# 还有一处和 CI 不同：Python 和 Node 用本机的（backend/.venv、ai-sql-agent/.venv 或
+# SQL_AGENT_PY、PATH 上的 node），CI 钉在 Python 3.12（SQL Agent 3.11）、Node 24。
 #
-#     scripts/ci-local.sh                # 后端（离线）+ 契约 + 前端
-#     scripts/ci-local.sh --full         # 后端连上一次性的 pgvector、Redis、Kafka
-#     scripts/ci-local.sh --with-images  # 再加两个镜像构建
+#     scripts/ci-local.sh                # 后端（离线）+ 契约 + SQL Agent（离线）+ 前端
+#     scripts/ci-local.sh --full         # 后端和 SQL Agent 连上一次性的 pgvector、Redis、Kafka
+#     scripts/ci-local.sh --with-images  # 再加三个镜像构建
 #
 set -euo pipefail
 
@@ -63,10 +67,14 @@ copy_git_files() {
 }
 
 step "后端 + 契约（test-backend/scripts/run.sh）"
-# A2A_CONTRACT_REQUIRED=1：契约仓库找不到时**失败**而不是跳过。
+# run.sh 自己设 A2A_CONTRACT_REQUIRED=1：找不到契约时**失败**而不是跳过。
 # 一个会自动跳过的门禁等于没有门禁，而且它坏掉的时候报告是绿的。
-A2A_CONTRACT_REQUIRED=1 "$ROOT/.claude/skills/test-backend/scripts/run.sh" ${FULL:+--full} ||
-    fail "后端门禁（ruff、pytest 或契约用例）"
+"$ROOT/.claude/skills/test-backend/scripts/run.sh" ${FULL:+--full} ||
+    fail "后端门禁（契约自检、ruff、pytest 或契约用例）"
+
+step "SQL Agent（test-backend/scripts/run-sql-agent.sh）"
+"$ROOT/.claude/skills/test-backend/scripts/run-sql-agent.sh" ${FULL:+--full} ||
+    fail "SQL Agent 测试"
 
 step "拷一次性副本（只含 git 认识的文件）"
 copy_git_files "$COPY/frontend-steps"
@@ -108,8 +116,11 @@ if [ "$WITH_IMAGES" = "1" ]; then
     docker build -t ai-helpdesk-frontend:ci "$COPY/images/frontend" || fail "前端镜像"
     step "镜像构建：backend"
     docker build -t ai-helpdesk:ci --target production "$COPY/images/backend" || fail "后端镜像"
+    step "镜像构建：SQL Agent"
+    docker build -f "$COPY/images/ai-sql-agent/deploy/Dockerfile" -t ai-sql-agent:ci "$COPY/images/ai-sql-agent" ||
+        fail "SQL Agent 镜像"
 else
-    printf '\n\033[1;33m跳过两个镜像构建（加 --with-images 打开，需要 Docker 引擎在跑）\033[0m\n'
+    printf '\n\033[1;33m跳过三个镜像构建（加 --with-images 打开，需要 Docker 引擎在跑）\033[0m\n'
 fi
 
 printf '\n\033[1;32m✓ 门禁全部通过\033[0m\n'

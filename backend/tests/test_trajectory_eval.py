@@ -2,7 +2,7 @@
 轨迹评测（app/evaluation/trajectory.py）的自测：用例文件、订单查询的桩、打分、汇总，
 以及用脚本化假模型把两组成对跑一遍。不调任何真实模型。
 
-契约夹具只在专门校验它的两条用例里读（a2a-contract 仓库在本地时）；找不到就跳过，
+契约夹具只在专门校验它的两条用例里读（本仓库的 a2a-contract/）；找不到就跳过，
 除非设了 A2A_CONTRACT_REQUIRED=1——和 test_contract_fixtures.py 同一个约定。
 """
 import os
