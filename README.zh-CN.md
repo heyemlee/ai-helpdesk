@@ -229,6 +229,7 @@ scripts/ci-local.sh                         # 在一次性副本里跑一遍 CI 
 .claude/skills/test-backend/scripts/run-sql-agent.sh  # 在一次性副本里跑 SQL Agent 的测试
 cd backend && .venv/bin/python -m pytest    # 后端测试；设了 TEST_POSTGRES_DSN 才跑 pgvector 用例
 .venv/bin/python scripts/eval_retrieval.py  # 检索的 hit@3 和 MRR，不调用模型
+.venv/bin/python scripts/eval_retrieval.py --full-chain --embedding env  # 知识库问答最后那句回答里的数字对不对；会调用模型
 .venv/bin/python scripts/run_eval.py        # 端到端评测；会调用模型
 .venv/bin/python scripts/run_trajectory_eval.py  # 工具循环对规则组，40 条轨迹用例；加 --yes 才调用模型
 cd ../frontend && npm test                  # 工作台测试

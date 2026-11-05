@@ -229,6 +229,7 @@ scripts/ci-local.sh                         # every CI job in throwaway copies; 
 .claude/skills/test-backend/scripts/run-sql-agent.sh  # the SQL agent's tests in a throwaway copy
 cd backend && .venv/bin/python -m pytest    # backend tests; TEST_POSTGRES_DSN adds the pgvector ones
 .venv/bin/python scripts/eval_retrieval.py  # retrieval hit@3 and MRR, no model calls
+.venv/bin/python scripts/eval_retrieval.py --full-chain --embedding env  # figures in final knowledge answers; calls the model
 .venv/bin/python scripts/run_eval.py        # end-to-end evaluation; calls the model
 .venv/bin/python scripts/run_trajectory_eval.py  # tool loop vs rules on 40 trajectory cases; calls the model with --yes
 cd ../frontend && npm test                  # console tests

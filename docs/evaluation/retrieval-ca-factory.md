@@ -98,7 +98,7 @@ Highest cosine among the three served results, which is what the score-threshold
 
 - The 46 documents and all questions were written by the same author for this measurement. Real customer phrasing and real policy documents will behave differently.
 - The fusion rule for local vectors was chosen after looking at these results, so the served figures are not an independent test of it.
-- This measures recall and rank only. The full chat path rewrites the question into sub-queries and reranks with a generative model, which can recover documents that sit at ranks four to ten here; that path was not run.
+- This measures recall and rank only. The full chat path rewrites the question into sub-queries and reranks with a generative model, which can recover documents that sit at ranks four to ten here; that path was not run here. The [full-chain record](kb-full-chain.md) runs it and checks the final replies.
 - No remote embedding model was measured here. The [remote-embedding record](retrieval-remote-embedding.md) reruns this suite with one; set `RAG_EVIDENCE_MIN_SCORE` from the score distributions the harness prints for your model.
 - One deterministic run per backend.
 
