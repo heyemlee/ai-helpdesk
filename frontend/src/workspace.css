@@ -494,3 +494,6 @@ p.transcript-text { white-space: pre-wrap; }
   table.data.ticket-table td.n { font-size: 12px; color: var(--color-text-tertiary); text-align: left; }
   .ticket-summary { min-width: 0; }
 }
+
+/* 从一轮对话跳到 SQL Agent 那边的那次查询（RunLink） */
+.run-link { color: inherit; font-weight: 500; text-decoration: underline; text-underline-offset: 2px; white-space: nowrap; }
