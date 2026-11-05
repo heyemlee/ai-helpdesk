@@ -6,11 +6,15 @@ import { Icon, type IconName } from './Icon'
 import { href, type View } from '@/lib/route'
 import type { Theme } from '@/hooks/useTheme'
 
-/** 日常工作的三件事。其余的都在「管理与诊断」里。 */
+/**
+ * 日常工作的四件事：对话、知识库、工单，以及查业务数据（SQL Agent 的问数、数据浏览、查询历史）。
+ * 其余的都在「管理与诊断」里。
+ */
 const PRIMARY: Array<{ id: View; key: Key; icon: IconName; to: string }> = [
   { id: 'chat', key: 'nav.chat', icon: 'chat', to: href.chat() },
   { id: 'knowledge', key: 'nav.knowledge', icon: 'book', to: href.knowledge() },
   { id: 'tickets', key: 'nav.tickets', icon: 'checklist', to: href.tickets() },
+  { id: 'data', key: 'nav.data', icon: 'grid', to: href.dataAsk() },
 ]
 
 export function Sidebar({ base, view, onNewChat, theme, onToggleTheme, busy }: {

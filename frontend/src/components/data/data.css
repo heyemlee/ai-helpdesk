@@ -1,0 +1,115 @@
+/* 数据页面（SQL Agent）的样式。只用 console.css 里的设计变量，不另起一套颜色。
+   类名一律 sq- 开头，免得和工作台其余部分的类名撞上。 */
+
+.data-view { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.data-view[hidden] { display: none; }
+.data-ask-slot { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.data-ask-slot[hidden] { display: none; }
+
+.sq-stack { display: grid; gap: 18px; }
+.sq-stack-sm { display: grid; gap: 8px; }
+.sq-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.sq-section-title { font-size: 13px; font-weight: 600; color: var(--color-text); }
+.sq-question { font-size: 17px; line-height: 1.5; font-weight: 600; overflow-wrap: anywhere; }
+.sq-kv { display: grid; }
+.sq-kv dd { overflow-wrap: anywhere; }
+
+.sq-filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
+.sq-filters .sq-grow { flex: 1 1 220px; }
+
+/* 列表 + 详情：宽屏左右，窄屏上下 */
+.sq-split { display: grid; grid-template-columns: minmax(260px, 2fr) minmax(0, 3fr); gap: 24px; align-items: start; }
+.sq-detail { position: sticky; top: 0; min-width: 0; padding: 20px; border: 1px solid var(--color-border-subtle); border-radius: 14px; background: var(--color-surface); }
+@media (max-width: 900px) {
+  .sq-split { grid-template-columns: 1fr; }
+  .sq-detail { position: static; }
+}
+
+.sq-history-list { display: grid; gap: 6px; list-style: none; margin: 0; padding: 0; }
+.sq-history-item {
+  display: grid; gap: 6px; width: 100%; padding: 10px 12px; border: 1px solid var(--color-border-subtle);
+  border-radius: 10px; background: var(--color-surface); color: var(--color-text); font: inherit; text-align: left; cursor: pointer;
+}
+.sq-history-item:hover { background: var(--alpha-05); }
+.sq-history-item[aria-current="true"] { border-color: var(--color-text-secondary); }
+.sq-history-q { font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.sq-history-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; color: var(--color-text-tertiary); }
+
+/* SQL：等宽、保留换行、横向滚动，不折行（折了就不是原来那条 SQL 的样子了） */
+.sq-code { border: 1px solid var(--color-border-subtle); border-radius: 10px; overflow: hidden; }
+.sq-code-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 6px 4px 12px; font-size: 12px; color: var(--color-text-tertiary); background: var(--alpha-05); }
+.sq-code pre, .sq-json { margin: 0; padding: 10px 12px; overflow-x: auto; font-size: 12px; line-height: 1.6; white-space: pre; }
+.sq-json { max-height: 320px; border-radius: 8px; background: var(--alpha-05); }
+
+.sq-server-text { margin-top: 4px; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.sq-server-label { color: var(--color-text-tertiary); }
+
+/* 一次查询的经过 */
+.sq-timeline { display: grid; gap: 10px; list-style: none; margin: 0; padding: 0; }
+.sq-timeline-row { display: grid; gap: 8px; padding: 12px 14px; border: 1px solid var(--color-border-subtle); border-radius: 12px; background: var(--color-surface); }
+.sq-timeline-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
+.sq-timeline-head .spacer { flex: 1; }
+.sq-event { display: grid; gap: 6px; padding-left: 12px; border-left: 2px solid var(--color-border-subtle); }
+.sq-event-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; color: var(--color-text-secondary); }
+
+.btn.btn-sm { min-height: 28px; padding: 0 8px; font-size: 12px; gap: 4px; }
+
+/* ── 配色：从 SQL Agent 旧控制台原样搬来的两组（校验过色弱可辨），顺序就是分配顺序 ──────────────
+   颜色只在这里出现，组件里只写 viz-sN / db-cN 这样的类名（src/components/data/__tests__ 里有一条在查）。
+   分类色最多六个：第七个取值起不上色，改成单色条形——再多的颜色互相分不清。 */
+.data {
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #4a3aa7;
+  --series-6: #e87ba4;
+  --series-1-strong: #1c5cab;
+  --series-1-track: #dbe8f8;
+  --db-1: #2a78d6;
+  --db-2: #eb6834;
+  --db-3: #1baf7a;
+  --db-4: #4a3aa7;
+}
+.viz-s1 { --c: var(--series-1); }
+.viz-s2 { --c: var(--series-2); }
+.viz-s3 { --c: var(--series-3); }
+.viz-s4 { --c: var(--series-4); }
+.viz-s5 { --c: var(--series-5); }
+.viz-s6 { --c: var(--series-6); }
+.viz-dot { flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--c, var(--color-text-tertiary)); }
+
+.sq-db-tile {
+  --hue: var(--color-text-tertiary);
+  display: inline-grid; place-items: center; flex: none; width: 36px; height: 26px; border-radius: 7px;
+  border: 1px solid color-mix(in oklab, var(--hue) 30%, transparent);
+  background: color-mix(in oklab, var(--hue) 13%, transparent);
+  color: color-mix(in oklab, var(--hue) 62%, var(--color-text));
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.3px; line-height: 1;
+}
+.sq-db-tile.is-lg { width: 46px; height: 46px; border-radius: 11px; font-size: 12.5px; }
+.sq-db-tile.is-sm { width: 30px; height: 20px; border-radius: 5px; font-size: 9.5px; letter-spacing: 0; }
+.sq-db-tile.is-xs { width: 27px; height: 17px; border-radius: 4px; font-size: 8.5px; letter-spacing: 0; }
+.db-c1 { --hue: var(--db-1); }
+.db-c2 { --hue: var(--db-2); }
+.db-c3 { --hue: var(--db-3); }
+.db-c4 { --hue: var(--db-4); }
+
+/* ── 表格 ─────────────────────────────────────────────────────────────── */
+.sq-table-wrap { overflow: auto; max-width: 100%; border: 1px solid var(--color-border-subtle); border-radius: 10px; }
+.sq-table-wrap:focus-visible { outline: 2px solid var(--color-ring); outline-offset: 2px; }
+table.sq-table th { vertical-align: bottom; background: var(--color-surface); position: sticky; top: 0; }
+table.sq-table td { font-size: 12.5px; }
+table.sq-table th.n { text-align: right; }
+.sq-th-btn { display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+.sq-th-unit { color: var(--color-text-tertiary); font-weight: 400; }
+.sq-th-sub { display: block; margin-top: 2px; font-size: 10.5px; font-weight: 400; color: var(--color-text-tertiary); }
+.sq-sort-mark { font-size: 9px; }
+td.sq-empty-cell { color: var(--color-text-tertiary); }
+td.sq-clip { max-width: 22ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+td.sq-wrap { min-width: 24ch; white-space: normal; overflow-wrap: anywhere; }
+.sq-table-wrap.is-browse tr.is-clickable { cursor: pointer; }
+.sq-table-wrap.is-browse tr.is-clickable:hover td { background: var(--alpha-05); }
+.sq-table-wrap.is-browse tr[aria-current="true"] td { background: var(--alpha-06); }
+.sq-pill { display: inline-flex; align-items: center; gap: 6px; padding: 0 9px 0 7px; border: 1px solid var(--color-border-subtle); border-radius: 999px; font-size: 12px; line-height: 1.6; white-space: nowrap; }
+.sq-pager { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--color-text-secondary); }

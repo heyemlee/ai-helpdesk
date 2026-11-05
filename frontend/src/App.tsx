@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { loadSettings, saveSettings, setStaffKey, type Settings } from '@/api/client'
 import { useHealth } from '@/api/hooks'
@@ -6,7 +6,7 @@ import { useT } from '@/i18n'
 import type { Key } from '@/i18n/catalog'
 import { useChatStream, type ChatMessage } from '@/hooks/useChatStream'
 import { useTheme } from '@/hooks/useTheme'
-import { href, useRoute, type View } from '@/lib/route'
+import { href, useRoute, type DataRoute, type View } from '@/lib/route'
 import { AdminPanel, type ConnectionDraft } from '@/components/AdminPanel'
 import { ChatPanel, ScopeGuide } from '@/components/ChatPanel'
 import { KnowledgePanel } from '@/components/KnowledgePanel'
@@ -16,10 +16,14 @@ import { TicketsPanel } from '@/components/TicketsPanel'
 import { InspectorDrawer } from '@/components/InspectorDrawer'
 import { Icon } from '@/components/Icon'
 
+// 数据页面（SQL Agent）单独成一个包，进了数据页才下载：员工大多数时候只用对话、知识库和工单
+const DataPanel = lazy(() => import('@/components/data/DataPanel').then((m) => ({ default: m.DataPanel })))
+
 const TITLE_KEYS: Record<View, Key> = {
   chat: 'nav.chat',
   knowledge: 'nav.knowledge',
   tickets: 'nav.tickets',
+  data: 'nav.data',
   admin: 'nav.admin',
 }
 
@@ -146,6 +150,11 @@ export default function App() {
 
   const view = route.view
   const isChat = view === 'chat'
+
+  // 数据页切走时只隐藏不卸载：问数页上可能有一个问题正在跑（几十秒），去看一眼工单再回来不能丢。
+  // 没进过数据页之前不挂载，免得一打开工作台就去请求 SQL Agent。
+  const [dataRoute, setDataRoute] = useState<DataRoute | null>(route.view === 'data' ? route : null)
+  useEffect(() => { if (route.view === 'data') setDataRoute(route) }, [route])
   const drawerOpen = isChat && inspectorOpen && explain
 
   const inspector = (
@@ -212,6 +221,13 @@ export default function App() {
                           category={route.category} navigate={navigate} />
         )}
         {route.view === 'tickets' && <TicketsPanel base={settings.apiBaseUrl} ticketId={route.ticketId} />}
+        {dataRoute && (
+          <div className="data-view" hidden={view !== 'data'}>
+            <Suspense fallback={<div className="page"><div className="page-inner"><p className="empty">…</p></div></div>}>
+              <DataPanel route={dataRoute} />
+            </Suspense>
+          </div>
+        )}
         {route.view === 'admin' && (
           <AdminPanel base={settings.apiBaseUrl} tab={route.tab} settings={settings} streaming={streaming}
                       onSave={saveConnection} inspector={inspector} theme={theme} onToggleTheme={toggle} />
