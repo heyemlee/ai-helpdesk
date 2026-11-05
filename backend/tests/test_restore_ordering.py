@@ -40,11 +40,13 @@ echo "$@" >> "$CMDLOG"
 # psql 那一步脚本会重定向 stdin，读掉免得管道破裂
 if [[ "$*" == *psql* ]]; then cat > /dev/null; fi
 # `docker inspect … --format` 要能给出卷名，否则脚本会判定"找不到 /data 卷"。
-# FAKE_SQL_AGENT_RUNNING 非空时，问容器在不在跑（.State.Running）回 true；
-# FAKE_NO_SQL_AGENT 非空时，SQL Agent 的容器不存在（inspect 失败）。
+# FAKE_SQL_AGENT_RUNNING 非空时，问容器在不在跑（.State.Running .State.Restarting）回 "true false"；
+# FAKE_NO_SQL_AGENT 非空时，SQL Agent 的容器不存在（inspect 失败）；
+# FAKE_EXEC_REFUSED 非空时，docker exec 被拒（容器在反复重启时就是这样）。
 if [[ "$1" == "inspect" && "$*" == *ai-helpdesk-sql-agent* && -n "$FAKE_NO_SQL_AGENT" ]]; then exit 1; fi
+if [[ "$1" == "exec" && "$*" == *ai-helpdesk-sql-agent* && -n "$FAKE_EXEC_REFUSED" ]]; then cat > /dev/null; exit 1; fi
 if [[ "$1" == "inspect" ]]; then
-    if [[ "$*" == *State.Running* && -n "$FAKE_SQL_AGENT_RUNNING" ]]; then echo true; else echo "fake_redis_volume"; fi
+    if [[ "$*" == *State.Running* && -n "$FAKE_SQL_AGENT_RUNNING" ]]; then echo "true false"; else echo "fake_redis_volume"; fi
 fi
 # 健康检查：redis-cli ping 要回 PONG；FAKE_PG_DOWN 非空时 pg_isready 报"没有响应"。
 if [[ "$*" == *redis-cli*ping ]]; then echo PONG; fi
@@ -357,6 +359,51 @@ class TestSqlAgentState:
         assert "恢复没有全部完成" in proc.stdout + proc.stderr
         cmds = fake_repo["cmdlog"].read_text().splitlines()
         assert _index_of(cmds, "start", "ai-helpdesk-customer"), "其余服务照样要拉起来"
+
+    def test_a_refused_exec_falls_back_to_the_volume_instead_of_aborting(self, fake_repo):
+        """
+        反复重启中的容器会报 Running=true，exec 却进不去。备份不能因此在 set -e 下整个停掉，
+        退到直接拷卷，而且照样走到"备份完成"。
+        """
+        env = dict(os.environ)
+        env["PATH"] = f"{fake_repo['bin']}:{env['PATH']}"
+        env["CMDLOG"] = str(fake_repo["cmdlog"])
+        env["FAKE_SQL_AGENT_RUNNING"] = "1"
+        env["FAKE_EXEC_REFUSED"] = "1"
+        proc = subprocess.run(["bash", str(fake_repo["script"]), "backup"],
+                              capture_output=True, text=True, env=env, timeout=120)
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        assert "备份完成" in proc.stdout
+        cmds = fake_repo["cmdlog"].read_text().splitlines()
+        assert _index_of(cmds, "cp", "ai-helpdesk-sql-agent:/app/state/.")
+
+    def test_sql_agent_files_missing_from_an_old_backup_survive_the_deploy_swap(self, fake_repo):
+        """
+        deploy/ 是整体替换的，而 SQL Agent 的 Key、env 文件、语义层和业务库都在 deploy/ 下、不进 git。
+        用它进 compose 之前的备份恢复时，这几样不能跟着删掉——删了就再也找不回来。
+        """
+        deploy = fake_repo["root"] / "deploy"
+        (deploy / "secrets").mkdir(parents=True)
+        (deploy / "secrets" / "sql_agent_keys.json").write_text("{}")
+        (deploy / "sql-agent" / "data" / "simple").mkdir(parents=True)
+        (deploy / "sql-agent" / "data" / "simple" / "erp.db").write_bytes(b"sqlite")
+        (deploy / "sql-agent" / "sql-agent.env").write_text("AI_SQL_MODEL_PROVIDER=openai\n")
+        env = dict(os.environ)
+        env["PATH"] = f"{fake_repo['bin']}:{env['PATH']}"
+        env["CMDLOG"] = str(fake_repo["cmdlog"])
+        proc = subprocess.run(
+            ["bash", str(fake_repo["script"]), "restore", str(fake_repo["backup"])],
+            input="y\n", capture_output=True, text=True, env=env, timeout=120,
+        )
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        assert (deploy / "secrets" / "sql_agent_keys.json").read_text() == "{}"
+        assert (deploy / "sql-agent" / "data" / "simple" / "erp.db").read_bytes() == b"sqlite"
+        assert (deploy / "sql-agent" / "sql-agent.env").is_file()
+        # 备份里的配置照样整体换上，别的旧文件照样不留
+        assert (deploy / "prometheus" / "prometheus.yml").read_text() == "restored: true\n"
+        assert not (deploy / "nginx").exists()
+        assert not list(fake_repo["root"].glob(".restore-keep.*"))
+        assert "SQL_AGENT_API_KEY" in proc.stdout, "恢复出来的 backend/.env 里没有员工那一把 Key，要提醒"
 
     def test_an_old_backup_without_it_leaves_the_state_alone(self, fake_repo):
         cmds = _run_restore(fake_repo)

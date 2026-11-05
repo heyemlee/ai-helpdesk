@@ -145,7 +145,7 @@ code="$(docker run --rm --network "$SQL_NET" --entrypoint curl ai-helpdesk-ai-he
 if [ "$code" = 200 ]; then
     ok "对照：sql-net 上连得到 sql-agent:8000"
 else
-    bad "对照：sql-net 上 sql-agent:8000/health → $code，应该是 200"
+    bad "对照：sql-net 上 sql-agent:8000/health → ${code}，应该是 200"
 fi
 # 站在客户实例的网络上连：服务名应当解析不到，宿主机的 8000 上也应当什么都没有
 # （发布过端口、或者旧进程还在跑，都会从 host.docker.internal 连得上）

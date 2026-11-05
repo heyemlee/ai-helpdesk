@@ -359,16 +359,11 @@ backup_sql_agent_state() {
         print_warn "没有 SQL Agent 的容器（还没部署过），它的状态没有备份"
         return 0
     fi
-    if [ "$(docker inspect --format '{{.State.Running}}' ai-helpdesk-sql-agent 2>/dev/null)" != "true" ]; then
-        # 停着（比如 sql-agent.env 改坏了、就绪检查不过在反复重启）：没有进程在写，直接拷卷里的文件
-        # 就是一致的，连同可能剩下的 -wal 一起拷，下次打开时 SQLite 会把它补进去
-        print_warn "SQL Agent 没在运行，直接从它的卷里拷状态文件"
-        mkdir -p "$dest"
-        docker cp ai-helpdesk-sql-agent:/app/state/. "$dest"
-        return 0
-    fi
 
-    docker exec -i ai-helpdesk-sql-agent python - <<'PY'
+    # 在跑（不是在反复重启的间隙）就在容器里做在线备份。exec 不进去也不能让整个备份停在这里
+    # （set -e），退到下面直接拷卷
+    if [ "$(docker inspect --format '{{.State.Running}} {{.State.Restarting}}' ai-helpdesk-sql-agent 2>/dev/null)" = "true false" ] &&
+        docker exec -i ai-helpdesk-sql-agent python - <<'PY'
 import os
 import shutil
 import sqlite3
@@ -389,10 +384,19 @@ settings = os.path.join(state, "model_settings.json")
 if os.path.exists(settings):
     shutil.copy2(settings, out)
 PY
-    # dest 先建好、源路径带 /.：和 Redis 那里一样，docker cp 的语义取决于 dest 存不存在
+    then
+        # dest 先建好、源路径带 /.：和 Redis 那里一样，docker cp 的语义取决于 dest 存不存在
+        mkdir -p "$dest"
+        docker cp ai-helpdesk-sql-agent:/tmp/sql-agent-backup/. "$dest"
+        docker exec ai-helpdesk-sql-agent rm -rf /tmp/sql-agent-backup
+        return 0
+    fi
+
+    # 停着、在反复重启（比如 sql-agent.env 改坏了、就绪检查不过），或者 exec 不进去：进程没在正常写，
+    # 直接拷卷里的文件，连同可能剩下的 -wal 一起拷，下次打开时 SQLite 会把它补进去
+    print_warn "SQL Agent 没在正常运行，直接从它的卷里拷状态文件"
     mkdir -p "$dest"
-    docker cp ai-helpdesk-sql-agent:/tmp/sql-agent-backup/. "$dest"
-    docker exec ai-helpdesk-sql-agent rm -rf /tmp/sql-agent-backup
+    docker cp ai-helpdesk-sql-agent:/app/state/. "$dest"
 }
 
 # 函数：备份数据
@@ -489,7 +493,7 @@ restore_sql_agent_state() {
     fi
     if ! docker run --rm -v "$volume:/state" -v "$backup_dir/sql-agent-state:/backup:ro" alpine:3.20 \
             sh -c 'rm -f /state/*.db /state/*.db-wal /state/*.db-shm /state/model_settings.json && cp -a /backup/. /state/ && chown -R 10001:10001 /state && { [ ! -f /state/model_settings.json ] || chmod 600 /state/model_settings.json; }'; then
-        print_error "SQL Agent 的状态没能恢复（卷 $volume）"
+        print_error "SQL Agent 的状态没能恢复（卷 ${volume}）"
         return 1
     fi
 }
@@ -632,8 +636,29 @@ restore_data() {
             cp "$backup_dir/.env.customer" "$BACKEND/.env.customer"
         fi
         if [ -d "$backup_dir/deploy" ]; then
+            # SQL Agent 的 Key、env 文件、语义层和业务库都在 deploy/ 下、都不进 git：备份里没有的
+            # （比如 SQL Agent 进 compose 之前的备份）先挪开、换完再放回来，不跟着整个 deploy/ 删掉
+            local keep="$ROOT/.restore-keep.$$" path
+            for path in secrets sql-agent/sql-agent.env sql-agent/data; do
+                if [ -e "$DEPLOY/$path" ] && [ ! -e "$backup_dir/deploy/$path" ]; then
+                    mkdir -p "$keep/$(dirname "$path")"
+                    mv "$DEPLOY/$path" "$keep/$path"
+                fi
+            done
             rm -rf "$DEPLOY"
             cp -r "$backup_dir/deploy" "$DEPLOY"
+            for path in secrets sql-agent/sql-agent.env sql-agent/data; do
+                if [ -e "$keep/$path" ]; then
+                    mkdir -p "$DEPLOY/$(dirname "$path")"
+                    mv "$keep/$path" "$DEPLOY/$path"
+                    print_warn "备份里没有 deploy/${path}，保留了现在这一份"
+                fi
+            done
+            rm -rf "$keep"
+            if [ -f "$DEPLOY/secrets/sql_agent_keys.json" ] && ! grep -q '^SQL_AGENT_API_KEY=.' "$ENV_FILE"; then
+                print_warn "恢复出来的 backend/.env 里没有 SQL_AGENT_API_KEY：员工实例调 SQL Agent 会被拒（401），"
+                print_warn "从 deploy/secrets/sql_agent_keys.json 里 caller=ai-helpdesk 那一把补上"
+            fi
         elif [ -d "$backup_dir/config" ]; then
             # 目录重整之前的备份：那时这些配置放在 backend/config/，目录是扁平的
             # （prometheus.yml、alerts/、grafana/ 并列），和现在 deploy/ 按服务分目录的布局
