@@ -120,6 +120,14 @@ services:
       # 写在这里会压过 backend/.env，到时候就只能改 compose 才关得掉。原文 30 天、整行 180 天
       # 用代码里的默认值
       - AI_HELPDESK_INSTANCE=staff
+      # 只给本机用。端口只绑本机挡得住别的机器，挡不住员工自己的浏览器：它打开的网站都能往
+      # 127.0.0.1:8080 和控制台的 /api/ 发请求。CORS 留空 = 不发 CORS 头，跨站读不到响应
+      # （backend/.env 里的 * 只适合本地开发）；白名单挡 DNS rebinding，标明跨站的请求直接拒绝
+      # （backend/app/core/browser_guard.py）。名单是本机名加上栈里访问它用的名字：Prometheus
+      # 抓 ai-helpdesk 和排队模式的 ai-helpdesk-worker（worker 用 extends 抄这一份），健康检查走
+      # localhost，控制台的 nginx 转发浏览器自己的 Host（它只认本机名）
+      - CORS_ALLOW_ORIGINS=
+      - AI_HELPDESK_ALLOWED_HOSTS=localhost,127.0.0.1,::1,ai-helpdesk,ai-helpdesk-worker
     volumes:
       - ./backend/data/eval:/app/data/eval
       - ./backend/skills:/app/skills

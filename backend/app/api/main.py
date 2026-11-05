@@ -77,7 +77,7 @@ from pydantic import BaseModel, Field, field_validator
 
 load_dotenv()
 
-from app.core import llm_guard  # noqa: E402
+from app.core import browser_guard, llm_guard  # noqa: E402
 from app.core.llm_utils import ANSWER_EFFORT, resolve_llm_config  # noqa: E402
 from app.core.openai_compat import tools_rejected  # noqa: E402
 from app.core.preflight import (  # noqa: E402
@@ -241,6 +241,8 @@ async def lifespan(app: FastAPI):
         logger.info("用户令牌鉴权已开启：/chat 从 X-User-Token 推导 user_id")
     else:
         logger.warning("用户令牌鉴权未开启：user_id 信任请求体，仅适用于本地联调")
+    if _ALLOWED_HOSTS:
+        logger.info("浏览器防护已开启：只认这些 Host，跨站请求一律拒绝：%s", ", ".join(sorted(_ALLOWED_HOSTS)))
 
     _rate_limiter = RateLimiter(
         redis_client=_infra_redis,
@@ -682,6 +684,12 @@ async def request_id_middleware(request: HttpRequest, call_next):
 
     response.headers["X-Request-ID"] = rid
     return response
+
+
+# ── 只给本机用的实例：挡掉别的网站借浏览器发来的请求 ─────────────────────────────
+# 设了 AI_HELPDESK_ALLOWED_HOSTS 才启用（compose 给员工实例设了），见 app/core/browser_guard.py。
+# 必须在所有中间件注册完之后装：后注册的在外层，被拒的请求进不了 CORS 和上面的请求日志
+_ALLOWED_HOSTS = browser_guard.install(app)
 
 
 # ── 鉴权 ──────────────────────────────────────────────────────────────────────
