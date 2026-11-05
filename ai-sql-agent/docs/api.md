@@ -53,7 +53,7 @@ With `AI_SQL_AUTH_MODE=api_key`, add `-H 'X-API-Key: …'`; keys and their table
 
 ```text
 src/ai_sql_agent/
-  api/ · catalog/ · a2a/ · mcp_server/   Web console, HTTP API, data catalog, and agent interfaces
+  api/ · catalog/ · a2a/ · mcp_server/   HTTP API, data catalog, and agent interfaces (the console is frontend/)
   pipeline/ · normalization/             Routing, question normalization, orchestration
   semantic/ · retrieval/                 Business semantics and SchemaGraph retrieval
   indexing/ · memory/                    Vector indexes, sessions, long-term memory

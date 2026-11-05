@@ -67,7 +67,7 @@ Three places used to swallow exceptions with side effects, and now let a cancel 
 
 Where a cancel comes from:
 
-- the console's stop button: it takes the task id from the first stream frame and calls `POST /runs/{id}/cancel`
+- the console's stop button (Data → Ask in `frontend/`): it takes the task id from the first stream frame and calls `POST /runs/{id}/cancel`
   before it aborts the request;
 - `POST /runs/{id}/cancel` itself;
 - a caller disconnecting (`AI_SQL_CANCEL_ON_DISCONNECT`, on by default since A2A contract v1.13);

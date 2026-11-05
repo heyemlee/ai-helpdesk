@@ -40,7 +40,7 @@
   <img src="docs/architecture.svg" width="960" alt="网页控制台和其他 agent 调用同一个 FastAPI 服务；服务把 API Key 对应到表和字段权限，执行限流和 Token 配额，也能在线切换模型和 Embedding 连接。服务里的 agent 循环用 LLM 路由判断问题类型，用 BM25 和向量经 RRF 融合、再加重排和 YAML 语义层找到相关的表和字段，每个数据源规划一步并写出 SQL，经 SQLGlot 关卡只读执行，失败最多修复两次，再用规则和 LLM 自检检查结果；每次请求记成一次可取消的运行，带编号的事件日志，对话记忆和带 trace_id 的审计记录也一并存下。模型调用发往 OpenAI 兼容、Anthropic、vLLM 或 Ollama；SQL 在 SQLite 或 PostgreSQL 数据源上执行；运行记录、记忆、审计和向量存在 SQLite 或 pgvector。单独进程的 MCP stdio 服务使用同一道关卡，Prometheus 抓取指标，项目用 Docker Compose、pytest、GitHub Actions 和 150 + 40 题的发布门禁交付。" />
 </p>
 
-一个 FastAPI 进程同时承载 agent、它的 HTTP、A2A 与管理接口和控制台。问题从 API 进来，agent 循环先让模型判断类型，再检索相关的表，让模型规划并写 SQL，经工具关卡执行，最后让模型检查答案；请求走到哪个组件，哪张卡片就亮起来。橙色是模型调用，蓝色是请求和数据，青色是运行记录、记忆、审计和指标。状态默认存在 SQLite；配置 PostgreSQL DSN 后，审计、反馈、运行记录和两个向量索引改存 PostgreSQL + pgvector。
+一个 FastAPI 进程承载 agent 和它的 HTTP、A2A 与管理接口；页面是仓库控制台（[`frontend/`](../frontend/)）里的「数据」，经 `/sql-api/` 调它。问题从 API 进来，agent 循环先让模型判断类型，再检索相关的表，让模型规划并写 SQL，经工具关卡执行，最后让模型检查答案；请求走到哪个组件，哪张卡片就亮起来。橙色是模型调用，蓝色是请求和数据，青色是运行记录、记忆、审计和指标。状态默认存在 SQLite；配置 PostgreSQL DSN 后，审计、反馈、运行记录和两个向量索引改存 PostgreSQL + pgvector。
 
 - **模型做决定，代码管流程。** 路由、规划、写 SQL、修复和判断结果由模型完成；步骤顺序、权限关卡和各项上限由代码固定（每步只查一个数据源，最多修复两次），所以每次运行都有边界，留下编号的事件日志，取消时在下一个检查点停下。
 - **一个工具，一道关卡，出错就拒绝。** 回答、预览和 MCP 服务都经过同一道授权关卡。解析不了的 SQL 一律拒绝，没装 SQLGlot 时所有 SQL 都被拒绝；模型不可用时，重新执行该用户同一问题上次成功的 SQL，重新授权并标为降级。
@@ -101,7 +101,7 @@
 
 ### 接口
 
-- **控制台。** 提问、数据、历史三个页面和设置，中英双语，无构建步骤；学习模式根据阶段事件讲解每次请求；点停止时，服务端的运行也会停下。
+- **控制台。** 在仓库的统一控制台（`frontend/`）里：问数、数据浏览、查询历史、一次查询的经过，模型连接在「管理与诊断」里；中英双语；点停止时，服务端的运行也会停下。浏览器手里没有 Key：控制台的 nginx 在服务端替它带上。
 - **A2A。** 默认开启，地址是 `POST /a2a`：`message/send` 返回一个已完成的任务，`message/stream` 先通过 SSE 推送阶段事件。任务 ID 就是运行 ID：用 `POST /runs/{id}/cancel` 取消的任务以 `canceled` 结束，调用方断开连接也会让它停下。设置 `AI_SQL_A2A_STREAMING=false` 可以关掉流式，Agent Card 会同步说明；[a2a-contract](../a2a-contract/README.zh-CN.md) 的契约用例在 CI 里读同一个提交上的契约来跑。
 - **MCP 与 HTTP。** MCP stdio 服务在演示库上提供 `list_databases` 和 `execute_sql` 两个工具，上限相同；其余由 HTTP 接口 `/query`、`/catalog`、`/history`、`/runs`、`/metrics` 提供（[接口文档](docs/api.zh-CN.md)）。
 
@@ -114,7 +114,7 @@ cd ai-sql-agent                                     # 从仓库根目录进来
 python3 -m venv .venv && source .venv/bin/activate  # 建一个 Python 3.11+ 的虚拟环境
 pip install -e ".[dev]"                             # 安装服务、固定版本的依赖和测试工具
 python examples/end_to_end.py                       # 离线跑一个单库问题和一个跨库问题，模型用 Mock
-./scripts/run_api.sh                                # 控制台和 API 在 http://localhost:8000，用内置演示数据
+./scripts/run_api.sh                                # API 在 http://localhost:8000，用内置演示数据（页面在 frontend/）
 cp .env.example .env                                # 然后填模型服务商、Key 和模型名
 python -m ai_sql_agent.semantic export semantic/    # 导出语义层模板，用来描述你自己的库
 python -m ai_sql_agent.semantic validate semantic/  # 和真实库结构比对

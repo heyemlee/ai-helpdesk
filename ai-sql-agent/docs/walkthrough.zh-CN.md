@@ -1589,7 +1589,6 @@ class TokenBucketLimiter:
 
 | 端点 | 用途 | 鉴权 |
 | --- | --- | --- |
-| `GET /` | 内置查询界面(静态文件在 `/static` 下) | — |
 | `GET /whoami` | 本次请求解析出的身份与服务能力(页面发问前靠它知道 user_id) | API Key |
 | `GET /catalog` | 数据目录:当前身份可见的数据域、表、字段 | API Key |
 | `GET /catalog/{库}/{表}` | 单张表的字段说明(表多的部署里 `/catalog` 不带字段,按表从这里取) | API Key |
@@ -2823,7 +2822,7 @@ src/ai_sql_agent/retrieval/vector_index.py:50: RuntimeWarning: divide by zero en
 ## 附:文件速查表
 
 ```
-src/ai_sql_agent/api/          3967 行   API 服务与内置控制台
+src/ai_sql_agent/api/                    API 服务(页面在仓库的 frontend/)
   app.py                       12 个端点 + lifespan + trace 中间件
   catalog.py                   数据目录与只读预览(5 个端点)
   runs.py                      运行记录查询与取消(3 个端点)
@@ -2833,7 +2832,6 @@ src/ai_sql_agent/api/          3967 行   API 服务与内置控制台
   limits.py                    令牌桶限流 + 日配额
   schema_watcher.py            Schema 指纹轮询
   trust.py                     「能不能拿去当出处」的判据
-  static/                      内置控制台(原生 HTML / CSS / ES Module)
 
 src/ai_sql_agent/a2a/           682 行   A2A 服务端(Agent Card + JSON-RPC,3 个端点)
 src/ai_sql_agent/runs/         1054 行   运行记录、事件日志、取消、孤儿与过期清理
