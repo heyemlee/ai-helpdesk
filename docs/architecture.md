@@ -3,6 +3,8 @@
 README 使用手写的动态图 [architecture.svg](architecture.svg)；[Archify 总览图](diagrams/README.md) 保留可编辑 JSON、交互 HTML 和静态 SVG。
 本页以 GitHub 原生支持的 Mermaid 补充请求链路、路由、存储与部署细节；修改架构时需同步更新两处。
 
+仓库里有三部分：客服 Agent（`backend/`、`frontend/`，本页讲的就是它）、SQL Agent（`ai-sql-agent/`，见它的 [README](../ai-sql-agent/README.zh-CN.md) 和[设计说明](../ai-sql-agent/docs/design.zh-CN.md)），以及两者之间的 A2A 契约（`a2a-contract/`，见 [README](../a2a-contract/README.zh-CN.md)）。两个后端是两个服务，各用各的 Python 环境，中间只走 A2A 或 HTTP `/query`；契约的 schema 和 fixtures 由两侧测试读同一个提交上的那一份。系统总览图见 [system.svg](system.svg)。
+
 ## 1. 总体架构
 
 ```mermaid
@@ -17,7 +19,7 @@ flowchart LR
     APP & CUS --> PG[(PostgreSQL + pgvector<br/>知识向量 / 情景记忆 / 画像<br/>工单 / 审计日志)]
     APP & CUS --> LLM[[对话模型<br/>Anthropic / OpenAI 两套协议<br/>控制台可在线切换]]
     APP & CUS --> EMB[[Embedding / Rerank API<br/>没配时用本地向量 / LLM 重排]]
-    APP -->|A2A message/stream<br/>或 HTTP /query| SQL[[ai-sql-agent<br/>规划 · 写 SQL · 执行 · 自修]]
+    APP -->|A2A message/stream<br/>或 HTTP /query| SQL[[ai-sql-agent/ 下的 SQL Agent<br/>规划 · 写 SQL · 执行 · 自修]]
 
     APP & CUS -->|/metrics| P[Prometheus]
     APP & CUS -->|OTLP trace| OC[OTel Collector] --> TP[Tempo]
@@ -195,10 +197,12 @@ flowchart TD
     APP & CUS --> R
     APP & CUS --> PG
     APP & CUS --> OC --> TP
-    APP -.->|host.docker.internal:8000| SQL[ai-sql-agent<br/>同机另一个服务]
+    APP -.->|host.docker.internal:8000| SQL[SQL Agent<br/>同机另一个进程]
     PT --> LK
     P & TP & LK --> GF
 ```
+
+SQL Agent 的代码在本仓库的 `ai-sql-agent/`，部署上还不在这套 compose 里：它是同机的另一个进程，监听 8000，员工实例经 `host.docker.internal:8000` 连它（地址由 `AI_HELPDESK_SQL_AGENT_URL` 决定）。
 
 共 12 个服务。只有 Nginx 的 80 端口对外，其余端口只绑本机：员工实例和工作台背后没有 API key，不能直接开放给其他机器。两个实例共用 Redis 和 PostgreSQL，并挂同一个模型设置目录：员工工作台保存模型连接后，客户实例几秒内跟上。观测栈（Collector / Tempo / Loki / Promtail / Grafana）与业务无耦合，不需要时删掉对应 service 即可，应用侧只是少了 trace 上报目标。
 
@@ -209,7 +213,7 @@ flowchart TD
 | 入口 | `127.0.0.1:8080`；工作台 `127.0.0.1:5174` 经 Docker 内网转发到它 | Nginx 的 80（`127.0.0.1:8081` 只给本机排障） |
 | 模型设置 | 本机控制台可改 | 只读（`AI_HELPDESK_MODEL_SETTINGS_EDITABLE=false`），几秒内跟上员工实例保存的设置 |
 | 跨会话记忆 | 开：读写 `memory_episodic` / `memory_profile` | 关（`ENABLE_CROSS_SESSION_MEMORY=false`），只留当前会话记忆 |
-| SQL Agent | 订单类问题委派给同机的 ai-sql-agent | 不接（`SQL_AGENT_URL` 留空），订单类问题只走知识库 |
+| SQL Agent | 订单类问题委派给同机的 SQL Agent | 不接（`SQL_AGENT_URL` 留空），订单类问题只走知识库 |
 | 工具循环 | 看 `backend/.env` 里的 `AI_HELPDESK_TOOL_LOOP` | 写死关（`AI_HELPDESK_TOOL_LOOP=off`） |
 | 事件日志 | 原文默认留 30 天，读接口开 | 原文留 14 天，读接口关（`AI_HELPDESK_EVENT_LOG_READ=off`） |
 | API key | 无（只绑本机） | `backend/.env.customer` 里配了 `AI_HELPDESK_API_KEY` 后，工单、对话、知识库等端点要 `X-API-Key`，`/chat` 开放 |
