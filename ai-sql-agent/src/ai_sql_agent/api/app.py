@@ -3,12 +3,10 @@ from __future__ import annotations
 import logging
 import time
 from contextlib import asynccontextmanager, nullcontext
-from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse, PlainTextResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
@@ -56,7 +54,6 @@ from .security import AuthGuard, require_admin, require_api_key
 _logger = get_logger("api")
 
 TRACE_HEADER = "X-Trace-Id"
-STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
 class QueryRequest(BaseModel):
@@ -682,21 +679,6 @@ from .runs import router as _runs_router  # noqa: E402
 app.include_router(_runs_router)
 
 
-class _ConsoleStaticFiles(StaticFiles):
-    """
-    页面的 CSS / JS。每次都让浏览器回来确认一下（ETag 命中就是 304）。
-
-    没有构建步骤也就没有带哈希的文件名；不加这一条，浏览器会按启发式缓存
-    旧脚本，升级之后出现「页面是新的、脚本是旧的」，而且只在部分人那里出现。
-    """
-
-    async def get_response(self, path: str, scope):
-        response = await super().get_response(path, scope)
-        response.headers["Cache-Control"] = "no-cache"
-        return response
-
-
-app.mount("/static", _ConsoleStaticFiles(directory=STATIC_DIR), name="static")
 
 
 @app.middleware("http")
@@ -788,7 +770,6 @@ def _metric_path(request: Request, status_code: int) -> str:
 
     - 命中的接口用路由模板（`/catalog/{database}/{table}`），不用原始路径——
       否则标签数跟着表的数量涨；
-    - 静态文件统一记成 `/static`：这个挂载点不走鉴权，谁都能拿任意文件名来请求；
     - 没命中任何路由的 404 统一记成 `unmatched`：扫描器发来的每一个随机路径
       都各占一个标签的话，指标迟早被撑爆。
     """
@@ -796,25 +777,9 @@ def _metric_path(request: Request, status_code: int) -> str:
     template = getattr(request.scope.get("route"), "path", None)
     if template:
         return template
-    if path == "/static" or path.startswith("/static/"):
-        return "/static"
     if status_code == 404:
         return "unmatched"
     return path
-
-
-@app.get("/", include_in_schema=False)
-def index() -> FileResponse:
-    """
-    查询界面：业务查数、数据浏览、历史查询三个入口。
-
-    原生 HTML / CSS / ES Module，无构建步骤：`static/index.html` 是外壳，
-    样式与脚本在 `/static` 下按职责分文件。页面自己不做鉴权，API Key 只存在
-    当前标签页，请求时放在 X-API-Key 头里；业务数据一律经接口取，页面不直连库。
-    """
-    return FileResponse(
-        STATIC_DIR / "index.html", headers={"Cache-Control": "no-cache"}
-    )
 
 
 @app.get("/health")

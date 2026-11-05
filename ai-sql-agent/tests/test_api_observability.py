@@ -57,31 +57,3 @@ if __name__ == "__main__":
     unittest.main()
 
 
-class FrontendTest(unittest.TestCase):
-    """页面由 FastAPI 直接托管，没有构建步骤。细节检查见 tests/test_console_frontend.py。"""
-
-    @classmethod
-    def setUpClass(cls):
-        cls.client_ctx = TestClient(app)
-        cls.client = cls.client_ctx.__enter__()
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.client_ctx.__exit__(None, None, None)
-
-    def test_index_is_served(self):
-        response = self.client.get("/")
-        self.assertEqual(response.status_code, 200)
-        self.assertIn("text/html", response.headers["content-type"])
-
-    def test_page_wires_the_query_api(self):
-        # 外壳只有结构；接口调用在它加载的脚本里
-        html = self.client.get("/").text
-        self.assertIn("static/js/main.js", html)
-        api = self.client.get("/static/js/api.js")
-        self.assertEqual(api.status_code, 200)
-        for marker in ["/query", "X-API-Key"]:
-            self.assertIn(marker, api.text)
-        model = self.client.get("/static/js/model.js").text
-        for marker in ["trace_id", "degraded", "step_logs"]:
-            self.assertIn(marker, model)

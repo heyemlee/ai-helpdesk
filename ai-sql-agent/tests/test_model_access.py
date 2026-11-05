@@ -886,7 +886,8 @@ class SelfCheckIsMarkedHonestlyTest(unittest.TestCase):
 
     def test_the_mark_reaches_the_caller_as_a_risk(self):
         """响应里靠 risk_findings / has_risk 传达；契约里 has_risk 为真 = 这个结果不能直接信。"""
-        from ai_sql_agent.api.app import STATIC_DIR
+        from pathlib import Path
+
         from ai_sql_agent.api.result_summary import StepLogResponse
 
         class Unavailable:
@@ -898,10 +899,12 @@ class SelfCheckIsMarkedHonestlyTest(unittest.TestCase):
                                row_count=1, risk_findings=findings)
         self.assertEqual(step.risk_findings[0]["anomaly"], "self_check_not_run")
 
-        for language in ("en", "zh"):
-            text = (STATIC_DIR / "js" / "i18n" / f"{language}.js").read_text(encoding="utf-8")
-            self.assertIn("'anomaly.self_check_not_run'", text)
-            self.assertIn("'anomaly.self_check_not_run.help'", text)
+        # 控制台（仓库里的 frontend/）对这个标记有中英两份说明；只拷了 ai-sql-agent/ 时没有它，不查
+        strings = Path(__file__).resolve().parents[2] / "frontend" / "src" / "i18n" / "sq-ask.ts"
+        if strings.is_file():
+            text = strings.read_text(encoding="utf-8")
+            self.assertEqual(text.count("'sq.ask.anomaly.self_check_not_run'"), 2)
+            self.assertEqual(text.count("'sq.ask.anomaly.self_check_not_run.help'"), 2)
 
 
 BLOCK = [{"scope": "credential", "reason": "credential_rejected", "permanent": True, "model": "",
