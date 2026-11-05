@@ -9,6 +9,8 @@ docker-compose.yml 里只靠配置守住的两条边界。
    查询。之前就是这样。
 2. **客户实例碰不到员工那边的数据。** 靠两个环境变量：不接 ai-sql-agent，
    不用跨会话记忆（见 test_cross_session_memory_switch.py）。
+3. **别的网站借不了员工的浏览器。** 员工实例关掉 CORS、开 Host 白名单（防护本身在
+   backend/app/core/browser_guard.py，但开不开、放行哪些名字只看 compose）。
 """
 import re
 from pathlib import Path
@@ -70,6 +72,43 @@ class TestCustomerInstanceIsCutOffFromStaffData:
 
     def test_it_keeps_no_cross_session_memory(self, env):
         assert env["ENABLE_CROSS_SESSION_MEMORY"] == "false"
+
+
+class TestStaffInstanceIsClosedToOtherSites:
+    """
+    员工实例没有 API key，端口只绑本机；可员工自己的浏览器就在这台机器上，它打开的网站都能往
+    127.0.0.1:8080 发请求。写错了服务照样能用，只是工单又能被别的网站读走；名单漏了名字，
+    Prometheus 的抓取就全是 421。
+    """
+
+    @pytest.fixture
+    def env(self) -> dict[str, str]:
+        entries = _list_entries("environment")["ai-helpdesk"]
+        return dict(entry.split("=", 1) for entry in entries)
+
+    @pytest.fixture
+    def allowed(self, env) -> set[str]:
+        return set(env["AI_HELPDESK_ALLOWED_HOSTS"].split(","))
+
+    def test_it_sends_no_cors_headers(self, env):
+        """留空 = 不发 CORS 头。不写的话会从 backend/.env 继承 *，任何网站都读得到工单。"""
+        assert env["CORS_ALLOW_ORIGINS"] == ""
+
+    def test_no_allowed_name_is_one_a_web_page_could_point_at(self, allowed):
+        """只放本机名和 compose 里的单段服务名。带点的名字（host.docker.internal 也算）网页都指得过来。"""
+        assert "localhost" in allowed, "没读到白名单，这条用例没验到东西"
+        assert sorted(host for host in allowed if "." in host and host != "127.0.0.1") == []
+
+    def test_every_name_the_stack_reaches_it_by_is_allowed(self, allowed):
+        """
+        Prometheus 按服务名抓员工实例和排队模式的 worker（worker 用 extends 抄员工实例的环境变量，
+        防护也跟着开）；容器健康检查走 localhost。
+        """
+        scraped: set[str] = set()
+        for config in (COMPOSE.parent / "deploy" / "prometheus").rglob("*.yml"):
+            scraped |= set(re.findall(r"'(ai-helpdesk(?:-worker)?):8000'", config.read_text(encoding="utf-8")))
+        assert scraped == {"ai-helpdesk", "ai-helpdesk-worker"}, "没读到 Prometheus 的抓取目标"
+        assert sorted((scraped | {"localhost"}) - allowed) == []
 
 
 class TestEventLogIsSplitByInstance:

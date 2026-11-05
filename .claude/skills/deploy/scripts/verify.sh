@@ -63,6 +63,18 @@ check_code() {
     fi
 }
 
+# 带上额外的请求头请求一次（第三个参数起原样交给 curl），看状态码
+check_code_with() {
+    local desc="$1" want="$2" code
+    shift 2
+    code="$(curl -s -m 5 -o /dev/null -w '%{http_code}' "$@")"
+    if [ "$code" = "$want" ]; then
+        ok "$desc → $code"
+    else
+        bad "$desc → $code，应该是 $want"
+    fi
+}
+
 # 光看 404 不够：/turns/x 这样的路径漏到后端也回 404（查无此轮）。
 # nginx 自己回的是 HTML，后端回的是 JSON，要看是谁回的
 check_blocked() {
@@ -103,10 +115,22 @@ done
 echo "实例"
 check_health "员工实例配置对得上" "$STAFF" "$IS_STAFF"
 check_health "客户实例配置对得上" "$CUSTOMER" "$IS_CUSTOMER"
+# 员工实例只给本机用（backend/app/core/browser_guard.py）：员工的浏览器打开的别的网站，
+# 借它发来的请求要被拒，跨站也读不到响应（不发 CORS 头）
+check_code_with "员工实例：Host 不是本机的请求" 421 -H 'Host: rebind.example' "$STAFF/health"
+check_code_with "员工实例：标明跨站的请求" 403 -H 'Sec-Fetch-Site: cross-site' "$STAFF/health"
+if curl -s -m 5 -o /dev/null -D - -H 'Origin: https://evil.example' "$STAFF/health" |
+    grep -qi '^access-control-allow-origin'; then
+    bad "员工实例给别的网站发了 CORS 头：跨站读得到响应"
+else
+    ok "员工实例不给别的网站发 CORS 头"
+fi
 
 echo "控制台"
 check_code "$CONSOLE/" 200
 check_health "控制台的 /api 通到员工实例" "$CONSOLE/api" '.status == "ok" and .event_log.instance == "staff"'
+# 控制台的 nginx 把浏览器的 Sec-Fetch-Site 原样转给员工实例，经 /api/ 绕过来的跨站请求一样被拒
+check_code_with "控制台的 /api：标明跨站的请求" 403 -H 'Sec-Fetch-Site: cross-site' "$CONSOLE/api/health"
 # 数据页面：/sql-api/ 由控制台的 nginx 带上 console（admin）那把 Key 转给 SQL Agent。
 # whoami 不查库、不调模型，认出是 console 且是管理员，就说明 Key 在服务端加上了。
 # 请求要带控制台自己的头（X-Console-Request: 1），和页面一样；不带的、标明跨站的、Host 不是本机的都该被拒
