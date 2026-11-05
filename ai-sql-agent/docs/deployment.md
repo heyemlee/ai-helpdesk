@@ -62,7 +62,9 @@ it is mounted read-only instead. Rotating a key means editing the file and runni
 | `AI_SQL_RUNS_RETENTION_DAYS` | `7` | Runs and their events are deleted this many days after they finish |
 | `AI_SQL_CANCEL_ON_DISCONNECT` | `true` | Cancel a run at the next checkpoint when the caller disconnects (A2A contract v1.13 §5.4). `false` lets the query run to the end, as under v1.12; the console's stop button cancels through `/runs` either way |
 | `AI_SQL_RUN_DEADLINE_SECONDS` | `0` | Hard cap on one run, enforced at the next checkpoint; 0 = none. Keep it above the caller's own limit |
-| `AI_SQL_LOG_FORMAT` | `json` | For log collectors |
+| `AI_SQL_LOG_FORMAT` | `json` | For log collectors. JSON lines also carry `otel_trace_id` while a request is traced |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | the OTel Collector, e.g. `http://otel-collector:4318` | Export spans over OTLP/HTTP. Unset = nothing is exported, but an incoming `traceparent` is still read |
+| `OTEL_SERVICE_NAME` | `ai-sql-agent` | Service name on the spans |
 
 ### Execution limits
 
@@ -482,6 +484,13 @@ curl -s http://localhost:8000/runs/<run_id>/events -H 'X-API-Key: …' | jq '.ev
 Each event is one of `run.started`, `stage.started` / `stage.finished`, `model.call`,
 `tool.sql`, `run.cancel_requested` and `run.finished`. Prompts, model output and
 result rows are never stored in events; SQL text is kept up to 8 KiB.
+
+With `OTEL_EXPORTER_OTLP_ENDPOINT` set, the same request is also a trace. A caller's
+W3C `traceparent` header becomes the parent of the request's server span, so a
+delegation from ai-helpdesk shows up in Tempo as one trace from the chat turn down to
+each stage (`stage.*`), model call (`model.call`) and SQL execution (`sql.execute`).
+Spans carry the 16-character `trace_id` as `ai_sql.trace_id` and the run as
+`ai_sql.run_id`, but never the question, the SQL or error text.
 
 ## 7. Everyday operational queries
 

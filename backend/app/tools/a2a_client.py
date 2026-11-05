@@ -145,7 +145,7 @@ class A2AClient:
         artifacts = task.get("artifacts") or []
         if not artifacts:
             raise A2AError("message/send 完成但没有 artifact")
-        return self._normalize(artifacts[0], task.get("metadata") or {})
+        return self._normalize(artifacts[0], task.get("metadata") or {}, task_id=task.get("id"))
 
     # ── message/stream ────────────────────────────────────────────────────
 
@@ -156,6 +156,7 @@ class A2AClient:
         deadline = time.monotonic() + self._hard_s
         artifact: dict[str, Any] | None = None
         terminal: dict[str, Any] | None = None
+        task_id = ""
         last_repair_step = 0
 
         # 连接建立也算进硬上限；读每一行的等待是静默判据
@@ -188,6 +189,10 @@ class A2AClient:
                         raise A2AError(f"流中收到错误: {frame['error']}")
                     ev = frame.get("result") or {}
                     kind = ev.get("kind")
+                    # 首帧（kind=task）的 id、之后各帧的 taskId：SQL Agent 那边这次查询的 run
+                    frame_task = ev.get("id") if kind == "task" else ev.get("taskId")
+                    if frame_task:
+                        task_id = str(frame_task)
 
                     if kind == "status-update" and ev.get("final"):
                         terminal = ev
@@ -223,7 +228,7 @@ class A2AClient:
             raise A2AError(f"终态为 {state}: {err}")
         if artifact is None:
             raise A2AError("终态 completed 但没有收到 artifact")
-        return self._normalize(artifact, terminal.get("metadata") or {})
+        return self._normalize(artifact, terminal.get("metadata") or {}, task_id=task_id)
 
     # ── 内部 ──────────────────────────────────────────────────────────────
 
@@ -268,9 +273,12 @@ class A2AClient:
         raise A2AError(f"JSON-RPC 错误 {code}（HTTP {status}）: {msg}")
 
     @staticmethod
-    def _normalize(artifact: dict[str, Any], metadata: dict[str, Any]) -> dict[str, Any]:
+    def _normalize(artifact: dict[str, Any], metadata: dict[str, Any],
+                   task_id: Any = "") -> dict[str, Any]:
         """
         归一成与直连 /query 客户端一致的字段，上层不用区分走了哪条路。
+
+        A2A 的 taskId 就是 SQL Agent 那边这次查询的 run_id（`/query` 在 `X-Run-Id` 响应头里给）。
 
         **三个信任布尔在这里不做 bool() 转换。** 原先这里写的是
         `bool(data.get("has_risk", False))`——那是契约 §9.1 记的那个缺口本身：
@@ -286,6 +294,7 @@ class A2AClient:
         return normalize_delegation_result(
             data, answer=text,
             trace_id_fallback=str(metadata.get("trace_id") or ""),
+            run_id=str(task_id or ""),
         )
 
 

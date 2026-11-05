@@ -46,6 +46,7 @@
       "attempted": true,
       "outcome": "evidence",
       "trace_id": "t-1",
+      "run_id": "",
       "databases": [
         "wms_db"
       ],

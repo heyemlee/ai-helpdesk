@@ -23,9 +23,11 @@ from app.tools.sql_agent_client import (
 # ── 假的 httpx 客户端 ────────────────────────────────────────────────────────
 
 class _FakeResponse:
-    def __init__(self, payload, status_code=200):
+    def __init__(self, payload, status_code=200, headers=None):
+        import httpx
         self._payload = payload
         self.status_code = status_code
+        self.headers = httpx.Headers(headers or {})
 
     def json(self):
         return self._payload
@@ -43,9 +45,10 @@ class _FakeAsyncClient:
 
     last_call: dict = {}
 
-    def __init__(self, payload, status_code=200):
+    def __init__(self, payload, status_code=200, headers=None):
         self._payload = payload
         self._status = status_code
+        self._headers = headers
 
     def __call__(self, *args, **kwargs):
         _FakeAsyncClient.last_call["init"] = kwargs
@@ -59,12 +62,12 @@ class _FakeAsyncClient:
 
     async def post(self, url, headers=None, json=None):
         _FakeAsyncClient.last_call.update({"url": url, "headers": headers or {}, "json": json or {}})
-        return _FakeResponse(self._payload, self._status)
+        return _FakeResponse(self._payload, self._status, self._headers)
 
 
-def _patch_httpx(monkeypatch, payload, status_code=200):
+def _patch_httpx(monkeypatch, payload, status_code=200, headers=None):
     import app.tools.sql_agent_client as mod
-    fake = _FakeAsyncClient(payload, status_code)
+    fake = _FakeAsyncClient(payload, status_code, headers)
     monkeypatch.setattr(mod.httpx, "AsyncClient", fake)
     _FakeAsyncClient.last_call = {}
     return fake
@@ -195,6 +198,13 @@ class TestClient:
         assert out["queried_database"] is True
         assert out["selected_databases"] == ["erp_db", "mes_db"]
         assert out["trace_id"] == "t-123"
+        assert out["run_id"] == ""
+
+    async def test_run_id_comes_from_the_response_header(self, monkeypatch):
+        """/query 的 run_id 在响应头 X-Run-Id 里，不在响应体里。"""
+        _patch_httpx(monkeypatch, OK_PAYLOAD, headers={"x-run-id": "run-42"})
+        out = await SQLAgentClient(base_url="http://x:8000").query("q", session_id="s")
+        assert out["run_id"] == "run-42"
 
     @pytest.mark.parametrize("shape", ["legacy", "transitional", "renamed"])
     async def test_step_logs_and_steps_are_both_accepted(self, shape):

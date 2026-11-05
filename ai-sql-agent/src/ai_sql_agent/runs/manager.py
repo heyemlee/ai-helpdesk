@@ -23,6 +23,7 @@ from ai_sql_agent.core.metrics import (
     RUNS_TOTAL,
 )
 from ai_sql_agent.core.run_context import RunCancelled, RunContext, use_run
+from ai_sql_agent.core.telemetry import tag_current_span
 
 from .events import (
     FLUSH_ON,
@@ -131,6 +132,8 @@ class RunManager:
         也能在登记表里找到这次 run。
         """
         run_id = run_id or self.new_run_id()
+        # 请求的 SERVER span 上记一下 run_id：在 Tempo 里看到这一跳，就能直接去查这次 run 的事件
+        tag_current_span("ai_sql.run_id", run_id)
         recorder = RunRecorder(run_id, self.store, max_attr_bytes=self.max_attr_bytes,
                                subscribers=self.subscribers)
         run = RunContext(run_id=run_id, trace_id=trace_id or get_trace_id(), entry=entry,

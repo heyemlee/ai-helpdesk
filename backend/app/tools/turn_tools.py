@@ -385,6 +385,10 @@ async def delegate_order_query(
         trace_id = str(data.get("trace_id", "") or "")
         info.update(
             trace_id=trace_id,
+            # SQL Agent 那边这次查询的 run：拿它看每一步的 SQL（GET /runs/{run_id}/events）。
+            # trace 进 tool_call 事件的 data，不进 body——一轮的 body 超过合计上限后，后面事件的
+            # body 整段不记（events/recorder.py），data 一直都在
+            run_id=str(data.get("run_id", "") or ""),
             databases=[str(d) for d in data.get("selected_databases") or []],
             execution_status=verdict.execution_status,
         )

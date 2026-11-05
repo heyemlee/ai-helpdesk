@@ -8,10 +8,11 @@ test_sql_agent_delegation 已经覆盖。这里直接装配依赖，确认评测
 from app.agents.tool_loop import LoopConfig, LoopSetup
 from app.agents.turn_prep import PreparedTurn, TurnDeps, prepare_turn
 from app.core.intent_recognizer import IntentCategory, UrgencyLevel
+from app.events.shapes import tool_call_parts
 from app.memory.conversation_memory import MemoryContext, Message, MsgRole
 from app.tools.sql_agent_client import SQLAgentClient
 from app.tools.tool_manager import ToolResult
-from app.tools.turn_tools import Prefetch, delegate_order_query, loop_tools, order_outcome
+from app.tools.turn_tools import Prefetch, delegate_order_query, loop_tools, order_outcome, rule_record
 
 KNOWLEDGE = [{"title": "补件流程", "content": "缺件补发在核实后安排。", "score": 0.6,
               "doc_id": "doc_1", "chunk_id": "c1", "chunk": 0, "retrieval": "hybrid"}]
@@ -139,6 +140,28 @@ async def test_delegation_itself_has_no_gate():
     assert [name for name, _ in tools.calls] == ["order_data_query"]
     assert is_evidence is True and "9 月 15 日" in text
     assert trace["attempted"] is True and trace["outcome"] == "evidence"
+
+
+async def test_the_sql_agent_run_id_lands_in_the_event_data():
+    """
+    SQL Agent 那边这次查询的 run_id 记进 trace，也就进了 tool_call 事件的 data：一轮的 body
+    超过合计上限后，后面事件的 body 整段不记（events/recorder.py），data 一直都在。
+    """
+
+    class _ToolsWithRun(_Tools):
+        async def call(self, name, params, context=None, **_):
+            result = await super().call(name, params, context)
+            if name == "order_data_query":
+                result.data["run_id"] = "run-7"
+            return result
+
+    message, trace = "SO-2024-006 到哪了", {}
+    text, is_evidence = await delegate_order_query(_ToolsWithRun(), message, trace=trace)
+    assert trace["run_id"] == "run-7" and trace["trace_id"] == "t-1"
+
+    data, _body = tool_call_parts(rule_record("order_data_query", message,
+                                              order_outcome(text, is_evidence, trace)), idem_key="k")
+    assert data["trace"]["run_id"] == "run-7"
 
 
 async def test_the_tool_loop_is_off_unless_the_caller_switches_it_on():

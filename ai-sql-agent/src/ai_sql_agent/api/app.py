@@ -35,6 +35,7 @@ from ai_sql_agent.core import (
     usage_summary,
     use_trace_id,
 )
+from ai_sql_agent.core import telemetry
 from ai_sql_agent.memory import create_memory_service
 from ai_sql_agent.pipeline import PipelineConfig, Text2SQLPipeline, DynamicSqlAgentService
 from ai_sql_agent.core.run_context import RunCancelled
@@ -140,6 +141,13 @@ class HistoryItem(BaseModel):
     created_at: str
     query: str
     session_id: str = ""
+
+    run_id: str = ""
+    """
+    这次请求的 run（`GET /runs/{run_id}`、`/runs/{run_id}/events` 看每一步）。A2A 的 taskId 就是它，
+    `/query` 在响应头 `X-Run-Id` 里给。空串 = 记录早于 run，或这次请求没登记 run。
+    """
+
     route: str = ""
     databases: List[str] = []
     tables: List[str] = []
@@ -209,6 +217,8 @@ class SaveMemoryRequest(BaseModel):
 async def lifespan(app: FastAPI):
     configure_logging()
     settings = get_settings()
+    # 配了 OTEL_EXPORTER_OTLP_ENDPOINT 才导出 span；没配时照样读 traceparent，日志对得上调用方
+    telemetry.setup_telemetry(release=__version__)
 
     app.state.auth = AuthGuard()
     app.state.audit = create_audit_store()
@@ -636,6 +646,7 @@ def _shutdown(app: FastAPI) -> None:
         runs.shutdown()
 
     close_http_client()
+    telemetry.shutdown_telemetry()
 
     log_event(_logger, logging.INFO, "api.shutdown", stage="done")
 
@@ -698,18 +709,32 @@ async def trace_requests(request: Request, call_next):
     """
     incoming = request.headers.get(TRACE_HEADER, "")
 
-    with use_trace_id(incoming) as trace_id:
+    # OTel：请求头里的 traceparent 是父节点（调用方发请求的那一跳），见 core.telemetry
+    with use_trace_id(incoming) as trace_id, telemetry.server_span(
+        request.method, request.url.path, request.headers
+    ) as request_span:
+        request_span.set_attribute("ai_sql.trace_id", trace_id)
         started = time.perf_counter()
         status_code = 500
+        response = None
+        error: Optional[BaseException] = None
         try:
             response = await call_next(request)
             status_code = response.status_code
             response.headers[TRACE_HEADER] = trace_id
             return response
+        except Exception as exc:
+            error = exc
+            raise
         finally:
             elapsed = time.perf_counter() - started
             path = request.url.path
             metric_path = _metric_path(request, status_code)
+            if response is not None:
+                _end_span_after_body(response, request_span, request.method, metric_path)
+            else:
+                telemetry.end_server_span(request_span, method=request.method, route=metric_path,
+                                          status_code=status_code, error=error)
             REQUESTS.inc(
                 method=request.method, path=metric_path, status=str(status_code)
             )
@@ -726,6 +751,35 @@ async def trace_requests(request: Request, call_next):
                 duration_ms=round(elapsed * 1000, 2),
                 usage=usage_summary(),
             )
+
+
+def _end_span_after_body(response: Response, request_span, method: str, route: str) -> None:
+    """
+    请求的 SERVER span 等响应体发完再结束。
+
+    A2A 的 message/stream 是流式响应：中间件拿到响应时只发了响应头，查询在之后发响应体的过程中
+    才真正跑。在这里就结束 span 的话，它只有几毫秒，底下各阶段的 span 全落在它外面。
+    客户端中途断开时生成器被关掉，span 照样在 finally 里结束（断开不算服务端错误）。
+    """
+    status_code = response.status_code
+    body = getattr(response, "body_iterator", None)
+    if body is None:
+        telemetry.end_server_span(request_span, method=method, route=route, status_code=status_code)
+        return
+
+    async def body_then_end():
+        error: Optional[BaseException] = None
+        try:
+            async for chunk in body:
+                yield chunk
+        except Exception as exc:
+            error = exc
+            raise
+        finally:
+            telemetry.end_server_span(request_span, method=method, route=route,
+                                      status_code=status_code, error=error)
+
+    response.body_iterator = body_then_end()
 
 
 def _metric_path(request: Request, status_code: int) -> str:
@@ -1135,6 +1189,7 @@ def history(
             created_at=str(row.get("created_at", "")),
             query=row.get("query", ""),
             session_id=str(row.get("session_id") or ""),
+            run_id=str(row.get("run_id") or ""),
             route=row.get("route", ""),
             databases=list(row.get("databases") or []),
             tables=list(row.get("tables") or []),

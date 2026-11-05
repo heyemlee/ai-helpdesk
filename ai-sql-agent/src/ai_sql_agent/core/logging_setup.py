@@ -26,13 +26,22 @@ def get_logger(name: str) -> logging.Logger:
 
 
 class TraceIdFilter(logging.Filter):
-    """把当前请求的 trace_id 注入每条日志。"""
+    """
+    把当前请求的 trace_id 注入每条日志，另带一份 OTel 的 trace id（`otel_trace_id`）。
+
+    后者是调用方那条链路的 id（读自请求头的 `traceparent`，见 `core.telemetry`）：Grafana 的
+    Loki 数据源按它跳到 Tempo。在过滤器里取而不是在格式化时取，是因为只有这里还在发日志的
+    那个上下文里。
+    """
 
     def filter(self, record: logging.LogRecord) -> bool:
+        from .telemetry import current_otel_trace_id
         from .trace import get_trace_id
 
         if not hasattr(record, "trace_id"):
             record.trace_id = get_trace_id()
+        if not hasattr(record, "otel_trace_id"):
+            record.otel_trace_id = current_otel_trace_id()
         return True
 
 
@@ -83,6 +92,9 @@ class JsonFormatter(logging.Formatter):
             "trace_id": getattr(record, "trace_id", "") or "",
             "event": record.getMessage(),
         }
+        otel_trace_id = getattr(record, "otel_trace_id", "") or ""
+        if otel_trace_id:
+            payload["otel_trace_id"] = otel_trace_id
         payload.update(getattr(record, _FIELDS_ATTR, {}) or {})
         if record.exc_info:
             payload["exception"] = self.formatException(record.exc_info)

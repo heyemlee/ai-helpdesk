@@ -32,6 +32,11 @@ dependencies = [
     #      **运行时硬依赖**：装不上时 auth 会拒绝一切 SQL（不解析即拒绝），
     #      服务能起来但查不了任何东西——这是有意的失败方向 ----
     "sqlglot==27.29.0",
+    # ---- 链路追踪（ai_sql_agent.core.telemetry）：读调用方的 traceparent，span 发给
+    #      OTel Collector。版本和 ai-helpdesk 后端钉的一致 ----
+    "opentelemetry-api==1.29.0",
+    "opentelemetry-sdk==1.29.0",
+    "opentelemetry-exporter-otlp-proto-http==1.29.0",
 ]
 
 [project.optional-dependencies]
