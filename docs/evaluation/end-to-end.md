@@ -49,6 +49,10 @@ Mean judge scores over the 15 completed turns: relevance 0.883, accuracy 0.970, 
 - **The answer guard fired once,** on the case written to trigger it (`dialog_7`, delivery this Friday): the date promise was removed.
 - **Routing is not scored.** The dialog cases carry no expected agent. Read against the domain grouping in the source, 12 of the 14 turns that went to an agent reached the expected one; the countertop-material question (`dialog_4`) and the cost question that closes the colour-change case (`dialog_11_turn_2`) went to the generalist.
 
+## The model in the report
+
+Reports now record the chat model that answered and judged (`model`, and `baseline.model` in the `/eval/run` response). When the baseline was produced by a different model, or before the field existed, every regression line and the first recommendation name both: a score change across models is not a code regression. The baseline in `backend/data/eval/baseline.json` was promoted on 2026-09-01, before the field existed, so until a new one is promoted every comparison carries that note.
+
 ## Limits
 
 - One run. The judge is the model under test, and LLM-judge scores are not calibrated against people.

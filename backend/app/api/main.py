@@ -2841,6 +2841,8 @@ async def run_eval(body: EvalRunInput | None = None):
 def _eval_report_payload(report) -> dict[str, Any]:
     return {
         "release":         report.release,
+        # 作答和判分用的对话模型；基线那份是空串的，是加这个字段之前存的
+        "model":           report.model,
         "timestamp":       report.timestamp,
         "pass_rate":       report.pass_rate,
         "total":           report.total,
@@ -2851,6 +2853,7 @@ def _eval_report_payload(report) -> dict[str, Any]:
         "baseline": {
             "release": report.baseline_release,
             "timestamp": report.baseline_timestamp,
+            "model": report.baseline_model,
         },
         "promoted":        report.promoted,
         # 模型服务不可用时评测中途中止：results 是中止前完成的那些，planned 是本来要跑的项数
