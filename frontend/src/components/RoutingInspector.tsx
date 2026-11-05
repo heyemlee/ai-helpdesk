@@ -1,4 +1,5 @@
 import { Icon } from './Icon'
+import { RunLink } from './RunLink'
 import { Chip, Empty, KV, MeterRow, SectionLabel } from './ui'
 import { agentLabel, confidenceTone, ms, num } from '@/lib/format'
 import { llmReasonKey } from '@/lib/llm'
@@ -158,6 +159,25 @@ export function RoutingInspector({ message, thresholds, base }: {
           </p>
         )}
       </section>
+
+      {/* 这一轮委派了订单数据：结果、查了哪些库，以及跳到 SQL Agent 那边看每一步 */}
+      {meta?.business_data?.attempted && (
+        <section>
+          <SectionLabel>{t('in.data')}</SectionLabel>
+          <dl>
+            {meta.business_data.outcome && (
+              <KV label={t('in.data.outcome')}><span className="mono">{meta.business_data.outcome}</span></KV>
+            )}
+            {(meta.business_data.databases ?? []).length > 0 && (
+              <KV label={t('in.data.dbs')}><span className="mono">{(meta.business_data.databases ?? []).join(', ')}</span></KV>
+            )}
+            {meta.business_data.trace_id && (
+              <KV label="Trace ID"><span className="mono">{meta.business_data.trace_id}</span></KV>
+            )}
+          </dl>
+          <RunLink runId={meta.business_data.run_id} />
+        </section>
+      )}
 
       {result?.policy_violations && result.policy_violations.length > 0 && (
         <section>

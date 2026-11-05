@@ -8,6 +8,8 @@ import { EvalPanel } from './EvalPanel'
 import { Icon } from './Icon'
 import { ModelSettings } from './ModelSettings'
 import { MonitorPanel } from './MonitorPanel'
+import { SqlAdminPanel } from './SqlAdminPanel'
+import { SqlModelSettings } from './SqlModelSettings'
 import { agentDisplayName, agentLabel, dateTime } from '@/lib/format'
 import { explainError } from '@/lib/errors'
 import { llmReasonKey, llmRecovery } from '@/lib/llm'
@@ -19,6 +21,7 @@ import type { Theme } from '@/hooks/useTheme'
 const TAB_LABEL: Record<AdminTab, Key> = {
   overview: 'ad.tab.overview',
   models: 'ad.tab.models',
+  sql: 'sq.admin.tab',
   sops: 'ad.tab.sops',
   monitor: 'ad.tab.monitor',
   eval: 'ad.tab.eval',
@@ -63,8 +66,10 @@ export function AdminPanel({ base, tab, settings, streaming, onSave, inspector, 
       </div>
 
       {tab === 'monitor' && <MonitorPanel base={base} />}
-      {tab === 'models' && <ModelSettings base={base} />}
+      {/* 两栏：客服助手、SQL Agent，各用各的模型 */}
+      {tab === 'models' && <ModelSettings base={base} sql={<SqlModelSettings />} />}
       {tab === 'eval' && <EvalPanel base={base} />}
+      {tab === 'sql' && <SqlAdminPanel />}
       {tab === 'overview' && (
         <div className="page scroll"><div className="page-inner">
           <Overview base={base} />

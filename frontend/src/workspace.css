@@ -494,3 +494,17 @@ p.transcript-text { white-space: pre-wrap; }
   table.data.ticket-table td.n { font-size: 12px; color: var(--color-text-tertiary); text-align: left; }
   .ticket-summary { min-width: 0; }
 }
+
+/* 从一轮对话跳到 SQL Agent 那边的那次查询（RunLink） */
+.run-link { color: inherit; font-weight: 500; text-decoration: underline; text-underline-offset: 2px; white-space: nowrap; }
+
+/* 模型连接页的两栏：客服助手、SQL Agent（各用各的模型）。宽屏左右，窄屏上下 */
+.model-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; align-items: start; }
+.model-column { display: grid; gap: 14px; min-width: 0; }
+.model-column-title { font-size: 15px; font-weight: 600; }
+@media (max-width: 1100px) { .model-columns { grid-template-columns: 1fr; } }
+
+/* 管理与诊断 → SQL Agent */
+.sq-admin-op { display: grid; gap: 10px; margin-top: 14px; }
+.sq-admin-wrong { display: grid; gap: 8px; margin: 6px 0 0; padding: 0; list-style: none; font-size: 13px; }
+.sq-admin-wrong li { padding: 8px 0; border-top: 1px solid var(--color-border-subtle); overflow-wrap: anywhere; }
