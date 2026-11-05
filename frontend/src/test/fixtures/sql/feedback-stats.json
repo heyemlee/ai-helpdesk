@@ -1,0 +1,14 @@
+{
+  "stats": {
+    "total": 0,
+    "correct": 0,
+    "wrong": 0,
+    "unsure": 0,
+    "unresolved_wrong": 0,
+    "wrong_with_risk": 0,
+    "wrong_without_risk": 0,
+    "accuracy": 0.0,
+    "silent_error_rate": 0.0
+  },
+  "recent_wrong": []
+}

@@ -1,0 +1,21 @@
+#!/bin/sh
+# 控制台替浏览器带给 SQL Agent 的管理员 Key：从 compose secret 读出来，交给模板（API_SQL_KEY）。
+#
+# 官方 nginx 镜像的入口会 source /docker-entrypoint.d/*.envsh，这里 export 的变量对后面的
+# 20-envsubst-on-templates.sh 可见（15-local-resolvers.envsh 也是这么把 resolver 交过去的）。
+# 文件名里的 16 让它排在 15 之后、20 之前。
+#
+# 不打印 Key。已经用环境变量给了 API_SQL_KEY（本地单独起前端时）就不读文件。
+# 文件不在也照常起：API_SQL_KEY 是空串，nginx 不发这个头，SQL Agent 回 401，控制台其余部分不受影响。
+# **一定要 export 出一个值（哪怕是空的）**：变量没定义的话 envsubst 不替换，
+# 配置里会留下字面量 ${API_SQL_KEY}，被当成 Key 发出去。
+if [ -z "${API_SQL_KEY:-}" ]; then
+    key_file="${API_SQL_KEY_FILE:-/run/secrets/console/sql_agent_key}"
+    if [ -r "$key_file" ]; then
+        API_SQL_KEY="$(tr -d ' \r\n\t' < "$key_file")"
+    else
+        echo "$0: $key_file 不存在或读不到，/sql-api/ 不带 Key（SQL Agent 会回 401）" >&2
+        API_SQL_KEY=""
+    fi
+fi
+export API_SQL_KEY

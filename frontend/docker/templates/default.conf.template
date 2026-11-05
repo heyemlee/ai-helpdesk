@@ -1,3 +1,13 @@
+# 只认本机的名字（DNS 重绑定）：攻击者让自己的域名解析到 127.0.0.1，浏览器发来的 Host 就是那个域名，
+# 页面又算"同源"，能读到 /api/ 和 /sql-api/ 的响应。控制台只给本机用（端口只绑 127.0.0.1，k8s 里走
+# port-forward），所以名字只有这几个；容器里的健康检查用的也是 localhost。
+map $host $console_host_ok {
+    default    0;
+    127.0.0.1  1;
+    localhost  1;
+    "[::1]"    1;
+}
+
 server {
     listen 80;
     # 官方 entrypoint 的 10-listen-on-ipv6-by-default.sh 在渲染模板之前就跑完了，
@@ -18,6 +28,10 @@ server {
     # 把地址放进变量并配 resolver，就变成每次请求按 TTL 重新解析，
     # 后端不可用时返回 502，而不是让整个前端起不来。
     resolver ${NGINX_LOCAL_RESOLVERS} valid=10s ipv6=off;
+
+    if ($console_host_ok = 0) {
+        return 421;
+    }
 
     # SPA 路由：任何未命中静态文件的路径都回落到 index.html
     location / {
@@ -51,5 +65,50 @@ server {
         proxy_connect_timeout 60s;
         proxy_send_timeout 120s;
         proxy_read_timeout 120s;
+    }
+
+    # ── SQL Agent（数据页面）──────────────────────────────────────────────────
+    # 浏览器只认 /sql-api/：去掉前缀转给 SQL Agent（compose 里是 sql-agent:8000，只在 sql-net 上），
+    # **在这里替浏览器加上控制台那把管理员 Key**。Key 只在这个容器里：从只读挂进来的
+    # /run/secrets/console/sql_agent_key 读出来（docker/entrypoint/16-sql-api-key.envsh），
+    # 浏览器拿不到，JS 包里也没有；浏览器自己带的 X-API-Key 被下面这行覆盖掉。
+    #
+    # 代价是"连得到控制台就是管理员"：控制台只绑本机，在容器之间只挂 sql-net（合仓设计 §3.3，
+    # backend/tests/test_deployment_compose.py 断言）。没配 Key 时这一行是空值，nginx 不发这个头，
+    # SQL Agent 回 401，页面说"控制台的 Key 要管理员核对"。
+    #
+    # 也正因为 Key 是服务端加的，别的网站能借员工的浏览器发请求过来（CSRF）：不用 CORS 预检的"简单请求"
+    # （text/plain 的 POST、没有请求体的 POST）照样会带上 Key 跑到 SQL Agent 上，以管理员身份提问、
+    # 重载语义层、取消别人的查询。所以只给不可能是跨站来的请求加 Key：
+    #   - 浏览器标明是跨站或同站别的端口来的（Sec-Fetch-Site）：直接 403；
+    #   - 必须带 X-Console-Request: 1（api/sql/client.ts 每个请求都带）。自定义请求头逼着跨站请求先做
+    #     CORS 预检，这里不回预检，浏览器就不会发出真正的请求；表单提交带不了自定义头。
+    # 不带 Sec-Fetch-Site 的（curl、verify.sh）只看第二条。
+    location /sql-api/ {
+        if ($http_sec_fetch_site ~* "^(cross-site|same-site)$") {
+            return 403;
+        }
+        if ($http_x_console_request != "1") {
+            return 403;
+        }
+        set $sql_upstream "${API_SQL_UPSTREAM}";
+        rewrite ^/sql-api/(.*)$ /$1 break;
+        proxy_pass http://$sql_upstream;
+
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-API-Key "${API_SQL_KEY}";
+
+        # 问数走 A2A 的 message/stream（SSE）：不缓冲，进度一来就往浏览器送。
+        # 读超时要盖过流的硬上限（契约里是 90 秒）和一次 /query 的最长耗时
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_connect_timeout 10s;
+        proxy_send_timeout 180s;
+        proxy_read_timeout 180s;
     }
 }

@@ -1,0 +1,77 @@
+{
+  "user_id": "console",
+  "items": [
+    {
+      "trace_id": "71bda3ac95a94080",
+      "created_at": "2026-11-05T21:31:21.803863+00:00",
+      "query": "List the sales orders signed this year",
+      "session_id": "s-fixture",
+      "run_id": "a0c9ee5033f04215986629f1febc5516",
+      "route": "database_query",
+      "databases": [
+        "erp_db"
+      ],
+      "tables": [
+        "payment",
+        "purchase_order",
+        "sales_order",
+        "supplier"
+      ],
+      "sqls": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT supplier_name\nFROM supplier\nWHERE on_time_rate < 0.9;"
+        }
+      ],
+      "success": true,
+      "degraded": false,
+      "has_risk": false,
+      "execution_status": "success",
+      "failed_steps": 0,
+      "repaired_steps": 0,
+      "status_code": 200,
+      "duration_ms": 11.84,
+      "total_tokens": 0,
+      "error": null
+    },
+    {
+      "trace_id": "eb9bae566ffc4b6b",
+      "created_at": "2026-11-05T21:31:21.777357+00:00",
+      "query": "查询准时率低于0.9的供应商名称",
+      "session_id": "s-fixture",
+      "run_id": "234e32cff5c5483b96e1a941cc2464a7",
+      "route": "database_query",
+      "databases": [
+        "erp_db",
+        "wms_db",
+        "pm_db"
+      ],
+      "tables": [
+        "acceptance",
+        "batch",
+        "change_order",
+        "material",
+        "project",
+        "purchase_order",
+        "sales_order",
+        "supplier"
+      ],
+      "sqls": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT supplier_name\nFROM supplier\nWHERE on_time_rate < 0.9;"
+        }
+      ],
+      "success": true,
+      "degraded": false,
+      "has_risk": false,
+      "execution_status": "success",
+      "failed_steps": 0,
+      "repaired_steps": 0,
+      "status_code": 200,
+      "duration_ms": 17.49,
+      "total_tokens": 0,
+      "error": null
+    }
+  ]
+}

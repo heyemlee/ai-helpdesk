@@ -1,0 +1,151 @@
+{
+  "name": "sales_order",
+  "status": "available",
+  "documented": true,
+  "aliases": [
+    "销售订单表",
+    "订单表",
+    "签单表"
+  ],
+  "description": "销售订单表，记录客户签订的订单，含工程号、客户名称、含税订单金额、签单日期与订单状态。",
+  "primary_key": [
+    "order_no"
+  ],
+  "previewable": true,
+  "columns": [
+    {
+      "name": "order_no",
+      "status": "available",
+      "documented": true,
+      "data_type": "TEXT",
+      "kind": "text",
+      "nullable": true,
+      "primary_key": true,
+      "previewable": true,
+      "aliases": [
+        "订单号",
+        "订单编号"
+      ],
+      "description": "销售订单号。",
+      "usage": "唯一标识销售订单。",
+      "role": "join_key",
+      "unit": "",
+      "value_range": "",
+      "references": []
+    },
+    {
+      "name": "job_no",
+      "status": "available",
+      "documented": true,
+      "data_type": "TEXT",
+      "kind": "text",
+      "nullable": false,
+      "primary_key": false,
+      "previewable": true,
+      "aliases": [
+        "工程号",
+        "工程编号",
+        "项目号",
+        "job号"
+      ],
+      "description": "工程号，ERP 内部编码。与项目管理域的 project_code 指同一工程，但两库无外键约束。",
+      "usage": "跨库关联键：按命名约定对应 pm_db.project.project_code。",
+      "role": "join_key",
+      "unit": "",
+      "value_range": "",
+      "references": [
+        {
+          "relation": "cross_database",
+          "database": "pm_db",
+          "table": "project",
+          "column": "project_code",
+          "note": "项目编号与 ERP 工程号是同一个工程"
+        }
+      ]
+    },
+    {
+      "name": "customer_name",
+      "status": "available",
+      "documented": true,
+      "data_type": "TEXT",
+      "kind": "text",
+      "nullable": false,
+      "primary_key": false,
+      "previewable": true,
+      "aliases": [
+        "客户",
+        "客户名称",
+        "甲方"
+      ],
+      "description": "客户名称，零售客户或工程项目名。",
+      "usage": "按客户筛选或展示订单。",
+      "role": "dimension",
+      "unit": "",
+      "value_range": "",
+      "references": []
+    },
+    {
+      "name": "order_amt",
+      "status": "available",
+      "documented": true,
+      "data_type": "REAL",
+      "kind": "number",
+      "nullable": false,
+      "primary_key": false,
+      "previewable": true,
+      "aliases": [
+        "订单金额",
+        "签单金额",
+        "成交金额",
+        "销售额"
+      ],
+      "description": "订单金额，**含税**。与项目管理域的 contract_amt（不含税合同额）口径不同，不可直接比较。",
+      "usage": "衡量订单规模；跨库与合同额比较时需注意含税/不含税差异。",
+      "role": "metric_filter",
+      "unit": "CNY",
+      "value_range": "> 0",
+      "references": []
+    },
+    {
+      "name": "sign_date",
+      "status": "available",
+      "documented": true,
+      "data_type": "TEXT",
+      "kind": "date",
+      "nullable": false,
+      "primary_key": false,
+      "previewable": true,
+      "aliases": [
+        "签单日期",
+        "签约日期",
+        "下单日期"
+      ],
+      "description": "签单日期。",
+      "usage": "按时间区间筛选订单。",
+      "role": "time",
+      "unit": "",
+      "value_range": "",
+      "references": []
+    },
+    {
+      "name": "order_status",
+      "status": "available",
+      "documented": true,
+      "data_type": "TEXT",
+      "kind": "text",
+      "nullable": false,
+      "primary_key": false,
+      "previewable": true,
+      "aliases": [
+        "订单状态",
+        "状态"
+      ],
+      "description": "订单状态：signed 已签单 / in_production 生产中 / delivered 已交付。",
+      "usage": "筛选各状态订单。",
+      "role": "filter",
+      "unit": "",
+      "value_range": "signed / in_production / delivered",
+      "references": []
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "detail": {
+    "code": "unknown_column",
+    "message": "筛选列不在这张表的可见字段里。"
+  }
+}

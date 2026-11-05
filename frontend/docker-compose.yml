@@ -11,6 +11,8 @@ services:
     environment:
       # 宿主机上的 helpdesk 后端在 8080；8000 归同机的 ai-sql-agent。
       - API_UPSTREAM=host.docker.internal:8080
+      # 数据页面转给宿主机上直跑的 SQL Agent（本机开发默认关着鉴权，不用 Key）
+      - API_SQL_UPSTREAM=host.docker.internal:8000
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped

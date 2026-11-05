@@ -1,0 +1,225 @@
+{
+  "database": "erp_db",
+  "table": "sales_order",
+  "filtered": false,
+  "total_rows": 8,
+  "columns": [
+    {
+      "name": "order_no",
+      "filled": 8
+    },
+    {
+      "name": "job_no",
+      "filled": 8
+    },
+    {
+      "name": "customer_name",
+      "filled": 8
+    },
+    {
+      "name": "order_amt",
+      "filled": 8,
+      "min": 97180.0,
+      "max": 2373000.0
+    },
+    {
+      "name": "sign_date",
+      "filled": 8,
+      "min": "2024-01-20",
+      "max": "2024-04-20"
+    },
+    {
+      "name": "order_status",
+      "filled": 8
+    }
+  ],
+  "columns_limited": false,
+  "columns_hidden": false,
+  "breakdowns": true,
+  "facets": [
+    {
+      "column": "order_status",
+      "values": [
+        {
+          "value": "signed",
+          "count": 1
+        },
+        {
+          "value": "in_production",
+          "count": 4
+        },
+        {
+          "value": "delivered",
+          "count": 3
+        }
+      ],
+      "distinct": 3,
+      "complete": true,
+      "ordered_by": "declared",
+      "own_filters_excluded": false
+    },
+    {
+      "column": "customer_name",
+      "values": [
+        {
+          "value": "万科精装1号楼",
+          "count": 1
+        },
+        {
+          "value": "周先生公寓",
+          "count": 1
+        },
+        {
+          "value": "城建安置房",
+          "count": 1
+        },
+        {
+          "value": "孙女士住宅",
+          "count": 1
+        },
+        {
+          "value": "李先生别墅",
+          "count": 1
+        },
+        {
+          "value": "消防改造项目",
+          "count": 1
+        },
+        {
+          "value": "绿城样板房",
+          "count": 1
+        },
+        {
+          "value": "陈女士住宅",
+          "count": 1
+        }
+      ],
+      "distinct": 8,
+      "complete": true,
+      "ordered_by": "count",
+      "own_filters_excluded": false
+    },
+    {
+      "column": "order_amt",
+      "values": [
+        {
+          "value": 97180.0,
+          "count": 1
+        },
+        {
+          "value": 110740.0,
+          "count": 1
+        },
+        {
+          "value": 151420.0,
+          "count": 1
+        },
+        {
+          "value": 171760.0,
+          "count": 1
+        },
+        {
+          "value": 429400.0,
+          "count": 1
+        },
+        {
+          "value": 680000.0,
+          "count": 1
+        },
+        {
+          "value": 1412500.0,
+          "count": 1
+        },
+        {
+          "value": 2373000.0,
+          "count": 1
+        }
+      ],
+      "distinct": 8,
+      "complete": true,
+      "ordered_by": "count",
+      "own_filters_excluded": false
+    },
+    {
+      "column": "job_no",
+      "values": [
+        {
+          "value": "J24001",
+          "count": 1
+        },
+        {
+          "value": "J24002",
+          "count": 1
+        },
+        {
+          "value": "J24003",
+          "count": 1
+        },
+        {
+          "value": "J24004",
+          "count": 1
+        },
+        {
+          "value": "J24005",
+          "count": 1
+        },
+        {
+          "value": "J24006",
+          "count": 1
+        },
+        {
+          "value": "J24007",
+          "count": 1
+        },
+        {
+          "value": "J24008",
+          "count": 1
+        }
+      ],
+      "distinct": 8,
+      "complete": true,
+      "ordered_by": "count",
+      "own_filters_excluded": false
+    }
+  ],
+  "timelines": [
+    {
+      "column": "sign_date",
+      "grain": "month",
+      "buckets": [
+        {
+          "period": "2024-01",
+          "count": 1
+        },
+        {
+          "period": "2024-02",
+          "count": 1
+        },
+        {
+          "period": "2024-03",
+          "count": 3
+        },
+        {
+          "period": "2024-04",
+          "count": 3
+        }
+      ],
+      "unparsed": 0,
+      "truncated": false,
+      "own_filters_excluded": false
+    }
+  ],
+  "skipped": [],
+  "as_of": "2026-11-05T21:31:21.765Z",
+  "as_of_source": "query_time",
+  "dialect": "sqlite",
+  "sql": [
+    "SELECT COUNT(*) AS \"total_rows\", COUNT(NULLIF(\"sales_order\".\"order_no\", '')) AS \"f_0\", COUNT(NULLIF(\"sales_order\".\"job_no\", '')) AS \"f_1\", COUNT(NULLIF(\"sales_order\".\"customer_name\", '')) AS \"f_2\", COUNT(\"sales_order\".\"order_amt\") AS \"f_3\", MIN(\"sales_order\".\"order_amt\") AS \"lo_3\", MAX(\"sales_order\".\"order_amt\") AS \"hi_3\", COUNT(NULLIF(\"sales_order\".\"sign_date\", '')) AS \"f_4\", MIN(NULLIF(\"sales_order\".\"sign_date\", '')) AS \"lo_4\", MAX(NULLIF(\"sales_order\".\"sign_date\", '')) AS \"hi_4\", COUNT(NULLIF(\"sales_order\".\"order_status\", '')) AS \"f_5\" FROM \"sales_order\"",
+    "SELECT CASE WHEN TYPEOF(\"sales_order\".\"order_status\") IN ('text', 'blob') THEN SUBSTR(\"sales_order\".\"order_status\", 1, 121) ELSE \"sales_order\".\"order_status\" END AS \"v\", COUNT(*) AS \"n\", COUNT(*) OVER () AS \"k\" FROM \"sales_order\" WHERE (\"sales_order\".\"order_status\" IS NOT NULL AND CAST(\"sales_order\".\"order_status\" AS TEXT) <> '') GROUP BY \"sales_order\".\"order_status\" ORDER BY COUNT(*) DESC, \"sales_order\".\"order_status\" ASC LIMIT ?",
+    "SELECT CASE WHEN TYPEOF(\"sales_order\".\"customer_name\") IN ('text', 'blob') THEN SUBSTR(\"sales_order\".\"customer_name\", 1, 121) ELSE \"sales_order\".\"customer_name\" END AS \"v\", COUNT(*) AS \"n\", COUNT(*) OVER () AS \"k\" FROM \"sales_order\" WHERE (\"sales_order\".\"customer_name\" IS NOT NULL AND CAST(\"sales_order\".\"customer_name\" AS TEXT) <> '') GROUP BY \"sales_order\".\"customer_name\" ORDER BY COUNT(*) DESC, \"sales_order\".\"customer_name\" ASC LIMIT ?",
+    "SELECT \"sales_order\".\"order_amt\" AS \"v\", COUNT(*) AS \"n\", COUNT(*) OVER () AS \"k\" FROM \"sales_order\" WHERE \"sales_order\".\"order_amt\" IS NOT NULL GROUP BY \"sales_order\".\"order_amt\" ORDER BY COUNT(*) DESC, \"sales_order\".\"order_amt\" ASC LIMIT ?",
+    "SELECT CASE WHEN TYPEOF(\"sales_order\".\"job_no\") IN ('text', 'blob') THEN SUBSTR(\"sales_order\".\"job_no\", 1, 121) ELSE \"sales_order\".\"job_no\" END AS \"v\", COUNT(*) AS \"n\", COUNT(*) OVER () AS \"k\" FROM \"sales_order\" WHERE (\"sales_order\".\"job_no\" IS NOT NULL AND CAST(\"sales_order\".\"job_no\" AS TEXT) <> '') GROUP BY \"sales_order\".\"job_no\" ORDER BY COUNT(*) DESC, \"sales_order\".\"job_no\" ASC LIMIT ?",
+    "SELECT SUBSTR(CAST(\"sales_order\".\"sign_date\" AS TEXT), 1, 7) AS \"v\", COUNT(*) AS \"n\" FROM \"sales_order\" WHERE (\"sales_order\".\"sign_date\" IS NOT NULL AND CAST(\"sales_order\".\"sign_date\" AS TEXT) <> '') GROUP BY SUBSTR(CAST(\"sales_order\".\"sign_date\" AS TEXT), 1, 7) ORDER BY SUBSTR(CAST(\"sales_order\".\"sign_date\" AS TEXT), 1, 7) ASC LIMIT ?"
+  ],
+  "trace_id": "f568f40155e940ac"
+}

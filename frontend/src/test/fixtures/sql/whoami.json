@@ -1,0 +1,42 @@
+{
+  "identity": {
+    "user_id": "console",
+    "caller": "console",
+    "is_admin": true,
+    "can_impersonate": false,
+    "anonymous": false
+  },
+  "service": {
+    "version": "1.0.0",
+    "auth_mode": "api_key",
+    "feedback_enabled": true,
+    "streaming": true,
+    "catalog_enabled": true,
+    "preview": {
+      "max_page_size": 100,
+      "max_offset": 10000,
+      "max_filters": 5,
+      "max_value_length": 200,
+      "max_cell_chars": 2000,
+      "max_search_columns": 12,
+      "operators": [
+        "eq",
+        "ne",
+        "contains",
+        "starts_with",
+        "gt",
+        "gte",
+        "lt",
+        "lte",
+        "is_empty",
+        "not_empty"
+      ]
+    },
+    "profile": {
+      "enabled": true,
+      "max_facets": 6,
+      "max_facet_values": 12,
+      "max_timelines": 2
+    }
+  }
+}

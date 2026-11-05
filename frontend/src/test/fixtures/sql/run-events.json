@@ -1,0 +1,337 @@
+{
+  "run_id": "234e32cff5c5483b96e1a941cc2464a7",
+  "events": [
+    {
+      "run_id": "234e32cff5c5483b96e1a941cc2464a7",
+      "seq": 1,
+      "ts": "2026-11-05T21:31:21.777Z",
+      "type": "run.started",
+      "stage": "",
+      "step": null,
+      "attrs": {
+        "entry": "http_query",
+        "caller": "console",
+        "user_id": "console",
+        "session_id": "s-fixture",
+        "query_chars": 16
+      }
+    },
+    {
+      "run_id": "234e32cff5c5483b96e1a941cc2464a7",
+      "seq": 2,
+      "ts": "2026-11-05T21:31:21.777Z",
+      "type": "stage.started",
+      "stage": "memory_context",
+      "step": null,
+      "attrs": {
+        "user_id": "console",
+        "session_id": "s-fixture",
+        "enable_long_term": false
+      }
+    },
+    {
+      "run_id": "234e32cff5c5483b96e1a941cc2464a7",
+      "seq": 3,
+      "ts": "2026-11-05T21:31:21.780Z",
+      "type": "stage.finished",
+      "stage": "memory_context",
+      "step": null,
+      "attrs": {
+        "status": "ok",
+        "duration_ms": 3.48,
+        "fields": {
+          "user_id": "console",
+          "session_id": "s-fixture",
+          "enable_long_term": false,
+          "history_messages": 1,
+          "summary_pending": false,
+          "long_term_hits": 0
+        }
+      }
+    },
+    {
+      "run_id": "234e32cff5c5483b96e1a941cc2464a7",
+      "seq": 4,
+      "ts": "2026-11-05T21:31:21.781Z",
+      "type": "stage.started",
+      "stage": "routing",
+      "step": null,
+      "attrs": {}
+    },
+    {
+      "run_id": "234e32cff5c5483b96e1a941cc2464a7",
+      "seq": 5,
+      "ts": "2026-11-05T21:31:21.781Z",
+      "type": "stage.finished",
+      "stage": "routing",
+      "step": null,
+      "attrs": {
+        "status": "ok",
+        "duration_ms": 0.15,
+        "fields": {
+          "route": "database_query",
+          "confidence": 0.9,
+          "reason": "问题包含查询、统计、筛选或指标计算意图"
+        }
+      }
+    },
+    {
+      "run_id": "234e32cff5c5483b96e1a941cc2464a7",
+      "seq": 6,
+      "ts": "2026-11-05T21:31:21.782Z",
+      "type": "stage.started",
+      "stage": "normalization",
+      "step": null,
+      "attrs": {}
+    },
+    {
+      "run_id": "234e32cff5c5483b96e1a941cc2464a7",
+      "seq": 7,
+      "ts": "2026-11-05T21:31:21.782Z",
+      "type": "stage.finished",
+      "stage": "normalization",
+      "step": null,
+      "attrs": {
+        "status": "ok",
+        "duration_ms": 0.17,
+        "fields": {
+          "changed": false,
+          "original": "查询准时率低于0.9的供应商名称",
+          "normalized": "查询准时率低于0.9的供应商名称",
+          "references": [],
+          "date_ranges": []
+        }
+      }
+    },
+    {
+      "run_id": "234e32cff5c5483b96e1a941cc2464a7",
+      "seq": 8,
+      "ts": "2026-11-05T21:31:21.784Z",
+      "type": "stage.started",
+      "stage": "retrieval",
+      "step": null,
+      "attrs": {
+        "keywords": [
+          "供应商名称",
+          "供应商",
+          "准时率"
+        ],
+        "with_memory": true
+      }
+    },
+    {
+      "run_id": "234e32cff5c5483b96e1a941cc2464a7",
+      "seq": 9,
+      "ts": "2026-11-05T21:31:21.788Z",
+      "type": "stage.finished",
+      "stage": "retrieval",
+      "step": null,
+      "attrs": {
+        "status": "ok",
+        "duration_ms": 4.12,
+        "fields": {
+          "keywords": [
+            "供应商名称",
+            "供应商",
+            "准时率"
+          ],
+          "with_memory": true,
+          "databases": [
+            "erp_db",
+            "wms_db",
+            "pm_db"
+          ],
+          "tables": {
+            "erp_db": [
+              "supplier",
+              "purchase_order",
+              "sales_order"
+            ],
+            "wms_db": [
+              "batch",
+              "material"
+            ],
+            "pm_db": [
+              "change_order",
+              "project",
+              "acceptance"
+            ]
+          },
+          "schema_context_chars": 6742
+        }
+      }
+    },
+    {
+      "run_id": "234e32cff5c5483b96e1a941cc2464a7",
+      "seq": 10,
+      "ts": "2026-11-05T21:31:21.788Z",
+      "type": "stage.started",
+      "stage": "planning",
+      "step": null,
+      "attrs": {
+        "short_path": false
+      }
+    },
+    {
+      "run_id": "234e32cff5c5483b96e1a941cc2464a7",
+      "seq": 11,
+      "ts": "2026-11-05T21:31:21.789Z",
+      "type": "stage.finished",
+      "stage": "planning",
+      "step": null,
+      "attrs": {
+        "status": "ok",
+        "duration_ms": 0.34,
+        "fields": {
+          "short_path": false,
+          "steps": 1,
+          "step_databases": [
+            "erp_db"
+          ],
+          "short_path_reason": "检索命中 3 个库，需要跨库规划",
+          "replanned": false
+        }
+      }
+    },
+    {
+      "run_id": "234e32cff5c5483b96e1a941cc2464a7",
+      "seq": 12,
+      "ts": "2026-11-05T21:31:21.790Z",
+      "type": "stage.started",
+      "stage": "sql_generation",
+      "step": 1,
+      "attrs": {
+        "database": "erp_db",
+        "dialect": "sqlite",
+        "with_backfill": false,
+        "certified_examples": false
+      }
+    },
+    {
+      "run_id": "234e32cff5c5483b96e1a941cc2464a7",
+      "seq": 13,
+      "ts": "2026-11-05T21:31:21.790Z",
+      "type": "stage.finished",
+      "stage": "sql_generation",
+      "step": 1,
+      "attrs": {
+        "status": "ok",
+        "duration_ms": 0.15,
+        "fields": {
+          "step": 1,
+          "database": "erp_db",
+          "dialect": "sqlite",
+          "with_backfill": false,
+          "certified_examples": false,
+          "sql": "SELECT supplier_name\nFROM supplier\nWHERE on_time_rate < 0.9;"
+        }
+      }
+    },
+    {
+      "run_id": "234e32cff5c5483b96e1a941cc2464a7",
+      "seq": 14,
+      "ts": "2026-11-05T21:31:21.791Z",
+      "type": "stage.started",
+      "stage": "execution",
+      "step": 1,
+      "attrs": {
+        "database": "erp_db"
+      }
+    },
+    {
+      "run_id": "234e32cff5c5483b96e1a941cc2464a7",
+      "seq": 15,
+      "ts": "2026-11-05T21:31:21.791Z",
+      "type": "tool.sql",
+      "stage": "execution",
+      "step": 1,
+      "attrs": {
+        "database": "erp_db",
+        "status": "ok",
+        "row_count": 3,
+        "truncated": false,
+        "duration_ms": 0.41,
+        "sql": "SELECT supplier_name\nFROM supplier\nWHERE on_time_rate < 0.9;",
+        "error": null
+      }
+    },
+    {
+      "run_id": "234e32cff5c5483b96e1a941cc2464a7",
+      "seq": 16,
+      "ts": "2026-11-05T21:31:21.791Z",
+      "type": "stage.finished",
+      "stage": "execution",
+      "step": 1,
+      "attrs": {
+        "status": "ok",
+        "duration_ms": 0.61,
+        "fields": {
+          "step": 1,
+          "database": "erp_db",
+          "success": true,
+          "row_count": 3,
+          "truncated": false,
+          "error": null
+        }
+      }
+    },
+    {
+      "run_id": "234e32cff5c5483b96e1a941cc2464a7",
+      "seq": 17,
+      "ts": "2026-11-05T21:31:21.792Z",
+      "type": "stage.started",
+      "stage": "validation",
+      "step": 1,
+      "attrs": {
+        "database": "erp_db"
+      }
+    },
+    {
+      "run_id": "234e32cff5c5483b96e1a941cc2464a7",
+      "seq": 18,
+      "ts": "2026-11-05T21:31:21.792Z",
+      "type": "stage.finished",
+      "stage": "validation",
+      "step": 1,
+      "attrs": {
+        "status": "ok",
+        "duration_ms": 0.44,
+        "fields": {
+          "step": 1,
+          "database": "erp_db",
+          "passed": true,
+          "findings": []
+        }
+      }
+    },
+    {
+      "run_id": "234e32cff5c5483b96e1a941cc2464a7",
+      "seq": 19,
+      "ts": "2026-11-05T21:31:21.795Z",
+      "type": "run.finished",
+      "stage": "",
+      "step": null,
+      "attrs": {
+        "status": "completed",
+        "error": null,
+        "cancel_reason": null,
+        "usage": {
+          "calls": 0,
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "total_tokens": 0,
+          "by_component": {}
+        },
+        "route": "database_query",
+        "degraded": false,
+        "degrade_reason": "",
+        "execution_status": "success",
+        "steps": 1,
+        "failed_steps": 0,
+        "repaired_steps": 0,
+        "has_risk": false
+      }
+    }
+  ],
+  "next_after": 19
+}

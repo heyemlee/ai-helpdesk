@@ -26,13 +26,13 @@ describe('侧栏导航', () => {
   // 当成清理函数在用例结束后调用——等于每个用例收尾时多调一次 health()。
   beforeEach(() => { health.mockReset() })
 
-  it('主导航是对话、知识库、工单三项，管理与诊断单独在下面', async () => {
+  it('主导航是对话、知识库、工单、数据四项，管理与诊断单独在下面', async () => {
     health.mockResolvedValue({ status: 'ok', agents: {}, tickets: { open: 2, total: 5 } })
     show('knowledge')
 
     const primary = screen.getByRole('navigation', { name: 'Workspace' })
     expect(within(primary).getAllByRole('link').map((a) => a.getAttribute('href')))
-      .toEqual(['#/chat', '#/knowledge', '#/tickets'])
+      .toEqual(['#/chat', '#/knowledge', '#/tickets', '#/data/ask'])
     expect(within(primary).getByRole('link', { name: 'Knowledge' })).toHaveAttribute('aria-current', 'page')
 
     const admin = screen.getByRole('navigation', { name: 'Administration' })

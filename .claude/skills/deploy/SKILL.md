@@ -22,6 +22,8 @@ Docker and the loopback ports aren't reachable from the sandbox, so run these co
 | frontend | `frontend` | `ai-helpdesk-frontend` | `ai-helpdesk-frontend` | 127.0.0.1:5174 |
 | sql-agent | `sql-agent` | `ai-helpdesk-sql-agent` | `ai-helpdesk-sql-agent` | none: only on `sql-net`, reached as `http://sql-agent:8000` |
 
+The console's data pages call `/sql-api/`, which the console's nginx forwards to the SQL Agent with the console's admin key added on the server side. The browser never holds that key. The key is the `caller: console` one from `deploy/secrets/sql_agent_keys.json`, kept by itself in `deploy/secrets/console/sql_agent_key` (gitignored, 0600) and mounted read-only into the frontend container. If the file is missing the console still starts, and only the data pages get 401. `verify.sh` checks that `/sql-api` reaches the SQL Agent as the console admin, and that the key appears nowhere the browser can read: the page, the JS bundle, or the response headers.
+
 The SQL Agent publishes no host port on purpose. A published port would let any container reach it through `host.docker.internal`, which undoes the network isolation. Reach it with `docker exec ai-helpdesk-sql-agent …`. Its state (audit, runs, conversation memory, the model connection saved from the console) lives in the `sql-agent-state` volume, and an image rollback leaves that volume as it is.
 
 ## 1. Check before touching anything

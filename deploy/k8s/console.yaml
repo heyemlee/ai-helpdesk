@@ -1,0 +1,84 @@
+# 控制台（frontend/ 的 nginx 镜像）：员工工作台加数据页面。和 compose 里一样只给本机用——
+# 集群里没有任何东西该连它，用 kubectl port-forward 打开：
+#
+#   kubectl -n aihd port-forward svc/console 35174:80
+#
+# 它的 nginx 把 /api/ 转给员工实例，把 /sql-api/ 转给 SQL Agent，并在服务端替浏览器带上控制台那把
+# 管理员 Key（secret sql-agent-console-key，挂在 /run/secrets/console）。所以连得到它就等于管理员：
+# 下面的 NetworkPolicy 不放行任何入站（port-forward 走 kubelet，不受它管），compose 那边靠的是
+# 只绑本机、只挂 sql-net。**NetworkPolicy 要集群的网络插件支持才生效**，见 sql-agent.yaml 开头。
+apiVersion: v1
+kind: Service
+metadata:
+  name: console
+  labels:
+    app.kubernetes.io/name: ai-helpdesk
+    app.kubernetes.io/component: console
+spec:
+  selector:
+    app.kubernetes.io/component: console
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: console
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: console
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ai-helpdesk
+        app.kubernetes.io/component: console
+    spec:
+      containers:
+        - name: console
+          image: aihd/frontend
+          # 写全名：nginx 按变量转发时用它自己的 resolver 在请求时解析，不认 /etc/resolv.conf 里的
+          # search 域，短名字（sql-agent）发给 CoreDNS 只会是 NXDOMAIN。compose 里 Docker 的 DNS 认短名字。
+          # 命名空间是 kustomization.yaml 的 aihd，集群域是 kind 默认的 cluster.local
+          env:
+            - name: API_UPSTREAM
+              value: api-staff.aihd.svc.cluster.local:8000
+            - name: API_SQL_UPSTREAM
+              value: sql-agent.aihd.svc.cluster.local:8000
+          ports:
+            - containerPort: 80
+              name: http
+          volumeMounts:
+            - name: sql-key
+              mountPath: /run/secrets/console
+              readOnly: true
+          # nginx 只认 Host 是 localhost / 127.0.0.1 的请求（防 DNS 重绑定），探针默认带的是 Pod IP
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+              httpHeaders:
+                - {name: Host, value: localhost}
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {memory: 128Mi}
+      volumes:
+        - name: sql-key
+          secret:
+            secretName: sql-agent-console-key
+---
+# 不放行任何入站：集群里的 Pod（尤其是客户实例）都连不到它。出站不限（要连 api-staff 和 sql-agent）
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: console
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: console
+  policyTypes: ["Ingress"]
+  ingress: []

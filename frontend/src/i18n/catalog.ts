@@ -11,12 +11,17 @@
  * 工单和通知的措辞只转述后端记录的状态：建了、排队中、已送达、失败。
  * "已有人接手""稍后回电"这类话没有任何后端字段支撑，目录里不收。
  */
+import { SQ_ASK_EN, SQ_ASK_ZH } from './sq-ask'
+import { SQ_COMMON_EN, SQ_COMMON_ZH } from './sq-common'
+import { SQ_EXPLORE_EN, SQ_EXPLORE_ZH } from './sq-explore'
+
 export const EN = {
   // ── 外壳与导航 ────────────────────────────────────────────────────────────
   'brand.sub': 'Cabinet & countertop support',
   'nav.chat': 'Conversations',
   'nav.knowledge': 'Knowledge',
   'nav.tickets': 'Tickets',
+  'nav.data': 'Data',
   'nav.admin': 'Admin & diagnostics',
   'nav.admin.short': 'Admin',
   'nav.section.workbench': 'Workspace',
@@ -747,6 +752,11 @@ export const EN = {
   'ms.emb.switched': 'Switched. Rebuilt {n} vector.|Switched. Rebuilt {n} vectors.',
   'ms.emb.confirm': 'Every knowledge passage and conversation memory will be re-embedded with {model}. Imports pause until it finishes; search keeps using the current model meanwhile.',
   'ms.emb.clearConfirm': 'Go back to the embedding model configured in backend/.env? Every stored vector will be rebuilt.',
+
+  // ── 数据（SQL Agent）：文案分在 sq-*.ts 里，前缀 sq. ───────────────────────
+  ...SQ_COMMON_EN,
+  ...SQ_EXPLORE_EN,
+  ...SQ_ASK_EN,
 } as const
 
 export type Key = keyof typeof EN
@@ -756,6 +766,7 @@ export const ZH: Record<Key, string> = {
   'nav.chat': '对话',
   'nav.knowledge': '知识库',
   'nav.tickets': '工单',
+  'nav.data': '数据',
   'nav.admin': '管理与诊断',
   'nav.admin.short': '管理',
   'nav.section.workbench': '工作台',
@@ -1468,6 +1479,10 @@ export const ZH: Record<Key, string> = {
   'ms.emb.switched': '切换完成，重建了 {n} 个向量。',
   'ms.emb.confirm': '会用 {model} 重新计算知识库全部内容和对话记忆的向量。完成之前暂停导入文档，检索照常用现在的模型。',
   'ms.emb.clearConfirm': '恢复为 backend/.env 里配置的向量模型？库里全部向量都会重建。',
+
+  ...SQ_COMMON_ZH,
+  ...SQ_EXPLORE_ZH,
+  ...SQ_ASK_ZH,
 }
 
 export const CATALOG = { en: EN, zh: ZH }
