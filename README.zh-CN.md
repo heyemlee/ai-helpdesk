@@ -32,7 +32,7 @@
 - **一个工具，一道关卡。** agent 只能通过只读 SQL 行动。SQLGlot AST 关卡按调用方权限检查每一张表、每一个字段，解析不了的一律拒绝；每次调用上限 1,000 行、10 秒、8 MiB。这部分有 213 个测试。
 - **自己修复，自己检查。** 执行失败的调用由基于日志的修复循环处理，最多两次；结果返回之前要经过规则检查和模型自检。答错且没有提示的答案：同样这三轮 0.9%（门禁线 ≤ 3%）。
 - **上下文自己保持最新。** 按库 → 表 → 字段三级检索，BM25 与本地或远端 Embedding 用 RRF 融合后重排；字段预算随实际在用的 Embedding 调整，库结构一变，Schema 监听器就重建索引。用远端 Embedding 时，在 40 条留出问法上字段召回率 99.2%，只送出 36.8% 的 Schema。
-- **能互联，好运维。** 其他 agent 通过 A2A 调用它，与 HTTP API 共用同一套 Key、限流和审计；MCP 服务把 SQL 作为工具提供出去；模型和 Embedding 连接不用重启就能切换。每次请求都是一次运行，带编号的事件日志记下它的阶段、模型调用和 SQL，跑到一半也能取消。
+- **能互联，好运维。** 其他 agent 通过 A2A 调用它，与 HTTP API 共用同一套 Key、限流和审计：客服 agent [ai-helpdesk](https://github.com/heyemlee/ai-helpdesk) 就按 [a2a-contract](https://github.com/heyemlee/a2a-contract) 里带版本号的契约，把数据类问题委派给它。MCP 服务把 SQL 作为工具提供出去；模型和 Embedding 连接不用重启就能切换。每次请求都是一次运行，带编号的事件日志记下它的阶段、模型调用和 SQL，跑到一半也能取消。
 
 ## 系统架构
 
@@ -102,7 +102,7 @@
 ### 接口
 
 - **控制台。** 提问、数据、历史三个页面和设置，中英双语，无构建步骤；学习模式根据阶段事件讲解每次请求；点停止时，服务端的运行也会停下。
-- **A2A。** 默认开启，地址是 `POST /a2a`：`message/send` 返回一个已完成的任务，`message/stream` 先通过 SSE 推送阶段事件。任务 ID 就是运行 ID：用 `POST /runs/{id}/cancel` 取消的任务以 `canceled` 结束，调用方断开连接也会让它停下。设置 `AI_SQL_A2A_STREAMING=false` 可以关掉流式，Agent Card 会同步说明；契约用例在 CI 里跑。
+- **A2A。** 默认开启，地址是 `POST /a2a`：`message/send` 返回一个已完成的任务，`message/stream` 先通过 SSE 推送阶段事件。任务 ID 就是运行 ID：用 `POST /runs/{id}/cancel` 取消的任务以 `canceled` 结束，调用方断开连接也会让它停下。设置 `AI_SQL_A2A_STREAMING=false` 可以关掉流式，Agent Card 会同步说明；[a2a-contract](https://github.com/heyemlee/a2a-contract) 的契约用例在 CI 里跑。
 - **MCP 与 HTTP。** MCP stdio 服务在演示库上提供 `list_databases` 和 `execute_sql` 两个工具，上限相同；其余由 HTTP 接口 `/query`、`/catalog`、`/history`、`/runs`、`/metrics` 提供（[接口文档](docs/api.zh-CN.md)）。
 
 ## 本地开发

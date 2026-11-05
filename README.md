@@ -42,9 +42,11 @@ model management, cancellable runs with an event log, evals and tracing, in one 
 - **Context that keeps itself current.** Database → table → column retrieval fuses BM25 with local or remote embeddings
   through RRF and re-ranks; the column budget follows the embedding in use, and a schema watcher rebuilds the index
   when a database changes. 99.2% recall on 40 held-out phrasings with 36.8% of the schema sent, on remote embeddings.
-- **Interoperable and operable.** Other agents call it over A2A with the same keys, limits and audit as the HTTP API,
-  an MCP server offers its SQL as tools, and model and embedding connections switch without a restart. Every request
-  is a run with a numbered event log of its stages, model calls and SQL, and can be cancelled while it runs.
+- **Interoperable and operable.** Other agents call it over A2A with the same keys, limits and audit as the HTTP API:
+  [ai-helpdesk](https://github.com/heyemlee/ai-helpdesk), a support agent, delegates its data questions to it under the
+  versioned contract in [a2a-contract](https://github.com/heyemlee/a2a-contract). An MCP server offers its SQL as
+  tools, and model and embedding connections switch without a restart. Every request is a run with a numbered event log
+  of its stages, model calls and SQL, and can be cancelled while it runs.
 
 ## Architecture
 
@@ -144,8 +146,8 @@ before/after pair. Sources, in Chinese: the [2026-09-09 record](benchmark/baseli
   explains each request from its stage events, and stopping a request stops its run on the server too.
 - **A2A.** On by default at `POST /a2a`: `message/send` returns a finished task and `message/stream` sends stage events
   over SSE first. The task id is the run id: `POST /runs/{id}/cancel` ends a task as `canceled`, and a caller that
-  disconnects stops it too. `AI_SQL_A2A_STREAMING=false` turns streaming off and the agent card says so; contract cases
-  run in CI.
+  disconnects stops it too. `AI_SQL_A2A_STREAMING=false` turns streaming off and the agent card says so;
+  [a2a-contract](https://github.com/heyemlee/a2a-contract) cases run in CI.
 - **MCP and HTTP.** An MCP stdio server offers `list_databases` and `execute_sql` over the demo databases with the
   same caps; HTTP serves `/query`, `/catalog`, `/history`, `/runs` and `/metrics` ([API](docs/api.md)).
 
