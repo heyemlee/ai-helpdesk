@@ -164,3 +164,15 @@ def test_matching_malformed_units_or_provenance_still_cannot_confirm(unit, recor
             cell['unit'] = unit
     assert not assess(raw).usable_as_source
     assert not verified_cells(raw)[0]
+
+
+def test_business_values_preserve_decimal_amounts_and_escape_list_markers():
+    from app.core.business_facts import display, render_cells
+
+    assert display(1170.25) == "1170.25"
+    assert display("1. unsafe list") == r"1\. unsafe list"
+    assert display("[untrusted](link)") == r"\[untrusted\](link)"
+    body = render_cells([{"database": "erp_db", "step_index": 0, "row_index": 0,
+                          "entity_keys": {"order_no": "SO-1"}, "as_of": "2026-11-06T12:00:00Z",
+                          "field": "contract_amount", "value": 1170.25, "unit": "USD"}])
+    assert "- contract amount: 1170.25 USD" in body

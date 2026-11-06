@@ -137,7 +137,10 @@ def label(field, language):
 def display(value):
     text = str(value).replace("\n", " ").replace("\r", " ")
     text = re.sub(r"([\\`*_{}\[\]<>!|~])", r"\\\1", text)
-    return re.sub(r"^([-+#]|\d+\.)", r"\\\1", text)
+    text = re.sub(r"^([-+#])", r"\\\1", text)
+    # Escape an actual Markdown list marker, not the leading digits of a
+    # decimal amount. A backslash before a digit is rendered literally.
+    return re.sub(r"^(\d+)\.(?=\s|$)", r"\1\\.", text)
 
 
 def render_cells(cells, language="zh"):
