@@ -1,0 +1,178 @@
+{
+  "archive_file_count": 534,
+  "candidate_revision": "c6167a83292389a043432cb81c55dea7a4b8296e",
+  "closeout": {
+    "all_new_requests_finished_known_and_bound": true,
+    "historical_913_development_attempts_unchanged": true,
+    "owned_resources_absent": true,
+    "temporary_stack_closed": true,
+    "two_phase_drain_passed": true
+  },
+  "components": {
+    "invariants": {
+      "assertions": 51,
+      "root_recomputed": true,
+      "violations": 0
+    },
+    "local_recovery": {
+      "attachments": 100,
+      "cases": 200,
+      "extractions": 100,
+      "matching_business_tables": 21,
+      "passed": true,
+      "rollback_seconds": 13.001192092895508,
+      "rto_seconds": 14.15938115119934
+    },
+    "mixed_load_started": false,
+    "not_credited_to_any_future_candidate": true,
+    "real_provider_used": false,
+    "s3_recovery": {
+      "failure": "RemoteDisconnected during public ingress probe after rollback",
+      "final_oom_exit_state_available": false,
+      "passed": false,
+      "retry_started": false,
+      "source_gap": "Release and rollback record success without waiting for the published ingress authentication check",
+      "unique_cause_proven": false
+    },
+    "source_boundary": {
+      "checks": 39,
+      "passed": 39,
+      "probe_unchanged": true
+    }
+  },
+  "corpus_manifest_sha256": "403fd101f834ee384b46c07570e1efefd3ac5275353d991f872f98b88b206b2e",
+  "development": {
+    "complete": true,
+    "correct": 46,
+    "failed_scenarios": [
+      {
+        "errors": [],
+        "id": "development-images-001",
+        "invariant_violations": [
+          "unauthorized_or_duplicate_handoff"
+        ]
+      },
+      {
+        "errors": [],
+        "id": "development-images-002",
+        "invariant_violations": [
+          "unauthorized_or_duplicate_handoff"
+        ]
+      },
+      {
+        "errors": [],
+        "id": "development-images-003",
+        "invariant_violations": [
+          "unauthorized_or_duplicate_handoff"
+        ]
+      },
+      {
+        "errors": [],
+        "id": "development-images-004",
+        "invariant_violations": [
+          "unauthorized_or_duplicate_handoff"
+        ]
+      },
+      {
+        "errors": [],
+        "id": "development-images-005",
+        "invariant_violations": [
+          "unauthorized_or_duplicate_handoff"
+        ]
+      },
+      {
+        "errors": [
+          "required_fact_missing:part_status",
+          "required_fact_missing:quantity",
+          "required_sources_missing"
+        ],
+        "id": "development-orders-004",
+        "invariant_violations": [
+          "unauthorized_or_duplicate_handoff"
+        ]
+      },
+      {
+        "errors": [
+          "required_fact_missing:allocated_qty",
+          "required_fact_missing:on_hand_qty",
+          "required_sources_missing"
+        ],
+        "id": "development-orders-011",
+        "invariant_violations": [
+          "unauthorized_or_duplicate_handoff"
+        ]
+      },
+      {
+        "errors": [],
+        "id": "development-orders-012",
+        "invariant_violations": [
+          "unauthorized_or_duplicate_handoff"
+        ]
+      }
+    ],
+    "groups": {
+      "cross_message": {
+        "accuracy": 1.0,
+        "correct": 10,
+        "total": 10
+      },
+      "images": {
+        "accuracy": 0.6666666666666666,
+        "correct": 10,
+        "total": 15
+      },
+      "orders": {
+        "accuracy": 0.7857142857142857,
+        "correct": 11,
+        "total": 14
+      },
+      "policies": {
+        "accuracy": 1.0,
+        "correct": 15,
+        "total": 15
+      }
+    },
+    "image_extraction_all_fields_correct": 75,
+    "image_verification_all_fields_correct": 75,
+    "invariant_violations": 8,
+    "quality_claim_scope": "Synthetic development scenarios only",
+    "root_recomputed_all": true,
+    "total": 54
+  },
+  "formal_assembly_tool": {
+    "actual_assembly_executed": false,
+    "baseline_release_answers_not_read_by_tool_author": true,
+    "frozen_helper_unchanged": true,
+    "positive_gate_and_pack_tests_use_spies": true,
+    "root_offline_tests_passed": 20,
+    "version": "private v1"
+  },
+  "formal_candidate_rounds_completed": 0,
+  "helper_sha256": "0086140f201fa63e8438e79bb74960dbdef1bbfa362126f05de1c90732441b7b",
+  "production_deployed": false,
+  "release_eligible": false,
+  "requests": {
+    "all_requests_have_successful_receipts": true,
+    "all_run_bindings_verified": true,
+    "input_tokens": 2776143,
+    "known_real_receipts_verified": true,
+    "ledger_end": 1433,
+    "ledger_start": 913,
+    "new": 520,
+    "output_tokens": 53607,
+    "successful_real_receipts": 520,
+    "unattributed": 0,
+    "unfinished": 0,
+    "unknown_usage": 0
+  },
+  "stage6_cumulative": {
+    "dollar_cost": null,
+    "full_token_totals": null,
+    "known_input_subtotal": 17761225,
+    "known_output_subtotal": 355649,
+    "other_chats_excluded": true,
+    "reserved_requests": 3439,
+    "unknown_usage_requests": 5
+  },
+  "status": "Full development failed; product and operations fixes in progress; formal acceptance not started"
+}
