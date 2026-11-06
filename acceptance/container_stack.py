@@ -111,6 +111,12 @@ class ContainerStack:
             from acceptance.gateway import release_ledger
             if not budget:
                 raise ValueError("Real release provider requires a separately approved budget file")
+            # Docker cannot create nested mount destinations under the read-only
+            # harness bind. Prepare empty targets, never copies of credentials.
+            (helpers.parent / ".stage6").mkdir()
+            settings_target = helpers.parent / "backend/data/runtime/model_settings.json"
+            settings_target.parent.mkdir(parents=True)
+            settings_target.touch(mode=0o600, exist_ok=False)
             approval = read(budget)
             release_ledger(approval)
             write(self.root / "provider-state/approval.json", approval)

@@ -93,6 +93,16 @@ runner 默认运行 manifest 中原 12 道开发题，补足七类未执行题�
 
 后续授权已经具备，不再等待用户给出美元预算。请求护栏用于避免失控运行，其数字不等于可靠成本估算。首轮 40 次账本保持耗尽；新候选尚未取得真实开发复测、正式三轮、共同基线、真实浏览器和负载证据，发布门禁继续拒绝放行。
 
+## 真实模式挂载的验收工具修复
+
+主对话用新镜像启动真实模式时，Docker 无法在只读的 `/opt/harness` 父挂载内创建 `.stage6` 子挂载目标，provider 未能启动；同类缺口也影响配置文件的子挂载目标。原失败日志保留在 `/private/tmp/aihd-stage6-images-cwnpzhwo/compose.log`。这是验收工具的启动缺陷，没有产生模型请求，不属于模型业务失败。
+
+[ContainerStack](../../acceptance/container_stack.py)现在只在本地 helper 副本中预建空的 `.stage6` 目录及零字节 `backend/data/runtime/model_settings.json` 文件，保持父目录及配置子挂载只读；真实密钥不复制进 helper，既有挂载来源不变。产品源码和三镜像仍为 `6090071`，不需要重建产品镜像。
+
+新增回归在修复前明确失败；修复后的验收工具全量 **34 项通过、0 跳过**，包括实际 Docker 启动回归。Docker 使用上述 backend 镜像、合成占位密钥与独立临时账本，并强制 `network_mode=none`；实际真实模式网关健康检查通过，父目录与配置写入均被拒绝，账本可写，模型请求及回执均为 **0**。验证后仅清理该测试自己创建的容器与临时目录。
+
+本次 helper SHA-256 为 `e39f91c45db5bd814c5a0c88457675f84833410bb99b034e593eedaae80d32c5`。证据：[Docker 验证结果](../../.stage6/validation/6090071-real-mounts/result.json)、[完整测试日志](../../.stage6/validation/6090071-real-mounts/tests.log)、[容器日志](../../.stage6/validation/6090071-real-mounts/compose.log)。这只证明真实模式挂载与网关启动可用，没有发送真实模型请求，也不替代业务质量复测。
+
 ## 核对信息
 
 最终账本导出 SHA-256：`2dc5415ca9a45d095127362c43d2744b21249357a128b0f5947c0405e9d2ef59`。原始报告 SHA-256：`e1d599e1989996aac23142a422331e8d1c9cacbabbbb00f046e606f4b75730f8`。诊断日志的来源及保存哈希见[诊断索引](../../.stage6/calibration/2026-11-06-first/diagnostics/index.json)。
