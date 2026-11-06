@@ -56,10 +56,12 @@ CI 常规运行只做离线验证。手动发布流程下载先前保存的同�
 
 负载报告分别记录业务类型延迟、排队和执行峰值、失败原因与排空时间。Run 终止不等于业务解决，也不等于回答正确。恢复历史提取记录明确标为 fixture-only，只证明持久性；模拟 S3 不代表真实云 IAM 或跨机恢复已验证。
 
-镜像基础设施负载固定采用 0.8 秒模拟响应延迟、4 个 Worker 并发、30 秒重派间隔和原始降级阈值；完整 Run 结果及 Case 状态随记录保存。`faults` 在独立镜像项目执行权限撤销、角色/实例隔离、陈旧审批、重复完成回调、Worker 替换、Redis 丢失、取消、SQL 只读和来源/证据篡改，按实际观测生成 0/N，不引用历史测试通过数。真实模型样本独立保存为 load_real 组件，不能用模拟负载代替。
+镜像基础设施负载固定采用 0.8 秒模拟响应延迟、4 个 Worker 并发、30 秒重派间隔和原始降级阈值；完整 Run 结果及 Case 状态随记录保存。门禁核对 50 个不同员工同时提交、三种业务、按时长计算的稳态/突发次数和实际到达时间，再独立评分每条业务结果。`faults` 在独立镜像项目执行权限撤销、角色/实例隔离、陈旧审批、重复完成回调、Worker 替换、Redis 丢失、取消、SQL 只读和来源/证据篡改。fault_scenario_count 是实际场景数；trials.total 明确为观测断言数，并非独立重复注入次数。0/N 不引用历史测试通过数。真实模型样本独立保存为 load_real 组件，不能用模拟负载代替。
 
 ```sh
 backend/.venv/bin/python -m acceptance.faults --manifest /private/tmp/candidate.json --output /private/tmp/invariants.json
+backend/.venv/bin/python -m acceptance.recovery_campaign --manifest /private/tmp/candidate.json --output /private/tmp/recovery-local
+backend/.venv/bin/python -m acceptance.recovery_campaign --manifest /private/tmp/candidate.json --output /private/tmp/recovery-s3 --s3
 # 下面两项真实工作仅在相应批量预算另获批准后运行。
 backend/.venv/bin/python -m acceptance.load_sample --stack /private/tmp/aihd-stage6-REAL --budget /private/tmp/approved-budget.json --output /private/tmp/load-real.json
 backend/.venv/bin/python -m acceptance.assemble --campaign /private/tmp/campaign --budget /private/tmp/approved-budget.json --component invariants=/private/tmp/invariants.json --component load_real=/private/tmp/load-real.json
@@ -73,6 +75,6 @@ backend/.venv/bin/python -m acceptance.assemble --campaign /private/tmp/campaign
 backend/.venv/bin/python -m acceptance.bundle pack --report /private/tmp/campaign/assembled-HASH.json --manifest /private/tmp/candidate.json --output /private/tmp/stage6-acceptance.zip
 ```
 
-此命令拒绝不完整或失败验收。由获授权的操作者将 stage6-acceptance.zip 作为本仓库 release 的资产上传后，在同一冻结提交运行 `Receive externally measured acceptance`，输入该 release tag 和离线返回的 SHA-256。接收流程只下载数据，校验整个包和每个文件，重新运行门禁后上传名为 stage6-acceptance 的 Actions artifact。它不执行包内代码、不调用供应商、不重建镜像。
+此命令拒绝不完整或失败验收。由获授权的操作者将 stage6-acceptance.zip 作为本仓库 release 的资产上传后，在受信 main 上运行 `Receive externally measured acceptance`，输入完整 candidate_revision、release tag 和离线返回的 SHA-256。接收流程检查候选属于本仓库 main 历史、包含已接受的认证边界，然后校验整个包和每个文件，重新运行门禁后上传名为 stage6-acceptance 的 Actions artifact。它不执行包内代码、不调用供应商、不重建镜像。
 
-随后 `publish-verified` 选择原镜像所在 release_run_id 与上述接收流程的 acceptance_run_id；它检查当前提交、原镜像 ID 和报告完全一致，再使用已保存的镜像。上传、发布和生产部署须有对应授权；本地验收不会执行这些动作。
+随后 `publish-verified` 选择同一个 candidate_revision、原镜像所在 release_run_id 与上述接收流程的 acceptance_run_id；它再次检查受信历史和候选提交、原镜像 ID、报告完全一致，再使用已保存的镜像。main 上后续文档提交不会要求重建候选镜像。上传、发布和生产部署须有对应授权；本地验收不会执行这些动作。

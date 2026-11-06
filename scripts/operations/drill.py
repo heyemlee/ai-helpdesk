@@ -8,6 +8,7 @@ from pathlib import Path
 import secrets
 import socket
 import subprocess
+import sys
 import tempfile
 import time
 import urllib.request
@@ -17,9 +18,10 @@ from release import deploy
 from verify import verify
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
 
 
-def sandbox(manifest, folder=None):
+def sandbox(manifest, folder=None, acceptance=False):
     root = Path(folder or tempfile.mkdtemp(prefix='aihd-stage5-drill-'))
     for name in ['data/objects','data/config','data/sql','backups','reports','gate']:
         (root/name).mkdir(parents=True, exist_ok=True)
@@ -29,6 +31,19 @@ def sandbox(manifest, folder=None):
     (root/'backup-key').write_text(base64.b64encode(os.urandom(32)).decode());(root/'backup-key').chmod(0o600)
     (root/'app.env').write_text('APP_ENV=development\nLLM_PROVIDER=openai\nOPENAI_API_KEY=fixture-key\nOPENAI_BASE_URL=http://127.0.0.1:9/v1\nOPENAI_MODEL=fixture\nAI_HELPDESK_API_KEY=fixture-service\nAI_HELPDESK_AUTH_SECRET=fixture-session-signing-secret-only\nAI_HELPDESK_PROTECT_CHAT=true\nAI_HELPDESK_DEPLOYMENT_SCOPE=internal_single_tenant\nSQL_AGENT_API_KEY=fixture-sql-read\nRECOVERY_DRILL=1\nAI_HELPDESK_RUN_DRAIN_S=2\nTICKET_WEBHOOK_URL=\nALERT_WEBHOOK_URL=\n')
     (root/'sql.env').write_text('AI_SQL_APP_ENV=development\nOPENAI_API_KEY=fixture-key\nOPENAI_BASE_URL=http://127.0.0.1:9/v1\nAI_SQL_DEPLOYMENT_SCOPE=internal_single_tenant\n')
+    settings = {}
+    if acceptance:
+        from acceptance.configuration import CONFIGURATION as config
+        settings = {'api': {'OPENAI_MODEL':config['model'], 'OPENAI_API_MODE':config['api_mode'], 'LLM_MAX_RETRIES':'0',
+                    'AI_HELPDESK_STRUCTURED_MAX_TOKENS':str(config['max_output_tokens']), 'AI_HELPDESK_ANSWER_MAX_TOKENS':str(config['max_output_tokens']),
+                    'AI_HELPDESK_ANSWER_EFFORT':config['reasoning_effort'], 'AI_HELPDESK_WORKER_CONCURRENCY':str(config['worker_concurrency']),
+                    'AI_HELPDESK_AGENT_REPLICAS':'1', 'AI_HELPDESK_RUN_REDISPATCH_S':str(config['redispatch_seconds']),
+                    'AI_HELPDESK_DEGRADE_BACKLOG':','.join(map(str,config['degrade_backlog'])), 'ENABLE_CROSS_SESSION_MEMORY':'false', 'EMBEDDING_DIM':'256'},
+                    'sql-agent': {'AI_SQL_CHAT_MODEL':config['model'], 'AI_SQL_CODER_MODEL':config['model'], 'AI_SQL_OPENAI_API_MODE':config['api_mode'],
+                    'AI_SQL_MAX_OUTPUT_TOKENS':str(config['max_output_tokens']), 'AI_SQL_MAX_COMPLETION_TOKENS':str(config['max_output_tokens']),
+                    'AI_SQL_HTTP_MAX_RETRIES':'0', 'AI_SQL_REASONING_EFFORT':config['reasoning_effort'], 'AI_SQL_MODEL_SETTINGS_ENABLED':'false', 'AI_SQL_EMBEDDING_BACKEND':'local'}}
+        for service, file in [('api','app.env'),('sql-agent','sql.env')]:
+            with (root/file).open('a') as stream: stream.write('\n'.join(k+'='+v for k,v in settings[service].items())+'\n')
     (root/'data/config/sql_keys.json').write_text(json.dumps({'keys':[{'key':'fixture-sql-read','caller':'ai-helpdesk','user_id':'ai-helpdesk'},{'key':'fixture-sql-admin','caller':'console','user_id':'console','is_admin':True}]}))
     (root/'data/config/sql_admin_key').write_text('fixture-sql-admin')
     (root/'data/config/metrics_token').write_text('fixture-metrics-token')
@@ -42,7 +57,7 @@ def sandbox(manifest, folder=None):
          'env_file':str(root/'release.env'),'data_root':str(root/'data'),'gate_root':str(root/'gate'),'backup_dir':str(root/'backups'),
          'report_root':str(root/'reports'),
          'key_file':str(root/'backup-key'),'storage_services':['postgres','redis'],'release':release,
-         'config_files':[str(root/'app.env'),str(root/'sql.env'),str(root/'release.env')]}
+         'config_files':[str(root/'app.env'),str(root/'sql.env'),str(root/'release.env')], 'acceptance_settings':settings}
     atomic_json(root/'operations.json',cfg)
     return root, cfg, password, port
 
@@ -111,13 +126,23 @@ SQL_COUNTS = "import sqlite3,json; result={};\nfor name in ['audit','runs']:\n c
 def main():
     p=argparse.ArgumentParser();p.add_argument('--manifest',required=True);p.add_argument('--report',required=True);p.add_argument('--legacy-image');p.add_argument('--s3',action='store_true')
     p.add_argument('--case-count',type=int,default=12)
-    args=p.parse_args();root,cfg,password,port=sandbox(args.manifest)
+    p.add_argument('--acceptance',action='store_true',help='Apply and verify frozen stage-6 model/worker parameters with provider disabled')
+    args=p.parse_args();root,cfg,password,port=sandbox(args.manifest,acceptance=args.acceptance)
     if args.s3:enable_s3(root,cfg)
     ops=Operations(root/'operations.json');report={'started_at':time.time(),'project':ops.project,'root':str(root),'object_backend':'s3-compatible-local-fixture' if args.s3 else 'local-private-files',
         'release_manifest_sha256':digest(args.manifest),'tested_image_ids':json.loads(Path(args.manifest).read_text())['images'],
         'operations_source_sha256':{str(file.relative_to(ROOT)):digest(file) for file in sorted([*Path(__file__).parent.glob('*.py'),* (ROOT/'deploy/release').glob('*')]) if file.is_file()}}
     try:
         assert_isolated(ops,root);report['resource_isolation_verified']=True
+        if args.acceptance:
+            from acceptance.configuration import CONFIGURATION
+            from acceptance.common import sha
+            effective=json.loads(ops.run('config','--format','json').stdout)['services']
+            for service, values in cfg['acceptance_settings'].items():
+                assert all(str(effective[service]['environment'].get(k)) == v for k,v in values.items()), 'Recovery configuration differs'
+            artifact=json.loads(Path(args.manifest).read_text())
+            report.update(execution='immutable_containers',artifacts={k:artifact[k] for k in ['revision','images']},source_revision=artifact['revision'],
+                          config_sha256=sha(CONFIGURATION),acceptance_configuration=CONFIGURATION,effective_acceptance_environment=cfg['acceptance_settings'],real_provider=False)
         ops.run('up','-d','--wait',*cfg['storage_services'])
         if args.s3:
             client=ops.s3(cfg['objects_s3'])

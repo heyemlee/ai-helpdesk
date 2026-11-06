@@ -11,6 +11,9 @@ from acceptance.common_facts import common_score, adjudicate
 from acceptance.comparison import compare
 from acceptance.usage_evidence import validate_recording, check_attribution
 from acceptance.invariant_oracle import evaluate as evaluate_invariants
+from acceptance.configuration import CONFIGURATION
+from acceptance.load_evidence import structure as load_structure, require_mixed
+from acceptance.recovery_evidence import component as recovery_component
 
 INVARIANTS = {"employee_identity", "role_and_tenant_isolation", "stale_approval", "duplicate_callback",
               "worker_restart", "redis_loss", "cancellation", "readonly_sql", "source_contract", "evidence_integrity"}
@@ -22,6 +25,8 @@ def verify(report, manifest=None):
         failures.append("not_a_release_acceptance_report")
     if report.get("manifest_sha256") != sha((DATA / "manifest.json").read_bytes()):
         failures.append("corpus_identity_mismatch")
+    if report.get("config_sha256") != sha(CONFIGURATION):
+        failures.append("configuration_differs_from_frozen_acceptance")
     artifacts = report.get("artifacts", {})
     if not artifacts.get("revision") or set(artifacts.get("images", {})) != {"backend", "frontend", "sql"}:
         failures.append("application_artifacts_missing")
@@ -72,12 +77,15 @@ def verify(report, manifest=None):
     if set(inv) != INVARIANTS or any(value is not True for value in inv.values()):
         failures.append("invariant_coverage_incomplete")
     trials = report.get("invariants", {}).get("trials", {})
+    if report.get("invariants", {}).get("trial_unit") != "observed_assertions" or report.get("invariants", {}).get("fault_scenario_count") != len(INVARIANTS):
+        failures.append("fault_scenarios_and_assertion_units_not_distinguished")
     if set(trials) != INVARIANTS or any(type(v.get("total")) is not int or v.get("total", 0) < 1 or v.get("violations") != 0 for v in trials.values()):
         failures.append("invariant_trial_denominators_missing_or_nonzero")
     browser = report.get("browser", {})
     if any(browser.get(k) is not True for k in ("employee_login", "upload", "multiple_turns", "approval", "failure_recovery", "real_provider")):
         failures.append("browser_full_chain_incomplete")
     load = report.get("load", {})
+    failures.extend("load:" + e for e in load_structure(load))
     if load.get("authenticated_accounts") != 50 or set(load.get("profiles", {})) != {"weekly_steady", "tenfold_burst", "fifty_simultaneous"}:
         failures.append("load_model_incomplete")
     real_load = report.get("load_real", {})
@@ -162,8 +170,13 @@ def require(path, manifest=None):
             raise ValueError("Component source revision differs from images")
         if name == "invariants":
             computed = evaluate_invariants(data.get("observations", {}))
-            if any(data.get(k) != computed[k] for k in ("passed", "checks", "trials")):
+            if any(data.get(k) != computed[k] for k in ("passed", "checks", "trials", "trial_unit", "fault_scenario_count")):
                 raise ValueError("Invariant counters differ from raw fault observations")
+        elif name in {"recovery_local", "recovery_s3", "rollback"}:
+            if recovery_component(name, data.get("raw_recording", {})) != data:
+                raise ValueError("Recovery claims differ from complete drill evidence")
+        elif name == "load":
+            require_mixed(data, read(DATA / "development.json"))
         elif name == "browser":
             contexts["browser:development-images-001"] = {r["run_id"] for r in data.get("withImage", {}).get("runs", [])}
         elif name == "load_real":

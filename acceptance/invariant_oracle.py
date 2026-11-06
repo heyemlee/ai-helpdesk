@@ -44,4 +44,5 @@ def evaluate(observations):
         conditions[name] = checks
     trials = {k: {"total": len(v), "violations": sum(x is not True for x in v)} for k, v in conditions.items()}
     checks = {k: bool(v) and all(v) for k, v in conditions.items()}
-    return {"checks": checks, "trials": trials, "passed": bool(checks) and all(checks.values())}
+    return {"checks": checks, "trials": trials, "trial_unit": "observed_assertions",
+            "fault_scenario_count": len(observations), "passed": bool(checks) and all(checks.values())}
