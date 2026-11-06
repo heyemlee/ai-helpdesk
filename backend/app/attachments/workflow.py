@@ -11,8 +11,9 @@ from app.runs.store import _NOW
 
 
 class MaterialWorkflow:
-    def __init__(self, attachments, extractor, query):
+    def __init__(self, attachments, extractor, query, *, query_timeout_s=90):
         self.attachments, self.extractor, self.query = attachments, extractor, query
+        self.query_timeout_s = query_timeout_s
 
     async def review(self, run):
         ctx = run.case_context
@@ -45,12 +46,18 @@ class MaterialWorkflow:
                 data = {}
                 if ref and not error:
                     await self.attachments.actor(actor)
-                    if ref not in queries:
+                    question = verification_query(ref, extraction)
+                    key = (ref, question)
+                    if key not in queries:
                         try:
-                            queries[ref] = await asyncio.wait_for(self.query(verification_query(ref), run), 90)
+                            queries[key] = await asyncio.wait_for(self.query(question, run), self.query_timeout_s)
+                        except TimeoutError:
+                            queries[key] = {"unavailable": True, "query_error": "timeout"}
                         except Exception:
-                            queries[ref] = {"unavailable": True}
-                    data = queries[ref]
+                            queries[key] = {"unavailable": True, "query_error": "query_failed"}
+                    data = queries[key]
+                if data.get("query_error"):
+                    review["query_error"] = data["query_error"]
                 review.update(verify(extraction, data, ref, error, ctx["snapshot"]["issue_type"]))
                 review["extractor_version"] = version
             except HTTPException as exc:

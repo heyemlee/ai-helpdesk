@@ -11,7 +11,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from acceptance.common import DATA, ROOT, dataset, read, sha, write
-from acceptance.gateway import calibration_ledger
+from acceptance.gateway import calibration_ledger, release_ledger
 from acceptance.oracle import score, summarize
 
 
@@ -158,26 +158,48 @@ def execute(employee, scenario, directory, ledger=None, timeout=240):
     return observed
 
 
-def main():
+def development_ledger(stack, cfg, provenance, budget):
+    """Bind revalidation to the approval already mounted in this real stack."""
+    if (cfg.get("split") != "development" or provenance.get("real_provider") is not True
+            or provenance.get("execution") != "immutable_containers" or provenance.get("provider_mode") != "real"
+            or Path(cfg["root"]).resolve() != stack.resolve()):
+        raise ValueError("Development revalidation requires a real immutable development stack")
+    approval = read(budget)
+    mounted = read(stack / "provider-state/approval.json")
+    # Compare the entire immutable approval, including ID, limits, model,
+    # destination and corpus, before opening/creating any persistent ledger.
+    if approval != mounted or approval.get("purpose") != "development_revalidation":
+        raise ValueError("Development budget differs from the stack approval or purpose")
+    return release_ledger(approval)
+
+
+def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--stack", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--real-calibration", action="store_true")
+    real = parser.add_mutually_exclusive_group()
+    real.add_argument("--real-calibration", action="store_true")
+    real.add_argument("--budget", type=Path, help="Separate persistent budget for development revalidation")
     parser.add_argument("--scenario", action="append")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     cfg = read(args.stack / "private-config.json")
     provenance = read(args.stack / "provenance.json")
     manifest, development, _ = dataset()
-    if cfg["split"] != "development" or provenance["real_provider"] != args.real_calibration:
-        raise ValueError("Only independent development calibration is currently authorized")
+    if cfg["split"] != "development" or provenance["real_provider"] != bool(args.real_calibration or args.budget):
+        raise ValueError("Development split and explicit matching provider mode are required")
     if cfg["manifest_sha256"] != sha((DATA / "manifest.json").read_bytes()):
         raise ValueError("Stack has a different corpus")
     choices = args.scenario or manifest["calibration_scenarios"]
+    if len(set(choices)) != len(choices) or not set(choices) <= {s["id"] for s in development["scenarios"]}:
+        raise ValueError("Unique development scenarios are required")
     if args.real_calibration and not set(choices) <= set(manifest["calibration_scenarios"]):
         raise ValueError("Scenario outside approved calibration selection")
     selected = [next(s for s in development["scenarios"] if s["id"] == sid) for sid in choices]
-    args.output.mkdir(parents=True, exist_ok=True)
-    ledger = calibration_ledger() if args.real_calibration else None
+    if args.output.exists():
+        raise ValueError("Evidence output already exists; never overwrite a measured run")
+    ledger = (development_ledger(args.stack, cfg, provenance, args.budget) if args.budget
+              else calibration_ledger() if args.real_calibration else None)
+    args.output.mkdir(parents=True, exist_ok=False)
     prepare(cfg, development)
     employee = Employee(cfg, "acceptance-employee").login()
     operator = Employee(cfg, "acceptance-operations").login()
@@ -189,11 +211,11 @@ def main():
             if (args.output / (scenario["id"] + ".json")).exists():
                 raise ValueError("Evidence output already exists; never overwrite a measured run")
             actor = operator if any(step["kind"] in {"action", "reject_old_approval"} for step in scenario["steps"]) else employee
-            observed = execute(actor, scenario, DATA, ledger)
+            observed = execute(actor, scenario, DATA, ledger, timeout=600 if args.budget else 240)
             result = score(scenario, observed, development)
             write(args.output / (scenario["id"] + ".json"), {"observed": observed, "score": result})
             results.append(result)
-            report = {"kind": "development_calibration" if ledger else "simulated_provider_infrastructure" if provenance.get("provider_mode") == "simulated" else "provider_disabled_integration", "provenance": provenance,
+            report = {"kind": "development_revalidation" if args.budget else "development_calibration" if ledger else "simulated_provider_infrastructure" if provenance.get("provider_mode") == "simulated" else "provider_disabled_integration", "provenance": provenance,
                       "manifest_sha256": cfg["manifest_sha256"], "results": results, "summary": summarize(selected, results),
                       "budget": ledger.report() if ledger else None, "release_eligible": False}
             write(args.output / "report.json", report)

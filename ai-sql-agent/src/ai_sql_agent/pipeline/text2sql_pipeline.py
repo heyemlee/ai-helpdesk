@@ -64,6 +64,7 @@ from ai_sql_agent.generation import (
     SqlGenerator,
 )
 from ai_sql_agent.normalization import FiscalConfig, QueryNormalizer
+from ai_sql_agent.generation.projection import RawProjectionError
 from ai_sql_agent.validation import ResultValidator, SemanticSelfChecker
 from ai_sql_agent.repair import SqlRepairService
 
@@ -733,6 +734,18 @@ class Text2SQLPipeline:
             },
         )
 
+    @staticmethod
+    def _raw_projection_failure(cot_step, local_schema, error):
+        return StepExecutionLog(
+            database=cot_step.database, cot_step=cot_step,
+            local_schema=local_schema.to_prompt_context(), sql=error.sql,
+            execution_request={}, execution_result={
+                "database": cot_step.database, "sql": error.sql,
+                "success": False, "columns": [], "rows": [], "row_count": 0,
+                "truncated": False, "error": str(error), "error_category": "raw_projection_incomplete",
+            },
+        ), None
+
     def _run_step(
         self,
         query: str,
@@ -812,6 +825,8 @@ class Text2SQLPipeline:
                     previous_results=previous_results,
                     certified_examples=certified_examples,
                 )
+            except RawProjectionError as exc:
+                return self._raw_projection_failure(sql_cot_step, local_schema, exc)
             except ModelCallError as exc:
                 generation_error = exc
                 sql_result = None
@@ -826,15 +841,18 @@ class Text2SQLPipeline:
         # 「no such table」。这类错误静态就能判出来，不必等数据库报错——
         # 而且带着「哪张表不在这个库」的提示重生成，比让修复回路去猜有效。
         if sql_result is not None and self.config.enable_cross_db_guard:
-            sql_result = self._enforce_step_database(
-                sql_result=sql_result,
-                cot_step=sql_cot_step,
-                generator=sql_generator,
-                dialect=step_dialect,
-                previous_results=previous_results,
-                step_index=step_index,
-                certified_examples=certified_examples,
-            )
+            try:
+                sql_result = self._enforce_step_database(
+                    sql_result=sql_result,
+                    cot_step=sql_cot_step,
+                    generator=sql_generator,
+                    dialect=step_dialect,
+                    previous_results=previous_results,
+                    step_index=step_index,
+                    certified_examples=certified_examples,
+                )
+            except RawProjectionError as exc:
+                return self._raw_projection_failure(sql_cot_step, local_schema, exc)
 
         if generation_error is not None:
             raise _ModelUnavailable("sql_generation", generation_error)

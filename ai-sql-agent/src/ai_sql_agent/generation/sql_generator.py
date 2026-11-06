@@ -3,6 +3,7 @@ from __future__ import annotations
 from .coder_client import CoderModelClient
 from .objects import CotStep, SqlGenerationRequest, SqlGenerationResult
 from .prompt_builder import SqlPromptBuilder
+from .projection import RawProjectionError, projection_issues
 from .schema_store import LocalSchemaStore
 
 
@@ -56,6 +57,20 @@ class SqlGenerator:
         prompt = self.prompt_builder.build(request)
         raw_output = self.coder_client.generate_sql(prompt)
         sql = self.coder_client.clean_sql(raw_output)
+
+        issues = projection_issues(sql, cot_step, local_schema, sql_dialect)
+        if issues:
+            # One semantic correction, charged as a normal model call. It does
+            # not enable transport retries or relax the later SQL validators.
+            prompt += ("\n# 原始列输出检查未通过\n" + "\n".join(issues)
+                       + "\n保留原筛选条件与数量/日期口径，直接返回原始列；不得用常量或 JSON 字符串代替。"
+                       + "只能使用已提供的表、列和关联关系；重新输出完整的一条 SQL。\n"
+                       + "待纠正的 SQL：\n" + sql)
+            raw_output = self.coder_client.generate_sql(prompt)
+            sql = self.coder_client.clean_sql(raw_output)
+            issues = projection_issues(sql, cot_step, local_schema, sql_dialect)
+            if issues:
+                raise RawProjectionError(sql, issues)
 
         return SqlGenerationResult(
             database=cot_step.database,

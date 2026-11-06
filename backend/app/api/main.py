@@ -2087,7 +2087,10 @@ async def _start_cases() -> None:
                 "query": question, "user_id": run.user_id, "session_id": f"case-{_INSTANCE}-{run.case_context['case_id']}"})
             return result.data if result.success else {"unavailable": True}
 
-        materials = MaterialWorkflow(attachments, extractor, query_images)
+        # The SQL tool already owns a bounded client/transport timeout. The
+        # material wrapper must not abandon it earlier (the old fixed 90s did).
+        materials = MaterialWorkflow(attachments, extractor, query_images,
+                                     query_timeout_s=outer_tool_timeout_s() + 1)
     executor = CaseExecutor(_cases, prepare=prepare, answer=_orchestrator.run, event_log=_case_event_log, materials=materials)
     if config.runs_worker:
         _case_worker = RunWorker(store=store, broker=broker, channel=channel, memo=RedisMemo(_infra_redis),

@@ -1,0 +1,164 @@
+{
+  "recording_sha256": "2629fec034b6cc0781493535af7ade4b1e7f50a1ec48ffe901ca479b84a0bc82",
+  "memory_snapshot_sha256": "fb9268baeded500fe4d611abfda81291979b9a1f01c5ea3fa9b9493e67b90370",
+  "trace_id": "17ab39a529ce47a4",
+  "image_review": {
+    "attachment_id": "at_fddbea9566be40b187b23ad5915dd3b0",
+    "document_type": "order",
+    "extractor_version": "order-image-v1:gpt-6.1-sol",
+    "fields": [
+      {
+        "db_value": null,
+        "field": "order_ref",
+        "kind": "order",
+        "location": "Upper left, under Order number",
+        "outcome": "unavailable",
+        "readability": "clear",
+        "source": null,
+        "unit": null,
+        "value": "SO-2026-11039"
+      },
+      {
+        "db_value": null,
+        "field": "model",
+        "kind": "ordered",
+        "location": "Left, under Cabinet model",
+        "outcome": "unavailable",
+        "readability": "clear",
+        "source": null,
+        "unit": null,
+        "value": "BX-11039-24"
+      },
+      {
+        "db_value": null,
+        "field": "quantity",
+        "kind": "ordered",
+        "location": "Left middle, under Ordered quantity (pcs)",
+        "outcome": "unavailable",
+        "readability": "clear",
+        "source": null,
+        "unit": "pcs",
+        "value": "5"
+      },
+      {
+        "db_value": null,
+        "field": "date",
+        "kind": "delivery",
+        "location": "Left middle, under Planned delivery date",
+        "outcome": "unavailable",
+        "readability": "clear",
+        "source": null,
+        "unit": null,
+        "value": "2026-11-22"
+      },
+      {
+        "db_value": null,
+        "field": "status",
+        "kind": "order",
+        "location": "Lower left, under Order status",
+        "outcome": "unavailable",
+        "readability": "clear",
+        "source": null,
+        "unit": null,
+        "value": "已交付"
+      }
+    ],
+    "query_outcome": "unavailable",
+    "sha256": "25feb041b561ccf0a8fb99c08e6d25c5ee4babb7059daff2202f2d39169feedf"
+  },
+  "sql_steps": [
+    {
+      "database": "erp_db",
+      "sql": "SELECT\n    order_no AS order_ref,\n    NULL AS ordered_qty,\n    'orders' AS query_source\nFROM orders\nWHERE order_no = 'SO-2026-11039'\nUNION ALL\nSELECT\n    order_no AS order_ref,\n    quantity AS ordered_qty,\n    'order_item' AS query_source\nFROM order_item\nWHERE order_no = 'SO-2026-11039';",
+      "execution_result": {
+        "database": "erp_db",
+        "sql": "SELECT\n    order_no AS order_ref,\n    NULL AS ordered_qty,\n    'orders' AS query_source\nFROM orders\nWHERE order_no = 'SO-2026-11039'\nUNION ALL\nSELECT\n    order_no AS order_ref,\n    quantity AS ordered_qty,\n    'order_item' AS query_source\nFROM order_item\nWHERE order_no = 'SO-2026-11039';",
+        "success": true,
+        "columns": [
+          "order_ref",
+          "ordered_qty",
+          "query_source"
+        ],
+        "rows": [
+          {
+            "order_ref": "SO-2026-11039",
+            "ordered_qty": null,
+            "query_source": "orders"
+          },
+          {
+            "order_ref": "SO-2026-11039",
+            "ordered_qty": 5,
+            "query_source": "order_item"
+          }
+        ],
+        "row_count": 2,
+        "error": null,
+        "truncated": false,
+        "row_limit": 1000,
+        "as_of": "2026-11-06T17:17:26.489Z",
+        "as_of_source": "query_time",
+        "observed_at": "2026-11-06T17:17:26.490Z"
+      }
+    },
+    {
+      "database": "svc_db",
+      "sql": "SELECT\n    'delivery' AS query_source,\n    JSON_OBJECT(\n        'order_ref', order_no,\n        'delivery_date', delivered_date,\n        'delivery_status', delivery_status,\n        'delivery_date_basis', 'actual_delivery_date'\n    ) AS record\nFROM delivery\nWHERE order_no IN ('SO-2026-11039')\nUNION ALL\nSELECT\n    'service_ticket' AS query_source,\n    JSON_OBJECT(\n        'order_ref', order_no,\n        'reported_date', reported_date,\n        'resolved_date', resolved_date,\n        'issue_type', issue_type,\n        'service_status', service_status,\n        'description', description\n    ) AS record\nFROM service_ticket\nWHERE order_no IN ('SO-2026-11039')\nUNION ALL\nSELECT\n    'replacement_part' AS query_source,\n    JSON_OBJECT(\n        'order_ref', order_no,\n        'part_name', part_name,\n        'quantity', quantity,\n        'quantity_basis', 'replacement_part_quantity',\n        'requested_date', requested_date,\n        'ship_date', shipped_date,\n        'part_status', part_status,\n        'part_notes', part_notes\n    ) AS record\nFROM replacement_part\nWHERE order_no IN ('SO-2026-11039');",
+      "execution_result": {
+        "database": "svc_db",
+        "sql": "SELECT\n    'delivery' AS query_source,\n    JSON_OBJECT(\n        'order_ref', order_no,\n        'delivery_date', delivered_date,\n        'delivery_status', delivery_status,\n        'delivery_date_basis', 'actual_delivery_date'\n    ) AS record\nFROM delivery\nWHERE order_no IN ('SO-2026-11039')\nUNION ALL\nSELECT\n    'service_ticket' AS query_source,\n    JSON_OBJECT(\n        'order_ref', order_no,\n        'reported_date', reported_date,\n        'resolved_date', resolved_date,\n        'issue_type', issue_type,\n        'service_status', service_status,\n        'description', description\n    ) AS record\nFROM service_ticket\nWHERE order_no IN ('SO-2026-11039')\nUNION ALL\nSELECT\n    'replacement_part' AS query_source,\n    JSON_OBJECT(\n        'order_ref', order_no,\n        'part_name', part_name,\n        'quantity', quantity,\n        'quantity_basis', 'replacement_part_quantity',\n        'requested_date', requested_date,\n        'ship_date', shipped_date,\n        'part_status', part_status,\n        'part_notes', part_notes\n    ) AS record\nFROM replacement_part\nWHERE order_no IN ('SO-2026-11039');",
+        "success": true,
+        "columns": [
+          "query_source",
+          "record"
+        ],
+        "rows": [
+          {
+            "query_source": "delivery",
+            "record": "{\"order_ref\":\"SO-2026-11039\",\"delivery_date\":\"2026-11-04\",\"delivery_status\":\"已送达\",\"delivery_date_basis\":\"actual_delivery_date\"}"
+          },
+          {
+            "query_source": "service_ticket",
+            "record": "{\"order_ref\":\"SO-2026-11039\",\"reported_date\":\"2026-11-01\",\"resolved_date\":\"2026-11-04\",\"issue_type\":\"缺件\",\"service_status\":\"已解决\",\"description\":\"Missing hinge\"}"
+          },
+          {
+            "query_source": "replacement_part",
+            "record": "{\"order_ref\":\"SO-2026-11039\",\"part_name\":\"Hinge BX-11039-24\",\"quantity\":1,\"quantity_basis\":\"replacement_part_quantity\",\"requested_date\":\"2026-11-02\",\"ship_date\":\"2026-11-03\",\"part_status\":\"已解决\",\"part_notes\":null}"
+          }
+        ],
+        "row_count": 3,
+        "error": null,
+        "truncated": false,
+        "row_limit": 1000,
+        "as_of": "2026-11-06T17:17:45.181Z",
+        "as_of_source": "query_time",
+        "observed_at": "2026-11-06T17:17:45.182Z"
+      }
+    },
+    {
+      "database": "wms_db",
+      "sql": "SELECT material_name, uom\nFROM material\nWHERE material_name IN ('Hinge BX-11039-24');",
+      "execution_result": {
+        "database": "wms_db",
+        "sql": "SELECT material_name, uom\nFROM material\nWHERE material_name IN ('Hinge BX-11039-24');",
+        "success": true,
+        "columns": [
+          "material_name",
+          "uom"
+        ],
+        "rows": [
+          {
+            "material_name": "Hinge BX-11039-24",
+            "uom": "pcs"
+          }
+        ],
+        "row_count": 1,
+        "error": null,
+        "truncated": false,
+        "row_limit": 1000,
+        "as_of": "2026-11-06T17:17:59.136Z",
+        "as_of_source": "query_time",
+        "observed_at": "2026-11-06T17:17:59.137Z"
+      }
+    }
+  ]
+}

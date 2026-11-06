@@ -93,13 +93,43 @@ def order_context(snapshot, extraction):
     return ref, ""
 
 
-def verification_query(order_ref):
-    # Only a validated identifier is interpolated. OCR prose never reaches tools.
-    return (f"只读核对订单 {order_ref} 的原始业务记录。请返回逐行结构化结果，保留订单标识、型号、数量及单位、"
-            "业务状态与日期。订单标识用 order_ref，型号用 model；缺件数量用 missing_qty，订购数量用 ordered_qty，"
-            "送达数量用 delivered_qty；应收/实收型号用 expected_model/received_model；"
-            "配送/发货/订单日期用 delivery_date/ship_date/order_date。没有对应业务字段时不要推断或填充。"
-            "每行包含订单标识，保留查询来源、单位和数据时点。不要执行写操作或作判责赔偿决定。")
+def verification_query(order_ref, extraction: Extraction):
+    # Field/kind enums select the scope. Never interpolate OCR prose, locations,
+    # candidate values or a claimed unit into the independent database query.
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", order_ref):
+        raise ValueError("invalid_order_reference")
+    requested = {"order_ref": "订单标识"}
+    for candidate in extraction.fields:
+        if candidate.readability != "clear" or not candidate.value:
+            continue
+        if candidate.field in {"model", "expected_model", "received_model"}:
+            requested[candidate.field] = {"model": "产品型号", "expected_model": "应收型号", "received_model": "实收型号"}[candidate.field]
+        elif candidate.field == "quantity":
+            quantity = {"ordered": ("ordered_qty", "订购数量"), "missing": ("missing_qty", "缺件数量"),
+                        "delivered": ("delivered_qty", "送达数量")}.get(candidate.kind)
+            if quantity:
+                requested[quantity[0]] = quantity[1]
+        elif candidate.field == "date":
+            date = {"delivery": ("delivery_date", "交付日期"), "ship": ("ship_date", "发货日期"),
+                    "order": ("order_date", "订单日期")}.get(candidate.kind)
+            if date:
+                requested[date[0]] = ("计划交付日期" if extraction.document_type == "order" and candidate.kind == "delivery" else date[1])
+        elif candidate.field == "status":
+            if candidate.kind == "delivery" or extraction.document_type == "delivery":
+                requested["delivery_status"] = "配送状态"
+            elif candidate.kind == "order" or extraction.document_type == "order":
+                requested["order_status"] = "订单状态"
+            else:
+                requested["status"] = "与原记录口径一致的业务状态"
+    fields = "、".join(f"{name}（{label}）" for name, label in requested.items())
+    return (f"只读核对订单 {order_ref} 的原始业务记录。本次只需要这些输出字段：{fields}。"
+            "只检索能提供上述字段及真实关联键的业务记录，不扩展到无关业务。"
+            "返回逐行平铺的原始列，使用上述字段别名；不得把字段包装进 JSON 字符串，也不得用 NULL 常量补造不存在的字段。"
+            "每行必须保留订单标识；型号及其数量、状态、日期在有真实关联关系时须在同一行，"
+            "可按 schema 中的真实键关联订单头与明细，保留每条型号明细，不能把头和明细 UNION 成互相缺列的记录。"
+            "不能汇总、合并不同型号或跨行拼出核实结果；无法证明同一行关系时如实返回缺少的证据。"
+            "日期和数量保留所请求的业务口径，不能以其他类型的日期或数量替代。"
+            "保留实际查询来源、schema 明示的单位和数据时点；没有对应字段或单位时不得推断。不要执行写操作或作判责赔偿决定。")
 
 
 def normalized(value, field):

@@ -101,8 +101,8 @@
   "call": "CoderModelClient.generate_sql",
   "args": [
    {
-    "sha256": "f5c0814341dd3812",
-    "len": 1681
+    "sha256": "6cd6c9a4e06da909",
+    "len": 1826
    }
   ],
   "kwargs": {}
@@ -254,8 +254,8 @@
   "call": "CoderModelClient.generate_sql",
   "args": [
    {
-    "sha256": "79a2649746293aba",
-    "len": 1979
+    "sha256": "7e21a2d8454d2a2a",
+    "len": 2124
    }
   ],
   "kwargs": {}
@@ -413,8 +413,8 @@
   "call": "CoderModelClient.generate_sql",
   "args": [
    {
-    "sha256": "10afc080c3eb956d",
-    "len": 1759
+    "sha256": "216dbae978f08096",
+    "len": 1904
    }
   ],
   "kwargs": {}
@@ -471,8 +471,8 @@
   "call": "CoderModelClient.generate_sql",
   "args": [
    {
-    "sha256": "5b4588a5d35fb84a",
-    "len": 2155
+    "sha256": "568771b59fa86eea",
+    "len": 2300
    }
   ],
   "kwargs": {}
@@ -609,8 +609,8 @@
   "call": "CoderModelClient.generate_sql",
   "args": [
    {
-    "sha256": "572f544389b498db",
-    "len": 1627
+    "sha256": "cb8f84a2bf381ce8",
+    "len": 1772
    }
   ],
   "kwargs": {}
@@ -667,8 +667,8 @@
   "call": "CoderModelClient.generate_sql",
   "args": [
    {
-    "sha256": "5b4588a5d35fb84a",
-    "len": 2155
+    "sha256": "568771b59fa86eea",
+    "len": 2300
    }
   ],
   "kwargs": {}

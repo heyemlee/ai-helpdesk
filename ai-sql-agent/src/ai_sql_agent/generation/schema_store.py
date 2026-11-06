@@ -189,7 +189,14 @@ class LocalSchemaStore:
             selected_columns = []
 
             for column in full_table.columns:
-                if (table_name, column.column_name) in table_columns:
+                # Plans also use table(field, ...) or Chinese field lists and
+                # unqualified output columns. A qualified join key must not
+                # cause those requested columns to disappear from the schema.
+                listed = re.search(
+                    r"(?<![A-Za-z0-9_])" + re.escape(column.column_name) + r"(?![A-Za-z0-9_])",
+                    mentioned_text,
+                )
+                if (table_name, column.column_name) in table_columns or listed:
                     selected_columns.append(column)
 
             # 如果 CoT 只提到了表名，没有明确字段，就保留该表全部字段。
@@ -233,7 +240,7 @@ class LocalSchemaStore:
         table_names: Set[str] = set()
 
         for table_name in self.tables:
-            if re.search(rf"\b{re.escape(table_name)}\b", text):
+            if re.search(rf"(?<![A-Za-z0-9_]){re.escape(table_name)}(?![A-Za-z0-9_])", text):
                 table_names.add(table_name)
 
         return table_names

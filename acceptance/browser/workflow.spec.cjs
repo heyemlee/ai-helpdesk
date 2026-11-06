@@ -6,6 +6,7 @@ const provenance = JSON.parse(fs.readFileSync(process.env.ACCEPTANCE_STACK + '/p
 const out = process.env.ACCEPTANCE_BROWSER_OUTPUT
 
 test('real employee browser: waiting, approval, more material, upload outage and recovery', async ({ page, browser }) => {
+  const started = Date.now()
   if (provenance.real_provider && process.env.ACCEPTANCE_REAL_BROWSER !== '1') throw new Error('Real browser calls need a separate release budget')
   fs.mkdirSync(out, { recursive: true })
   await page.addInitScript(() => localStorage.setItem('helpdesk.lang', 'zh'))
@@ -27,14 +28,14 @@ test('real employee browser: waiting, approval, more material, upload outage and
   await expect(work.getByText('等待补料', { exact: true })).toBeVisible({ timeout: 30000 })
   const selected = await work.getByLabel('选择问题').inputValue()
   const getCase = async () => (await page.request.get('/api/tickets/' + selected + '/case')).json()
-  await expect.poll(async () => (await getCase()).drafts.length).toBe(1)
+  await expect.poll(async () => (await getCase()).drafts.length, { timeout: 30000 }).toBe(1)
   const first = await getCase()
   expect(first.pending_fields).toEqual(['order_ref'])
   await work.getByRole('button', { name: '确认此版本草稿' }).click()
   await expect.poll(async () => (await getCase()).drafts[0].status).toBe('approved')
   await work.getByLabel('补充说明').fill('又收到一条现场反馈，但单号仍待客户补充。')
   await work.getByRole('button', { name: '保存并继续' }).click()
-  await expect.poll(async () => (await getCase()).drafts.length).toBe(2)
+  await expect.poll(async () => (await getCase()).drafts.length, { timeout: 30000 }).toBe(2)
   const second = await getCase()
   await expect(work.getByText('版本 ' + second.version + ' · 待确认', { exact: true })).toBeVisible()
   expect(second.drafts.find(d => d.id === first.drafts[0].id).status).toBe('invalid')
@@ -63,7 +64,7 @@ test('real employee browser: waiting, approval, more material, upload outage and
     submitResponse = await submitted
   }
   expect(submitResponse.status()).toBe(202)
-  await expect.poll(async () => (await getCase()).image_reviews.length, { timeout: 90000 }).toBe(1)
+  await expect.poll(async () => (await getCase()).image_reviews.length, { timeout: 300000 }).toBe(1)
   const withImage = await getCase()
   if (provenance.provider_mode === 'disabled') {
     expect(withImage.image_reviews[0].result.query_outcome).toBe('extraction_failed')
@@ -77,7 +78,7 @@ test('real employee browser: waiting, approval, more material, upload outage and
       expect(field.outcome).toBe('matched')
       expect(field.value).toBe(truth[field.field].value)
     }
-    await expect.poll(async () => (await getCase()).drafts.some(d => d.valid && d.body.includes('图片已核实')), { timeout: 90000 }).toBe(true)
+    await expect.poll(async () => (await getCase()).drafts.some(d => d.valid && d.body.includes('图片已核实')), { timeout: 240000 }).toBe(true)
   }
   await page.reload()
   await page.getByRole('button', { name: '进入跨消息工单' }).click()
@@ -92,5 +93,5 @@ test('real employee browser: waiting, approval, more material, upload outage and
     employee_login: true, role: 'admin', upload: true, multiple_turns: true, approval: true,
     failure_recovery: true, real_provider: provenance.real_provider, model_quality_claim: provenance.real_provider, release_eligible: false, provenance,
     checks: ['HttpOnly session', 'pending order retained', 'internal approval', 'new material invalidates old draft', 'failed upload retried', provenance.provider_mode === 'disabled' ? 'model failure not promoted to image fact' : 'five image fields verified against authored records', 'anonymous image denied'],
-    first, second, withImage: await getCase() }, null, 2))
+    elapsed_seconds: (Date.now() - started) / 1000, first, second, withImage: await getCase() }, null, 2))
 })
