@@ -952,7 +952,7 @@ def _text_problem(value: str) -> str:
 
     原话会原样进审计。NUL 和孤立代理字符存不进 Postgres，审计里客户原话那一条就写不进去，
     和坏 id 一样等于给了客户一个绕过审计的办法。换行、制表符是正常的原话，照收；长度不在
-    这里管。
+    这里管，见 MAX_MESSAGE_CHARS。
     """
     for ch in value:
         code = ord(ch)
@@ -963,8 +963,18 @@ def _text_problem(value: str) -> str:
     return ""
 
 
+# 客户一句话最多多少字。审计存得下任意长度，限它是为了模型：原话会原样进意图识别、检索和
+# 作答的提示词，写进工作记忆以后，之后最多 7 轮作答都带着它，压缩时还要整段进摘要。长到
+# 超过模型上下文的一条，会让这个会话之后每一轮都答不出来：作答失败的那一轮照常写进记忆，
+# 摘要失败时什么都不裁，它就一直留在窗口里，每来一条新消息过期时间还会续上。正常提问远到
+# 不了这个长度。按字符数算（和 len 一致），前端输入框用同一个数
+# （frontend/src/components/ChatPanel.tsx 的 MAX_MESSAGE_CHARS）。
+MAX_MESSAGE_CHARS = 4000
+
+
 class ChatRequest(BaseModel):
-    message:     str
+    # 超长的在字段上就挡掉（422，string_too_long），轮不到下面逐字检查
+    message:     str = Field(max_length=MAX_MESSAGE_CHARS)
     user_id:     str = "anonymous"
     conv_id:     str | None = None
 
@@ -1840,7 +1850,10 @@ async def _run_queued_turn(ctx: RunContext) -> RunOutcome:
     run = ctx.run
     if run.attempt > 1:
         _close_lost_turns(run, "superseded")
-    req = ChatRequest(message=run.message, user_id=run.user_id, conv_id=run.conv_id)
+    # 不再校验：这个 run 提交时已经按当时的规则收下了。入口的规则后来变了（比如消息长度上限），
+    # 在这里重新校验的话，已经收下的 run 会直接失败：抛在下面的 try 外面，不转人工也不收尾，
+    # 有提交点的回答也丢了，pydantic 的报错还会带着客户原话的开头进日志和终态帧
+    req = ChatRequest.model_construct(message=run.message, user_id=run.user_id, conv_id=run.conv_id)
     token = request_id_var.set(run.request_id or new_request_id())
     meta: dict[str, Any] = {}
     terminal: tuple[str, dict[str, Any]] | None = None

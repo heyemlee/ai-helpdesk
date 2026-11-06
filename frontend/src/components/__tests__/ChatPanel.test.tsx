@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, fireEvent, within } from '@/test/render'
 import userEvent from '@testing-library/user-event'
-import { ChatPanel } from '../ChatPanel'
+import { ChatPanel, MAX_MESSAGE_CHARS } from '../ChatPanel'
 import { EN, ZH } from '@/i18n/catalog'
 
 describe('conversation interactions', () => {
@@ -40,6 +40,31 @@ describe('conversation interactions', () => {
     expect(screen.getByRole('button', { name: '发送' })).toBeDisabled()
     fireEvent.submit(document.querySelector('form')!)
     expect(onSend).not.toHaveBeenCalled()
+  })
+
+  it('keeps a pasted text whole but holds it back while it is over the length cap', () => {
+    const onSend = vi.fn()
+    render(<ChatPanel messages={[]} busy={false} onSend={onSend} onInspect={vi.fn()} />)
+    const input = screen.getByRole('textbox')
+    const pasted = '补'.repeat(MAX_MESSAGE_CHARS + 2)
+    fireEvent.change(input, { target: { value: pasted } })
+    expect(input).toHaveValue(pasted)                       // 不截尾巴
+    expect(screen.getByRole('status')).toHaveTextContent(`超出 2 字：一条消息最多 ${MAX_MESSAGE_CHARS} 字`)
+    expect(screen.getByRole('button', { name: '发送' })).toBeDisabled()
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(onSend).not.toHaveBeenCalled()
+    // 和后端一样按字符数：表情算一个，正好到上限的可以发；首尾空白不算
+    const emoji = '😀'.repeat(MAX_MESSAGE_CHARS)
+    fireEvent.change(input, { target: { value: `  ${emoji}\n` } })
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(onSend).toHaveBeenCalledWith(emoji)
+  })
+
+  it('says how far over the cap a message is in English too', () => {
+    render(<ChatPanel messages={[]} busy={false} onSend={vi.fn()} onInspect={vi.fn()} />, { lang: 'en' })
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'x'.repeat(MAX_MESSAGE_CHARS + 1) } })
+    expect(screen.getByRole('status')).toHaveTextContent(`1 character too many: a message can be up to ${MAX_MESSAGE_CHARS} characters.`)
   })
 
   it('does not pull a reader away from an older reply as a new chunk arrives', () => {
