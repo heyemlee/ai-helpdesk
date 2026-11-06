@@ -1,7 +1,8 @@
-"""Author the frozen corpus from independent synthetic business rules.
+"""Validate frozen corpora and explicitly author the current corpus revision.
 
-No production application or model is imported here. Regeneration is explicit;
-the runner only reads the checked-in manifest and never regenerates the oracle.
+The historical v2 synthesis functions remain available for inspection. New
+freezes copy the pinned v2 corpus through revise_v3, preserving its gold and
+image bytes. No production application or model is imported here.
 """
 from __future__ import annotations
 
@@ -13,10 +14,10 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
-from acceptance.common import DATA, GROUPS, sha, write
+from acceptance.common import DATA, GROUPS, read, sha
 
 AS_OF = "2026-11-05T20:00:00+00:00"
-VERSION = "acceptance-v2"
+VERSION = "acceptance-v2"  # Historical synthesis; freeze() uses the v3 revision.
 DEVELOPMENT_COUNTS = {"orders": 14, "policies": 15, "cross_message": 10, "images": 15}
 STATUSES = ["已签单", "生产中", "待发货", "配送中", "已交付", "已取消"]
 TABLES = {"erp_db": ["orders", "order_item"], "prod_db": ["work_order"],
@@ -353,23 +354,8 @@ def normalized(text):
 
 
 def freeze(directory=DATA):
-    directory = Path(directory)
-    if (directory / "manifest.json").exists():
-        raise ValueError("A frozen version already exists; author a new version explicitly")
-    for split in ("development", "release"):
-        write(directory / (split + ".json"), build(split, directory))
-    paths = sorted(p for p in directory.rglob("*") if p.is_file())
-    write(directory / "manifest.json", {"schema_version": 1, "dataset_version": VERSION, "data_as_of": AS_OF,
-        "release_counts": GROUPS, "development_counts": DEVELOPMENT_COUNTS,
-        "calibration_scenarios": [f"development-{group}-{i:03d}" for group, indices in
-            {"orders": [1, 2, 3], "policies": [1, 2, 4], "cross_message": [1, 2, 3], "images": [1, 6, 11]}.items() for i in indices],
-        "deterministic_only": ["sql_conflicting_rows", "sql_truncation", "sql_failure", "provider_failure", "redis_loss", "duplicate_callback", "approval_race", "unauthorized_action"],
-        "oracle": "Independent synthetic records, explicit policy intervals and image pixels plus same-entity/same-row witness rules; no SUT/model output",
-        "prior_manifest_sha256": "c918170dfc710f153d96ae1bb6b7b54230e8eb06e933589f29477077701e6ea6",
-        "premeasurement_revision": "v2 separates pixel extraction from joint verification, per accepted stage-3 rules; zero real supplier calls before freeze; v1 retained unchanged",
-        "isolation": ["entity_family", "template_family", "policy_lineages", "image_family"],
-        "thresholds": {"rounds": 3, "fact_scenarios_min": 0.95, "cross_message_min": 0.95, "invariant_violations_max": 0},
-        "files": {p.relative_to(directory).as_posix(): sha(p.read_bytes()) for p in paths}})
+    from acceptance.revise_v3 import freeze as freeze_revision
+    return freeze_revision(directory)
 
 
 def validate(directory=DATA):
@@ -435,4 +421,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if args.freeze:
         freeze(args.output)
-    print(validate(args.output))
+    if read(args.output / "manifest.json").get("dataset_version") == "acceptance-v3":
+        from acceptance.revise_v3 import validate_revision
+        result = validate_revision(args.output)
+        print({key: result[key] for key in ("valid", "dataset_version", "release", "development", "manifest_sha256")})
+    else:
+        print(validate(args.output))

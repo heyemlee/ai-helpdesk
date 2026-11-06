@@ -1,0 +1,31 @@
+{
+  "changed_protected_files": [],
+  "configuration_sha256": "7d4c1c671b5c5997eb24ba6790e9d1ad2d89e882b00d46843bcb16e995f28ede",
+  "exit_code": 0,
+  "files": {
+    "diff.json": "4ed32dc7c0343eeb7326f72e6efe7e766983b0bc4ab1cc072a6ad51b5517f52a",
+    "harness-files.json": "55624c534bb5f4bb6a319278db1cadd251248c35bfc2699bea8fbc142ecdd65d",
+    "mounts/compose.log": "0dd87d18d2bf793b56e8d103f3f5dd4ed88e84ac7d190b55b2fda257175e7504",
+    "mounts/result.json": "0005a9fba60c28dccc126879ae91f6672ebfa471234f569859c62e9d0a6d9e6d",
+    "preserved-before.json": "a98984c9a27d4d49a8fc27666d487e1a135e09621ebac6ad89d008251220d8b1",
+    "tests.log": "5e2b409d70da6c72fc8846b7ff16dd2167436de900c143a4b4f4cb632f3d2147"
+  },
+  "harness_sha256": "6584531bd1281e3b7e8df045262f1437b403f0ece3705b344bda73196495d674",
+  "harness_unchanged_during_tests": true,
+  "kind": "acceptance_corpus_v3_validation",
+  "manifest_sha256": "403fd101f834ee384b46c07570e1efefd3ac5275353d991f872f98b88b206b2e",
+  "network_mode": "none",
+  "owned_container_cleanup": {
+    "aihd-stage6-images-c00930bb5a": true
+  },
+  "passed": true,
+  "product_revision_for_mount_test": "6090071d35d72ed7af65ae7288420d7dc132e90f",
+  "protected_files_checked": 119,
+  "real_credentials_mounted": false,
+  "skipped": 0,
+  "source_manifest_sha256": "88a8954e19b0c7e7870b41e42b16f47b61630a83553e9eb6446640ee61f92b9b",
+  "supplier_attempts": 0,
+  "supplier_receipts": 0,
+  "tests_run": 62,
+  "validation_command": "PYTHONDONTWRITEBYTECODE=1 ACCEPTANCE_MOUNT_MANIFEST=.stage6/evaluation/2026-11-06/candidate-6090071.json ACCEPTANCE_MOUNT_OUTPUT=.stage6/validation/v3-corpus/mounts backend/.venv/bin/python -m unittest discover -s acceptance/tests -v"
+}

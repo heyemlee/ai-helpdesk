@@ -4,9 +4,13 @@
 
 ## 冻结数据与独立裁判
 
-默认使用 `data/v2`：54 道开发题，200 道保留题，后者固定为 60 道订单、50 道政策、50 道跨消息、40 道图片。12 道开发校准题写在 manifest 中。业务值来自独立合成记录，政策来自明确生效区间与适用条件；生成器和裁判均不导入产品核验器。实体、实际问法模板、政策正文模板和图片版式在两个集合间分开。
+默认使用 `data/v3`：54 道开发题，200 道发布题，后者固定为 60 道订单、50 道政策、50 道跨消息、40 道图片。12 道开发校准题写在 manifest 中。业务值来自独立合成记录，政策来自明确生效区间与适用条件；生成器和裁判均不导入产品核验器。实体、实际问法模板、政策正文模板和图片版式在两个集合间分开。
 
-v1 完整保留，manifest SHA-256 为 `c918170dfc710f153d96ae1bb6b7b54230e8eb06e933589f29477077701e6ea6`。v2 为 `88a8954e19b0c7e7870b41e42b16f47b61630a83553e9eb6446640ee61f92b9b`。修订发生在任何真实供应商调用之前，依据阶段 3 已接受的同实体、同查询行、可读型号锚点规则。图片分别评分像素提取和业务核验；无共同记录证明的字段不得提升为已核实，且所有未核实字段进入待补清单。保守的负面措辞可以不同，正面核验仍须满足严格规则。
+v1、v2 的所有文件与旧评测记录原样保留。v1 manifest SHA-256 为 `c918170dfc710f153d96ae1bb6b7b54230e8eb06e933589f29477077701e6ea6`，v2 为 `88a8954e19b0c7e7870b41e42b16f47b61630a83553e9eb6446640ee61f92b9b`，v3 为 `403fd101f834ee384b46c07570e1efefd3ac5275353d991f872f98b88b206b2e`。当初从 v1 到 v2 的修订发生在真实调用前，依据阶段 3 已接受的同实体、同查询行、可读型号锚点规则。图片分别评分像素提取和业务核验；无共同记录证明的字段不得提升为已核实，且所有未核实字段进入待补清单。保守的负面措辞可以不同，正面核验仍须满足严格规则。
+
+v3 在 v2 已发生真实供应商调用之后修订，依据是开发评测中发现的政策问法歧义：问题只提“配送费用”等主题，正文实际规定处理时限或办理步骤。v3 仅明确 65 道政策题（开发 15、发布 50）的问法，其中 52 道询问处理时限、13 道询问办理步骤，两类都要求有效版本与引用；同时更新派生问法模板与模板哈希。v2 的全部 truth/gold、政策正文、业务记录、适用范围与边界、55 张图片、其余 189 道题、歧义与冲突要求、校准选择和验收门槛均保持不变。开发与发布继续采用不同模板族。v3 是经过开发反馈修订的语料，包含已经接触过模型的 v2 发布材料，不能描述为整套未评测或完全盲测；修订没有查阅旧正式基线答案内容，也没有据此修改 gold。旧版失败记录及原分数不被回填。v3 的真实评测使用另行建立、绑定新 manifest 哈希的批准与账本。
+
+`revise_v3.py` 只从固定哈希的 v2 复制，逐字节复用图片，不调用模型或重新绘图。生成器默认验证 v3；显式 `--freeze` 同样走 v3 修订入口，只能写入不存在的新目录，拒绝覆盖冻结目录或写入 v1/v2 内部。原始 v2 合成函数仅保留供检查。差异白名单验证比较全部 JSON 叶字段、文件清单和图片字节哈希，额外修改 gold、范围、正文、其他题或门槛即使重新计算哈希也会失败。完整差异证明与测试记录见 `tests/evidence/corpus-v3/`。
 
 `oracle.py` 核对原始查询行、单位、时点、引用、所有可见业务陈述、Case 状态与副作用。正确数字与错误数字同时出现不能通过。真实 API 的 `evidence_payload` 包装由保留的实际服务记录覆盖。空字段、零行、查询失败分开处理。任何无法自动证明的陈述不能自动算正确。旧版共同事实由 `common_facts.py` 按内容比较，无法自动判断时保留 `review_required`；审核须有明确归属、理由及绑定的原记录哈希。
 
@@ -19,6 +23,9 @@ v1 完整保留，manifest SHA-256 为 `c918170dfc710f153d96ae1bb6b7b54230e8eb06
 ```sh
 backend/.venv/bin/python -m unittest discover -s acceptance/tests
 backend/.venv/bin/python -m acceptance.generate
+backend/.venv/bin/python -m acceptance.revise_v3 --proof /private/tmp/v3-diff.json
+# 仅在需要独立重现冻结文件时使用一个尚不存在的目录；不会改写 data/v3。
+backend/.venv/bin/python -m acceptance.generate --freeze --output /private/tmp/new-acceptance-v3
 backend/.venv/bin/python -m acceptance.stack --simulated-delay 0.8
 backend/.venv/bin/python -m acceptance.runner --stack /private/tmp/aihd-stage6-STACK --output /private/tmp/new-development-run
 backend/.venv/bin/python -m acceptance.load --stack /private/tmp/aihd-stage6-STACK --output /private/tmp/load.json --mixed --steady-seconds 180 --burst-seconds 120
