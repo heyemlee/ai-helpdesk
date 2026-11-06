@@ -174,11 +174,12 @@ class RunEvidenceTests(unittest.TestCase):
                                        effects_error=ConnectionError("synthetic database outage"))
         self.assertEqual(observed["runs"], [{"run_id": run}])
         self.assertIn("HTTP 503", observed["failure"]["detail"])
-        self.assertEqual([e["stage"] for e in observed["evidence_failures"]], ["case", "side_effects"])
+        self.assertEqual([e["stage"] for e in observed["observation_errors"]], ["case", "side_effects"])
         self.assertNotIn("case", observed)
         self.assertNotIn("side_effects", observed)
         self.assertFalse(observed["completed"])
         self.assertFalse(result["fact_correct"])
+        self.assertIn("side_effects_unmeasured", result["invariant_violations"])
         self.assertEqual(self.polls, [run])
 
     def test_terminal_run_with_unavailable_side_effect_evidence_cannot_pass(self):
@@ -187,11 +188,12 @@ class RunEvidenceTests(unittest.TestCase):
         observed, result = self.observe("orders", {final["run_id"]: [final]},
                                        effects_error=ConnectionError("synthetic database outage"))
         self.assertEqual(observed["runs"], [final])
-        self.assertEqual(observed["evidence_failures"][0]["stage"], "side_effects")
+        self.assertEqual(observed["observation_errors"][0]["stage"], "side_effects")
         self.assertNotIn("side_effects", observed)
         self.assertTrue(result["run_terminal"])
         self.assertFalse(observed["completed"])
         self.assertIn("side_effects_unmeasured", result["errors"])
+        self.assertIn("side_effects_unmeasured", result["invariant_violations"])
         self.assertFalse(result["fact_correct"])
 
     def test_image_followup_timeout_preserves_the_child_without_marking_it_terminal(self):

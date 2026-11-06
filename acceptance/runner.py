@@ -167,9 +167,11 @@ def execute(employee, scenario, directory, ledger=None, timeout=240):
                 # Preserve accepted Runs even when the same outage also prevents
                 # the final snapshots. Missing evidence still fails the oracle.
                 observed["completed"] = False
-                observed.setdefault("evidence_failures", []).append({
+                observed.setdefault("observation_errors", []).append({
                     "stage": name, "type": type(exc).__name__, "detail": str(exc),
                 })
+                if name == "side_effects":
+                    observed["invariant_violations"].append("side_effects_unmeasured")
         observed["elapsed_seconds"] = time.monotonic() - started
     return observed
 
