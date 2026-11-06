@@ -76,23 +76,23 @@ class _OfflinePipeline:
         self._tmp.cleanup()
 
 
-class EmptyEarlierStepStopsTheChainTest(_OfflinePipeline, unittest.TestCase):
+class DependentStepTest(_OfflinePipeline, unittest.TestCase):
     """
-    c18 的形状离线重放：两步计划，第 1 步 0 行，生成器在第 2 步把筛选条件丢掉
-    （「条件被吞掉」——不是字段自比较，那道检查拦不住）。第 2 步必须不生成、不执行。
+    c18 的形状离线重放：第 1 步 0 行（或没查成），第 2 步按计划要用第 1 步的工程号。
+    生成器在第 2 步把筛选条件丢掉（「条件被吞掉」——不是字段自比较，那道检查拦不住），
+    所以第 2 步能不能跑，只能看它依不依赖第 1 步。
     """
 
-    PLAN = [
-        ("erp_db", "sales_order.order_no，sales_order.job_no",
-         "在sales_order表中筛选order_no为'SO-NOPE'的订单，输出job_no", "sales_order.job_no"),
-        ("mes_db", "work_order.job_no，work_order.workshop",
-         "先读取上一步结果中的job_no列表；再筛选这些job_no的工单；最后输出workshop", "work_order.workshop"),
-    ]
-    STEP_SQL = {
-        "erp_db": "SELECT job_no FROM sales_order WHERE order_no = 'SO-NOPE';",
-        # 手里没有工程号：把条件整个丢了
-        "mes_db": "SELECT job_no, workshop FROM work_order;",
-    }
+    FIRST = ("erp_db", "sales_order.order_no，sales_order.job_no",
+             "在sales_order表中筛选order_no为'SO-NOPE'的订单，输出job_no", "sales_order.job_no")
+    USES_IT = ("mes_db", "work_order.job_no，work_order.workshop",
+               "先读取上一步结果中的job_no列表；再筛选这些job_no的工单；最后输出workshop",
+               "work_order.workshop")
+    EXCLUDES_IT = ("mes_db", "work_order.job_no，work_order.workshop",
+                   "先读取上一步结果中的job_no列表；再排除这些job_no的工单；最后输出workshop",
+                   "work_order.workshop")
+    INDEPENDENT = ("mes_db", "work_order.job_no，work_order.workshop",
+                   "在work_order表中筛选work_status为finished的工单，输出workshop", "work_order.workshop")
 
     def _plan(self, pipeline_self, prepared):
         steps = [
@@ -103,14 +103,15 @@ class EmptyEarlierStepStopsTheChainTest(_OfflinePipeline, unittest.TestCase):
         ]
         return CotPlanningResult(user_query="q", prompt="", raw_output="", steps=steps)
 
-    def _run(self, plan):
+    def _run(self, plan, first_sql="SELECT job_no FROM sales_order WHERE order_no = 'SO-NOPE';"):
         self.plan = plan
         generated = []
 
         def generate_sql(client_self, prompt):
             database = "mes_db" if "work_order" in prompt and "sales_order" not in prompt else "erp_db"
             generated.append(database)
-            return self.STEP_SQL[database]
+            # 第 2 步手里没有工程号：把条件整个丢了
+            return first_sql if database == "erp_db" else "SELECT job_no, workshop FROM work_order;"
 
         pipeline = Text2SQLPipeline()
         with mock.patch.object(Text2SQLPipeline, "_plan", lambda pipe, prepared: self._plan(pipe, prepared)), \
@@ -118,36 +119,42 @@ class EmptyEarlierStepStopsTheChainTest(_OfflinePipeline, unittest.TestCase):
             result = pipeline.run("SO-NOPE 这单的工单在哪个车间")
         return generated, result
 
-    def test_second_step_is_not_generated_or_executed(self):
-        generated, result = self._run(self.PLAN)
-        self.assertEqual(generated, ["erp_db"])
+    def test_step_using_an_empty_step_answers_no_rows_without_querying(self):
+        generated, result = self._run([self.FIRST, self.USES_IT])
+        self.assertNotIn("mes_db", generated)
         first, second = result.step_logs
-        self.assertTrue(first.execution_result["success"])
         self.assertEqual(first.execution_result["row_count"], 0)
-        self.assertFalse(second.execution_result["success"])
-        self.assertEqual(second.sql, "")
+        # 只看那些记录、那些记录一条都没有：答案就是没有，不算出错（no_data，不是 partial_success）
+        self.assertTrue(second.execution_result["success"])
         self.assertEqual(second.execution_result["rows"], [])
-        self.assertIn("第 1 步查到 0 行", second.execution_result["error"])
+        self.assertIsNone(second.execution_result["error"])
+        self.assertEqual(second.sql, "")
+        self.assertIn("第 1 步查到 0 行", second.execution_result["held_reason"])
 
-    def test_exclusion_step_is_not_reported_as_an_empty_answer(self):
-        """
-        反连接：「排除上一步那些工程号」，上一步 0 行时正确答案是全部工单。
-        链照样停（没有取值，生成只会丢条件或自比较），但报告不能说「答案是没有」。
-        """
-        anti = [self.PLAN[0], (
-            "mes_db", "work_order.job_no，work_order.workshop",
-            "先读取上一步结果中的job_no列表；再排除这些job_no的工单；最后输出workshop",
-            "work_order.workshop",
-        )]
-        generated, result = self._run(anti)
-        self.assertEqual(generated, ["erp_db"])
+    def test_exclusion_step_is_held_and_not_reported_as_empty(self):
+        """「排除上一步那些工程号」，上一步 0 行时正确答案是全部工单：不能说成没有。"""
+        generated, result = self._run([self.FIRST, self.EXCLUDES_IT])
+        self.assertNotIn("mes_db", generated)
         second = result.step_logs[1]
-        self.assertFalse(second.execution_result["success"])  # 没执行，不是「查到 0 行」
-        error = second.execution_result["error"]
-        self.assertIn("没法确定", error)
-        self.assertIn("NOT IN", error)
-        self.assertIn("全部记录", error)
+        self.assertFalse(second.execution_result["success"])
+        self.assertIn("全部记录", second.execution_result["error"])
 
+    def test_step_using_a_failed_step_is_held(self):
+        generated, result = self._run(
+            [self.FIRST, self.USES_IT], first_sql="SELECT job_no FROM no_such_table;"
+        )
+        self.assertNotIn("mes_db", generated)
+        first, second = result.step_logs
+        self.assertFalse(first.execution_result["success"])
+        self.assertFalse(second.execution_result["success"])
+        self.assertIn("第 1 步没有查成", second.execution_result["error"])
+
+    def test_independent_step_still_runs_after_an_empty_step(self):
+        generated, result = self._run([self.FIRST, self.INDEPENDENT])
+        self.assertEqual(generated.count("mes_db"), 1)
+        second = result.step_logs[1]
+        self.assertTrue(second.execution_result["success"])
+        self.assertGreater(second.execution_result["row_count"], 0)
 
 class ReplayedHistoryIsGuardedTest(_OfflinePipeline, unittest.TestCase):
     """
