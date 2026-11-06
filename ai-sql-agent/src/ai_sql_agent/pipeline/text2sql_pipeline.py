@@ -92,7 +92,8 @@ _MAX_BACKFILL_ROWS = 50
 # 只看那些记录的答案是没有，排除那些记录的答案是其余全部，两者必须分开。
 _EXCLUSION_WORDS = re.compile(
     r"排除|剔除|除去|去掉|去除|过滤掉|排掉|不在|不属于|不包含|不含|之外|以外|非上|"
-    r"未出现|没有出现|没出现|标出|标注|是否属于|是否在|NOT\s+IN|NOT\s+EXISTS|EXCEPT|LEFT\s+JOIN",
+    r"除了|不是|未出现|没有出现|没出现|标出|标注|是否属于|是否在|!=|<>|"
+    r"NOT\s+IN|NOT\s+EXISTS|NOT\s+LIKE|EXCEPT|LEFT\s+JOIN",
     re.I,
 )
 

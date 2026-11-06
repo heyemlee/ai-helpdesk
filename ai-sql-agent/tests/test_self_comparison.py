@@ -152,6 +152,14 @@ class DependentStepTest(_OfflinePipeline, unittest.TestCase):
         summary = self._summary(result)
         self.assertEqual(summary.execution_status, "no_data")
         self.assertEqual(summary.failed_steps, 0)
+        # 审计里留着这一步的空位：模型不可用时不能只重放第 1 步、当成完整答案
+        from ai_sql_agent.audit.store import _parse_steps
+
+        self.assertEqual([item["sql"] for item in summary.audit_sqls][1:], [""])
+        self.assertEqual(len(summary.audit_sqls), 2)
+        self.assertEqual(_parse_steps(summary.selected_databases, summary.audit_sqls), [])
+        # 返回给调用方的 sqls 不变：只列真的执行过的 SQL
+        self.assertEqual(len(summary.sqls), 1)
 
     def test_exclusion_step_is_held_and_not_reported_as_empty(self):
         """「排除上一步那些工程号」，上一步 0 行时正确答案是全部工单：不能说成没有。"""
