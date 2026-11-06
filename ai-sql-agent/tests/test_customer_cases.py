@@ -21,7 +21,7 @@ from pathlib import Path
 from unittest import mock
 
 from benchmark.customer import CUSTOMER_CASES, build_simple_erp, customer_summary
-from benchmark.runner import CUSTOMER_CATEGORY
+from benchmark.runner import CUSTOMER_CATEGORY, result_matches
 
 ORDER_NO = re.compile(r"\b[Jj]\d{2}-\d{5}\b")
 TABLE_REF = re.compile(r"\b(erp|prod|svc|wms)\.([a-z_]+)\b")
@@ -125,6 +125,37 @@ class CustomerCasesTest(unittest.TestCase):
         finally:
             self.conn.execute("ROLLBACK TO shipping_reference")
             self.conn.execute("RELEASE shipping_reference")
+
+    def test_problem_description_reference_preserves_each_ticket_status(self):
+        item = next(i for i in self.items if i["id"] == "c11")
+        records = list(self.conn.execute(
+            "SELECT issue_type, description, service_status FROM svc.service_ticket "
+            "WHERE order_no = 'J25-00137'"
+        ))
+        primary = list(self.conn.execute(item["gold_sql"]))
+        alternative = list(self.conn.execute(item["gold_sql_alternatives"][0]))
+        self.assertEqual(primary, [(r[0], r[2]) for r in records])
+        self.assertEqual(alternative, [(r[1], r[2]) for r in records])
+        gold = [dict(description=r[0], service_status=r[1]) for r in alternative]
+        self.assertTrue(result_matches(gold, list(reversed(gold))))
+        swapped = [dict(description=r[0], service_status=alternative[1-i][1])
+                   for i, r in enumerate(alternative)]
+        for invalid in (swapped, gold[:1], [gold[0], gold[0]],
+                        [dict(service_status=r[1]) for r in alternative]):
+            with self.subTest(invalid=invalid):
+                self.assertFalse(result_matches(gold, invalid))
+        self.conn.execute("SAVEPOINT problem_reference")
+        try:
+            self.conn.execute(
+                "UPDATE svc.service_ticket SET service_status='待处理' "
+                "WHERE order_no='J25-00137' AND issue_type='质量问题'"
+            )
+            updated = dict(self.conn.execute(item["gold_sql_alternatives"][0]))
+            description = next(r[1] for r in records if r[0] == "质量问题")
+            self.assertEqual(updated[description], "待处理")
+        finally:
+            self.conn.execute("ROLLBACK TO problem_reference")
+            self.conn.execute("RELEASE problem_reference")
 
 
 class CustomerOfflineRunTest(unittest.TestCase):

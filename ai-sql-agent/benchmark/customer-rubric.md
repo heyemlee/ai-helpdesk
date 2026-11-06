@@ -1,4 +1,28 @@
-# Customer questions: scoring revision 2
+# Customer questions: scoring revisions
+
+## Revision 3 (current)
+
+Frozen before the second November 6 follow-up model run. Only c11 gains an
+explicit alternative: `description, service_status` from the same service-ticket
+rows, in addition to `issue_type, service_status`. Either form must preserve the
+complete one-to-one association between each problem and its status. Statuses
+alone, swapped statuses, omitted or duplicated problems remain incorrect. The
+existing row, column, preview, risk and contradiction checks are unchanged.
+Replay the previous full run before new provider calls and report its changed
+score separately from model behavior improvements.
+
+c03 keeps its original planned-date reference. The data provides a planned
+delivery date, not a live ETA; subtracting today's date from an overdue plan
+does not answer how long arrival will actually take. The application should
+return the recorded plan without inventing a new arrival estimate. Explicit
+date-difference requests remain supported and must specify a reference date.
+
+c23 also keeps its reference. When the cause of an unshipped order is not yet
+known, both production blockers and delivery blockers may be relevant evidence.
+A NULL production note cannot justify omitting a delivery cause. Single-domain
+cause questions and simple status questions must retain their narrower scope.
+
+## Revision 2
 
 Frozen before the November 6 follow-up model run. The 24 questions and business
 records are unchanged. Their languages are Chinese (20) and English (4).
