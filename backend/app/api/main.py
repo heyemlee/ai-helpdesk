@@ -2861,6 +2861,10 @@ def _eval_report_payload(report) -> dict[str, Any]:
         "total":           report.total,
         "passed":          report.passed,
         "avg_scores":      report.avg_scores,
+        # 对话轮次里转人工的比例，不是判分维度，所以不在 avg_scores 里；null = 没有可算的对话轮次
+        "handoff_rate":    report.handoff_rate,
+        "handoffs":        report.handoffs,
+        "handoff_turns":   report.handoff_turns,
         "regressions":     report.regressions,
         "recommendations": report.recommendations,
         "baseline": {

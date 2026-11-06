@@ -6,6 +6,9 @@
   "total": 0,
   "passed": 0,
   "avg_scores": {},
+  "handoff_rate": null,
+  "handoffs": 0,
+  "handoff_turns": 0,
   "regressions": [],
   "recommendations": [
     "评测未完成：模型服务不可用（credential_rejected），已中止。计划 6 项，完成 0 项，结果已保留。处理好凭证或额度后重新运行；这份结果不能作为基线。"
