@@ -440,6 +440,51 @@ async def test_image_pending_is_server_owned_and_clearer_image_can_resolve_it(co
     assert not c["pending_fields"] and c["facts"]["quantity"]["value"] == "2"
 
 
+@pytest.mark.parametrize("unreadable", ["failed", "empty"])
+async def test_mixed_image_batch_keeps_readability_pending_until_clear_supplement(connected, unreadable):
+    a, _, service, _ = connected
+    images = [await upload(service, key) for key in ("mixed-one", "mixed-two")]
+    receipt = await a.accept_input(ACTOR, new(issue_type="missing_parts", attachment_ids=[i["id"] for i in images]))
+    run = await claim(a, receipt)
+    extractor = AsyncMock()
+    extractor.version = "mixed-batch-v1"
+    extractor.extract.side_effect = [
+        RuntimeError("model unavailable") if unreadable == "failed" else Extraction(document_type="unknown", fields=[]),
+        extraction(),
+    ]
+    workflow = MaterialWorkflow(service, extractor, AsyncMock(return_value=evidence()))
+    reviews = await workflow.review(run)
+    assert not reviews[0]["fields"] and reviews[1]["fields"]
+    result, applied = await a.complete(run, {"response": "review", "material_reviews": reviews})
+    c = await a.get(ACTOR, receipt["case_id"])
+    assert applied and c["facts"]["quantity"]["value"] == "2"
+    assert c["pending_fields"] == ["image:readability"] and c["status"] == "waiting_for_info"
+
+    # The durable continuation asks for a readable image instead of preparing
+    # a business answer from the other, successfully extracted image alone.
+    ctx = AsyncMock()
+    ctx.run = await claim(a, {"run_id": result["next_run_id"]})
+    ctx.degrade.shed, ctx.scope, ctx.commit.return_value = False, None, True
+    executor = CaseExecutor(a, prepare=AsyncMock(), answer=AsyncMock(), event_log=EventLog.disabled(), materials=workflow)
+    outcome = await executor(ctx)
+    assert outcome.result["needs_clarification"] and "清晰图片" in outcome.result["response"]
+    executor.prepare.assert_not_awaited()
+    executor.answer.assert_not_awaited()
+
+    # An explicit new, fully readable batch can resolve the earlier failure;
+    # the unreadable original remains in the Case history.
+    corrected = await service.upload(ACTOR, pixels(size=(100, 60)), "clear.png", "image/png", "mixed-corrected")
+    c = await a.get(ACTOR, c["id"])
+    receipt = await a.accept_input(ACTOR, follow(c, attachment_ids=[corrected["id"]]))
+    run = await claim(a, receipt)
+    extractor.extract.side_effect, extractor.extract.return_value = None, extraction()
+    result, applied = await a.complete(run, {"response": "review", "material_reviews": await workflow.review(run)})
+    c = await a.get(ACTOR, c["id"])
+    assert applied and not c["pending_fields"] and c["status"] == "in_progress"
+    assert len(c["materials"]) == len(c["image_reviews"]) == 3
+    assert not (await a.run(result["next_run_id"])).case_context["snapshot"]["pending_fields"]
+
+
 async def test_crashed_upload_cleanup_removes_temporary_objects(connected):
     a, _, service, _ = connected
     image = await upload(service)

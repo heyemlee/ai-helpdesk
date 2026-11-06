@@ -626,11 +626,13 @@ class CaseService:
                 for item in review["fields"]:
                     if item["outcome"] == "matched":
                         item["outcome"] = "case_conflict"
-            if not review["fields"]:
-                pending.add("image:readability")
             for item in review["fields"]:
                 by_field.setdefault(item["field"], []).append((review, item))
-        if by_field:
+        if any(not review["fields"] for review in reviews):
+            # One readable image cannot clear another image's failed/empty
+            # extraction in this batch. A later fully readable supplement can.
+            pending.add("image:readability")
+        elif by_field:
             pending.discard("image:readability")
         for field, items in by_field.items():
             values = {i["value"] for _, i in items if i["outcome"] == "matched"}
