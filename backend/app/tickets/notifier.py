@@ -142,6 +142,10 @@ class TicketNotifier:
     async def _attempt(self, delivery) -> None:
         import httpx
 
+        if hasattr(self._store, "notify_claim"):
+            delivery = await self._store.notify_claim(delivery.id, max(30.0, self._timeout_s * 2))
+            if delivery is None:
+                return
         attempts = delivery.attempts + 1
         try:
             async with httpx.AsyncClient(timeout=self._timeout_s) as client:
@@ -162,7 +166,7 @@ class TicketNotifier:
         # **这里是原来完全没有的一步。** 少了它，一个过期的 webhook URL
         # 会一直返回 4xx，而这边一直以为通知发出去了。
         if 200 <= resp.status_code < 300:
-            await self._store.notify_mark(delivery.id, "delivered", attempts=attempts)
+            await self._mark(delivery, "delivered", attempts=attempts)
             logger.info("工单通知已送达: ticket=%s delivery=%s 第 %d 次尝试",
                         delivery.ticket_id, delivery.id, attempts)
             return
@@ -178,12 +182,17 @@ class TicketNotifier:
             await self._fail(delivery, attempts, error, permanent=False)
             return
         delay = backoff_delay(attempts)
-        await self._store.notify_mark(
-            delivery.id, "pending", attempts=attempts,
+        await self._mark(
+            delivery, "pending", attempts=attempts,
             next_attempt_at=time.time() + delay, last_error=error,
         )
         logger.warning("工单通知第 %d 次失败，%.0fs 后重试: ticket=%s %s",
                        attempts, delay, delivery.ticket_id, error)
+
+    async def _mark(self, delivery, status, **kwargs):
+        if delivery.lease_owner:
+            kwargs["owner"] = delivery.lease_owner
+        await self._store.notify_mark(delivery.id, status, **kwargs)
 
     async def _fail(self, delivery, attempts: int, error: str, *, permanent: bool) -> None:
         """
@@ -194,8 +203,8 @@ class TicketNotifier:
         （带工单号和会话号，人能顺着查下去）+ 一个计数器（能配告警）。
         记录留在 `failed` 状态，`/health` 的 `ticket_notifications` 里看得到。
         """
-        await self._store.notify_mark(
-            delivery.id, "failed", attempts=attempts, last_error=error,
+        await self._mark(
+            delivery, "failed", attempts=attempts, last_error=error,
         )
         if self._failures is not None:
             self._failures.inc()

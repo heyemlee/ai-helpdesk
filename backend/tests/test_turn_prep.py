@@ -203,3 +203,24 @@ def test_what_the_model_is_told_when_a_delegation_brings_nothing_back():
 
     unverified = order_outcome("[业务系统数据（未通过可信校验，仅供参考）]…", False, {"outcome": "unverified"})
     assert unverified.is_error is False and unverified.evidence == ""
+
+
+async def test_case_snapshot_replaces_redis_history_and_keeps_order_on_followup():
+    from dataclasses import replace
+    from unittest.mock import AsyncMock
+
+    tools, seen = _Tools(), []
+    memory = AsyncMock(side_effect=AssertionError("Case must not load another problem's memory"))
+    deps = replace(_deps(tools, seen=seen, loop=True), load_memory=memory)
+    context = {"case_id": "tk_case_a", "issue_type": "missing_parts", "order_refs": [],
+               "facts": {"order_ref": {"value": "SO-2024-006", "source": "employee_material"}},
+               "messages": [{"role": "user", "content": "少了两个门板"}, {"role": "user", "content": "型号 M-1"}]}
+    turn = await prepare_turn("型号 M-1", user_id="verified-employee", conv_id="case-staff-tk_case_a",
+                              request_id="r1", deps=deps, case_context=context)
+    assert not memory.called
+    assert seen == [[{"role": "user", "content": "少了两个门板"}]]
+    assert "SO-2024-006" in turn.request.context
+    query = next(params for name, params in tools.calls if name == "order_data_query")
+    assert "SO-2024-006" in query["query"] and "缺件" in query["query"]
+    assert query["session_id"] == "case-staff-tk_case_a" and query["user_id"] == "verified-employee"
+    assert turn.request.turn.conv_id == "case-staff-tk_case_a"

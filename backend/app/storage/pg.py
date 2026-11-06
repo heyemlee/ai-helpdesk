@@ -218,6 +218,7 @@ CREATE TABLE IF NOT EXISTS agent_runs (
     UNIQUE (instance, idempotency_key)
 );
 -- 清扫：queued 太久没人领、租约过期太久的
+ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS case_context JSONB;
 CREATE INDEX IF NOT EXISTS idx_runs_sweep    ON agent_runs (instance, status, dispatched_at);
 CREATE INDEX IF NOT EXISTS idx_runs_finished ON agent_runs (instance, finished_at) WHERE finished_at IS NOT NULL;
 
@@ -345,6 +346,8 @@ class Database:
                 await conn.execute("SELECT pg_advisory_xact_lock($1)", _SCHEMA_LOCK)
                 if not await _schema_complete(conn, schema):
                     await conn.execute(schema)
+                from app.tickets.case_schema import migrate
+                await migrate(conn)
             if verify_dim:
                 await self._check_vector_dim(conn, "kb_chunks", dim)
                 await self._check_vector_dim(conn, "memory_episodic", dim)

@@ -2,7 +2,7 @@
 // 后端返回 snake_case，这里不做 camelCase 转换——保持字段名一致，
 // 改后端模型时 tsc 能直接指出前端哪里没跟上。
 
-export interface ChatRequest {
+export interface ChatRequest extends Partial<CaseInput> {
   message: string
   user_id: string
   conv_id?: string
@@ -763,4 +763,59 @@ export interface ModelListResult {
   outcome: string
   status: number | null
   detail: string
+}
+
+/** Canonical state behind the existing ticket ID. Actor comes from server login. */
+export type CaseStatus = 'open' | 'waiting_for_info' | 'in_progress' | 'resolved' | 'cancelled'
+export interface CaseSummary {
+  id: string
+  case_id: string
+  conv_id: string
+  status: CaseStatus
+  issue_type: 'general' | 'order' | 'missing_parts' | 'wrong_item'
+  customer_ref: string
+  order_refs: string[]
+  owner_actor_id: string | null
+  control_mode: 'assistant' | 'human'
+  version: number
+  control_version: number
+  facts: Record<string, { value: string; source: string; message_id?: string; evidence_id?: string }>
+  pending_fields: string[]
+}
+export interface CaseDetail extends CaseSummary {
+  messages: { seq: number; role: string; content: string; message_id: string; run_id: string; version: number }[]
+  drafts: { id: string; body: string; body_hash: string; version: number; control_version: number;
+    status: string; valid: boolean; invalid_reason: string; approved_by: string | null; evidence: unknown[] }[]
+  materials: { attachment_id: string; sha256: string; message_id: string; version: number }[]
+  runs: { run_id: string; status: string | null; applied: boolean | null; reason: string | null }[]
+  events: { id: number; kind: string; actor_id: string | null; version: number; data: Record<string, unknown> }[]
+}
+export interface CaseInput {
+  message_id: string
+  message: string
+  conv_id: string
+  case_id?: string
+  new_case?: boolean
+  expected_version?: number
+  expected_control_version?: number
+  issue_type?: CaseSummary['issue_type']
+  customer_ref?: string
+  order_refs?: string[]
+  facts?: Record<string, string>
+  pending_fields?: string[]
+  attachment_ids?: string[]
+}
+export interface CaseReceipt {
+  case_id: string
+  message_id: string
+  case_version: number
+  run_id: string
+  deduplicated: boolean
+}
+export interface CaseAction {
+  expected_version: number
+  expected_control_version: number
+  operation: 'status' | 'takeover' | 'release' | 'reopen'
+  status?: CaseStatus
+  reason?: string
 }

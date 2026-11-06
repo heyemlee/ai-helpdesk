@@ -73,7 +73,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.security import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 load_dotenv()
 
@@ -138,6 +138,9 @@ _llm_info: dict[str, str] = {}
 # inline 模式下两个都是 None；一个进程是哪一侧由 AI_HELPDESK_ROLE 决定
 _runs = None
 _worker = None
+_cases = None
+_case_worker = None
+_case_event_log: EventLog = EventLog.disabled()
 # 停机开始了：/readyz 回 503
 _draining = False
 # 一轮对话的事件日志（app/events/）。lifespan 里按配置换成真的；默认这个什么都不记，
@@ -521,6 +524,8 @@ async def lifespan(app: FastAPI):
 
     if _RUN_CONFIG.queued:
         await _start_runs()
+    if _pg_database is not None and _INSTANCE and os.getenv("REDIS_URL", "").strip():
+        await _start_cases()
 
     logger.info("ai-helpdesk 已就绪")
     yield
@@ -528,6 +533,8 @@ async def lifespan(app: FastAPI):
     # 停机：先停 worker（等手上的 run 跑完，到时限没跑完的交还给别的 worker），再关别的——
     # 在跑的 run 还要用下面这些组件
     _draining = True
+    if _case_worker is not None:
+        await _case_worker.drain(float(os.getenv("AI_HELPDESK_RUN_DRAIN_S", "90")))
     if _worker is not None:
         drained = await _worker.drain(float(os.getenv("AI_HELPDESK_RUN_DRAIN_S", "90")))
         logger.info("run worker 已停：跑完 %d 个，交还 %d 个", drained["finished"], drained["released"])
@@ -551,6 +558,7 @@ async def lifespan(app: FastAPI):
             logger.warning("后台任务未在时限内完成，放弃等待")
     # 排在后台任务之后：画像更新这类任务的模型调用也记在那一轮里，等它们跑完再写完日志
     await _event_log.close(timeout_s=float(os.getenv("SHUTDOWN_DRAIN_TIMEOUT_S", "10")))
+    await _case_event_log.close(timeout_s=float(os.getenv("SHUTDOWN_DRAIN_TIMEOUT_S", "10")))
     if _ticket_store is not None:
         await _ticket_store.close()
     if _conv_log is not None:
@@ -977,6 +985,25 @@ class ChatRequest(BaseModel):
     message:     str = Field(max_length=MAX_MESSAGE_CHARS)
     user_id:     str = "anonymous"
     conv_id:     str | None = None
+    case_id: str | None = None
+    new_case: bool = False
+    message_id: str | None = None
+    expected_version: int | None = None
+    expected_control_version: int | None = None
+    issue_type: str = "general"
+    customer_ref: str = ""
+    order_refs: list[str] = Field(default_factory=list)
+    facts: dict[str, str] = Field(default_factory=dict)
+    pending_fields: list[str] | None = None
+    attachment_ids: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _case_material_only(cls, data):
+        if (isinstance(data, dict) and "message" not in data and (data.get("case_id") or data.get("new_case"))
+                and (data.get("facts") or data.get("attachment_ids"))):
+            return {**data, "message": ""}
+        return data
 
     @field_validator("user_id", "conv_id")
     @classmethod
@@ -1051,8 +1078,11 @@ class ChatResponse(BaseModel):
 # 模型连接的管理接口（api/model_admin.py）。带员工钥匙这一层和其它写接口一样；
 # 能不能改还要过它自己那道"本机控制台发来的"检查。
 from app.api import model_admin as _model_admin  # noqa: E402
+from app.api.case_api import optional_actor, readable_case_run, require_actor  # noqa: E402
+from app.api.case_api import router as case_router  # noqa: E402
 
 app.include_router(_model_admin.router, dependencies=[Depends(require_api_key)])
+app.include_router(case_router)
 
 
 @app.get("/health")
@@ -1202,7 +1232,7 @@ def _log_loop_config() -> None:
 
 
 async def _prepare_request(req: "ChatRequest", conv_id: str, user_id: str, progress_cb=None,
-                           degrade: Degrade | None = None):
+                           degrade: Degrade | None = None, case_context=None):
     """
     /chat 和 /chat/stream 共用的准备阶段，实现见 `agents/turn_prep.prepare_turn`。
 
@@ -1224,6 +1254,7 @@ async def _prepare_request(req: "ChatRequest", conv_id: str, user_id: str, progr
             loop=_loop_setup(prefetch, degrade),
         ),
         progress_cb=progress_cb,
+        case_context=case_context,
     )
 
 
@@ -1370,6 +1401,7 @@ async def chat(
     req: ChatRequest,
     x_user_token: str | None = Header(None, alias="X-User-Token"),
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    actor=Depends(optional_actor),
 ):
     """
     主对话接口。完整流程：
@@ -1378,6 +1410,8 @@ async def chat(
     排队模式下提交成 run、等它跑完（最多 AI_HELPDESK_RUN_WAIT_S）；等不到回 202 和 run_id，
     这一轮照样在跑，结局去 GET /runs/{run_id} 取。
     """
+    if _is_case_input(req):
+        return await _case_chat(req, actor, idempotency_key, stream=False)
     if _orchestrator is None or _memory is None:
         raise HTTPException(503, "服务未就绪")
 
@@ -1474,6 +1508,7 @@ async def chat_stream(
     req: ChatRequest,
     x_user_token: str | None = Header(None, alias="X-User-Token"),
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    actor=Depends(optional_actor),
 ):
     """
     /chat 的流式版本，SSE（text/event-stream）。
@@ -1492,6 +1527,8 @@ async def chat_stream(
 
     浏览器的 EventSource 只支持 GET，这里是 POST，前端用 fetch + ReadableStream 消费。
     """
+    if _is_case_input(req):
+        return await _case_chat(req, actor, idempotency_key, stream=True)
     if _orchestrator is None or _memory is None:
         raise HTTPException(503, "服务未就绪")
 
@@ -1891,6 +1928,98 @@ async def _run_queued_turn(ctx: RunContext) -> RunOutcome:
 
 # ── 排队模式：装配、提交、查询、续流（app/runs/）──────────────────────────────
 
+async def _start_cases() -> None:
+    """Case executions are durable even when legacy FAQ requests use inline mode."""
+    global _cases, _case_worker, _case_event_log
+    from app.runs.broker import RedisBroker
+    from app.runs.channel import RedisChannel
+    from app.runs.memo import RedisMemo
+    from app.runs.store import PgRunStore
+    from app.tickets.case_execution import CaseExecutor
+    from app.tickets.cases import CASE_SUFFIX, CaseService
+
+    namespace = _INSTANCE + CASE_SUFFIX
+    config = dataclasses.replace(_RUN_CONFIG, mode="queued")
+    store = PgRunStore(_pg_database, namespace)
+    broker = RedisBroker(_infra_redis, namespace)
+    channel = RedisChannel(_infra_redis)
+    await broker.ensure_group()
+    runs = RunService(store=store, broker=broker, channel=channel, config=config, heartbeat_s=SSE_HEARTBEAT_S)
+    _cases = CaseService(_pg_database, _INSTANCE, run_service=runs,
+                         webhook_url=os.getenv("TICKET_WEBHOOK_URL", "").strip())
+    app.state.case_service = _cases if config.serves_api else None
+    # Case audit uses its protected PG scope. Existing Kafka topics/consumers
+    # accept only the legacy staff/customer scopes and cannot carry this data.
+    _case_event_log = await EventLog.open(
+        dataclasses.replace(EventLogConfig.from_env(), instance=namespace, sink="postgres"), db=_pg_database)
+
+    async def prepare(run, snapshot, degrade):
+        req = ChatRequest.model_construct(message=run.message, user_id=run.user_id, conv_id=run.conv_id)
+        # SQL Agent continuity is per Case, not per conversation or browser user_id.
+        token = request_id_var.set(run.request_id or new_request_id())
+        try:
+            return await _prepare_request(req, f"case-{_INSTANCE}-{snapshot['case_id']}", run.user_id,
+                                          degrade=degrade, case_context=snapshot)
+        finally:
+            request_id_var.reset(token)
+
+    executor = CaseExecutor(_cases, prepare=prepare, answer=_orchestrator.run, event_log=_case_event_log)
+    if config.runs_worker:
+        _case_worker = RunWorker(store=store, broker=broker, channel=channel, memo=RedisMemo(_infra_redis),
+                                 execute=executor, config=config, policy=DegradePolicy.from_env(), on_dead=executor.dead)
+        await _case_worker.start()
+
+
+def _is_case_input(req: ChatRequest) -> bool:
+    return bool(req.case_id or req.new_case or req.attachment_ids or req.facts or req.order_refs
+                or req.expected_version is not None or req.expected_control_version is not None
+                or req.issue_type != "general" or req.customer_ref)
+
+
+async def _accept_case_chat(req, actor, idempotency_key, transport):
+    from pydantic import ValidationError
+
+    from app.tickets.cases import CaseInput
+
+    actor = require_actor(actor)
+    service = getattr(app.state, "case_service", None)
+    if service is None:
+        raise HTTPException(503, {"code": "case_unavailable", "message": "跨消息工单需要 PostgreSQL 和队列配置"})
+    if not req.message_id and not idempotency_key:
+        raise HTTPException(422, "工单输入需要稳定的 message_id")
+    if req.message_id and idempotency_key and req.message_id != idempotency_key:
+        raise HTTPException(422, "message_id 与 Idempotency-Key 必须一致")
+    data = {k: v for k, v in req.model_dump(exclude_unset=True).items() if k in CaseInput.model_fields}
+    data["message_id"] = req.message_id or idempotency_key
+    try:
+        body = CaseInput(**data)
+    except ValidationError as exc:
+        raise HTTPException(422, "请选择工单或新问题，并提供会话、材料版本和控制权版本") from exc
+    receipt = await service.accept_input(actor, body, request_id=current_request_id(), transport=transport)
+    return service, receipt
+
+
+async def _case_chat(req, actor, idempotency_key, *, stream):
+    service, receipt = await _accept_case_chat(req, actor, idempotency_key, "stream" if stream else "chat")
+    run = await service.run(receipt["run_id"])
+    if run is None:  # business receipt survives execution-retention cleanup
+        saved = await service.completed_result(receipt["run_id"])
+        if saved:
+            if stream:
+                async def historical():
+                    yield _sse("result", saved)
+                return _sse_response(historical())
+            return JSONResponse(jsonable_encoder(saved))
+        return JSONResponse({**receipt, "status": "expired"})
+    if stream:
+        return _sse_response(service.runs.events(run))
+    done = await service.runs.wait(run.run_id, timeout_s=service.runs.config.wait_s)
+    if done is not None and done.result is not None:
+        return JSONResponse(jsonable_encoder(done.result))
+    return JSONResponse({**receipt, "status": done.status if done else "queued"}, status_code=202,
+                        headers={"Location": f"/tickets/cases/runs/{run.run_id}"})
+
+
 async def _start_runs() -> None:
     """按 AI_HELPDESK_ROLE 装上收提交的一侧和/或 worker。只在排队模式、启动的最后调。"""
     global _runs, _worker
@@ -2001,7 +2130,7 @@ async def _handoff_dead_run(run, reason: str) -> dict[str, Any]:
     return body
 
 
-async def _readable_run(run_id: str, user_token: str | None):
+async def _readable_run(run_id: str, user_token: str | None, actor=None):
     """
     读一个 run（状态、续流）。排队模式没开、run 不存在、不是这个实例的，都是 404。
 
@@ -2009,7 +2138,12 @@ async def _readable_run(run_id: str, user_token: str | None):
     "有这个 run 但不是你的"。没开令牌鉴权时 run_id 本身就是凭据（80 位随机数，猜不到）——
     和这时 /chat 信任请求体里的 user_id 是同一个信任级别。
     """
-    if _runs is None or not _RUN_ID.fullmatch(run_id):
+    if not _RUN_ID.fullmatch(run_id):
+        raise HTTPException(404, "Not Found")
+    cases = getattr(app.state, "case_service", None)
+    if cases is not None and await cases.run(run_id) is not None:
+        return await readable_case_run(cases, actor, run_id)
+    if _runs is None:
         raise HTTPException(404, "Not Found")
     run = await _runs.get(run_id)
     if run is None:
@@ -2034,11 +2168,15 @@ async def submit_run(
     req: ChatRequest,
     x_user_token: str | None = Header(None, alias="X-User-Token"),
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    actor=Depends(optional_actor),
 ):
     """
     提交一轮，不等结果（排队模式）。返回 run_id；进度和回答从 GET /runs/{run_id}/events 读，
     结局从 GET /runs/{run_id} 读。同一个 Idempotency-Key 重复提交拿到的是同一个 run。
     """
+    if _is_case_input(req):
+        _, receipt = await _accept_case_chat(req, actor, idempotency_key, "runs")
+        return {**receipt, "status_url": f"/tickets/cases/runs/{receipt['run_id']}"}
     if _runs is None:
         raise HTTPException(404, "排队模式没开（AI_HELPDESK_RUN_MODE=queued）")
     user_id = await resolve_user_id(req, x_user_token)
@@ -2049,9 +2187,9 @@ async def submit_run(
 
 
 @app.get("/runs/{run_id}", dependencies=[Depends(protect_chat)], tags=["对话"])
-async def get_run(run_id: str, x_user_token: str | None = Header(None, alias="X-User-Token")):
+async def get_run(run_id: str, x_user_token: str | None = Header(None, alias="X-User-Token"), actor=Depends(optional_actor)):
     """一个 run 的状态：第几次执行、每次谁跑的、怎么结束的；结束了带结果（/chat 的形状）。"""
-    return (await _readable_run(run_id, x_user_token)).public()
+    return (await _readable_run(run_id, x_user_token, actor)).public()
 
 
 @app.get("/runs/{run_id}/events", dependencies=[Depends(protect_chat)], tags=["对话"])
@@ -2060,16 +2198,18 @@ async def run_events(
     after: str | None = None,
     x_user_token: str | None = Header(None, alias="X-User-Token"),
     last_event_id: Annotated[str | None, Header(alias="Last-Event-ID")] = None,
+    actor=Depends(optional_actor),
 ):
     """
     一个 run 的 SSE 流，和 /chat/stream 的帧一样。断线重连时带上最后收到的那一帧的 id
     （`Last-Event-ID` 头，或 `?after=`），从它后面接着读，一帧不重、一帧不漏；不带就从头读。
     """
-    run = await _readable_run(run_id, x_user_token)
+    run = await _readable_run(run_id, x_user_token, actor)
     cursor = (last_event_id or after or "").strip()
     if cursor and not _EVENT_ID.fullmatch(cursor):
         raise HTTPException(422, "Last-Event-ID 的格式不对")
-    return _sse_response(_runs.events(run, after=cursor or None))
+    service = app.state.case_service.runs if run.case_context else _runs
+    return _sse_response(service.events(run, after=cursor or None))
 
 
 @app.get("/livez", include_in_schema=False)
@@ -2486,6 +2626,8 @@ async def update_ticket_status(ticket_id: str, body: TicketStatusRequest):
     except KeyError as exc:
         raise HTTPException(404, f"工单不存在: {ticket_id}") from exc
     except ValueError as exc:
+        if str(exc) == "case_requires_versioned_api":
+            raise HTTPException(409, "此工单需要带版本的员工工单接口") from exc
         raise HTTPException(422, str(exc)) from exc
     return {
         **(await _ticket_payloads([ticket]))[0],

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useConversation, useSetTicketStatus, useTicket, useTickets } from '@/api/hooks'
-import { ApiError } from '@/api/client'
+import { ApiError, caseApi } from '@/api/client'
 import { Chip, StateBlock, type Tone } from './ui'
 import { Icon } from './Icon'
 import { RoutingInspector, TurnNotes, TurnPending } from './RoutingInspector'
@@ -15,6 +15,8 @@ import { href } from '@/lib/route'
 import { useT } from '@/i18n'
 import type { Key } from '@/i18n/catalog'
 import type { Ticket, TicketDetail } from '@/api/types'
+import { CaseWorkbench } from './CaseWorkbench'
+import './cases.css'
 
 const STATUSES = ['open', 'assigned', 'resolved', 'cancelled'] as const
 
@@ -52,11 +54,25 @@ export function StatusChip({ status }: { status: string }) {
  * 一个状态，不代表分给了谁。通知同理：只转述投递记录，没记录就说没记录。
  */
 export function TicketsPanel({ base, ticketId }: { base: string; ticketId?: string }) {
+  const { lang } = useT()
+  const [cases, setCases] = useState(false)
+  return <>
+    <div className="case-switch">
+      <button className="btn btn-secondary" aria-pressed={cases} onClick={() => setCases(!cases)}>
+        {cases ? (lang === 'en' ? 'Back to legacy tickets' : '查看历史工单') : (lang === 'en' ? 'Open Case workspace' : '进入跨消息工单')}
+      </button>
+    </div>
+    {cases ? <div className="page scroll"><div className="page-inner"><CaseWorkbench base={base} ticketId={ticketId} /></div></div>
+      : <LegacyTicketsPanel base={base} ticketId={ticketId} onAdopt={() => setCases(true)} />}
+  </>
+}
+
+function LegacyTicketsPanel({ base, ticketId, onAdopt }: { base: string; ticketId?: string; onAdopt: () => void }) {
   const { t, lang } = useT()
   const [status, setStatus] = useState('')
   const list = useTickets(base, status)
 
-  if (ticketId) return <TicketDetailView base={base} ticketId={ticketId} />
+  if (ticketId) return <TicketDetailView base={base} ticketId={ticketId} onAdopt={onAdopt} />
 
   const data = list.data
   const stats = data?.stats ?? {}
@@ -183,7 +199,7 @@ function TicketTurn({ base, turnId }: { base: string; turnId: string }) {
   )
 }
 
-function TicketDetailView({ base, ticketId }: { base: string; ticketId: string }) {
+function TicketDetailView({ base, ticketId, onAdopt }: { base: string; ticketId: string; onAdopt: () => void }) {
   const { t, lang } = useT()
   const { data: ticket, error, isError, refetch } = useTicket(base, ticketId)
   const update = useSetTicketStatus(base)
@@ -254,6 +270,7 @@ function TicketDetailView({ base, ticketId }: { base: string; ticketId: string }
           <h2 className="page-title">{t('tk.title')} <span className="mono">{ticket.id}</span></h2>
           <StatusChip status={ticket.status} />
         </header>
+        <LegacyAdoption base={base} ticket={ticket} onAdopt={onAdopt} />
 
         <section className="ticket-section" aria-labelledby="tk-request">
           <h3 id="tk-request">{t('tk.request')}</h3>
@@ -371,4 +388,27 @@ function Transcript({ base, ticket }: { base: string; ticket: Ticket }) {
       )}
     </section>
   )
+}
+
+function LegacyAdoption({ base, ticket, onAdopt }: { base: string; ticket: TicketDetail; onAdopt: () => void }) {
+  const { lang } = useT()
+  const [reason, setReason] = useState('')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  async function adopt() {
+    setBusy(true); setError('')
+    try {
+      await caseApi.adopt(base, ticket.id, ticket.updated_at, reason)
+      onAdopt()
+    } catch {
+      setError(lang === 'en' ? 'An administrator must sign in and confirm ownership. Refresh the ticket before retrying.' : '请由已登录的管理员确认工单归属，刷新工单后重试。')
+    } finally { setBusy(false) }
+  }
+  return <details className="case-workbench">
+    <summary>{lang === 'en' ? 'Continue this historical ticket as a case' : '将此历史工单接入持续处理'}</summary>
+    <p>{lang === 'en' ? 'An administrator must confirm that this ticket belongs to this team. It will start under human control.' : '需要管理员确认此工单属于当前团队，接入后由人工控制。'}</p>
+    <label>{lang === 'en' ? 'Ownership confirmation reason' : '归属确认依据'}<input value={reason} onChange={e => setReason(e.target.value)} /></label>
+    <button className="btn btn-secondary" disabled={busy || !reason.trim()} onClick={adopt}>{lang === 'en' ? 'Confirm ownership and continue' : '确认归属并继续'}</button>
+    {error && <p role="alert">{error}</p>}
+  </details>
 }

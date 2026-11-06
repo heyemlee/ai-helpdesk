@@ -53,6 +53,7 @@ class RunRecord:
     # 终态时的响应体：/chat 的形状（meta 和 result 两个事件合起来）；出错时为 None
     result: dict[str, Any] | None = None
     error: str = ""
+    case_context: dict[str, Any] | None = None
     # 每次执行一条：谁跑的、哪一轮、怎么结束的
     history: list[dict[str, Any]] = field(default_factory=list)
     created_at: float = field(default_factory=time.time)

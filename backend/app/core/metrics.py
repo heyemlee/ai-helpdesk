@@ -12,6 +12,10 @@ Prometheus 业务指标（Grafana 面板的数据源）。
 """
 from prometheus_client import Counter, Gauge, Histogram
 
+# Reasons/outcomes are fixed by the Case service, never taken from user input.
+CASE_REJECTIONS = Counter("helpdesk_case_rejections_total", "Rejected Case writes and stale Run results", ["reason"])
+CASE_ACTIONS = Counter("helpdesk_case_actions_total", "Persisted or deduplicated Case handoffs", ["outcome"])
+
 HTTP_REQUESTS = Counter(
     "http_requests_total",
     "HTTP 请求数",

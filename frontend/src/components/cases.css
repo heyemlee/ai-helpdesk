@@ -1,0 +1,12 @@
+.case-switch { padding: 12px 24px; border-bottom: 1px solid var(--line, #ddd); }
+.case-workbench { max-width: 960px; margin: 0 auto; padding: 12px 0 32px; }
+.case-workbench label { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; }
+.case-workbench input, .case-workbench select, .case-workbench textarea { font: inherit; color: inherit; background: var(--surface, white); border: 1px solid var(--line, #aaa); border-radius: 6px; padding: 10px; width: 100%; }
+.case-workbench textarea { min-height: 100px; resize: vertical; }
+.case-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 16px; }
+.case-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.case-draft { margin: 16px 0; padding: 20px; border: 1px solid var(--line, #ccc); border-radius: 8px; }
+.case-draft details { margin: 12px 0; overflow-wrap: anywhere; }
+.case-workbench dd { margin: 0 0 12px; }
+.case-workbench .danger { color: var(--danger, #b42318); }
+.case-workbench button:disabled { opacity: .55; cursor: not-allowed; }

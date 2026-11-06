@@ -44,7 +44,7 @@ def lost_attempts(run: RunRecord) -> int:
 
 def same_request(a: RunRecord, b: RunRecord) -> bool:
     """同一个 Idempotency-Key 的两次提交是不是同一件事：会话、用户、原话都一样。"""
-    return a.conv_id == b.conv_id and a.message == b.message and a.user_id == b.user_id
+    return a.conv_id == b.conv_id and a.message == b.message and a.user_id == b.user_id and a.case_context == b.case_context
 
 
 # ── 进程内 ────────────────────────────────────────────────────────────────────
@@ -63,6 +63,7 @@ class MemoryRunStore:
 
     def _copy(self, run: RunRecord) -> RunRecord:
         return replace(run, history=[dict(h) for h in run.history],
+                       case_context=json.loads(json.dumps(run.case_context)) if run.case_context is not None else None,
                        result=json.loads(json.dumps(run.result)) if run.result is not None else None,
                        checkpoint=(json.loads(json.dumps(run.checkpoint))
                                    if run.checkpoint is not None else None))
@@ -210,7 +211,7 @@ _NOW = "extract(epoch from clock_timestamp())::float8"
 _COLUMNS = (
     "run_id, instance, idempotency_key, conv_id, user_id, message, request_id, transport, status,"
     " attempt, lease_owner, lease_until, turn_id, degrade_level, checkpoint, result, error, history,"
-    " created_at, updated_at, dispatched_at, started_at, finished_at"
+    " created_at, updated_at, dispatched_at, started_at, finished_at, case_context"
 )
 
 # 这一次执行收场：history 的最后一条补上结束时间、结局和那一轮的 turn_id
@@ -234,6 +235,7 @@ def _record(row: Any) -> RunRecord:
         checkpoint=json.loads(checkpoint) if isinstance(checkpoint, str) else checkpoint,
         result=json.loads(result) if isinstance(result, str) else result,
         error=row["error"],
+        case_context=(json.loads(row["case_context"]) if isinstance(row["case_context"], str) else row["case_context"]),
         history=json.loads(history) if isinstance(history, str) else (history or []),
         created_at=row["created_at"], updated_at=row["updated_at"],
         dispatched_at=row["dispatched_at"], started_at=row["started_at"],
@@ -253,11 +255,12 @@ class PgRunStore:
     async def create(self, run: RunRecord) -> tuple[RunRecord, bool]:
         row = await self._db.fetchrow(
             f"INSERT INTO agent_runs (run_id, instance, idempotency_key, conv_id, user_id, message,"
-            f" request_id, transport, status, created_at, updated_at, dispatched_at)"
-            f" VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'queued', {_NOW}, {_NOW}, {_NOW})"
+            f" request_id, transport, case_context, status, created_at, updated_at, dispatched_at)"
+            f" VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, 'queued', {_NOW}, {_NOW}, {_NOW})"
             f" ON CONFLICT (instance, idempotency_key) DO NOTHING RETURNING {_COLUMNS}",
             run.run_id, self.instance, run.idempotency_key, run.conv_id, run.user_id,
             run.message, run.request_id, run.transport,
+            json.dumps(run.case_context, ensure_ascii=False) if run.case_context is not None else None,
         )
         if row is not None:
             return _record(row), True

@@ -1,4 +1,5 @@
 import type {
+  CaseAction, CaseDetail, CaseInput, CaseReceipt, CaseSummary,
   ChatConnectionBody, ChatModelBody, ChatRequest, ChatResponse, ConversationResponse,
   EmbeddingConnectionBody, EmbeddingModelBody, EvalReport, HealthResponse, ImportResult,
   KnowledgeCategoryOverview, KnowledgeDocument, KnowledgeDocumentDetail, KnowledgeDocumentList,
@@ -319,4 +320,18 @@ export function parseSseBlock(block: string): StreamEvent | null {
   } catch {
     return null
   }
+}
+
+export const caseApi = {
+  list: (base: string) => request<{ tickets: CaseSummary[] }>(base, '/tickets/cases'),
+  get: (base: string, id: string) => request<CaseDetail>(base, `/tickets/${encodeURIComponent(id)}/case`),
+  input: (base: string, body: CaseInput) => request<CaseReceipt>(base, '/tickets/cases/inputs', json(body)),
+  act: (base: string, id: string, body: CaseAction) =>
+    request<CaseDetail>(base, `/tickets/${encodeURIComponent(id)}/case/actions`, json(body)),
+  approve: (base: string, c: CaseDetail, draft: CaseDetail['drafts'][number]) =>
+    request<CaseDetail>(base, `/tickets/${encodeURIComponent(c.id)}/case/drafts/${encodeURIComponent(draft.id)}/approve`,
+      json({ expected_version: c.version, expected_control_version: c.control_version, body_hash: draft.body_hash })),
+  adopt: (base: string, id: string, updated: number, reason: string) =>
+    request<CaseDetail>(base, `/tickets/${encodeURIComponent(id)}/case/adopt`,
+      json({ expected_ticket_updated_at: updated, reason })),
 }

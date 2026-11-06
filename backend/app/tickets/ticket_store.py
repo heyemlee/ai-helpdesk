@@ -104,6 +104,7 @@ class Delivery:
     last_error:      str = ""
     created_at:      float = field(default_factory=time.time)
     updated_at:      float = field(default_factory=time.time)
+    lease_owner:     str = ""
 
 
 @dataclass
@@ -413,6 +414,7 @@ _PG_SELECT = (
     " t.answer_confidence, t.last_message, t.status, t.created_at, t.updated_at,"
     " COALESCE(k.turn_id, '') AS turn_id"
     " FROM tickets t LEFT JOIN ticket_turns k ON k.ticket_id = t.id"
+    " JOIN ticket_case_state c ON c.case_id=t.id AND NOT c.managed"
 )
 
 
@@ -481,16 +483,16 @@ class PgTicketStore:
     async def update_status(self, ticket_id: str, status: str) -> Ticket:
         if status not in VALID_STATUSES:
             raise ValueError(f"非法状态: {status}，可选 {VALID_STATUSES}")
-        row = await self._db.fetchrow("SELECT * FROM tickets WHERE id = $1", ticket_id)
-        if row is None:
-            raise KeyError(ticket_id)
-        current = row["status"]
-        if status != current and status not in _TRANSITIONS.get(current, set()):
-            raise ValueError(f"工单 {ticket_id} 不允许从 {current} 流转到 {status}")
-        await self._db.execute(
-            "UPDATE tickets SET status = $1, updated_at = $2 WHERE id = $3",
-            status, time.time(), ticket_id,
-        )
+        async with self._db.transaction() as conn:
+            row = await conn.fetchrow("SELECT * FROM tickets WHERE id=$1 FOR UPDATE", ticket_id)
+            if row is None:
+                raise KeyError(ticket_id)
+            if await conn.fetchval("SELECT managed FROM ticket_case_state WHERE case_id=$1", ticket_id):
+                raise ValueError("case_requires_versioned_api")
+            current = row["status"]
+            if status != current and status not in _TRANSITIONS.get(current, set()):
+                raise ValueError(f"工单 {ticket_id} 不允许从 {current} 流转到 {status}")
+            await conn.execute("UPDATE tickets SET status=$1,updated_at=$2 WHERE id=$3", status, time.time(), ticket_id)
         return await self.get(ticket_id)
 
     async def get(self, ticket_id: str) -> Ticket | None:
@@ -535,12 +537,33 @@ class PgTicketStore:
         return [Delivery(**dict(r)) for r in rows]
 
     async def notify_mark(self, delivery_id: str, status: str, *, attempts: int,
-                          next_attempt_at: float = 0.0, last_error: str = "") -> None:
-        await self._db.execute(
-            "UPDATE ticket_notifications SET status = $1, attempts = $2,"
-            " next_attempt_at = $3, last_error = $4, updated_at = $5 WHERE id = $6",
-            status, attempts, next_attempt_at, last_error[:500], time.time(), delivery_id,
-        )
+                          next_attempt_at: float = 0.0, last_error: str = "", owner: str = "") -> None:
+        async with self._db.transaction() as conn:
+            await conn.fetchrow("SELECT id FROM ticket_notifications WHERE id=$1 FOR UPDATE", delivery_id)
+            if owner and not await conn.fetchval(
+                "SELECT 1 FROM ticket_notification_claims WHERE delivery_id=$1 AND owner=$2"
+                " AND lease_until>EXTRACT(EPOCH FROM clock_timestamp())", delivery_id, owner):
+                return
+            await conn.execute(
+                "UPDATE ticket_notifications SET status=$1,attempts=$2,next_attempt_at=$3,last_error=$4,updated_at=$5 WHERE id=$6",
+                status, attempts, next_attempt_at, last_error[:500], time.time(), delivery_id)
+            if owner:
+                await conn.execute("DELETE FROM ticket_notification_claims WHERE delivery_id=$1 AND owner=$2", delivery_id, owner)
+
+    async def notify_claim(self, delivery_id: str, lease_s: float) -> Delivery | None:
+        async with self._db.transaction() as conn:
+            row = await conn.fetchrow(
+                "SELECT * FROM ticket_notifications WHERE id=$1 AND status='pending'"
+                " AND next_attempt_at<=EXTRACT(EPOCH FROM clock_timestamp()) FOR UPDATE", delivery_id)
+            if row is None:
+                return None
+            owner = uuid.uuid4().hex
+            claimed = await conn.fetchval(
+                "INSERT INTO ticket_notification_claims VALUES($1,$2,EXTRACT(EPOCH FROM clock_timestamp())+$3)"
+                " ON CONFLICT(delivery_id) DO UPDATE SET owner=$2,lease_until=EXCLUDED.lease_until"
+                " WHERE ticket_notification_claims.lease_until<EXTRACT(EPOCH FROM clock_timestamp()) RETURNING owner",
+                delivery_id, owner, lease_s)
+            return Delivery(**dict(row), lease_owner=owner) if claimed else None
 
     async def notify_for(self, ticket_ids: list[str]) -> dict[str, Delivery]:
         if not ticket_ids:
@@ -561,7 +584,8 @@ class PgTicketStore:
 
     async def stats(self) -> dict[str, int]:
         rows = await self._db.fetch(
-            "SELECT status, COUNT(*) AS n FROM tickets GROUP BY status"
+            "SELECT t.status, COUNT(*) AS n FROM tickets t JOIN ticket_case_state c ON c.case_id=t.id"
+            " WHERE NOT c.managed GROUP BY t.status"
         )
         result = {s: 0 for s in VALID_STATUSES}
         for row in rows:
