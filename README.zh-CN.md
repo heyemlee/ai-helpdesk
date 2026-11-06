@@ -170,7 +170,7 @@ PostgreSQL 上按题型统计的前 3 命中数，只测融合检索这一步（
 | 新旧版本并存     |       4 |                3 |                    4 |
 | **合计**         | **108** |           **77** |              **101** |
 
-52 篇文档和 122 道题（其中 14 道没有答案）都是仿真的测试数据；即使用远端向量，6 道有新旧版本的题里仍有 4 道是旧版排在前面。记录：[本地向量](docs/evaluation/retrieval-ca-factory.md)、[远端向量](docs/evaluation/retrieval-remote-embedding.md)。
+52 篇文档和 122 道题（其中 14 道没有答案）都是仿真的测试数据；即使用远端向量，6 道有新旧版本的题里仍有 4 道是旧版排在前面。走完整条对话链路后，回答用的仍是现行版本：没有一条报出旧版的数字，64 道带数字的题里 59 道答出了正确的数字。记录：[本地向量](docs/evaluation/retrieval-ca-factory.md)、[远端向量](docs/evaluation/retrieval-remote-embedding.md)、[完整链路](docs/evaluation/kb-full-chain.md)（英文）。
 
 ### 护栏与转人工
 

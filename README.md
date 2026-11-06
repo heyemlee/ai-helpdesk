@@ -170,7 +170,7 @@ Top-three hits on PostgreSQL by question type, for the fused search alone (no re
 | Current vs. superseded version |       4 |                    3 |                    4 |
 | **All**                        | **108** |               **77** |              **101** |
 
-The 52 documents and 122 questions (14 with no answer) are simulated test data, and even with the remote model a superseded document outranks the current one in 4 of 6 cases. Records: [local vectors](docs/evaluation/retrieval-ca-factory.md), [remote embedding](docs/evaluation/retrieval-remote-embedding.md).
+The 52 documents and 122 questions (14 with no answer) are simulated test data, and even with the remote model a superseded document outranks the current one in 4 of 6 cases. Through the full chat path the current figures still won: no reply quoted the superseded one, and 59 of the 64 questions with a figure got it. Records: [local vectors](docs/evaluation/retrieval-ca-factory.md), [remote embedding](docs/evaluation/retrieval-remote-embedding.md), [full chain](docs/evaluation/kb-full-chain.md).
 
 ### Guardrails and handoff
 

@@ -843,8 +843,8 @@ def _case_line(r: dict[str, Any]) -> str:
 def _print_chain(summary: dict[str, Any], results: list[dict[str, Any]], skipped: int,
                  top_k: int, verbose: bool) -> None:
     f, u, calls = summary["facts"], summary["unanswerable"], summary["calls"]
-    print(f"\n带数字或编号的 {f['n']} 条：答对 {f['correct']}，缺数字 {f['n'] - f['correct']}"
-          f"（其中转人工 {f['handoff']} 条）")
+    print(f"\n带数字或编号的 {f['n']} 条：答对 {f['correct']}，缺数字 {f['n'] - f['correct']}；"
+          f"转了人工的 {f['handoff']} 条（答对的也算在内）")
     print(f"  有旧版的 {f['with_stale_version']} 条：答案报了旧版数字 {f['stale_reported']} 条，"
           f"旧版片段进了作答上下文 {f['stale_in_context']} 条")
     print(f"  hit@{top_k}：重排前 {f['hit_before']}/{f['n']}，重排后（进上下文的）{f['hit_after']}/{f['n']}")

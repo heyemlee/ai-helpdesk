@@ -57,6 +57,49 @@ The tests in [test_eval_retrieval.py](../../backend/tests/test_eval_retrieval.py
 
 All 78 judged cases also ran once against the same kind of fake model, with no request leaving the process: 293 model calls, four per case on the rewrite-and-rerank path and one on the direct path. That run checks the wiring and the call count; its answers say nothing about answer quality.
 
+## First real run
+
+### Conditions
+
+- Backend source: commit `ef18e1c` on the PR branch, run on 2026-11-06 from 00:14 to 00:35 UTC.
+- Model connection: the one production's staff instance uses, saved from the console: `gpt-6-luna` through an OpenAI-compatible endpoint for intent, rewriting, reranking and answers; `Qwen/Qwen3-Embedding-0.6B`, 1024 dimensions, with the query prefix. No cross-encoder is configured, so reranking is the model's listwise rerank. Token limits, the intent fast path and the answer guard came from production's `backend/.env`.
+- Store: a temporary SQLite file loaded with the 52 documents. Production's store was not read.
+- 78 judged cases, one at a time: 329 chat model calls (intent 72, rewrite 90, rerank 90, answer 77), none failed, and 404 texts embedded on the knowledge side. 18 cases took the corrective retrieval round.
+
+### Results
+
+| Group | Cases | Result |
+| --- | ---: | --- |
+| Answer is a figure or a code | 64 | 59 contain every expected value |
+| ...with a superseded version | 6 | none quoted an old figure; the superseded passage reached the answer in 5 |
+| No answer in the corpus | 14 | none made up a number; 11 declined or handed off; 3 listed for a person |
+
+By case type, among the 64: `direct` 26 of 27, `paraphrase` 8 of 8, `code` 8 of 8, `cross` 10 of 12, `multi` 3 of 5, `version` 4 of 4.
+
+hit@3 over the 64: 57 before reranking and 61 after. Reranking pulled the expected document into the three passages in four cases (`p-07`, `p-16`, `m-02`, `m-03`) and pushed it out in none.
+
+The five misses:
+
+| Case | Question | What happened |
+| --- | --- | --- |
+| `d-20` | 人工客服的服务时间 | The words 人工客服 sent it straight to handoff by rule; no retrieval, no answer |
+| `e-05` | Delivery to an address 60 miles away | Direct path missed the current fee table; the reply avoided a figure and handed off |
+| `m-06` | 定金付多少，取消了能退吗 | The deposit document was not retrieved; the reply said the deposit follows the contract, then answered the cancellation half correctly |
+| `e-12` | Do contractors get trade pricing? | The right document was in the context; the reply described eligibility without the three discount tiers |
+| `m-02` | 加急订单的台面也能跟着加快吗 | Substantively right ("加工周期不变") but without the 7–10 working days |
+
+The three unanswerable cases listed for a person, read by hand: `n-07` and `n-09` decline in wording the pattern does not catch ("aren't specified in the available information", "I don't have access to our current Yelp rating"); `n-11` gives general advice about tipping without inventing anything. So none of the 14 made something up.
+
+Numbers in a reply that appear in no source, four cases, all derived correctly: centimetre conversions (`p-24`, `c-07`) and 12-hour times for 15:30 and 15:00 (`e-03`, `e-19`).
+
+The smoke run before this one, the same day on the same commit, had `d-02` withhold the 3% card fee ("以付款单为准") with the right document first; in the full run the same question got the figure. One run per case does not show how often that happens.
+
+### Reading the results
+
+- **The superseded document is not the risk it looked like at the ranking.** It reached the answer in 5 of the 6 cases that have one, and every reply used the 2026 figures, usually naming the effective date. The answer guard would not have caught a stale price; the model did.
+- **Retrieval decides most misses.** Two of the five never had the document (`e-05` on the direct path, `m-06`), and one never reached retrieval (`d-20`). The direct path, which skips rewriting and reranking, answered 3 of 5.
+- **The rest are figures withheld, not figures wrong.** No reply among the 64 contained a superseded figure, or a number from no source other than a unit conversion. The harness does not check for a wrong figure that happens to appear elsewhere in the corpus.
+
 ## Limits
 
 - The 52 documents and all questions were written by the same author. Real customer phrasing and policies will behave differently.
