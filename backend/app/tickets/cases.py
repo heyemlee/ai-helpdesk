@@ -220,7 +220,7 @@ class CaseService:
         if body.policy_scope is not None:
             actor.require_policy(body.policy_scope)
         digest = hashlib.sha256(dumps({
-            "actor": actor.actor_id, "input": body.model_dump(),
+            "actor": actor.actor_id, "input": body.model_dump(mode="json"),
             "updated_fields": sorted(body.model_fields_set & {"customer_ref", "order_refs"}),
         }).encode()).hexdigest()
         attachments = []

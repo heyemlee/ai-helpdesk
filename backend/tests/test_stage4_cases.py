@@ -36,6 +36,23 @@ def approval(case, draft):
     return DraftApproval(expected_version=case["version"], expected_control_version=case["control_version"], body_hash=draft["body_hash"])
 
 
+async def test_explicit_policy_time_is_persisted_and_input_retry_is_idempotent(pair):
+    service, other = pair
+    scope = ps.PolicyScope(product="Cab", region="CA", audience="employee", as_of="2026-11-05T20:00:00Z")
+    body = new(policy_scope=scope)
+    first = await service.accept_input(ACTOR, body)
+    repeated = await other.accept_input(ACTOR, type(body).model_validate_json(body.model_dump_json(exclude_unset=True)))
+    assert repeated["deduplicated"]
+    assert repeated["case_id"] == first["case_id"] and repeated["run_id"] == first["run_id"]
+    case = await service.get(ACTOR, first["case_id"])
+    assert case["policy_scope"] == scope.model_dump(mode="json")
+    assert len(case["messages"]) == len(case["runs"]) == 1
+    changed = body.model_copy(update={"policy_scope": scope.model_copy(update={"as_of": scope.as_of + timedelta(seconds=1)})})
+    with pytest.raises(HTTPException) as error:
+        await service.accept_input(ACTOR, changed)
+    assert error.value.status_code == 409
+
+
 async def test_policy_withdrawal_revokes_existing_draft_and_approval(pair):
     service, _ = pair
     kb, doc, refs, run = await prepare_policy(service)
