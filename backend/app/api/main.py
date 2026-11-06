@@ -1884,8 +1884,13 @@ async def _resume_frames(req: ChatRequest, conv_id: str, user_id: str, checkpoin
         invalid = invalid or bool(issues) or cells != business["evidence"]
     if invalid:
         safe = "此前依据已失效，请重新查询后核实。"
-        checkpoint.update(shown=safe, final={**checkpoint["final"], "response": safe, "handoff": False})
-        meta = {**meta, "knowledge_sources": [], "business_data": {"attempted": True, "evidence": [], "evidence_issues": ["missing_or_stale_time"]}}
+        # Revoke the answer and its reusable evidence, not the already
+        # committed routing decision. Handoff effects still use the same run
+        # identity, whether they completed before the crash or remain pending.
+        checkpoint.update(shown=safe, final={**checkpoint["final"], "response": safe, "trajectory": []})
+        meta = {**meta, "knowledge_used": False, "knowledge_sources": [],
+                "knowledge": {**meta.get("knowledge", {}), "evidence_ok": False},
+                "business_data": {"attempted": True, "evidence": [], "evidence_issues": ["missing_or_stale_time"]}}
         checkpoint["meta"] = meta
     shown = str(checkpoint.get("shown") or "")
     state = _TurnState(stage="after", shown=[shown] if shown else [],
