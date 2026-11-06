@@ -368,7 +368,7 @@ class MismatchExplanationTest(unittest.TestCase):
 
         self.assertEqual(
             set(MISMATCH_LABELS),
-            {"empty", "row_count", "wrong_values", "extra_columns", "matched_unusable"},
+            {"empty", "row_count", "wrong_values", "extra_columns"},
         )
 
 

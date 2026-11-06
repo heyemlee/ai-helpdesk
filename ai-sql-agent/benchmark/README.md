@@ -505,7 +505,8 @@ cases and the gate still compare the last step only). An earlier-step match only
 when the helpdesk can use it: the run carries no risk finding (with `has_risk` the
 helpdesk's evidence gate uses none of the result), and the step fits inside the result
 preview embedded in `answer` (about 1,500 characters), which is all the helpdesk reads.
-Otherwise the item is wrong with `mismatch` = `matched_unusable`. The report also says why each wrong
+Otherwise the item is wrong and flagged `unusable_match`; `mismatch` still describes the
+last step, since that is what the helpdesk repeats. The report also says why each wrong
 answer is wrong (`mismatch`): empty result, wrong row count, wrong values, or right
 values with too many columns. Only the first three can be repeated to a customer as a
 wrong fact, so the line counts silent errors with wrong values or row counts

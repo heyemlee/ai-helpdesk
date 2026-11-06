@@ -91,16 +91,19 @@ class ScoreAllStepsTest(unittest.TestCase):
     def test_earlier_match_in_a_flagged_run_is_not_counted(self):
         """
         前面某一步对上了，但这次结果带风险提示（has_risk）：客服的可信校验整份不用，
-        客户其实没拿到答案。不能算对，单列成 matched_unusable。
+        客户其实没拿到答案。不能算对，记 unusable_match；错因照常说最后一步。
         """
-        for last in (_log("svc_db", [], success=False),
-                     _log("svc_db", [{"order_no": "J1", "delivery_status": "待配送"}])):
+        for last, mismatch in (
+            (_log("svc_db", [], success=False), ""),  # 最后一步没执行：没有可比的结果
+            (_log("svc_db", [{"order_no": "J1", "delivery_status": "待配送"}]), "wrong_values"),
+        ):
             logs = [_log("erp_db", [{"order_no": "J1", "order_status": "已签单"}]),
                     _log("prod_db", [], findings=["empty_result"]),
                     last]
             item = self._score(logs, all_steps=True)
             self.assertFalse(item.correct)
-            self.assertEqual(item.mismatch, "matched_unusable")
+            self.assertTrue(item.unusable_match)
+            self.assertEqual(item.mismatch, mismatch)
             self.assertEqual(item.matched_step, 1)
 
     def test_earlier_match_cut_off_from_the_answer_preview_is_not_counted(self):
@@ -114,8 +117,11 @@ class ScoreAllStepsTest(unittest.TestCase):
                 _log("svc_db", [{"order_no": "J1", "delivery_status": "待配送"}])]
         item = self._score(logs, all_steps=True)
         self.assertFalse(item.correct)
-        self.assertEqual(item.mismatch, "matched_unusable")
+        self.assertTrue(item.unusable_match)
         self.assertEqual(item.matched_step, 2)
+        # 客服读到的是最后一步的错值、没有风险提示：照常算「取值不对」的静默错误
+        self.assertEqual(item.mismatch, "wrong_values")
+        self.assertTrue(item.silent_error)
         # 第 1 步小的时候同一份结果照样算对
         logs[0] = _log("erp_db", big[:1])
         self.assertTrue(self._score(logs, all_steps=True).correct)

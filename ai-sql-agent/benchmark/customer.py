@@ -168,6 +168,13 @@ def customer_summary(report: BenchmarkReport) -> List[str]:
         ]
         lines.append(f"  答错 {len(wrong)} 道：" + "，".join(parts))
 
+    unusable = [item for item in items if item.unusable_match]
+    if unusable:
+        lines.append(
+            f"  另有 {len(unusable)} 道前面某一步对上了，但客服用不上（带风险提示，或被截在结果预览外面）："
+            + "、".join(item.item_id for item in unusable)
+        )
+
     silent = [item for item in items if item.silent_error]
     misleading = [item for item in silent if item.mismatch in ("wrong_values", "row_count")]
     lines.append(

@@ -48,7 +48,6 @@ MISMATCH_LABELS = {
     "row_count": "行数不对",
     "wrong_values": "取值不对",
     "extra_columns": "取值都对，多输出了列",
-    "matched_unusable": "前面某一步对上了，但客服用不上（结果带风险提示，或者那一步被截在了结果预览外面）",
 }
 """答错时错在哪（`explain_mismatch`）。只用来看错因，不参与判分。"""
 
@@ -218,8 +217,15 @@ class BenchmarkItemResult:
     matched_step: Optional[int] = None
     """
     按所有步骤判分时（`score_all_steps`），和标准答案对上的是第几步（从 1 数）；
-    最后一步就对上了也记最后一步。前面某一步对上、但这次结果带风险提示时也记着，
-    这时不算对，`mismatch` 是 `matched_unusable`。没对上、或者没按所有步骤判，为 None。
+    最后一步就对上了也记最后一步。前面某一步对上、但客服用不上时也记着（见
+    `unusable_match`）。没对上、或者没按所有步骤判，为 None。
+    """
+
+    unusable_match: bool = False
+    """
+    前面某一步和标准答案对上了，但客服用不上，所以不算对：这次结果带风险提示（has_risk，
+    客服的可信校验整份不用），或者那一步被截在 answer 的结果预览外面（客服读的就是那一段）。
+    和 `mismatch` 分开记：`mismatch` 说的始终是最后一步错在哪——客服照着说的是它。
     """
 
     route_signals: List[str] = field(default_factory=list)
@@ -427,6 +433,7 @@ class BenchmarkReport:
                     "flag_reasons": item.flag_reasons,
                     "mismatch": item.mismatch,
                     "matched_step": item.matched_step,
+                    "unusable_match": item.unusable_match,
                     "route": item.route,
                     "route_signals": item.route_signals,
                     "steps": item.steps,
@@ -872,7 +879,7 @@ class BenchmarkRunner:
                 category=item["category"],
                 query=item["query"],
                 correct=usable,
-                mismatch="matched_unusable" if matched_step is not None and not usable else "",
+                unusable_match=matched_step is not None and not usable,
                 predicted_sql=matched_log.final_sql or matched_log.sql,
                 error=execution.get("error"),
                 repair_used=bool(final_log.repair_attempts),
@@ -901,16 +908,13 @@ class BenchmarkRunner:
             if matched_step is not None and matched_step != len(pipeline_result.step_logs)
             else None
         )
-        correct = final_correct or (
+        earlier_usable = (
             earlier is not None and not flagged and not degraded
             and self._visible_to_caller(pipeline_result, earlier)
         )
-        if correct:
-            mismatch = ""
-        elif earlier is not None:
-            mismatch = "matched_unusable"
-        else:
-            mismatch = explain_mismatch(gold_rows, predicted_rows)
+        correct = final_correct or earlier_usable
+        # 错因说的始终是最后一步：客服照着说的是它（静默错误里「取值不对」要照常数进去）
+        mismatch = "" if correct else explain_mismatch(gold_rows, predicted_rows)
         shown_log = (
             pipeline_result.step_logs[earlier - 1] if earlier is not None and correct else final_log
         )
@@ -933,6 +937,7 @@ class BenchmarkRunner:
             steps=self._step_trace(pipeline_result),
             mismatch=mismatch,
             matched_step=matched_step,
+            unusable_match=earlier is not None and not earlier_usable,
             route=route,
             route_signals=route_signals,
         )
