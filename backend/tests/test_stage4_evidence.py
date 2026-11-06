@@ -176,3 +176,36 @@ def test_business_values_preserve_decimal_amounts_and_escape_list_markers():
                           "entity_keys": {"order_no": "SO-1"}, "as_of": "2026-11-06T12:00:00Z",
                           "field": "contract_amount", "value": 1170.25, "unit": "USD"}])
     assert "- contract amount: 1170.25 USD" in body
+
+
+def test_null_field_is_distinct_from_zero_rows_and_query_failure():
+    from app.core.business_facts import verified_nulls
+
+    raw = evidence_payload(rows=[{"order_ref": "SO-Ab", "phone": None}], units={})
+    raw["evidence"] = [c for c in raw["evidence"] if c["value"] is not None]
+    cells, issues = verified_cells(raw)
+    assert not issues and cells
+    missing = verified_nulls(raw)
+    assert len(missing) == 1 and missing[0]["field"] == "phone" and missing[0]["value"] is None
+    assert missing[0]["query_hash"] == cells[0]["query_hash"]
+    assert missing[0]["entity_keys"] == {"order_ref": "SO-Ab"}
+    body = render_draft([], {"attempted": True, "evidence": cells, "evidence_payload": raw})
+    assert "phone: 未登记（NULL）" in body and "订单 SO-Ab" in body
+    assert "未找到记录" not in body and "查询失败" not in body
+    for change in ("failure", "zero_rows", "stale", "truncated"):
+        changed = copy.deepcopy(raw)
+        if change == "failure":
+            changed["steps"][0]["success"] = False
+            changed["execution_status"] = "failed"
+        elif change == "zero_rows":
+            changed["steps"][0].update(rows=[], row_count=0)
+            changed.update(execution_status="no_data", evidence=[])
+        elif change == "stale":
+            changed["observed_at"] = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
+        else:
+            changed["steps"][0]["truncated"] = True
+        assert not verified_nulls(changed), change
+    empty = render_draft([], {"attempted": True, "evidence_issues": ["no_data"]})
+    failed = render_draft([], {"attempted": True, "evidence_issues": ["failed"]})
+    assert "未找到记录" in empty and "未登记" not in empty
+    assert "查询失败" in failed and "未登记" not in failed

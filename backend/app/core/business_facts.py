@@ -158,9 +158,32 @@ def render_cells(cells, language="zh"):
         for cell in group:
             if cell["field"] in first["entity_keys"]:
                 continue
-            lines.append(f"- {label(cell['field'], language)}: {display(cell['value'])}"
+            value = ("Not registered (NULL)" if language == "en" else "未登记（NULL）") if cell.get("null_observation") else display(cell['value'])
+            lines.append(f"- {label(cell['field'], language)}: {value}"
                          f"{(' ' + display(cell['unit'])) if cell.get('unit') else ''}")
     return "\n".join(lines)
+
+
+def verified_nulls(data):
+    """Describe NULL only in a complete, current, attributable query row.
+
+    NULL is an observation about a field, never a guessed business value. It
+    retains the same row/query/time provenance as the row's verified anchor.
+    """
+    cells, issues = verified_cells(data)
+    if issues:
+        return []
+    anchors = {(c["step_index"], c["row_index"]): c for c in cells if c.get("entity_keys")}
+    result = []
+    for (si, ri), anchor in anchors.items():
+        step = data["steps"][si]
+        for field, value in step["rows"][ri].items():
+            if value is not None:
+                continue
+            identity = [anchor["database"], anchor["query_hash"], anchor["as_of"], si, ri, field, None]
+            result.append({**anchor, "field": field, "value": None, "unit": None, "null_observation": True,
+                           "evidence_id": "null_" + hashlib.sha256(json.dumps(identity, ensure_ascii=False, sort_keys=True).encode()).hexdigest()})
+    return result
 
 
 _OUTCOMES = {"no_data": "查询成功，未找到记录。", "failed": "业务查询失败，请人工核实。",
@@ -195,7 +218,8 @@ def render_draft(knowledge, business, facts=None, language="zh"):
     if business and business.get("attempted"):
         cells, issues = business.get("evidence", []), business.get("evidence_issues", [])
         if cells:
-            parts.append(render_cells(cells, language))
+            missing = verified_nulls(business.get("evidence_payload") or {})
+            parts.append(render_cells([*cells, *missing], language))
         for issue in dict.fromkeys(issues):
             if issue in _OUTCOMES:
                 parts.append(_OUTCOMES_EN.get(issue, "The evidence needs verification.") if english else _OUTCOMES[issue])
