@@ -152,6 +152,18 @@ class ScoreAllStepsTest(unittest.TestCase):
         self.assertEqual(item.mismatch, "wrong_values")
         self.assertTrue(item.silent_error)
 
+    def test_contradiction_under_an_alias_is_caught_too(self):
+        """判分不看列名：两步都把状态叫「状态」，矛盾照样要认出来。"""
+        logs = [_log("erp_db", [{"order_no": "J1", "状态": "已签单"}]),
+                _log("prod_db", [{"order_no": "J1", "状态": "生产中"}])]
+        item = self._score(logs, all_steps=True)
+        self.assertFalse(item.correct)
+        self.assertTrue(item.unusable_match)
+        # 同一个单号出现在别的步骤里不算矛盾（标识列不是答案字段）
+        logs = [_log("erp_db", [{"order_no": "J1", "状态": "已签单"}]),
+                _log("svc_db", [{"order_no": "J1", "配送": "待配送"}])]
+        self.assertTrue(self._score(logs, all_steps=True).correct)
+
     def test_no_step_matching_is_still_wrong(self):
         logs = [_log("erp_db", [{"order_no": "J1", "order_status": "生产中"}]),
                 _log("svc_db", [{"order_no": "J1", "delivery_status": "待配送"}])]

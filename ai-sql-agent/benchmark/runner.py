@@ -580,14 +580,31 @@ def _rows_cover(gold_rows: List[Dict[str, Any]], predicted_rows: List[Dict[str, 
     return True
 
 
-def _contradicts(gold_rows: List[Dict[str, Any]], rows: List[Dict[str, Any]]) -> bool:
-    """rows 里有和标准答案同名的字段、取值却不在标准答案里（同一件事给了另一个说法）。"""
-    gold_values: Dict[str, set] = {}
+def _contradicts(
+    gold_rows: List[Dict[str, Any]],
+    rows: List[Dict[str, Any]],
+    matched_rows: List[Dict[str, Any]] = (),
+) -> bool:
+    """
+    rows 对同一件事给了另一个说法：有「答案字段」、取值却不在标准答案里。
+
+    判分不看列名，模型又常给字段起别名（`order_status AS 状态`），所以答案字段除了标准
+    答案自己的列名，还算上对上的那一步里取值全在标准答案里的列（`order_no` 这类标识列
+    取值不在答案里，不算）。换了个完全不同的名字说同一件事的，这里分不出来——和「最后一步
+    查的是另一件事」（c02）一样看不出区别，不硬猜。
+    """
+    gold_all = {_normalize_value(value) for row in gold_rows for value in row.values()}
+    answer_values: Dict[str, set] = {}
     for row in gold_rows:
         for column, value in row.items():
-            gold_values.setdefault(column, set()).add(_normalize_value(value))
+            answer_values.setdefault(column, set()).add(_normalize_value(value))
+    matched_columns = {column for row in matched_rows for column in row}
+    for column in matched_columns:
+        values = {_normalize_value(row.get(column)) for row in matched_rows if column in row}
+        if values and values <= gold_all:
+            answer_values.setdefault(column, set()).update(values)
     return any(
-        column in gold_values and _normalize_value(value) not in gold_values[column]
+        column in answer_values and _normalize_value(value) not in answer_values[column]
         for row in rows
         for column, value in row.items()
     )
@@ -972,8 +989,11 @@ class BenchmarkRunner:
         if flagged or degraded or not cls._visible_to_caller(pipeline_result, step_number):
             return False
         logs = list(getattr(pipeline_result, "step_logs", None) or [])
+        matched_rows = list((logs[step_number - 1].execution_result or {}).get("rows") or [])
         return not any(
-            _contradicts(gold_rows, list((log.execution_result or {}).get("rows") or []))
+            _contradicts(
+                gold_rows, list((log.execution_result or {}).get("rows") or []), matched_rows
+            )
             for number, log in enumerate(logs, start=1)
             if number != step_number and (log.execution_result or {}).get("success")
         )
