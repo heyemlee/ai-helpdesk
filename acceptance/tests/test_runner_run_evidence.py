@@ -51,7 +51,7 @@ class RunEvidenceTests(unittest.TestCase):
                     "response_id": "synthetic-" + str(attempt),
                 })
 
-    def observe(self, fixture_name, replies, *, timeout=3):
+    def observe(self, fixture_name, replies, *, timeout=3, case_status=200, effects_error=None):
         scenario, fixture = self.fixture(fixture_name)
         first_run = fixture["runs"][0]["run_id"]
         pending = {run: iter(values) for run, values in replies.items()}
@@ -82,7 +82,7 @@ class RunEvidenceTests(unittest.TestCase):
                     accepted(followup)
                 return httpx.Response(200, json=reply)
             if request.method == "GET" and path == "/tickets/" + fixture["case"]["case_id"] + "/case":
-                return httpx.Response(200, json=fixture["case"])
+                return httpx.Response(case_status, json=fixture["case"] if case_status == 200 else {"detail": "synthetic Case outage"})
             raise AssertionError("Unexpected test request: " + str(request.url))
 
         def advance(seconds):
@@ -94,7 +94,7 @@ class RunEvidenceTests(unittest.TestCase):
         self.addCleanup(employee.close)
         with patch("acceptance.runner.time.monotonic", side_effect=lambda: self.clock), \
                 patch("acceptance.runner.time.sleep", side_effect=advance), \
-                patch("acceptance.runner.effects", new=AsyncMock(return_value=fixture["side_effects"])):
+                patch("acceptance.runner.effects", new=AsyncMock(return_value=fixture["side_effects"], side_effect=effects_error)):
             observed = execute(employee, scenario, DATA, ScopedLedger(self.ledger, "round-1"), timeout=timeout)
         scope = "round-1:" + scenario["id"]
         contexts = {scope: {r["run_id"] for r in observed["runs"]}}
@@ -166,6 +166,33 @@ class RunEvidenceTests(unittest.TestCase):
         self.assertEqual(observed["runs"], [first, second])
         self.assertTrue(observed["completed"])
         self.assertTrue(result["fact_correct"])
+
+    def test_poll_and_final_snapshot_failures_still_return_the_accepted_run(self):
+        _, fixture = self.fixture("orders")
+        run = fixture["runs"][0]["run_id"]
+        observed, result = self.observe("orders", {run: [503]}, case_status=503,
+                                       effects_error=ConnectionError("synthetic database outage"))
+        self.assertEqual(observed["runs"], [{"run_id": run}])
+        self.assertIn("HTTP 503", observed["failure"]["detail"])
+        self.assertEqual([e["stage"] for e in observed["evidence_failures"]], ["case", "side_effects"])
+        self.assertNotIn("case", observed)
+        self.assertNotIn("side_effects", observed)
+        self.assertFalse(observed["completed"])
+        self.assertFalse(result["fact_correct"])
+        self.assertEqual(self.polls, [run])
+
+    def test_terminal_run_with_unavailable_side_effect_evidence_cannot_pass(self):
+        _, fixture = self.fixture("orders")
+        final = fixture["runs"][0]
+        observed, result = self.observe("orders", {final["run_id"]: [final]},
+                                       effects_error=ConnectionError("synthetic database outage"))
+        self.assertEqual(observed["runs"], [final])
+        self.assertEqual(observed["evidence_failures"][0]["stage"], "side_effects")
+        self.assertNotIn("side_effects", observed)
+        self.assertTrue(result["run_terminal"])
+        self.assertFalse(observed["completed"])
+        self.assertIn("side_effects_unmeasured", result["errors"])
+        self.assertFalse(result["fact_correct"])
 
     def test_image_followup_timeout_preserves_the_child_without_marking_it_terminal(self):
         _, fixture = self.fixture("images")

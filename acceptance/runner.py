@@ -156,9 +156,20 @@ def execute(employee, scenario, directory, ledger=None, timeout=240):
     except Exception as exc:
         observed["failure"] = {"type": type(exc).__name__, "detail": str(exc)}
     finally:
+        collectors = {}
         if "primary" in ids:
-            observed["case"] = employee.case(ids["primary"])
-        observed["side_effects"] = asyncio.run(effects(employee.cfg, list(ids.values())))
+            collectors["case"] = lambda: employee.case(ids["primary"])
+        collectors["side_effects"] = lambda: asyncio.run(effects(employee.cfg, list(ids.values())))
+        for name, collect in collectors.items():
+            try:
+                observed[name] = collect()
+            except Exception as exc:
+                # Preserve accepted Runs even when the same outage also prevents
+                # the final snapshots. Missing evidence still fails the oracle.
+                observed["completed"] = False
+                observed.setdefault("evidence_failures", []).append({
+                    "stage": name, "type": type(exc).__name__, "detail": str(exc),
+                })
         observed["elapsed_seconds"] = time.monotonic() - started
     return observed
 
