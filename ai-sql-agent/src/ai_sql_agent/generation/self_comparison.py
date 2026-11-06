@@ -38,7 +38,8 @@ def find_self_comparisons(sql: str, dialect: str = "") -> List[str]:
         if (
             isinstance(subject, exp.Column)
             and values
-            and all(_same_column(subject, value) for value in values)
+            # 列表里只要有一项是字段自己就够了：`order_no IN (order_no, 'J1')` 照样恒为真
+            and any(_same_column(subject, value) for value in values)
         ):
             # NOT IN 在语法树里是 Not 包着 In：报外面那一层，读的人才看得出是哪个方向
             whole = node.parent if isinstance(node.parent, exp.Not) else node

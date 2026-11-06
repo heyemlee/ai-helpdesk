@@ -42,6 +42,14 @@ class FindSelfComparisonsTest(unittest.TestCase):
         ):
             self.assertEqual(find_self_comparisons(sql, "sqlite"), [], sql)
 
+    def test_self_reference_mixed_into_a_literal_list_is_caught(self):
+        for sql in (
+            "SELECT * FROM delivery WHERE order_no IN (order_no, 'J26-00024')",
+            "SELECT * FROM delivery WHERE order_no IN ('J26-00024', order_no)",
+            "SELECT * FROM delivery WHERE order_no NOT IN ('J26-00024', order_no)",
+        ):
+            self.assertTrue(find_self_comparisons(sql, "sqlite"), sql)
+
     def test_exclusion_forms_are_caught_and_reported_as_written(self):
         # 恒为假的方向：一行都查不出来，同样不是按取值筛选
         self.assertEqual(
