@@ -1,0 +1,285 @@
+{
+  "source_commit": "61d88efeb20287db1ef75814e748cf239f2f6435",
+  "source_path": ".stage6/evaluation/2026-11-06/development-61d88ef-archive/turn_events.json",
+  "source_sha256": "a7c09743cb5f57b8a36823e498ce1ae625fe9cd441f208f599c7afca581edcba",
+  "cases": {
+    "followup": {
+      "turn_id": "01a1b22f7397fb9862403ba2cf",
+      "run_id": "01a1b22f73940313ee2729b54c093d0c",
+      "message": "沿用上文编号，这笔业务在系统中的状态值是什么？",
+      "snapshot": {
+        "facts": {},
+        "status": "in_progress",
+        "case_id": "tk_0a18a048837c",
+        "language": "zh",
+        "messages": [
+          {
+            "role": "user",
+            "content": "我要跟踪一笔业务；暂时缺少编号。"
+          },
+          {
+            "role": "user",
+            "content": "编号确定为 SO-2026-11030，核验其状态字段。"
+          },
+          {
+            "role": "user",
+            "content": "沿用上文编号，这笔业务在系统中的状态值是什么？"
+          }
+        ],
+        "materials": [],
+        "issue_type": "order",
+        "order_refs": [
+          "SO-2026-11030"
+        ],
+        "control_mode": "assistant",
+        "customer_ref": "",
+        "policy_scope": {},
+        "pending_fields": [],
+        "review_materials": []
+      },
+      "delegated_query": "订单问题\n订单 SO-2026-11030\n沿用上文编号，这笔业务在系统中的状态值是什么？",
+      "sql_response": {
+        "as_of": null,
+        "route": "data_qa",
+        "steps": [],
+        "answer": "根据上文查询结果，订单 **SO-2026-11030** 在系统中的状态字段 `order_status` 值为 **“待发货”**。",
+        "run_id": "bbe814545cac4847a259757d727f68af",
+        "currency": null,
+        "degraded": false,
+        "evidence": [],
+        "has_risk": false,
+        "trace_id": "9f5b6dd3c07f47e0",
+        "observed_at": null,
+        "as_of_source": null,
+        "degrade_reason": "",
+        "execution_status": "not_applicable",
+        "queried_database": false,
+        "result_truncated": false,
+        "selected_databases": []
+      },
+      "model_answer": "当前工单材料中的 `status` 字段值是 `in_progress`（处理中）。\n\n但这是工单 **tk_0a18a048837c** 的状态，不是订单 **SO-2026-11030** 的生产状态。目前材料没有该订单的系统状态记录，需要转人工核验，不能据此判断订单是否已排产、开料或完工。\n[[handoff:yes]]",
+      "original_result": {
+        "handoff": true,
+        "answer_confidence": 0.65,
+        "case_applied": true
+      }
+    },
+    "return_to_first": {
+      "turn_id": "01a1b230a03dcf1f7539d538a2",
+      "run_id": "01a1b230a03aa6f13171c5c446bf4de6",
+      "message": "切回第一个工单；只汇报它对应记录的状态。",
+      "snapshot": {
+        "facts": {},
+        "status": "in_progress",
+        "case_id": "tk_f1ad4556f1f8",
+        "language": "zh",
+        "messages": [
+          {
+            "role": "user",
+            "content": "我要跟踪一笔业务；暂时缺少编号。"
+          },
+          {
+            "role": "user",
+            "content": "编号确定为 SO-2026-11031，核验其状态字段。"
+          },
+          {
+            "role": "user",
+            "content": "切回第一个工单；只汇报它对应记录的状态。"
+          }
+        ],
+        "materials": [],
+        "issue_type": "order",
+        "order_refs": [
+          "SO-2026-11031"
+        ],
+        "control_mode": "assistant",
+        "customer_ref": "",
+        "policy_scope": {},
+        "pending_fields": [],
+        "review_materials": []
+      },
+      "delegated_query": "订单问题\n订单 SO-2026-11031\n切回第一个工单；只汇报它对应记录的状态。",
+      "sql_response": {
+        "as_of": null,
+        "route": "data_qa",
+        "steps": [],
+        "answer": "订单 SO-2026-11031 的状态：配送中。",
+        "run_id": "02b36fa44cbb45cda6a6cc4bc775365e",
+        "currency": null,
+        "degraded": false,
+        "evidence": [],
+        "has_risk": false,
+        "trace_id": "fac1602d6c0e4ce9",
+        "observed_at": null,
+        "as_of_source": null,
+        "degrade_reason": "",
+        "execution_status": "not_applicable",
+        "queried_database": false,
+        "result_truncated": false,
+        "selected_databases": []
+      },
+      "model_answer": "第一个工单 tk_f1ad4556f1f8 的记录状态：处理中（in_progress）。\n[[handoff:no]]",
+      "original_result": {
+        "handoff": false,
+        "answer_confidence": 0.693,
+        "case_applied": true
+      }
+    },
+    "new_case": {
+      "turn_id": "01a1b2301e4b083a885374fe6c",
+      "run_id": "01a1b2301e4612792b9fb70ae0bb38f9",
+      "message": "另开一案，检索业务 SO-2026-16031 对应的生产记录状态值。",
+      "snapshot": {
+        "facts": {},
+        "status": "open",
+        "case_id": "tk_f95ff9e29351",
+        "language": "zh",
+        "messages": [
+          {
+            "role": "user",
+            "content": "另开一案，检索业务 SO-2026-16031 对应的生产记录状态值。"
+          }
+        ],
+        "materials": [],
+        "issue_type": "order",
+        "order_refs": [
+          "SO-2026-16031"
+        ],
+        "control_mode": "assistant",
+        "customer_ref": "",
+        "policy_scope": {},
+        "pending_fields": [],
+        "review_materials": []
+      },
+      "delegated_query": "订单问题\n订单 SO-2026-16031\n另开一案，检索业务 SO-2026-16031 对应的生产记录状态值。",
+      "sql_response": {
+        "as_of": "2026-11-06T18:48:00.570000+00:00",
+        "route": "database_query",
+        "steps": [
+          {
+            "sql": "SELECT order_no, production_status\nFROM work_order\nWHERE order_no = 'SO-2026-16031';",
+            "rows": [
+              {
+                "order_no": "SO-2026-16031",
+                "production_status": "已完工"
+              }
+            ],
+            "as_of": "2026-11-06T18:48:00.570Z",
+            "error": null,
+            "success": true,
+            "database": "prod_db",
+            "final_sql": "SELECT order_no, production_status\nFROM work_order\nWHERE order_no = 'SO-2026-16031';",
+            "row_count": 1,
+            "row_limit": 1000,
+            "truncated": false,
+            "observed_at": "2026-11-06T18:48:00.571Z",
+            "as_of_source": "query_time",
+            "column_units": {},
+            "risk_findings": [],
+            "source_records": [
+              {
+                "keys": [
+                  "SO-2026-16031"
+                ],
+                "table": "work_order",
+                "database": "prod_db",
+                "truncated": false,
+                "key_columns": [
+                  "order_no"
+                ]
+              }
+            ],
+            "repair_attempts": []
+          }
+        ],
+        "answer": "已完成数据库查询。查询结果：[{\"database\": \"prod_db\", \"sql\": \"SELECT order_no, production_status\\nFROM work_order\\nWHERE order_no = 'SO-2026-16031';\", \"success\": true, \"columns\": [\"order_no\", \"production_status\"], \"rows\": [{\"order_no\": \"SO-2026-16031\", \"production_status\": \"已完工\"}], \"row_count\": 1, \"error\": null, \"truncated\": false, \"row_limit\": 1000, \"as_of\": \"2026-11-06T18:48:00.570Z\", \"as_of_source\": \"query_time\"}]",
+        "run_id": "484bf8a234c4497499d93a6d85f0736e",
+        "currency": null,
+        "degraded": false,
+        "evidence": [
+          {
+            "unit": null,
+            "as_of": "2026-11-06T18:48:00.570Z",
+            "field": "order_no",
+            "value": "SO-2026-16031",
+            "entity": {
+              "kind": "query_row",
+              "row_index": 0,
+              "query_hash": "3b3a58b83e43e86642d1c56169a6356c7916be53911c78fe4cc1613e9fd65f1e"
+            },
+            "issues": [],
+            "database": "prod_db",
+            "row_index": 0,
+            "query_hash": "3b3a58b83e43e86642d1c56169a6356c7916be53911c78fe4cc1613e9fd65f1e",
+            "step_index": 0,
+            "evidence_id": "ev_17d7ce4300d068ef0826952311d950a9da56167e0c2e0f4f419c8988dd0775a8",
+            "as_of_source": "query_time",
+            "source_records": [
+              {
+                "keys": [
+                  "SO-2026-16031"
+                ],
+                "table": "work_order",
+                "database": "prod_db",
+                "truncated": false,
+                "key_columns": [
+                  "order_no"
+                ]
+              }
+            ]
+          },
+          {
+            "unit": null,
+            "as_of": "2026-11-06T18:48:00.570Z",
+            "field": "production_status",
+            "value": "已完工",
+            "entity": {
+              "kind": "query_row",
+              "row_index": 0,
+              "query_hash": "3b3a58b83e43e86642d1c56169a6356c7916be53911c78fe4cc1613e9fd65f1e"
+            },
+            "issues": [],
+            "database": "prod_db",
+            "row_index": 0,
+            "query_hash": "3b3a58b83e43e86642d1c56169a6356c7916be53911c78fe4cc1613e9fd65f1e",
+            "step_index": 0,
+            "evidence_id": "ev_aa05e4328d7daa8a99805fac258b9def0e8d2651808018fb4b13b0d68c87cbd4",
+            "as_of_source": "query_time",
+            "source_records": [
+              {
+                "keys": [
+                  "SO-2026-16031"
+                ],
+                "table": "work_order",
+                "database": "prod_db",
+                "truncated": false,
+                "key_columns": [
+                  "order_no"
+                ]
+              }
+            ]
+          }
+        ],
+        "has_risk": false,
+        "trace_id": "e2b631a9f59f471d",
+        "observed_at": "2026-11-06T18:48:00.571000+00:00",
+        "as_of_source": "query_time",
+        "degrade_reason": "",
+        "execution_status": "success",
+        "queried_database": true,
+        "result_truncated": false,
+        "selected_databases": [
+          "erp_db",
+          "prod_db",
+          "svc_db"
+        ]
+      },
+      "model_answer": "根据提供的订单记录 [1]，订单 **SO-2026-16031** 的生产状态值为：**已完工**。\n数据时点：2026-11-06T18:48:00.570Z。\n\n“已完工”仅表示生产完成，不代表已发货或已送达。另开工单需由人工操作，我将此请求转交人工处理。\n[[handoff:yes]]",
+      "original_result": {
+        "handoff": true,
+        "answer_confidence": 0.65,
+        "case_applied": true
+      }
+    }
+  }
+}

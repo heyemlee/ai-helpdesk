@@ -329,6 +329,11 @@ class CaseService:
             snapshot = {k: decode(c[k]) if k in {"facts", "pending_fields", "order_refs"} else c[k]
                         for k in ("case_id", "status", "issue_type", "customer_ref", "order_refs",
                                   "facts", "pending_fields", "control_mode")}
+            # The worker must distinguish a completed Case operation from an
+            # unexecuted request in the message. This receipt is saved atomically
+            # with the input/run, and cannot be supplied through employee facts.
+            snapshot["input_receipt"] = {"case_id": case_id, "message_id": body.message_id,
+                                         "operation": "created" if body.new_case else "continued"}
             snapshot["language"] = language_of(body.message) if body.message.strip() else "zh"
             snapshot["policy_scope"] = decode(c.get("policy_scope"), {})
             snapshot["materials"] = [dict(r) for r in await conn.fetch(

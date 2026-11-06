@@ -591,6 +591,7 @@ def seed_from_prefetch(
     *,
     knowledge: tuple[str, bool, dict[str, Any]],
     order: tuple[str, bool, dict[str, Any]],
+    order_query: str | None = None,
     latency_ms: dict[str, float] | None = None,
 ) -> None:
     """
@@ -613,8 +614,12 @@ def seed_from_prefetch(
     text, is_evidence, trace = order
     if trace.get("attempted"):
         outcome = order_outcome(text, is_evidence, trace)
-        turn.trajectory.append(rule_record("order_data_query", message, outcome,
+        query = order_query or message
+        turn.trajectory.append(rule_record("order_data_query", query, outcome,
                                            latency_ms.get("order_data_query")))
         if "order_data_query" in turn.tools:
-            args = OrderDataQueryArgs.model_construct(query=message)
-            turn.remember(turn.tools["order_data_query"].memo_key(args), outcome)
+            # The Case wrapper and its original question are the same operation
+            # in this turn. Keep both keys without misreporting the executed query.
+            for text in {query, message}:
+                args = OrderDataQueryArgs.model_construct(query=text)
+                turn.remember(turn.tools["order_data_query"].memo_key(args), outcome)
