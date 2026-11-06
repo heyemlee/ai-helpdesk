@@ -1,0 +1,56 @@
+{
+  "all_owned_temporary_resources_cleaned": true,
+  "artifacts": {
+    "images": {
+      "backend": "sha256:95ab8a4f77dd754e3a4bb67147c407b3c49c43cf25c50f0624c08ce7a614e379",
+      "frontend": "sha256:10e29047dbc870b21c5836c7b541fd6d2541fadcd0390f1031961a9dcf254977",
+      "sql": "sha256:8076a3d645907b738564a2b77b6063c19f907a1f451bfd7dc515802b7fc1737f"
+    },
+    "revision": "fb14f677aa24d0893a895facc10fe3e656b5940c"
+  },
+  "candidate_revision": "fb14f677aa24d0893a895facc10fe3e656b5940c",
+  "invariants": {
+    "fault_scenarios": 10,
+    "observed_assertions": 51,
+    "passed": true,
+    "root_verified_indexed_files": 23,
+    "violations": 0
+  },
+  "kind": "candidate_fault_and_recovery_root_acceptance",
+  "limitations": [
+    "Synthetic local drills with already running storage; these timings are not production RPO/RTO promises.",
+    "Historical extraction fixtures and nonempty SQL audit do not prove real model quality.",
+    "Full real development and three formal rounds, real browser/load and final gate remain."
+  ],
+  "model_quality_claim": false,
+  "operations_checks": {
+    "passed": 18,
+    "skipped": 0
+  },
+  "operations_tool_revision": "17ceb8f5971dc58d4ee3a038ccdd0781bb2c9f95",
+  "production_changes": false,
+  "real_supplier_requests": 0,
+  "recovery": {
+    "local": {
+      "attachment_count": 100,
+      "case_count": 200,
+      "historical_extraction_count": 100,
+      "matched_tables": 21,
+      "passed": true,
+      "rollback_seconds_including_candidate_failure": 12.649223,
+      "rpo_seconds": 21.14806079864502,
+      "rto_seconds": 13.932626962661743
+    },
+    "s3_compatible_local": {
+      "attachment_count": 100,
+      "case_count": 200,
+      "historical_extraction_count": 100,
+      "matched_tables": 21,
+      "passed": true,
+      "rollback_seconds_including_candidate_failure": 12.839236,
+      "rpo_seconds": 23.152912139892578,
+      "rto_seconds": 14.739541053771973
+    }
+  },
+  "release_acceptance_complete": false
+}
