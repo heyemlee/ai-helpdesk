@@ -240,8 +240,8 @@ class FakeModel:
     def __call__(self, request):
         self.hosts.append(request.url.host)
         if self.status != 200:
-            return httpx.Response(self.status, json={"error": {"message": "API key is disabled",
-                                                               "type": "invalid_request_error"}})
+            message = "API key is disabled" if self.status == 401 else "upstream unavailable"
+            return httpx.Response(self.status, json={"error": {"message": message, "type": "api_error"}})
         body = json.loads(request.content)
         messages = body.get("messages") or []
         prompt = "\n".join(self._text(m) for m in messages)
@@ -329,7 +329,7 @@ async def test_full_chain_judges_the_final_answer_offline(ev, tmp_path, capsys, 
     assert (report["model"], report["provider"], report["model_source"]) == ("fake-model", "openai", "env")
     # 重排走的是模型（假模型那一路），没有远端 cross-encoder
     assert report["reranker"] == "llm_listwise"
-    assert report["planned"] == 3 and report["incomplete"] == ""
+    assert report["planned"] == 3 and report["incomplete"] == "" and report["unanswered"] == []
     cases = {c["id"]: c for c in report["cases"]}
 
     v01 = cases["v-01"]
@@ -359,12 +359,29 @@ async def test_full_chain_stops_once_the_credentials_are_rejected(ev, tmp_path, 
     assert code == 3
 
     report = json.loads((tmp_path / "out.json").read_text(encoding="utf-8"))
-    assert report["incomplete"]
-    assert [c["id"] for c in report["cases"]] == ["d-02"]
+    assert report["incomplete"] == "credential_rejected"
+    assert [c["id"] for c in report["cases"]] == ["d-02"] and report["unanswered"] == ["d-02"]
     assert report["cases"][0]["unavailable"] is True
     assert report["summary"]["unavailable"] == 1 and report["summary"]["facts"]["n"] == 0
     assert len(fake_model.hosts) == 1
     assert "没跑完" in capsys.readouterr().out
+
+
+async def test_full_chain_does_not_pass_when_the_model_never_answered(ev, tmp_path, capsys, fake_model):
+    """
+    超时、5xx 不会让保护挡住后面的调用：每条都跑了，只是都没答上来，全被排除在对错之外。
+    这样的一轮汇总是"0 条里答对 0 条"——报告得标明没跑完、列出是哪几条，退出码也不能是 0。
+    """
+    fake_model.status = 503
+    code = await ev.main(_args(ev, tmp_path, "ca", full_chain=True, only="d-02,n-06"))
+    assert code == 3
+
+    report = json.loads((tmp_path / "out.json").read_text(encoding="utf-8"))
+    assert [c["id"] for c in report["cases"]] == ["d-02", "n-06"]
+    assert report["unanswered"] == ["d-02", "n-06"]
+    assert report["incomplete"] == "2 条模型没答上来"
+    assert report["summary"]["unavailable"] == 2 and report["summary"]["facts"]["n"] == 0
+    assert "补跑：--only d-02,n-06" in capsys.readouterr().out
 
 
 async def test_full_chain_refuses_the_smoke_suite(ev, tmp_path):

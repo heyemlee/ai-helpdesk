@@ -878,22 +878,29 @@ async def _full_chain(args: argparse.Namespace, cases: list[Case], kb: Knowledge
           f"未判 {skipped} 条 | 一条一条串着跑\n")
 
     results: list[dict[str, Any]] = []
-    incomplete = ""
+    stopped = ""
     for i, case in enumerate(run, start=1):
         # 凭证被拒之后不再出网：保护挡着的时候，后面每一条都只会拿到一句"暂时不可用"
-        incomplete = chain.orchestrator.llm_unavailable_reason()
-        if incomplete:
+        stopped = chain.orchestrator.llm_unavailable_reason()
+        if stopped:
             break
         row = await _run_case(chain, case, args.top_k, known)
         results.append(row)
         print(f"  [{i:>3}/{len(run)}] {_case_line(row)}", flush=True)
-    incomplete = incomplete or chain.orchestrator.llm_unavailable_reason()
+    stopped = stopped or chain.orchestrator.llm_unavailable_reason()
+    # 超时、连接失败、5xx 不会让保护挡住后面的调用，这一条只是没答上来。没算进对错的
+    # 每一条都要让人看得见：不然全挂了的一轮，汇总是"0 条里答对 0 条"、退出码 0，像是跑通了
+    unanswered = [r["id"] for r in results if r["unavailable"]]
+    incomplete = stopped or (f"{len(unanswered)} 条模型没答上来" if unanswered else "")
 
     summary = _chain_summary(results)
     _print_chain(summary, results, skipped, args.top_k, args.verbose)
-    if incomplete:
-        print(f"\n没跑完：模型服务不可用（{incomplete}），{len(run)} 条只跑了 {len(results)} 条。"
+    if stopped:
+        print(f"\n没跑完：模型服务不可用（{stopped}），{len(run)} 条只跑了 {len(results)} 条。"
               "上面的数只来自跑完的那些；脚本不会自己重试。")
+    if unanswered:
+        print(f"\n{len(unanswered)} 条模型没答上来（超时、5xx 之类），没算进上面的对错。"
+              f"补跑：--only {','.join(unanswered)}")
     if embedder.backend != "local_ngram":
         print(f"\n知识库这边远端 Embedding 一共算了 {embedder.calls} 段文本（意图识别自己的不在内）。")
 
@@ -904,7 +911,8 @@ async def _full_chain(args: argparse.Namespace, cases: list[Case], kb: Knowledge
             "embedding": {"backend": embedder.backend, "dim": embedder.dim}, "reranker": chain.reranker,
             "top_k": args.top_k, "corpus": stats,
             "planned": len(run), "not_judged": skipped,
-            "incomplete": incomplete,
+            # 非空就不是完整的一轮：保护挡住之后停了（原因），或者有几条没答上来（unanswered）
+            "incomplete": incomplete, "unanswered": unanswered,
             "summary": summary, "cases": results,
         }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         print(f"\n逐条结果已写入 {args.json}")
