@@ -1,0 +1,339 @@
+{
+  "candidate_commit": "b5c51280457e73e8d773ec5b51f842aeea16b6f2",
+  "previous_original_score": 21,
+  "previous_regraded_score": 22,
+  "after_score": 24,
+  "total": 24,
+  "gained": [
+    "c03",
+    "c23"
+  ],
+  "regressed": [],
+  "remaining_failures": [],
+  "usage_by_phase": {
+    "targeted": {
+      "attempts": 54,
+      "by_kind": {
+        "embedding": 15,
+        "generation": 39
+      },
+      "statuses": {
+        "200": 54
+      },
+      "by_kind_tokens": {
+        "embedding": {
+          "prompt_tokens": 8062,
+          "completion_tokens": 0
+        },
+        "generation": {
+          "prompt_tokens": 50378,
+          "completion_tokens": 2525
+        }
+      }
+    },
+    "targeted-final": {
+      "attempts": 24,
+      "by_kind": {
+        "embedding": 12,
+        "generation": 12
+      },
+      "statuses": {
+        "200": 24
+      },
+      "by_kind_tokens": {
+        "embedding": {
+          "prompt_tokens": 8010,
+          "completion_tokens": 0
+        },
+        "generation": {
+          "prompt_tokens": 17687,
+          "completion_tokens": 681
+        }
+      }
+    },
+    "cause-controls": {
+      "attempts": 40,
+      "by_kind": {
+        "embedding": 13,
+        "generation": 27
+      },
+      "statuses": {
+        "200": 40
+      },
+      "by_kind_tokens": {
+        "embedding": {
+          "prompt_tokens": 8019,
+          "completion_tokens": 0
+        },
+        "generation": {
+          "prompt_tokens": 33053,
+          "completion_tokens": 2155
+        }
+      }
+    },
+    "planning-controls": {
+      "attempts": 4,
+      "by_kind": {
+        "generation": 4
+      },
+      "statuses": {
+        "200": 4
+      },
+      "by_kind_tokens": {
+        "generation": {
+          "prompt_tokens": 11080,
+          "completion_tokens": 466
+        }
+      }
+    },
+    "full": {
+      "attempts": 184,
+      "by_kind": {
+        "embedding": 34,
+        "generation": 150
+      },
+      "statuses": {
+        "200": 184
+      },
+      "by_kind_tokens": {
+        "embedding": {
+          "prompt_tokens": 8422,
+          "completion_tokens": 0
+        },
+        "generation": {
+          "prompt_tokens": 225261,
+          "completion_tokens": 8410
+        }
+      }
+    }
+  },
+  "total_usage": {
+    "attempts": 306,
+    "by_kind": {
+      "embedding": 74,
+      "generation": 232
+    },
+    "statuses": {
+      "200": 306
+    },
+    "by_kind_tokens": {
+      "embedding": {
+        "prompt_tokens": 32513,
+        "completion_tokens": 0
+      },
+      "generation": {
+        "prompt_tokens": 337459,
+        "completion_tokens": 14237
+      }
+    }
+  },
+  "latency_seconds": {
+    "p50": 22.6815,
+    "p95_nearest_rank": 34.333
+  },
+  "full_revision2_replay_score": 24,
+  "offline_tests": {
+    "passed": 1268,
+    "subtests_passed": 655,
+    "skipped": 0
+  },
+  "billed_cost": null,
+  "source_sha256": {
+    "ai-sql-agent/benchmark/README.md": "1e8c9b43bf04d5dd1595d43a2ed8091f9a6502a023ac461a8cd0eed1229986fa",
+    "ai-sql-agent/benchmark/README.zh-CN.md": "62e6443f2f5da8cf02b21585b7ffda559a1ead83a1224530d8dd2f302a83977a",
+    "ai-sql-agent/benchmark/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "ai-sql-agent/benchmark/baseline/2026-09-08/README.md": "879c83439bd27056fc766edb2429602bbda17bc6357aa02ff97963cc6df8479f",
+    "ai-sql-agent/benchmark/baseline/2026-09-08/baseline.json": "172c5dffc1271cf88583f4a3117c6aa2154fb4360a2dd8b92cbadd4728e109c1",
+    "ai-sql-agent/benchmark/baseline/2026-09-08/round1.json": "cabebbed0c576323b8384cabfa26b9e831cc41f116bc07104cca8fc14c5c3f87",
+    "ai-sql-agent/benchmark/baseline/2026-09-08/round2.json": "bb130fd2c856c273bb66e145b684449d2e6a9e8e9495ce57288342058b1c5fa9",
+    "ai-sql-agent/benchmark/baseline/2026-09-08/round3.json": "bd55d948304f0a90c996d785e88297bbb80bde005a861f22c7a1ccdff6791242",
+    "ai-sql-agent/benchmark/baseline/2026-09-09/README.md": "4cc16d4d282b8ade9cac5c0e048111f422a2444ced1396820898366f73edaa8f",
+    "ai-sql-agent/benchmark/baseline/2026-09-09/rule9-v1-round.json": "35636ee05c276ae9917cf3052e60a70d9ae5e632582db2c73a0be58455b86033",
+    "ai-sql-agent/benchmark/baseline/2026-09-09/rule9-v2-round.json": "e63babef9509cdb00f1d855152a701db3101db2bb2b0ff44a19ef40ffb4ff7b8",
+    "ai-sql-agent/benchmark/baseline/2026-10-16/README.md": "f396db09ade3c8db57d21986fca114a799e515f0b3387ce57805941a8d11a322",
+    "ai-sql-agent/benchmark/baseline/2026-10-16/cut-off.partial.json": "cd220a1d7a0b6bf0658e1bda4d36f46ab364d4c7e672adddbe0e23a181fce157",
+    "ai-sql-agent/benchmark/baseline/2026-10-16/embedding.json": "23bf99f1f688990e751d4180ee72e47f0aa1cdc7381de6d27051741d46c33c68",
+    "ai-sql-agent/benchmark/baseline/2026-10-16/gate_remote.py": "8ca58bbef2dd5607f449ac9fb248c5b8da211ddfa5ed4a6ac7dd1dbef0e16dd4",
+    "ai-sql-agent/benchmark/baseline/2026-10-16/holdout.json": "19ec0c3f017d51e900c5ea12933d84605efffc3b6a7c74043e75313fca32c966",
+    "ai-sql-agent/benchmark/baseline/2026-10-16/round1.json": "d30e794b26b022c8a7531a3b86166df3174892227a5f2b1bdca60a30a4c30b82",
+    "ai-sql-agent/benchmark/baseline/2026-10-16/round2.json": "2985f86281276ce862f61af74775a9258240c22e629bcf7cbe6b8804e250ad15",
+    "ai-sql-agent/benchmark/baseline/2026-10-16/round3.json": "05f6121c02febff9ea25661aa69b595db29e563ae7bf365419fb0f344fc46b93",
+    "ai-sql-agent/benchmark/bilingual_cases.json": "8d1fc4e26c24ace903f42facf9507efe2034e79967e42ead0610547be1450dbb",
+    "ai-sql-agent/benchmark/customer-rubric.md": "51cd88e5f91897157eb723a1520a335f977dfba3a8c8ac8a29643000268956d9",
+    "ai-sql-agent/benchmark/customer.py": "e1cb03b778f53df6e1de7a9a33874999d1ccbabab2b9d593eed5f4fdda5716b2",
+    "ai-sql-agent/benchmark/customer_cases.json": "2b5181098db48f4ae237cf082b5ef8b2d4cf73c2bf2838e631d3d5846c7b0730",
+    "ai-sql-agent/benchmark/dataset.json": "52b8041fae8e9d8ed784c96be0043b136cd59aa7b38cb09ece8491db7bc4f4d8",
+    "ai-sql-agent/benchmark/dataset_builder.py": "5d57815d1d951e248ec5e6968905f5cc7ffc56f6505dc80d58acf79f92b7a898",
+    "ai-sql-agent/benchmark/gate.py": "588895c4ad23c2bc3ad9a5853a85b086d6976527403f8f906efd586fa6388281",
+    "ai-sql-agent/benchmark/holdout.json": "4623583fcc65425e666c7f98cb43c22025ea7e86a2dbf1ec655a6a36d46408a9",
+    "ai-sql-agent/benchmark/run_benchmark.py": "ae20265a53d12e09b69134460051c60a3881549fa9c5ed7a410c71f3f7c1e85a",
+    "ai-sql-agent/benchmark/runner.py": "abe6babcae11d7193b86d02b5e2c6194ab9f60903d7fde05ed7f4b558ba4a630",
+    "ai-sql-agent/benchmark/thresholds.json": "05198cb9316ef36fa036a4b361ea10cc78440646885daf6572b6f011f01f52de",
+    "ai-sql-agent/src/ai_sql_agent/__init__.py": "1f8b65349435bce216f297151e9b844b65e6d899615145d10822ac43014c4860",
+    "ai-sql-agent/src/ai_sql_agent/a2a/__init__.py": "068ce1e3fda8fc1711cf6ce95d4247473700982bc91e2cee127d97b31d14d142",
+    "ai-sql-agent/src/ai_sql_agent/a2a/server.py": "c8b8dc20a0fc94b119ea1d03621b4ac2d459440852795f7955425a55d908a08a",
+    "ai-sql-agent/src/ai_sql_agent/api/__init__.py": "8c0af1566b3f652e9eba0fe1de34ade296cda54d1714002467fa9bac0f57ae4f",
+    "ai-sql-agent/src/ai_sql_agent/api/app.py": "62e28e46545abdfd61ee78941af355877096fe2248529494f2a37788ac8ae413",
+    "ai-sql-agent/src/ai_sql_agent/api/business_evidence.py": "2577e88357da6604f925518c5f897597766f3488a060a7ce114a5a80e797f81f",
+    "ai-sql-agent/src/ai_sql_agent/api/catalog.py": "3d6ee3669fbff1c501906b3ed15daedf64419170611b9fcd506c98432c6f6249",
+    "ai-sql-agent/src/ai_sql_agent/api/limits.py": "a13de0aec013454cad3856cef69aa24abb7f787e5519ca495a49b1b5035d0bc0",
+    "ai-sql-agent/src/ai_sql_agent/api/model_admin.py": "f165d001e49401d7cf93f86274c03f397b4655576e8b3f64049be693fa9bf775",
+    "ai-sql-agent/src/ai_sql_agent/api/result_summary.py": "a1d4a57b3efc21c004d4251125de0bff2eaec1d83df4f918780a631a020b02de",
+    "ai-sql-agent/src/ai_sql_agent/api/runs.py": "fcd08b8d9aaa0f5c3b78c1bd03e331ca69dead88bcc4557d8c23ad36d0584e06",
+    "ai-sql-agent/src/ai_sql_agent/api/schema_watcher.py": "0b34764deb561d136f2f7443b7ceb2ad41d22191ad865e1cd01e64086ae8dbaf",
+    "ai-sql-agent/src/ai_sql_agent/api/security.py": "16ff2bfbd8e84a174ce27cb539ea9724ac66274b28fdc2471cab4feed37192c3",
+    "ai-sql-agent/src/ai_sql_agent/api/trust.py": "5057821dcae84f344bad6bc46ee2f906446b37b912ccbf5cc5e8880a323907f7",
+    "ai-sql-agent/src/ai_sql_agent/audit/__init__.py": "30153d201c7ff2398310d94855c63bc9abc36fad84cb47362f4fffbd230fc2c7",
+    "ai-sql-agent/src/ai_sql_agent/audit/objects.py": "72b1346de0c01679192832c1fcddab0f454e2234b64ffe0eb917bdff4802332c",
+    "ai-sql-agent/src/ai_sql_agent/audit/store.py": "bddcc99434c69d00e970aa4012fd56944a7b39e661adc7f8756dce87817f516a",
+    "ai-sql-agent/src/ai_sql_agent/auth/__init__.py": "fe334954a932f63476974c2ee45e08466d0e65d7a69ebf667b452717b73af057",
+    "ai-sql-agent/src/ai_sql_agent/auth/enforcement.py": "722beb1e9eca50ed4de6e8fa754c12e75e7bbb1019747c51435a204d0c4c4ead",
+    "ai-sql-agent/src/ai_sql_agent/auth/identifiers.py": "c7da3cfd058aca3d07eae39a662e19d9a25261c683265767cee281dfc3e1e05e",
+    "ai-sql-agent/src/ai_sql_agent/auth/key_store.py": "86be582e335b0cd007f2cf1cdcb5adb2bcecca7c3a13b08fee01c119e023e0f3",
+    "ai-sql-agent/src/ai_sql_agent/auth/objects.py": "d632c210e7f9741c2064d505960c703cdac4eb38d597d1bd0a940a613535fe81",
+    "ai-sql-agent/src/ai_sql_agent/auth/sql_analysis.py": "63866573abb571810882370c4459e19c0538ded6d8456679b47aa60b9b79248c",
+    "ai-sql-agent/src/ai_sql_agent/auth/sql_tables.py": "69923fe7abfc49dc64e9cf7c253fad9dbcf377450c7e5bb44b484ada248bddb9",
+    "ai-sql-agent/src/ai_sql_agent/auth/views.py": "7fa93ed4da7d8ebdf46612a005f2c8c0170e0af75ca0bdc7ba3614db98275a95",
+    "ai-sql-agent/src/ai_sql_agent/catalog/__init__.py": "1125da6aa5e1afa4b05deea989578fabdf3202fae976a2751450650b28d395bc",
+    "ai-sql-agent/src/ai_sql_agent/catalog/preview.py": "ac3e3062f39508feb6724ec37af92e6480593a849bb6c30d350374aa2df0e060",
+    "ai-sql-agent/src/ai_sql_agent/catalog/profile.py": "75577bda059bc3215c5a9e109b802fd64eaa8ada642842c7f533c2b9975d1ead",
+    "ai-sql-agent/src/ai_sql_agent/catalog/service.py": "2d2547abd4c5ce20b4d5fb17fce34d0212065407c5b8632cdc40337464d202d4",
+    "ai-sql-agent/src/ai_sql_agent/core/__init__.py": "de02777024a3ae1a82c3cda8136e493b42ede5d3f0a7ca3edac1125d0a2c7dd7",
+    "ai-sql-agent/src/ai_sql_agent/core/circuit.py": "498c5942d08374e239e0529b88fde301d082a6ef9de1f7748682fb9810edeb38",
+    "ai-sql-agent/src/ai_sql_agent/core/errors.py": "559fa6f3cdb411d0fa78ba3af08af23357bf5eb34c836814a48934c694a4bd4d",
+    "ai-sql-agent/src/ai_sql_agent/core/logging_setup.py": "788a548c8b88101b9957f15eb3f9fe19b1387268c8d14f4fb4498b77ddf613ff",
+    "ai-sql-agent/src/ai_sql_agent/core/metrics.py": "eb83c92a01372a9698019045332acfa70db8f4ebe90c676ebf6f2dc2c101a0bb",
+    "ai-sql-agent/src/ai_sql_agent/core/model_access.py": "517cc4f8ed08e0f405fa19eac1ffddcb0556ff6ad0b702c0dd4fb0954b584ee1",
+    "ai-sql-agent/src/ai_sql_agent/core/model_client.py": "032669b69e38032d2e9c8eac8d4659a1a7e67b51cfbcdbadc8ec10f783696352",
+    "ai-sql-agent/src/ai_sql_agent/core/model_settings.py": "8ffc5a620ce2628c105098d2a99b0e6f8f9680fc8b11f96fdfdacfba0b4de0be",
+    "ai-sql-agent/src/ai_sql_agent/core/model_text.py": "c261d4537b42cab90c7102cd43b5eda8dc227c1ce3b08f1cc96d541687b21103",
+    "ai-sql-agent/src/ai_sql_agent/core/redaction.py": "20dc3ec4f6c688efbbabfac86c1c75928c2355c541fc3a5a7b6a26ea38ef5aef",
+    "ai-sql-agent/src/ai_sql_agent/core/responses.py": "fcaac24a6e69acb6a0e2f99b86831daafeebd014717f98a3084fe8be1118d8dd",
+    "ai-sql-agent/src/ai_sql_agent/core/run_context.py": "26dc4186778d04a79a64b1973e23475c4282ae11e81256fc6ca03ac37a0f31f0",
+    "ai-sql-agent/src/ai_sql_agent/core/settings.py": "5fd99655536fea05daeb540438ac0ca3aa68da4c1e5acfc462b4d06c06a18485",
+    "ai-sql-agent/src/ai_sql_agent/core/telemetry.py": "f7835acb091dd6041ccba1f96b681d19e784809e017666b7d61e0ff2900e7a6e",
+    "ai-sql-agent/src/ai_sql_agent/core/trace.py": "2e1e66c8657ffeda52f5cc972c33653e3d40711c6f1f4224721acf1107e06e0c",
+    "ai-sql-agent/src/ai_sql_agent/core/transport.py": "17ff92bcfabdff609c6d68dc5857b2dd740cc36726e1af47d5029c3d7ce3e0bf",
+    "ai-sql-agent/src/ai_sql_agent/execution/__init__.py": "f70122842f05a948a3eb140fec82df68cfd429ebdd01348104fe1fc58765ea93",
+    "ai-sql-agent/src/ai_sql_agent/execution/authorization.py": "d0d570cb77ba13c1db89366e388572e22b1fc55bca8f980ed20a1a2918043569",
+    "ai-sql-agent/src/ai_sql_agent/execution/data_time.py": "c00cc505dbaa0351f8eda4ac6def9d6d5d7574fd2b6670cfb42416a417740f43",
+    "ai-sql-agent/src/ai_sql_agent/execution/dialects.py": "eabf08ae89b0254211cd5a896a2a0c369bffefc6ab034d85ccf833f940fc5ac2",
+    "ai-sql-agent/src/ai_sql_agent/execution/mcp_protocol_executor.py": "b1db10256b6e5db741167a074519417ef2273fce5271acb32157ebe78ab7ac9d",
+    "ai-sql-agent/src/ai_sql_agent/execution/objects.py": "c82ed768511120bca18315af01db59735184754b3966b269141d8dfb11dc59cc",
+    "ai-sql-agent/src/ai_sql_agent/execution/pool.py": "382bf8fa512f640f05c1f6fbdfe799ea2ec308f54654977ebfa0f1503fd2e50d",
+    "ai-sql-agent/src/ai_sql_agent/execution/postgres_executor.py": "d0a7455532153a880a4f0fed79c14f726c025cecdf7ccf185d06a6bf22e66355",
+    "ai-sql-agent/src/ai_sql_agent/execution/result_budget.py": "bfe6939f22fbb4d5843bdbb26b7e6a643b121b34c22eb2aed0bbeb0a6d9f5860",
+    "ai-sql-agent/src/ai_sql_agent/execution/router.py": "dbf809bf48bc7e77731d27580b6bd714563395d5964530e404e7303877da81ca",
+    "ai-sql-agent/src/ai_sql_agent/execution/sql_guard.py": "8232eb68af13e01c6ff997ce4ec166e480430e07c45087e7d956dc8c20889542",
+    "ai-sql-agent/src/ai_sql_agent/execution/sqlite_authorizer.py": "262fce8ec1eb1a4410a957d270c5ac2150439c831692ce6d0ccc4d0aa15cb5b8",
+    "ai-sql-agent/src/ai_sql_agent/execution/sqlite_executor.py": "b4ce3077175400f4f1b1b31ecb2294b02931bec9a9d0db2bf15ced267e111e0f",
+    "ai-sql-agent/src/ai_sql_agent/feedback/__init__.py": "0b810bf4a6ee0d012adb3376171bb657f538a5247ed30d91b36232df78376a80",
+    "ai-sql-agent/src/ai_sql_agent/feedback/__main__.py": "facf0ff801d2e87730c35fd35078e6ddf645cf47602827a31e21b92b392b65eb",
+    "ai-sql-agent/src/ai_sql_agent/feedback/certified.py": "e681dad526c5bd68c622d35e01d1021f235fbb8a61323e5d84bf25ef006d05fd",
+    "ai-sql-agent/src/ai_sql_agent/feedback/objects.py": "668dc2fba9f9c84ccc63635f6de66b79c07536b4b2f22b30af2d990bf05e1b6e",
+    "ai-sql-agent/src/ai_sql_agent/feedback/store.py": "45a0ab747715f3f7042a8b0ef017780e87bdb232ad0124cff503774e01f47eab",
+    "ai-sql-agent/src/ai_sql_agent/generation/__init__.py": "c9135d7ab42ec0e436b53fffb948b5f3658da6f5452aa4018af7a4ddf8714ba6",
+    "ai-sql-agent/src/ai_sql_agent/generation/coder_client.py": "61fd6f80a25b4124d907fa1664d65c5b496e661355f994c9e7610d5e00d593a3",
+    "ai-sql-agent/src/ai_sql_agent/generation/cot_parser.py": "a9c4c12c4fc1cec7688c16cf54464d7cf8d12aa6b246b3a8ced99af92fe03a82",
+    "ai-sql-agent/src/ai_sql_agent/generation/objects.py": "8728de03e99e53b1f6aff4313d1af6adfa08b17e7f313ac5d3935d826dfba1f4",
+    "ai-sql-agent/src/ai_sql_agent/generation/projection.py": "a99c3281f1c317ea15e05303b6d9083fdc5ef03b373f36352f18ead074a01d0c",
+    "ai-sql-agent/src/ai_sql_agent/generation/prompt_builder.py": "d42b48cb57ea04e7677dc13b7e1787770902375d226d9e67bcb3a54020da2cc7",
+    "ai-sql-agent/src/ai_sql_agent/generation/schema_store.py": "e6a5d0302e23989cfae7cdca74265560a20070d01800b87c8369a8a3cb553dfc",
+    "ai-sql-agent/src/ai_sql_agent/generation/self_comparison.py": "081b0032c6f61d980f0270354c09f7cb09fc4c523af7c44b1921d16a3f030927",
+    "ai-sql-agent/src/ai_sql_agent/generation/sql_generator.py": "4e118ee8198278726a9dc831d90de48e0f33eb35f1fdd86dca67b95d89cec53c",
+    "ai-sql-agent/src/ai_sql_agent/indexing/__init__.py": "61ecd778f59a0a7b59c318044cc386a915aad036859b772a69afaef2379d4401",
+    "ai-sql-agent/src/ai_sql_agent/indexing/embedding_client.py": "5a8a9c4e22baace19661474e4863cc766c410abce55255df294eb7a2a3614e70",
+    "ai-sql-agent/src/ai_sql_agent/indexing/index_builder.py": "ee7db9c00533d38948bb0e6c99351c8c5b30c1406b3f15659ee36d99d08c38be",
+    "ai-sql-agent/src/ai_sql_agent/indexing/objects.py": "e3ecaca47a25d23d8a30121627a3f78df2ed5490244dc9957851bc76b528dcc9",
+    "ai-sql-agent/src/ai_sql_agent/indexing/pgvector_client.py": "82dc09fcaf2200ced27d5219e654697b52e7285c02c36b2d866035ae23d3fb17",
+    "ai-sql-agent/src/ai_sql_agent/indexing/text_builder.py": "3a6fdeede3a9893c8b93591eb225b05ab0a791ab17ca3851358fe0301aa5e51a",
+    "ai-sql-agent/src/ai_sql_agent/mcp_server/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "ai-sql-agent/src/ai_sql_agent/mcp_server/server.py": "ee83c6503869a42f4b7f4efa670a521dfc8449e8f1c6692e787ba37ca54d9d05",
+    "ai-sql-agent/src/ai_sql_agent/memory/__init__.py": "618b69f37e256eefa9494a2cf06daedc9fc64bbfb94cfef771fed39441bbc481",
+    "ai-sql-agent/src/ai_sql_agent/memory/conversation.py": "8cbede429921fafb2f5efed29838cc03d5ec18bea8dcee9ff2cbb94905214742",
+    "ai-sql-agent/src/ai_sql_agent/memory/long_term.py": "fcd9cfb4957b7f677518f30cbebe7dd8d8de93e7085ae4985bbe9bd667e2677a",
+    "ai-sql-agent/src/ai_sql_agent/memory/objects.py": "6f258d1e274bec9f5ce33e60bae547da59f78ebad4dcb2249537c30cc6478a7b",
+    "ai-sql-agent/src/ai_sql_agent/memory/reranker.py": "fd49f3c239d934b450421e17f5fc9a30727494bec45afd88f71571b3a91345c8",
+    "ai-sql-agent/src/ai_sql_agent/memory/short_term.py": "b245025783bb87ae289509896450cc2f8bf4c07c72fdf0242e3b49976f7debaa",
+    "ai-sql-agent/src/ai_sql_agent/memory/storage.py": "ae41b12a88a8f16d3a58d7040cfd3643e29327f8d043e1f3a40c7f7c2037f173",
+    "ai-sql-agent/src/ai_sql_agent/memory/summarizer.py": "6c973ef190c27de4cf19e2d9e95431b7292ddeab23f1225bae511ad9d3f9852b",
+    "ai-sql-agent/src/ai_sql_agent/memory/vector_store.py": "61f0b3d3e524f13b110728a6b6d6097b5967b781a7dd10f3ae22d83023c97423",
+    "ai-sql-agent/src/ai_sql_agent/normalization/__init__.py": "bffcca35350cdc59a1583893341e68add2fa3bddd9a6df80f3ad0b4a60bc66db",
+    "ai-sql-agent/src/ai_sql_agent/normalization/coreference.py": "856a36f5e8101dbd6c880e270956234e2b10722dc2fd49613e34c493572e78e8",
+    "ai-sql-agent/src/ai_sql_agent/normalization/normalizer.py": "e2a496a29719279a4153ea1197d4bd8eef6272d91d5e283074d97ec6fd2c23bb",
+    "ai-sql-agent/src/ai_sql_agent/normalization/objects.py": "fb4b6178d43b1cf8662d4ff2292a8ad5b193717afe6b49a1cc0155b6d6ef6862",
+    "ai-sql-agent/src/ai_sql_agent/normalization/time_parser.py": "0288d7f9eaf31cc56a1bb04cdf5e73763479377b80391ae04702be6fa1740ec3",
+    "ai-sql-agent/src/ai_sql_agent/ops/__init__.py": "e0ca2dce89389e44f3b36f3ffa7e226aff496a56555e2867f810ad305da7e359",
+    "ai-sql-agent/src/ai_sql_agent/ops/__main__.py": "82b52ae00690be9610a3d493162d4a84cd4ee65a3db437a628c8e18ce0fc850b",
+    "ai-sql-agent/src/ai_sql_agent/ops/least_privilege.py": "f45e67fe86503fc316cef91de27608a5a7da1c3ab4615e7c81c20499cbbfd862",
+    "ai-sql-agent/src/ai_sql_agent/ops/readonly_role.py": "dece2dcbda0a90a7940328d0167c0b874f20729444fd2ff7c7ebf0fbfe743029",
+    "ai-sql-agent/src/ai_sql_agent/pipeline/__init__.py": "761d28c3ddc8223e8853fbe4d53207b8871b5f50d3ddddd90276f92d1aa48e8e",
+    "ai-sql-agent/src/ai_sql_agent/pipeline/conversation_service.py": "e04c5d5b370022c7cf42cd414b6e3c270cd0878238fc2e930f886c42b5d91b2d",
+    "ai-sql-agent/src/ai_sql_agent/pipeline/data_qa.py": "a2e107b6bc65b35cb832192544f28611fa72ec2300150c4247b92eea5d2663c0",
+    "ai-sql-agent/src/ai_sql_agent/pipeline/demo_data.py": "98530879944ca4c57003ef98e60b723d9f2824a6a51af7d074dc71ac90bc0e21",
+    "ai-sql-agent/src/ai_sql_agent/pipeline/dynamic_service.py": "073990fb79ad0646acd5de7931e4fb4b97066217c1fcb939b1fb29c4d3242eaf",
+    "ai-sql-agent/src/ai_sql_agent/pipeline/embedding.py": "a107749fc8f81fad9aacd938da1ad0fc1a1f29e738e0d795b027a45da14c553f",
+    "ai-sql-agent/src/ai_sql_agent/pipeline/local_clients.py": "d90cf55b5419b3e767c6b75dc92d2303d99067f8074ced6ceead021f189d5d51",
+    "ai-sql-agent/src/ai_sql_agent/pipeline/objects.py": "00640af88fe727f33e4cbe08fbe9e54a592cfa34be77dd9c757998d5080504b5",
+    "ai-sql-agent/src/ai_sql_agent/pipeline/provenance.py": "050a4d2fe5bebfca46c4a314eed72ad274913ea0b78aad88225a04491ae50341",
+    "ai-sql-agent/src/ai_sql_agent/pipeline/routing.py": "9b3cf992c6e20bb90d6a9a5305d99166112e3be4bce5016861f9276771f4dbd9",
+    "ai-sql-agent/src/ai_sql_agent/pipeline/schema_budget.py": "9063e20385950365396a9c1a7ddd0337f0d7e8984ce9351091d6e7061620da75",
+    "ai-sql-agent/src/ai_sql_agent/pipeline/short_path.py": "a0d8267c594dc7c834bb020bf6014cde478ae30bd3076e00347da754c4f7f6ae",
+    "ai-sql-agent/src/ai_sql_agent/pipeline/text2sql_pipeline.py": "25c11352ded7c762303cf1eddcfe614b40dbbe5bc3b2ce94c22af877b6a60c8a",
+    "ai-sql-agent/src/ai_sql_agent/pipeline/token_budget.py": "ae861abeb6868b3858665e18a38ef4d481bf80ef5fc16690cfc88949aa3fb5de",
+    "ai-sql-agent/src/ai_sql_agent/planning/__init__.py": "df3138d6e4ba8c23f82f675eee8acef19fbc55c5020be0dc5398e4cde1417c40",
+    "ai-sql-agent/src/ai_sql_agent/planning/cot_planner.py": "ea8cff3b947796887f5f73edbdc00b6ded66e6128f276459a90b2895a25e6789",
+    "ai-sql-agent/src/ai_sql_agent/planning/few_shots.py": "17e2feacc86e4f2f69158c4f527fd2f096d784fd2e03f49e648062c4aee643c0",
+    "ai-sql-agent/src/ai_sql_agent/planning/objects.py": "ed48a5393df9a0fafbe6b096082c9f4ffe58c2037eab74b6ab19c1d898ce3dee",
+    "ai-sql-agent/src/ai_sql_agent/planning/prompt_builder.py": "557e28e666153519102da4dadc79f6d82a052b47af981b58a1740723a20b3f05",
+    "ai-sql-agent/src/ai_sql_agent/planning/thinking_client.py": "98f3f2fedb3986e1cccec23724b820a62ca566c30f2bd0b6deb4901858b68a94",
+    "ai-sql-agent/src/ai_sql_agent/repair/__init__.py": "237a0f3c13f0e4d001174f6e6384c6467085594655b97b89579dc23720b36596",
+    "ai-sql-agent/src/ai_sql_agent/repair/clause_localizer.py": "6302de1d4f3ff4685731e708e08d7090d786e354e75de92da017d338bde97f43",
+    "ai-sql-agent/src/ai_sql_agent/repair/log_parser.py": "dbc31c606140b2557fc78eac276b81a3a11e44e996d5568e478249bc79a7b23c",
+    "ai-sql-agent/src/ai_sql_agent/repair/objects.py": "766f7b979c9df06d42727817f10c9a87b8578579f4d980e0fba7ac5fafedb063",
+    "ai-sql-agent/src/ai_sql_agent/repair/repairer.py": "795bc558526c1e6bd59af9090aead97b82c2fe80487649f7f07e471655adf685",
+    "ai-sql-agent/src/ai_sql_agent/resources/demo_sql/create_erp_demo.sql": "4bc9ecaef5b4e462f95793c95e1f5db5366709436b87405e0fcb76e2c17557bf",
+    "ai-sql-agent/src/ai_sql_agent/resources/demo_sql/create_mes_demo.sql": "6e032fd957bdba992e20ea00ae483db108517ccbb49ad70ae9f2fbe4b3a1aaf1",
+    "ai-sql-agent/src/ai_sql_agent/resources/demo_sql/create_pm_demo.sql": "b8b9c618f7ac76acca256b2613f7e198e70c18a244b57391f50827ae018a598e",
+    "ai-sql-agent/src/ai_sql_agent/resources/demo_sql/create_wms_demo.sql": "da2a6ec08bb547a48d6b6fe5c87536da8c0d82bd3d785aa3aef45389fef1aca0",
+    "ai-sql-agent/src/ai_sql_agent/retrieval/__init__.py": "bc675e29b5833e782d88c5675644fca59a318a741b34dad89a8de5773e07530c",
+    "ai-sql-agent/src/ai_sql_agent/retrieval/access.py": "e0757b2383a45b9fedf82cc51c15191b7c1350d421d103d6e50ab6033fa5969f",
+    "ai-sql-agent/src/ai_sql_agent/retrieval/bm25.py": "56b705d91d88af5d0e7b93df348c577d1207b0dc8c2d15b4faa5f7710a1171cf",
+    "ai-sql-agent/src/ai_sql_agent/retrieval/document_builder.py": "a8d4c3bdadd7231caf5054c7426925235055a7d48332430eb2687d982719af69",
+    "ai-sql-agent/src/ai_sql_agent/retrieval/embedding_client.py": "40eef47b74c20c7d87b1464666df887cbb3c7a800a13d03cf3f6c2bad3cd79c8",
+    "ai-sql-agent/src/ai_sql_agent/retrieval/graph_builder.py": "91aa2f8507b696274aa5179d0cb090e2df0043423262603960a6efc190c1e549",
+    "ai-sql-agent/src/ai_sql_agent/retrieval/hierarchical_service.py": "c2b272031bbcb3001d66482bb3f804711b9a563fc1a519671e92b07e6b39732a",
+    "ai-sql-agent/src/ai_sql_agent/retrieval/hybrid_schema_retrieval_service.py": "3583f18f0114f57eafee3b424020100780b0e13fb30008b8e435b2231dd86815",
+    "ai-sql-agent/src/ai_sql_agent/retrieval/keyword_extractor_client.py": "9013602234c9bd8c1274c2269f09fc795453cc5d047534ab00c23ceb01258934",
+    "ai-sql-agent/src/ai_sql_agent/retrieval/objects.py": "2a4bcf7b321c36bcccba1b7899a8e5a61a29077214d61349351b00f689caa36f",
+    "ai-sql-agent/src/ai_sql_agent/retrieval/pgvector_index.py": "09be0122409d549e03818e54831eaa9f0d9fcd2ac731deaef3c3a135c90bc77a",
+    "ai-sql-agent/src/ai_sql_agent/retrieval/postgres_loader.py": "8d607c7521ec49d3c8de9be306555fe10600e5a4c4437f2dc365001ada0dd3a6",
+    "ai-sql-agent/src/ai_sql_agent/retrieval/rerank_client.py": "f904a32532a386d7af6ee0d8d59fc6fdfe5f1c81dc607ae7e7f2cc918d014f1a",
+    "ai-sql-agent/src/ai_sql_agent/retrieval/retriever.py": "095b0509a7ff727c401b03582ca31cdc1a45283b1fabf2f78caba953bbfe3172",
+    "ai-sql-agent/src/ai_sql_agent/retrieval/rrf_fusion_client.py": "ee677d4c02aad8b2a2736fa7069b5ecb10ec45f0f3e3dbc4f236f5f59654e4d4",
+    "ai-sql-agent/src/ai_sql_agent/retrieval/schema_fingerprint.py": "9e905fe237274f5ba22671c9cc3fb8bc20ad0af1474bdb95a1ff4d9d1209033a",
+    "ai-sql-agent/src/ai_sql_agent/retrieval/sqlite_loader.py": "f83368a51c09842d659471c8f11a38b73551cf052a8686addf56a1bc379807f1",
+    "ai-sql-agent/src/ai_sql_agent/retrieval/tokenizer.py": "7b610170962bfd8f6c16b9aa013269abfcb3dcaf2a4c08968c61ac5918aef3cd",
+    "ai-sql-agent/src/ai_sql_agent/retrieval/vector_backend.py": "d561cd0a0b532a7fe9c45a198f60495cf1a59e9fddfd8a4a8b05ecf82b83ed59",
+    "ai-sql-agent/src/ai_sql_agent/retrieval/vector_index.py": "9a7fc91601a447f25442d803dcfa13372513056ac3af7d0b7e4632f0d09fa9bf",
+    "ai-sql-agent/src/ai_sql_agent/runs/__init__.py": "14f1dc9737430ddb8364aa6a369d4d4c5bcf193ec177f4e60c597a926b82f064",
+    "ai-sql-agent/src/ai_sql_agent/runs/disconnect.py": "f72e1458ee3b84ab64fe833802b38137c470d43c5b7a16c62d9cc10622bb2100",
+    "ai-sql-agent/src/ai_sql_agent/runs/events.py": "88e6057100ad0ce85aa4c54a4747894ac61d7c1cbf736f72f3a8a5f29853ca77",
+    "ai-sql-agent/src/ai_sql_agent/runs/manager.py": "4c014c6f4841e2356ddfb2e37c7004fada4597ec4fb662bed62b30cea96510e5",
+    "ai-sql-agent/src/ai_sql_agent/runs/store.py": "ece736b11c40ddea7e277761bed1deb84609e61ffdccf5536bce4de4c53a6742",
+    "ai-sql-agent/src/ai_sql_agent/semantic/__init__.py": "53c98f308cec05b02d51897e3ec91ce26dd4884944a32b389d2f1c8add6f509e",
+    "ai-sql-agent/src/ai_sql_agent/semantic/__main__.py": "96e8594d5a20d6a95f957b95377d3b017263e5eff0d4d90102d2485e740a9323",
+    "ai-sql-agent/src/ai_sql_agent/semantic/loader.py": "940f52c768ace6e53a8eec6e60bb54943fb88dd831705324e1e795c51e53fd20",
+    "ai-sql-agent/src/ai_sql_agent/semantic/objects.py": "3f8a5aaa7eccab43b4894a5d60e5575aea0e44b10fc7c1277791f4df4b02a5ea",
+    "ai-sql-agent/src/ai_sql_agent/semantic/settings_bridge.py": "e465606b08ef71c899545df285a62a2e5de364ae8efa3ab85ec3d28e54407458",
+    "ai-sql-agent/src/ai_sql_agent/semantic/validator.py": "593a0a1c2fe253c8d92a3985f332278dd4ada21a83d4978ab7116abda8f7c485",
+    "ai-sql-agent/src/ai_sql_agent/validation/__init__.py": "6cde799490ccdf93c00cb075914b039c2a02212ff76610f16a7016034e574c31",
+    "ai-sql-agent/src/ai_sql_agent/validation/cardinality.py": "f0b2e11e638e1c7aa3fb61daf09766a7bcda74142c837add5814fcdc6dc69a56",
+    "ai-sql-agent/src/ai_sql_agent/validation/objects.py": "e2d36d7cdee756d1ed0d6c6c2cb9112a4f25684f379a58bed422f0d6903d6d72",
+    "ai-sql-agent/src/ai_sql_agent/validation/self_check.py": "90e5ef4bf2dc990046421f57fee3516d68f8a9d391cacdbc14942a0b2b1cb988",
+    "ai-sql-agent/src/ai_sql_agent/validation/shape.py": "778282a1f2e869c33be339cd5e210fbf8a06c2cc9120ca753ede25c008e0c7a0",
+    "ai-sql-agent/src/ai_sql_agent/validation/validator.py": "fbd4b3f49105c9c20b1aba0d49ec417eb532abbba092b12b2d9d06ad150c34c8",
+    "ai-sql-agent/tests/fixtures/prompt_snapshot.json": "3f240e906133b489274efae767df2bb1cd3d3b72cfa7c028f3a8cad9db23bb63",
+    "ai-sql-agent/tests/test_customer_cases.py": "1a41eceea3988e0d5bd85fb8da146b0520e42041f1136deeee14780d84d3718a"
+  }
+}

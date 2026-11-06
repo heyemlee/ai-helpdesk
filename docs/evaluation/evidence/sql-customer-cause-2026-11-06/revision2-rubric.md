@@ -1,0 +1,33 @@
+# Customer questions: scoring revision 2
+
+Frozen before the November 6 follow-up model run. The 24 questions and business
+records are unchanged. Their languages are Chinese (20) and English (4).
+
+The evaluator continues to require a one-to-one row match, all requested values,
+and at most one additional identifying column. Extra output is a shape failure,
+not by itself evidence that the requested fact is false. The 150-question SQL
+gate retains its existing references and final-step scoring.
+
+Only c24's answer reference changes. “Has the replacement part … been shipped?”
+asks a Boolean question. The primary reference computes `is_shipped` as 1 or 0
+from `shipped_date`. The original actual shipping date remains an explicitly
+accepted alternative. Both reference queries read the same record; no reference
+value is learned from model output. Every alternative must match as a complete
+result set; values cannot be mixed across alternatives. An equivalent final-step
+answer takes precedence over an earlier-step answer. Earlier matches still need
+the existing risk, preview visibility and contradiction checks.
+
+For c02/c04/c05/c12/c16/c23, the requested facts in the first run were present but
+the output was too wide. Keep the column budget and narrow the query plan instead
+of accepting arbitrarily many unrelated fields. For c10, the question asks for
+the missing-parts service ticket's processing status: returning two replacement
+detail rows alongside the service row does not satisfy that result shape. For
+c18, the order's current overall state is sufficient; absent downstream records
+must not prompt an unnecessary traversal through production and delivery. A
+question explicitly asking for those details still requires them.
+
+Validation uses the original captured responses first, with no new API calls,
+then new responses on the same frozen revision. Report reference corrections
+separately from changes in model behavior. A single rerun of these development
+questions does not establish general accuracy or meet the release acceptance
+gate. Persist dataset, source and rubric hashes with each run.
