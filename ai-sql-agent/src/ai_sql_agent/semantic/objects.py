@@ -240,6 +240,19 @@ class SemanticLayer:
             keys = [keys]
         return [str(item) for item in keys if str(item).strip()]
 
+    def record_key_metadata(self, database: str, table: str) -> dict:
+        """Distinguish an undeclared key from unknown or invalid metadata."""
+        meta = self._table_meta(database, table)
+        columns = meta.get("columns")
+        if not isinstance(columns, dict) or not columns:
+            return {"status": "unknown", "columns": []}
+        raw = meta.get("primary_key", [])
+        keys = [raw] if isinstance(raw, str) else raw
+        if (not isinstance(keys, list) or any(not isinstance(k, str) or k not in columns for k in keys)
+                or len(set(keys)) != len(keys)):
+            return {"status": "unknown", "columns": []}
+        return {"status": "declared" if keys else "not_declared", "columns": list(keys)}
+
     def _table_meta(self, database: str, table: str) -> dict:
         semantics = self.databases.get(database)
         if semantics is None:

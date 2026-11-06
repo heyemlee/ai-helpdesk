@@ -183,6 +183,8 @@ _HANDOFF_RULE = (
     "同一实体、同一口径的值确实矛盾时才按冲突处理，字段含义不明时如实说明未知。"
     "健康的政策检索返回所选范围和时点没有可引用的已发布条款时，可以如实回答该检索结果，"
     "不代表免费、获准或没有规定，也不自动发起人工寻找政策。"
+    "已核验的业务零行回执可回答‘系统是否有记录’：只说明确切来源、SQL范围和时点内未找到，"
+    "不把存在性问题扩展为查明实际状态；它不授权业务操作或承诺。"
     "查询失败、结果未通过核验、所问事实缺失、真实冲突、所请求的业务办理缺少依据或审批、"
     "以及用户明确要求人工时，仍须补充材料或转人工；不要把这些情况说成已核实。\n"
     "回答的最后一行必须单独写一个标记（不展示给客户，只用于系统判定，不要在正文里解释它）：\n"
@@ -438,7 +440,7 @@ class BaseAgent:
                 )
 
             policy_result.text = await self._factual_text(req, policy_result.text)
-            grounded = bool(req.grounding_sources) and not policy_result.violations
+            grounded = self._answer_grounded(req, policy_result.violations)
             escalate, inferred = self._escalation(policy_result.text, declared, grounded)
             response = AgentResponse(
                 agent_type=self.agent_type,
@@ -525,7 +527,7 @@ class BaseAgent:
             content = await self._factual_text(req, "".join(full))
             if req.fact_evidence is not None and content:
                 yield {"type": "delta", "text": content}
-            grounded = bool(req.grounding_sources) and not guard.violations
+            grounded = self._answer_grounded(req, guard.violations)
             escalate, inferred = self._escalation(content, declared, grounded)
             if guard.violations:
                 logger.warning(
@@ -817,7 +819,7 @@ class BaseAgent:
 
             ms = (time.monotonic() - t0) * 1000
             self._record(ok=True, ms=ms)
-            grounded = bool(req.grounding_sources or found_evidence) and not guard.violations
+            grounded = self._answer_grounded(req, guard.violations, found_evidence=found_evidence)
             escalate, inferred = self._escalation(content, declared, grounded)
             if guard.violations:
                 logger.warning(
@@ -861,6 +863,19 @@ class BaseAgent:
         if fallback:
             async for event in self._stream_plain(req, stream=stream):
                 yield event
+
+    @staticmethod
+    def _answer_grounded(req, violations, *, found_evidence=False):
+        """Absence has typed execution grounding, separate from value sources."""
+        if violations:
+            return False
+        if req.grounding_sources or found_evidence:
+            return True
+        if req.fact_evidence:
+            from app.core.business_facts import collect_evidence, verified_lookup_receipt
+            selected = collect_evidence(req.fact_evidence, req.turn.trajectory if req.turn else [])
+            return verified_lookup_receipt(selected["business_data"].get("evidence_payload") or {}) is not None
+        return False
 
     @staticmethod
     def _self_confidence(violations: list[PolicyViolation], escalate: bool) -> float:

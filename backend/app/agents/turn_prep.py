@@ -113,10 +113,10 @@ def _case_memory(case_context: dict[str, Any]) -> str:
 
 def _case_data_query(message: str) -> str:
     """A Case draft requires rows observed in this turn, not a history-only answer."""
-    return ("本轮重新查询业务库（只读），按原问题指定的字段、时间范围和口径逐行取数。"
-            "订单/补件返回真实订单号，明细保留schema记录键，不得从问题补造。"
+    return ("本轮重新查询业务库（只读），按原问题字段、范围和粒度取数。"
+            "返回所问真实业务标识，不从问题补造。内部主键只作溯源，不因未投影而追加业务条件或改变粒度。"
             "SQL只输出业务数据列，来源/单位/定义/时点由服务元数据附带。"
-            "历史不替代本轮证据，工单状态不替代业务状态。"
+            "历史和工单状态不替代业务证据。"
             "不要求 SQL 服务读取附件、比对图片、标记核对结果；客服回复与业务操作亦由上游完成。"
             "原始任务背景：\n\n"
             + message)

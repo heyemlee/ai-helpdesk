@@ -65,7 +65,7 @@ def test_sql_delegation_only_requests_rows_while_preserving_the_upstream_goal(me
     assert "SQL只输出业务数据列" in query and "只读" in query
     assert "不要求 SQL 服务读取附件、比对图片、标记核对结果" in query
     assert "业务操作亦由上游完成" in query
-    assert "来源" in query and "字段、时间范围和口径" in query
+    assert "来源" in query and "字段、范围和粒度" in query
 
 
 @pytest.mark.parametrize("success", [True, False])

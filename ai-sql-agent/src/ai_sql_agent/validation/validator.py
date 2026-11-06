@@ -51,6 +51,7 @@ class ResultValidator:
         preceding_summary: str = "",
         step_objective: str = "",
         column_units: Optional[Dict[str, str]] = None,
+        key_facts: Optional[dict] = None,
     ) -> ValidationOutcome:
         findings: list[ValidationFinding] = []
         paraphrase: Optional[str] = None
@@ -98,6 +99,7 @@ class ResultValidator:
                 sql,
                 preceding_summary=preceding_summary if is_final_step else "",
                 known_units=column_units or None,
+                **({"known_keys": key_facts} if key_facts else {}),
             )
             self_check, self_check_error = result.status, result.error
             paraphrase = result.paraphrase

@@ -29,6 +29,48 @@ MAX_SOURCE_KEYS = 50
 """单张表最多回传多少条主键。溯源要的是「能查回去」，不是把结果集抄一遍。"""
 
 
+def record_key_facts(semantic: Any, *, database: str, sql: str, dialect: str, columns: Sequence[str]) -> dict:
+    """Schema facts for semantic review, never a key/projection requirement.
+
+    Only direct physical sources are described. Derived/qualified sources stay
+    unknown; aggregate and DISTINCT grain must never be changed to attach a PK.
+    This does not validate SQL safety, entity scope or business correctness.
+    """
+    lookup = getattr(semantic, "record_key_metadata", None)
+    if not callable(lookup):
+        return {}
+    import sqlglot
+    from sqlglot import exp
+    from sqlglot.optimizer.scope import build_scope
+
+    try:
+        tree = sqlglot.parse_one(sql, read=dialect or None)
+        scope = build_scope(tree)
+    except Exception:
+        return {}
+    if (not isinstance(tree, exp.Select) or not scope or dialect not in {"sqlite", "postgres", "postgresql"}
+            or tree.args.get("with") or len(scope.sources) > 20
+            or len(list(tree.find_all(exp.Select))) != 1
+            or any(not isinstance(t, exp.Table) or t.db or t.catalog for t in scope.sources.values())):
+        return {}
+    grain = ("grouped" if tree.args.get("group") else "distinct" if tree.args.get("distinct")
+             else "aggregate" if any(tree.find_all(exp.AggFunc)) else "rows")
+    mapping = _output_column_sources(sql, dialect, direct_only=True, strict=True)
+    from ai_sql_agent.auth.identifiers import referenced_name
+    facts = []
+    for source in scope.sources.values():
+        if not isinstance(source.this, exp.Identifier):
+            return {}
+        table = referenced_name(source.name, quoted=bool(source.this.args.get("quoted")), dialect=dialect)
+        key = lookup(database, table)
+        facts.append({"table": table, "key_status": key["status"], "key_columns": key["columns"],
+                      "projected_keys": {origin: output for output, (tbl, origin) in mapping.items()
+                                         if tbl == table and origin in key["columns"]
+                                         and (not columns or columns.count(output) == 1)}})
+    return {"database": database, "query_hash": hashlib.sha256(sql.encode()).hexdigest(),
+            "result_grain": grain, "tables": facts}
+
+
 def _output_column_sources(sql: str, dialect: str, *, direct_only=False, strict=False) -> Dict[str, "tuple"]:
     """
     输出列名 → (表名, 原始列名)。

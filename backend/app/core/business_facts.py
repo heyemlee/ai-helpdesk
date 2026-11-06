@@ -343,13 +343,29 @@ def verified_empty(data):
             # no_data is deliberately not a source of values, but a verified
             # execution can still establish this limited lookup outcome.
             and assess(data).reasons == ("execution_status=no_data（来源: contract）",)
-            and fresh(data.get("observed_at")) and bool(data.get("trace_id") or data.get("run_id"))
+            and isinstance(data.get("observed_at"), str) and fresh(data["observed_at"])
+            and all(isinstance(data.get(k, ""), str) for k in ("trace_id", "run_id"))
+            and bool(data.get("trace_id") or data.get("run_id"))
             and data.get("has_risk") is False and data.get("degraded") is False
             and data.get("result_truncated") is not True and bool(steps)
-            and all(s.get("success") is True and s.get("row_count") == 0 and s.get("rows") == []
+            and all(s.get("success") is True and type(s.get("row_count")) is int and s["row_count"] == 0 and s.get("rows") == []
                     and not s.get("risk_findings") and not s.get("error") and s.get("truncated") is False
-                    and s.get("final_sql") and s.get("database") and stamp(s.get("as_of"))
+                    and isinstance(s.get("final_sql"), str) and s["final_sql"].strip()
+                    and isinstance(s.get("database"), str) and re.fullmatch(r"[a-z][a-z0-9_]*_db", s["database"])
+                    and stamp(s.get("as_of"))
                     and s.get("as_of_source") in {"query_time", "snapshot"} for s in steps))
+
+
+def verified_lookup_receipt(data):
+    """Typed grounding for limited absence, never a source of numeric values."""
+    if not verified_empty(data):
+        return None
+    return {"outcome": "verified_empty", "observed_at": data["observed_at"],
+            "trace_id": data.get("trace_id", ""), "run_id": data.get("run_id", ""),
+            "steps": [{"database": s["database"], "final_sql": s["final_sql"],
+                       "query_hash": hashlib.sha256(s["final_sql"].encode()).hexdigest(),
+                       "as_of": s["as_of"], "as_of_source": s["as_of_source"], "row_count": 0}
+                      for s in data["steps"]]}
 
 
 _OUTCOMES_EN = {

@@ -982,6 +982,9 @@ class Text2SQLPipeline:
                         else ""
                     ),
                     column_units=units,
+                    key_facts=provenance.record_key_facts(
+                        self.semantic, database=sql_cot_step.database, sql=final_sql,
+                        dialect=step_dialect, columns=list(execution_result.columns or [])),
                 )
                 validation_payload = outcome.to_dict()
                 for finding in outcome.findings:
