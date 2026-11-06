@@ -16,6 +16,7 @@ import re
 import sqlite3
 import tempfile
 import unittest
+import warnings
 from pathlib import Path
 from unittest import mock
 
@@ -152,6 +153,31 @@ class CustomerOfflineRunTest(unittest.TestCase):
         lines = customer_summary(report)
         self.assertTrue(lines[0].startswith(f"客服转来的问法（{CUSTOMER_CATEGORY}，单独一行，不计入门禁，每一步都比）"))
         self.assertTrue(any("生产入口的路由（规则判）" in line for line in lines))
+
+    def test_vector_retrieval_does_not_emit_runtime_warnings(self):
+        # The pipeline catches retrieval exceptions, so turning warnings into
+        # errors alone would otherwise leave this test green after a failure.
+        from ai_sql_agent.retrieval.vector_index import VectorIndex
+        from benchmark.customer import customer_runner
+
+        original = VectorIndex.search
+        failures = []
+        calls = []
+
+        def checked(index, *args, **kwargs):
+            calls.append(1)
+            with warnings.catch_warnings():
+                warnings.simplefilter("error", RuntimeWarning)
+                try:
+                    return original(index, *args, **kwargs)
+                except RuntimeWarning as exc:
+                    failures.append(str(exc))
+                    raise
+
+        with mock.patch.object(VectorIndex, "search", checked), customer_runner() as runner:
+            runner.run()
+        self.assertTrue(calls)
+        self.assertEqual(failures, [])
 
     def test_never_touches_a_configured_pgvector(self):
         """
