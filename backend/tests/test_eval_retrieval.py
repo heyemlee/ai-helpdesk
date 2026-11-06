@@ -385,10 +385,12 @@ async def test_full_chain_stops_once_the_credentials_are_rejected(ev, tmp_path, 
     report = json.loads((tmp_path / "out.json").read_text(encoding="utf-8"))
     assert report["incomplete"] == "credential_rejected"
     assert [c["id"] for c in report["cases"]] == ["d-02"] and report["unanswered"] == ["d-02"]
+    assert report["not_run"] == ["v-01", "n-06"]
     assert report["cases"][0]["unavailable"] is True
     assert report["summary"]["unavailable"] == 1 and report["summary"]["facts"]["n"] == 0
     assert len(fake_model.hosts) == 1
-    assert "没跑完" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "没跑完" in out and "补跑：--only d-02,v-01,n-06" in out
 
 
 async def test_full_chain_does_not_pass_when_the_model_never_answered(ev, tmp_path, capsys, fake_model):
@@ -402,7 +404,7 @@ async def test_full_chain_does_not_pass_when_the_model_never_answered(ev, tmp_pa
 
     report = json.loads((tmp_path / "out.json").read_text(encoding="utf-8"))
     assert [c["id"] for c in report["cases"]] == ["d-02", "n-06"]
-    assert report["unanswered"] == ["d-02", "n-06"]
+    assert report["unanswered"] == ["d-02", "n-06"] and report["not_run"] == []
     assert report["incomplete"] == "2 条模型没答上来"
     assert report["summary"]["unavailable"] == 2 and report["summary"]["facts"]["n"] == 0
     assert "补跑：--only d-02,n-06" in capsys.readouterr().out

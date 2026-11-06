@@ -38,7 +38,7 @@ Recorded alongside, without counting towards right or wrong:
 - There is no SQL agent delegation and the tool loop is off, as on the customer instance.
 - One replica per agent type, and cases run one at a time.
 
-When the model credentials are rejected the run stops; the cases after that are not attempted, and the report says how many ran. A case whose model calls time out or fail with a 5xx doesn't stop the run, but it is left out of every count and listed under `unanswered` with the `--only` line to rerun it. Either way the report is marked incomplete and the script exits non-zero, so a run that measured nothing can't pass for one that did.
+When the model guard blocks (credentials rejected, quota, or a rate-limit backoff) the run stops; the cases after that are listed under `not_run`. A case whose model calls time out or fail with a 5xx doesn't stop the run, but it is left out of every count and listed under `unanswered`. The script prints the `--only` line that reruns both lists. Either way the report is marked incomplete and the script exits non-zero, so a run that measured nothing can't pass for one that did.
 
 ## Reproduce
 
