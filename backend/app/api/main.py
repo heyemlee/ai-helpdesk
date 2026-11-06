@@ -1850,7 +1850,10 @@ async def _run_queued_turn(ctx: RunContext) -> RunOutcome:
     run = ctx.run
     if run.attempt > 1:
         _close_lost_turns(run, "superseded")
-    req = ChatRequest(message=run.message, user_id=run.user_id, conv_id=run.conv_id)
+    # 不再校验：这个 run 提交时已经按当时的规则收下了。入口的规则后来变了（比如消息长度上限），
+    # 在这里重新校验的话，已经收下的 run 会直接失败：抛在下面的 try 外面，不转人工也不收尾，
+    # 有提交点的回答也丢了，pydantic 的报错还会带着客户原话的开头进日志和终态帧
+    req = ChatRequest.model_construct(message=run.message, user_id=run.user_id, conv_id=run.conv_id)
     token = request_id_var.set(run.request_id or new_request_id())
     meta: dict[str, Any] = {}
     terminal: tuple[str, dict[str, Any]] | None = None
