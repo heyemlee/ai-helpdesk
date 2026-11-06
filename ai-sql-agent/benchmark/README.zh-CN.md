@@ -362,7 +362,7 @@ python -m benchmark.run_benchmark --dataset benchmark/bilingual_cases.json --rep
 
 客户在客服那边问订单时，客服把客户原话直接转给 SQL Agent，查回来的数据算作回答的出处——
 SQL Agent 查错了单、拿错了字段，客服会照着说。150 条评测集全是分析员问法（「查询…的…」），
-客户问法一道也没有。`customer_cases.json` 补的就是这一段：24 道（中文 19、英文 5），用客户
+客户问法一道也没有。`customer_cases.json` 补的就是这一段：24 道（中文 20、英文 4），用客户
 自己的说法问，比如「到哪了」「还要多久」「怎么还没发货」「哪天送到的」「补发的件寄出来没有」，
 每道都带单号。
 
@@ -391,6 +391,11 @@ python -m benchmark.run_benchmark --customer --output runtime_data/customer_repo
 「取值或行数不对」的单独数一遍。没有模型凭证时走 Mock 模型和规则路由，只能说明这一类跑得通、
 能单独出一行，分数没有意义。题集本身（单号都在库里、gold SQL 只读一个库且结果非空、
 gold 只输出问到的事实）和离线跑通由 `tests/test_customer_cases.py` 锁住。
+
+2026-11-06 已按上述多步骤可用性与矛盾检查规则完成一轮真实模型重跑：24/24 完成，
+当前判分通过 15/24，实际 219 次请求尝试（GPT-6.1 Sol 185、Embedding 34）。
+逐题事实、口径差异和原始证据见 [本轮报告](../../docs/evaluation/sql-customer-2026-11-06.md)。
+这是单轮 SQL 客户问法结果，不代替完整 Helpdesk 链路或正式发布验收。
 
 ## 重新生成数据集
 
