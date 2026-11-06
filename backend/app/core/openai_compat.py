@@ -727,7 +727,14 @@ class AsyncOpenAICompat:
     供应商共用一份，不会出现"换个供应商超时就没人管了"。
     """
 
-    def __init__(self, api_key: str, base_url: str | None = None, **kwargs: Any):
+    def __init__(self, api_key: str, base_url: str | None = None, *, api_mode: str = "chat", **kwargs: Any):
         # 只写到主机的地址补上 /v1（见 model_settings.api_root），和 ai-sql-agent 同一个口径
         self._client = AsyncOpenAI(api_key=api_key, base_url=api_root(base_url or "") or None, **kwargs)
-        self.messages = _Messages(self._client)
+        if api_mode == "responses":
+            from app.core.openai_responses import _ResponsesMessages
+
+            self.messages = _ResponsesMessages(self._client)
+        elif api_mode == "chat":
+            self.messages = _Messages(self._client)
+        else:
+            raise ValueError(f"Unknown OpenAI API mode: {api_mode}")

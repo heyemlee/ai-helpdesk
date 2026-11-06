@@ -22,3 +22,5 @@
 本机离线客服题集使用 NumPy 2.2.6 / Apple Accelerate 时，矩阵乘法报告浮点警告；抽样输入与结果均有限，与独立逐行点积相差最多约 1.5e-8。该观察不能证明生产环境存在故障或完全确定底层原因。离线测试原先会吞掉流水线检索异常，因此需要显式断言。历史知识问答和 SQL 客服题集的模型、数据与限制仍以各自报告为准，不能当成当前 Sol 质量基线。
 
 GPT-6.1 Sol 的工具调用使用 [Responses API](https://developers.openai.com/api/docs/models/gpt-6.1-sol)；[迁移说明](https://developers.openai.com/api/docs/guides/migrate-to-responses)要求转换函数输入输出、结构化输出和流事件。第三方兼容地址是否实现该协议尚未验证。
+
+已加入显式 `OPENAI_API_MODE=responses` 适配及离线测试，默认仍为 Chat Completions；保留无状态工具轮次的加密推理项。不自动降级协议。真实端点调用、第三方兼容性、SQL Agent 独立传输层以及附件上传和授权链路尚未验收，阶段 1 尚未完成。

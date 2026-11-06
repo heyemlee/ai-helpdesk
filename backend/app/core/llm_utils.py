@@ -186,7 +186,7 @@ def create_llm_client(
     if provider == "openai":
         from app.core.openai_compat import AsyncOpenAICompat
 
-        client: Any = AsyncOpenAICompat(**kwargs)
+        client: Any = AsyncOpenAICompat(**kwargs, api_mode=os.getenv("OPENAI_API_MODE", "chat").strip().lower())
     else:
         client = AsyncAnthropic(**kwargs)
     # 凭证不可用保护套在这唯一的入口上：同一份配置（供应商 + 地址 + 凭证）的所有
