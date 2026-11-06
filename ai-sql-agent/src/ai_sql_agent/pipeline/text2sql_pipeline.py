@@ -88,6 +88,13 @@ from .token_budget import PromptBudgetManager, columns_in_prompt
 # 回填给下一步 SQL 生成 Prompt 的上一步结果行数上限
 _MAX_BACKFILL_ROWS = 50
 
+# 上一步执行成功、但一行都没有时回填给下一步的话（见 `_serialize_step_result`）
+_EMPTY_BACKFILL = (
+    "上一步执行成功，返回 0 行：没有可以回填的取值。\n"
+    "本步骤如果要按上一步的结果筛选，结果必然是空的，在 WHERE 里写 1 = 0。\n"
+    "不要拿字段自己当条件（例如 order_no IN (order_no)）：那等于不筛选，会把整张表查出来。"
+)
+
 _MAX_BACKFILL_LITERALS = 50
 """单列最多拼进 IN 条件的取值数，防止 Prompt 被长结果集撑爆。"""
 
@@ -716,7 +723,9 @@ class Text2SQLPipeline:
                     error=execution_result.error,
                 )
             else:
-                execution_result = self.mcp_router.execute(execution_request)
+                execution_result = self._execute_unless_self_comparison(
+                    execution_request["database"], execution_request["sql"], step_dialect
+                )
                 SQL_EXECUTIONS.inc(
                     database=sql_cot_step.database,
                     status="ok" if execution_result.success else "error",
@@ -746,8 +755,8 @@ class Text2SQLPipeline:
                         error_message=execution_result.error or "",
                         local_schema=local_schema,
                         sql_dialect=step_dialect,
-                        execute=lambda database, sql: self.mcp_router.execute(
-                            {"database": database, "sql": sql}
+                        execute=lambda database, sql: self._execute_unless_self_comparison(
+                            database, sql, step_dialect
                         ),
                     )
                     repair_attempts = [
@@ -1601,6 +1610,31 @@ class Text2SQLPipeline:
 
         return next(iter(schema_stores.values()), None)
 
+    def _execute_unless_self_comparison(self, database: str, sql: str, dialect: str):
+        """
+        执行一条生成的 SQL；筛选条件里有「字段和它自己比较」的就不执行，当成一次执行失败。
+
+        这种条件恒为真，执行了也不报错，只会悄悄把整张表查出来（见
+        `ai_sql_agent.generation.self_comparison`）。当成失败交给修复回路，比一个
+        行数正常、内容全错的结果好：修复带着这句报错重写，修不好用户也看得见。
+        首次生成和每一次修复都走这里。
+        """
+        from ai_sql_agent.generation.self_comparison import find_self_comparisons
+
+        found = find_self_comparisons(sql, dialect)
+        if found:
+            return MCPExecutionResult(
+                database=database,
+                sql=sql,
+                success=False,
+                error=(
+                    f"筛选条件把字段和它自己比较，恒为真：{'；'.join(found)}。等于不筛选，"
+                    "会把整张表查出来，所以没有执行。按上一步结果筛选、而上一步没有取值时，"
+                    "这一步的结果应该是空的：WHERE 写 1 = 0。"
+                ),
+            )
+        return self.mcp_router.execute({"database": database, "sql": sql})
+
     @staticmethod
     def _serialize_step_result(execution_result) -> str:
         """
@@ -1611,7 +1645,14 @@ class Text2SQLPipeline:
         自己又去写跨库子查询或 JOIN。把答案以「直接抄这一行」的形式摆出来，
         比多写几句「请改写为字面量」的指令有效得多——模型跟随格式示例
         远强于跟随文字指令。
+
+        上一步执行成功但一行都没有时，要**明说**没有可回填的值。以前这里返回空串，和
+        「没有上一步」长得一样：下一步的 Prompt 里没有「上一步结果」这一节，规划却写着
+        「用上一步结果里的单号筛选」，模型手里没有单号，就写出了 `order_no IN (order_no)`，
+        把整张表查了出来（见 `ai_sql_agent.generation.self_comparison`）。
         """
+        if execution_result.success and not execution_result.rows:
+            return _EMPTY_BACKFILL
         if not execution_result.success or not execution_result.rows:
             return ""
 
