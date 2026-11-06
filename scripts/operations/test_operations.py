@@ -1,17 +1,20 @@
 """Failure boundaries for encrypted snapshots and conservative local retention."""
 import base64
+import http.client
 import json
 import os
 from pathlib import Path
+import ssl
 import tempfile
 import time
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
 from recovery import Operations, atomic_json, crypt, digest, publish_metric_status
 from publish_release import verification
 from verify import _verify
-from release import artifact_identity
+from release import artifact_identity, deploy
 
 
 class SnapshotTests(unittest.TestCase):
@@ -125,6 +128,279 @@ class RetentionTests(unittest.TestCase):
         link=self.root/'linked.aihdbak';link.symlink_to(unknown)
         self.ops.prune(apply=True)
         self.assertTrue(unknown.exists() and link.is_symlink())
+
+
+class ReleaseFlowOperations(Operations):
+    """Run the release control flow against temporary files, without Docker."""
+    def __init__(self, root, environment):
+        self.output = root/'backups'; self.output.mkdir()
+        self.env = root/'release.env'; self.env.write_text(environment); self.env.chmod(0o600)
+        self.c = {'environment':'drill', 'env_file':str(self.env)}
+        self.compose = ['docker', 'compose', '--env-file', str(self.env)]
+        self.project = 'unit-release'
+        self.gate = root/'gate/maintenance'; self.gate.parent.mkdir()
+        self.marker = self.output/'maintenance.json'
+        self.writers = ['api','frontend','sql-agent','worker','ingress']
+        self.services = set()
+        self.current_backend = None
+        self.business_reject = None
+        self.sql_reject = None
+        self.events = []
+
+    def running(self):
+        return sorted(self.services)
+
+    def run(self, *args, input=None, check=True):
+        if args[0] == 'up':
+            services = set(args) & set(self.writers)
+            self.services.update(services)
+            if 'api' in services:
+                file = Path(self.compose[self.compose.index('--env-file')+1])
+                self.current_backend = dict(line.split('=',1) for line in file.read_text().splitlines())['BACKEND_IMAGE']
+            self.events.append(('up', sorted(services)))
+            return SimpleNamespace(returncode=0, stdout=b'')
+        if args[0] == 'stop':
+            self.services.difference_update(set(args) & set(self.writers))
+            self.events.append(('stop', sorted(self.services)))
+            return SimpleNamespace(returncode=0, stdout=b'')
+        if args[0] == 'exec':
+            if 'scripts/release_smoke.py' in args:
+                sql = '--sql' in args
+                rejected = self.sql_reject if sql else self.business_reject
+                result = {'passed':self.current_backend != rejected}
+                if sql: result['status_code'] = 502 if not result['passed'] else 200
+                else: result['attachment_downloads_verified'] = 2
+                return SimpleNamespace(returncode=0, stdout=json.dumps(result).encode())
+            return SimpleNamespace(returncode=0, stdout=b'')
+        raise AssertionError('Unexpected operations call: '+repr(args))
+
+    def metric(self, operation, when):
+        self.events.append(('metric', operation))
+        super().metric(operation, when)
+
+
+class ReleaseFlowTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory(prefix='aihd-release-flow-')
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.candidate = self.manifest('candidate', 1)
+        self.previous = self.manifest('safe', 4)
+        self.old_environment = 'KEEP=operator-setting\n'+self.image_environment(self.previous)
+        self.ops = ReleaseFlowOperations(self.root, self.old_environment)
+        self.target = self.root/'candidate.json'; atomic_json(self.target,self.candidate)
+        self.probe = self.root/'probe.json'; atomic_json(self.probe,{'origin':'http://127.0.0.1:8765'})
+        self.clock = 0.0
+        self.attempts = []
+        self.success_writes = []
+        self.seen_public_401 = False
+        self.response = lambda: 401
+        self.fail_record = None
+        for target, replacement in (
+            ('release.subprocess.check_output', self.inspect),
+            ('http.client.HTTPConnection', self.connection),
+            ('http.client.HTTPSConnection', self.connection),
+            ('release.time.monotonic', lambda: self.clock),
+            ('release.time.sleep', self.sleep),
+            ('release.atomic_json', self.record),
+        ):
+            patcher = patch(target, side_effect=replacement)
+            patcher.start(); self.addCleanup(patcher.stop)
+
+    @staticmethod
+    def manifest(revision, start):
+        return {'revision':revision, 'staff_boundary':1, 'contract':'1.15',
+                'images':{name:'sha256:'+str(index)*64 for index,name in enumerate(('backend','frontend','sql'),start)}}
+
+    @staticmethod
+    def image_environment(manifest):
+        return ''.join(key+'='+manifest['images'][service]+'\n' for key,service in
+                       [('BACKEND_IMAGE','backend'),('SQL_IMAGE','sql'),('FRONTEND_IMAGE','frontend')])
+
+    def inspect(self, command):
+        reference = command[-1]
+        manifest = next(m for m in (self.candidate,self.previous) if reference in m['images'].values())
+        return json.dumps([{'Id':reference,'Config':{'Labels':{'ai-helpdesk.staff-boundary':'1',
+                            'org.opencontainers.image.revision':manifest['revision']}}}]).encode()
+
+    def sleep(self, seconds):
+        self.assertGreater(seconds,0)
+        self.clock += seconds
+
+    def connection(self, *args, **kwargs):
+        test = self
+        class Connection:
+            def request(self, method, path, headers):
+                test.assertEqual((method,path),('GET','/api/auth/session'))
+                test.assertNotIn('Authorization',headers)
+                test.assertNotIn('Cookie',headers)
+
+            def getresponse(self):
+                test.assertFalse(test.ops.gate.exists())
+                test.assertTrue(test.ops.marker.exists())
+                result = test.response()
+                test.attempts.append((result,test.ops.current_backend,kwargs['timeout']))
+                if isinstance(result,BaseException): raise result
+                if result == 401: test.seen_public_401 = True
+                return SimpleNamespace(status=result, close=lambda:None)
+
+            def close(self):
+                pass
+        return Connection()
+
+    def record(self, path, value):
+        if Path(path).name == 'active-release.json' or value.get('outcome') in ('validated','rolled_back'):
+            self.success_writes.append((Path(path).name,value,self.seen_public_401))
+        if Path(path).name == self.fail_record:
+            self.fail_record = None
+            raise OSError('injected success record failure')
+        atomic_json(path,value)
+
+    def use_previous(self):
+        atomic_json(self.ops.output/'active-release.json',self.previous)
+        atomic_json(self.ops.output/'last-release.json',{'outcome':'validated','revision':'safe','at':1})
+        self.ops.services.update(self.ops.writers)
+
+    def assert_closed(self):
+        self.assertTrue(self.ops.gate.exists())
+        self.assertTrue(self.ops.marker.exists())
+        self.assertEqual(self.ops.running(),[])
+        self.assertEqual(self.ops.env.read_text(),self.old_environment)
+        self.assertEqual(self.ops.compose[self.ops.compose.index('--env-file')+1],str(self.ops.env))
+        self.assertEqual(self.ops.env.stat().st_mode&0o777,0o600)
+
+    def test_normal_release_waits_for_delayed_public_401_before_success(self):
+        effects = iter([ConnectionRefusedError(),http.client.RemoteDisconnected(),503,401])
+        self.response = lambda: next(effects)
+        result = deploy(self.ops,self.target,self.probe)
+        self.assertEqual([x[0] for x in self.attempts][-2:],[503,401])
+        self.assertEqual(len(self.attempts),4)
+        self.assertEqual(result['outcome'],'validated')
+        self.assertTrue(self.success_writes)
+        self.assertTrue(all(after_401 for _,_,after_401 in self.success_writes))
+        self.assertFalse(self.ops.gate.exists()); self.assertFalse(self.ops.marker.exists())
+        self.assertEqual(json.loads((self.ops.output/'active-release.json').read_text()),self.candidate)
+        self.assertIn(self.image_environment(self.candidate),self.ops.env.read_text())
+
+    def test_persistent_unavailability_times_out_and_restores_environment(self):
+        self.response = lambda: ConnectionRefusedError()
+        with self.assertRaises(TimeoutError): deploy(self.ops,self.target,self.probe)
+        self.assertGreater(self.clock,0); self.assertLessEqual(self.clock,30)
+        self.assertTrue(self.attempts); self.assertEqual(self.success_writes,[])
+        self.assertFalse((self.ops.output/'active-release.json').exists())
+        self.assert_closed()
+
+    def test_anonymous_200_is_rejected_immediately_and_kept_closed(self):
+        self.response = lambda: 200
+        with self.assertRaisesRegex(ValueError,'200'): deploy(self.ops,self.target,self.probe)
+        self.assertEqual(len(self.attempts),1); self.assertEqual(self.clock,0)
+        self.assertEqual(self.success_writes,[]); self.assert_closed()
+
+    def test_other_auth_and_protocol_errors_are_not_retried(self):
+        for error in (301,302,403,404,407,500,ssl.SSLCertVerificationError('invalid certificate'),http.client.BadStatusLine('invalid HTTP')):
+            with self.subTest(error=error):
+                self.ops.marker.unlink(missing_ok=True); self.ops.gate.unlink(missing_ok=True)
+                self.attempts.clear(); self.response = lambda: error
+                with self.assertRaises(Exception): deploy(self.ops,self.target,self.probe)
+                self.assertEqual(len(self.attempts),1); self.assertEqual(self.clock,0)
+                self.assertEqual(self.success_writes,[]); self.assert_closed()
+
+    def test_gateway_unavailability_is_bounded(self):
+        self.response = lambda: 503
+        with self.assertRaises(TimeoutError): deploy(self.ops,self.target,self.probe)
+        self.assertGreater(self.clock,0); self.assertLessEqual(self.clock,30)
+        self.assertEqual(self.success_writes,[]); self.assert_closed()
+
+    def test_401_after_readiness_deadline_is_not_a_success(self):
+        def late_response():
+            self.clock += 31
+            return 401
+        self.response = late_response
+        with self.assertRaises(TimeoutError): deploy(self.ops,self.target,self.probe)
+        self.assertEqual(self.success_writes,[]); self.assert_closed()
+
+    def test_rollback_waits_for_public_401_and_persists_safe_images(self):
+        self.use_previous(); self.ops.business_reject = self.candidate['images']['backend']
+        effects = iter([http.client.RemoteDisconnected(),502,401]); self.response = lambda: next(effects)
+        with self.assertRaisesRegex(ValueError,'Employee/business smoke failed'):
+            deploy(self.ops,self.target,self.probe)
+        self.assertEqual(len(self.attempts),3)
+        self.assertTrue(self.success_writes)
+        self.assertTrue(all(after_401 for _,_,after_401 in self.success_writes))
+        self.assertEqual(json.loads((self.ops.output/'last-release.json').read_text())['outcome'],'rolled_back')
+        self.assertEqual(json.loads((self.ops.output/'active-release.json').read_text()),self.previous)
+        self.assertEqual(self.ops.env.read_text(),self.old_environment)
+        self.assertFalse(self.ops.gate.exists()); self.assertFalse(self.ops.marker.exists())
+
+    def test_unavailable_rollback_keeps_previous_identity_but_closes_writers(self):
+        self.use_previous(); self.ops.business_reject = self.candidate['images']['backend']
+        self.response = lambda: http.client.RemoteDisconnected()
+        with self.assertRaises(Exception): deploy(self.ops,self.target,self.probe)
+        self.assertGreater(self.clock,0); self.assertEqual(self.success_writes,[])
+        self.assertEqual(json.loads((self.ops.output/'active-release.json').read_text()),self.previous)
+        self.assert_closed()
+
+    def test_candidate_auth_failure_is_not_swallowed_by_safe_rollback(self):
+        self.use_previous()
+        self.response = lambda: 200 if self.ops.current_backend == self.candidate['images']['backend'] else 401
+        with self.assertRaisesRegex(ValueError,'200'): deploy(self.ops,self.target,self.probe)
+        self.assertEqual([x[0] for x in self.attempts],[200,401])
+        self.assertEqual(json.loads((self.ops.output/'active-release.json').read_text()),self.previous)
+        self.assertEqual(self.ops.env.read_text(),self.old_environment)
+        self.assertTrue(all(after_401 for _,_,after_401 in self.success_writes))
+
+    def test_candidate_timeout_can_roll_back_with_a_fresh_readiness_deadline(self):
+        self.use_previous()
+        effects = iter([504,401])
+        self.response = lambda: (ConnectionRefusedError() if self.ops.current_backend == self.candidate['images']['backend']
+                                 else next(effects))
+        with self.assertRaises(TimeoutError): deploy(self.ops,self.target,self.probe)
+        self.assertGreaterEqual(self.clock,30); self.assertLessEqual(self.clock,31)
+        self.assertEqual(json.loads((self.ops.output/'last-release.json').read_text())['outcome'],'rolled_back')
+        self.assertEqual(self.ops.env.read_text(),self.old_environment)
+        self.assertEqual(json.loads((self.ops.output/'active-release.json').read_text()),self.previous)
+        self.assertTrue(all(after_401 for _,_,after_401 in self.success_writes))
+
+    def test_anonymous_200_during_rollback_is_fatal_and_preserves_the_cause(self):
+        self.use_previous(); self.ops.business_reject = self.candidate['images']['backend']
+        self.response = lambda: 200
+        with self.assertRaisesRegex(ValueError,'Employee/business smoke failed') as failed:
+            deploy(self.ops,self.target,self.probe)
+        self.assertIsInstance(failed.exception.__cause__,ValueError)
+        self.assertIn('200',str(failed.exception.__cause__))
+        self.assertEqual(len(self.attempts),1); self.assertEqual(self.clock,0)
+        self.assertEqual(self.success_writes,[]); self.assert_closed()
+
+    def test_rollback_record_error_restores_prior_records_and_closes_writers(self):
+        self.use_previous(); self.ops.business_reject = self.candidate['images']['backend']
+        self.fail_record = 'last-release.json'
+        with self.assertRaisesRegex(ValueError,'Employee/business smoke failed') as failed:
+            deploy(self.ops,self.target,self.probe)
+        self.assertIsInstance(failed.exception.__cause__,OSError)
+        self.assertEqual(json.loads((self.ops.output/'last-release.json').read_text()),
+                         {'outcome':'validated','revision':'safe','at':1})
+        self.assertEqual(json.loads((self.ops.output/'active-release.json').read_text()),self.previous)
+        self.assert_closed()
+
+    def test_public_probe_refuses_origins_with_employee_credentials(self):
+        atomic_json(self.probe,{'origin':'https://employee:secret@example.invalid'})
+        with self.assertRaisesRegex(ValueError,'anonymous public'):
+            deploy(self.ops,self.target,self.probe)
+        self.assertEqual(self.attempts,[]); self.assertEqual(self.success_writes,[]); self.assert_closed()
+
+    def test_failure_after_sql_activation_restores_environment_without_public_probe(self):
+        self.ops.sql_reject = self.candidate['images']['backend']
+        with self.assertRaisesRegex(ValueError,'Employee SQL gateway smoke failed'):
+            deploy(self.ops,self.target,self.probe)
+        self.assertEqual(self.attempts,[]); self.assertEqual(self.success_writes,[]); self.assert_closed()
+
+    def test_success_record_error_does_not_leave_a_new_active_release(self):
+        self.fail_record = 'last-release.json'
+        with self.assertRaisesRegex(OSError,'injected success record failure'):
+            deploy(self.ops,self.target,self.probe)
+        self.assertTrue(self.seen_public_401)
+        self.assertFalse((self.ops.output/'active-release.json').exists())
+        self.assert_closed()
 
 
 class PublicationTests(unittest.TestCase):

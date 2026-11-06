@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """Apply immutable images behind a closed ingress; fail back only to a tested safe release."""
 import argparse
+import http.client
 import json
 import os
 from pathlib import Path
 import re
+import socket
 import subprocess
 import sys
 import time
+from urllib.parse import urlsplit
 from recovery import Operations, atomic_json, digest
 
 
@@ -97,6 +100,76 @@ def activate(ops, probe):
                 "import os,httpx; r=httpx.get('http://sql-agent:8000/whoami',headers={'X-API-Key':os.environ['SQL_AGENT_API_KEY']});r.raise_for_status();i=r.json()['identity'];assert i['user_id']==os.getenv('SQL_AGENT_USER_ID','ai-helpdesk') and not i['is_admin'] and not i.get('can_impersonate',False)")
 
 
+def public_auth_status(origin, timeout):
+    """Probe the actual origin without redirects, proxies or employee credentials."""
+    address = urlsplit(origin)
+    if (address.scheme not in {'http', 'https'} or not address.hostname
+            or address.username is not None or address.password is not None
+            or address.path not in {'', '/'} or address.query or address.fragment):
+        raise ValueError('An anonymous public HTTP(S) origin is required')
+    transport = http.client.HTTPSConnection if address.scheme == 'https' else http.client.HTTPConnection
+    connection = transport(address.hostname, address.port, timeout=timeout)
+    try:
+        connection.request('GET', '/api/auth/session', headers={'Accept':'application/json'})
+        response = connection.getresponse()
+        try:
+            return response.status
+        finally:
+            response.close()
+    finally:
+        connection.close()
+
+
+def wait_public_auth(origin, timeout=30):
+    deadline = time.monotonic() + timeout
+    last_error = None
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError('Public ingress authentication readiness timed out') from last_error
+        try:
+            status = public_auth_status(origin, min(2, remaining))
+        except (ConnectionRefusedError, ConnectionResetError, ConnectionAbortedError,
+                BrokenPipeError, TimeoutError, http.client.RemoteDisconnected) as error:
+            last_error = error
+        except socket.gaierror as error:
+            if error.errno != socket.EAI_AGAIN:
+                raise
+            last_error = error
+        else:
+            if time.monotonic() >= deadline:
+                raise TimeoutError('Public ingress authentication readiness timed out')
+            if status == 401:
+                return
+            if status not in {502, 503, 504}:
+                raise ValueError(f'Public ingress authentication check failed (HTTP {status})')
+            last_error = RuntimeError(f'Public ingress not ready (HTTP {status})')
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError('Public ingress authentication readiness timed out') from last_error
+        time.sleep(min(.25, remaining))
+
+
+def reopen_ingress(ops, probe):
+    origin = json.loads(Path(probe).read_text())['origin']
+    ops.run('up', '-d', '--no-build', 'ingress')
+    # The gate must be lifted to exercise authentication through the real route.
+    # Keep the operation marker until that check succeeds; callers close on error.
+    ops.gate.unlink(missing_ok=True)
+    wait_public_auth(origin)
+    ops.marker.unlink(missing_ok=True)
+
+
+def restore_file(path, contents, mode):
+    if contents is None:
+        path.unlink(missing_ok=True)
+    elif (not path.exists() or path.read_bytes() != contents
+          or path.stat().st_mode & 0o777 != mode):
+        staged = path.with_name(path.name+'.restore')
+        staged.write_bytes(contents); staged.chmod(mode)
+        os.replace(staged, path)
+
+
 def deploy(ops, target, probe):
     candidate = validated_manifest(target)  # Old unsafe images rejected before any switch.
     if ops.c.get('environment') != 'drill':
@@ -112,33 +185,47 @@ def deploy(ops, target, probe):
         state = json.loads(ops.marker.read_text())
         if state['phase'] != 'awaiting_business_smoke':
             raise ValueError('Recovery is not complete or access review is missing')
+    environment = Path(ops.c['env_file'])
+    last_release = ops.output/'last-release.json'
+    original_files = [(path, path.read_bytes() if path.exists() else None,
+                       path.stat().st_mode & 0o777 if path.exists() else 0o600)
+                      for path in (environment, existing_file, last_release)]
+
+    def fail_closed(phase):
+        try:
+            ops.close_writers(phase)
+        finally:
+            ops.compose[ops.compose.index('--env-file')+1] = str(environment)
+            for path, contents, mode in original_files:
+                restore_file(path, contents, mode)
+
     ops.close_writers('release_validation')
     try:
         checks = apply(ops, candidate, probe)
         activate(ops,probe)
-    except BaseException:
+        reopen_ingress(ops,probe)
+        atomic_json(existing_file,candidate)
+        atomic_json(last_release,{'outcome':'validated','revision':candidate['revision'],'manifest_sha256':digest(target),'checks':checks,'at':time.time()})
+        ops.metric('release',time.time())
+        return {'outcome':'validated','revision':candidate['revision'],'images':candidate['images'],'checks':checks,
+                'sql_gateway':json.loads((ops.output/'last-sql-gateway-smoke.json').read_text())}
+    except BaseException as candidate_error:
         if previous:
-            rollback = ops.output/'rollback.json'; atomic_json(rollback,previous)
             try:
+                fail_closed('rollback_validation')
+                rollback = ops.output/'rollback.json'; atomic_json(rollback,previous)
                 safe = validated_manifest(rollback)
-                ops.close_writers('rollback_validation')
                 apply(ops,safe,probe)
                 activate(ops,probe)
-                ops.run('up','-d','--no-build','ingress')
-                ops.gate.unlink(missing_ok=True); ops.marker.unlink(missing_ok=True)
-                atomic_json(ops.output/'last-release.json',{'outcome':'rolled_back','revision':safe['revision'],'at':time.time()})
-            except BaseException:
-                ops.close_writers('rollback_failed_writers_closed')
+                reopen_ingress(ops,probe)
+                atomic_json(existing_file,safe)
+                atomic_json(last_release,{'outcome':'rolled_back','revision':safe['revision'],'at':time.time()})
+            except BaseException as rollback_error:
+                fail_closed('rollback_failed_writers_closed')
+                raise candidate_error from rollback_error
         else:
-            ops.close_writers('release_failed_writers_closed')
+            fail_closed('release_failed_writers_closed')
         raise
-    atomic_json(existing_file,candidate)
-    atomic_json(ops.output/'last-release.json',{'outcome':'validated','revision':candidate['revision'],'manifest_sha256':digest(target),'checks':checks,'at':time.time()})
-    ops.run('up','-d','--no-build','ingress')
-    ops.gate.unlink(missing_ok=True); ops.marker.unlink(missing_ok=True)
-    ops.metric('release',time.time())
-    return {'outcome':'validated','revision':candidate['revision'],'images':candidate['images'],'checks':checks,
-            'sql_gateway':json.loads((ops.output/'last-sql-gateway-smoke.json').read_text())}
 
 
 def main():
