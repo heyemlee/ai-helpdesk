@@ -40,7 +40,12 @@ class StructuredEvidenceTest(unittest.TestCase):
             first = summarize_result(saved)
             self.assertEqual(first.observed_at, observed.isoformat())
             self.assertEqual(first.evidence[1].value, 150)
-            self.assertNotIn("5000", str(first.data_part()))
+            # Compare business facts, not an arbitrary substring of timestamps
+            # or hashes (e.g. a microsecond value of .425000 contains "5000").
+            self.assertEqual(
+                [(entry["field"], entry["value"]) for entry in first.data_part()["evidence"]],
+                [("order_ref", "SO-Ab"), ("amount", 150)],
+            )
             self.assertEqual(first.evidence[1].unit, "USD")
             saved.pipeline_result.step_logs[0].execution_result["observed_at"] = "2020-01-02T00:00:00Z"
             old = summarize_result(saved)

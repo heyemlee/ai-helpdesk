@@ -48,6 +48,18 @@
       "sha256": "0e57361b717f1328",
       "len": 386
      }
+    },
+    {
+     "__type__": "FewShotExample",
+     "user_query": "项目 P-042 的预算是多少？",
+     "schema_context": {
+      "sha256": "d1d905ff90a89edc",
+      "len": 355
+     },
+     "output": {
+      "sha256": "852e0f7bca32e5bb",
+      "len": 191
+     }
     }
    ],
    "schema_graph": {
@@ -61,8 +73,8 @@
   "call": "ThinkingModelClient.generate",
   "args": [
    {
-    "sha256": "55d3bff3abe2b8ec",
-    "len": 9746
+    "sha256": "b9ee9d1a7940697d",
+    "len": 10843
    }
   ],
   "kwargs": {}
@@ -183,6 +195,18 @@
       "sha256": "0e57361b717f1328",
       "len": 386
      }
+    },
+    {
+     "__type__": "FewShotExample",
+     "user_query": "项目 P-042 的预算是多少？",
+     "schema_context": {
+      "sha256": "d1d905ff90a89edc",
+      "len": 355
+     },
+     "output": {
+      "sha256": "852e0f7bca32e5bb",
+      "len": 191
+     }
     }
    ],
    "schema_graph": {
@@ -199,8 +223,8 @@
   "call": "ThinkingModelClient.generate",
   "args": [
    {
-    "sha256": "ce06838c87acdd13",
-    "len": 8728
+    "sha256": "ea378afaf8a40eb9",
+    "len": 9825
    }
   ],
   "kwargs": {}
@@ -333,6 +357,18 @@
       "sha256": "0e57361b717f1328",
       "len": 386
      }
+    },
+    {
+     "__type__": "FewShotExample",
+     "user_query": "项目 P-042 的预算是多少？",
+     "schema_context": {
+      "sha256": "d1d905ff90a89edc",
+      "len": 355
+     },
+     "output": {
+      "sha256": "852e0f7bca32e5bb",
+      "len": 191
+     }
     }
    ],
    "schema_graph": {
@@ -349,8 +385,8 @@
   "call": "ThinkingModelClient.generate",
   "args": [
    {
-    "sha256": "159328ef0e03cbf5",
-    "len": 13160
+    "sha256": "3dbcd167a10c4aed",
+    "len": 14257
    }
   ],
   "kwargs": {}
@@ -545,8 +581,8 @@
   "call": "ThinkingModelClient.generate",
   "args": [
    {
-    "sha256": "d0f213cb526e53ec",
-    "len": 9892
+    "sha256": "c2f242332af0dea3",
+    "len": 10389
    }
   ],
   "kwargs": {}

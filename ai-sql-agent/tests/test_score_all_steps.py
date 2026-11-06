@@ -49,9 +49,10 @@ class ScoreAllStepsTest(unittest.TestCase):
     def tearDown(self):
         self._tmp.cleanup()
 
-    def _score(self, logs, *, all_steps, gold="SELECT order_status FROM erp.orders WHERE order_no = 'J1'"):
+    def _score(self, logs, *, all_steps, gold="SELECT order_status FROM erp.orders WHERE order_no = 'J1'", alternatives=()):
         self.dataset.write_text(json.dumps([
-            {"id": "x1", "category": "customer", "query": "J1 现在什么进度了？", "gold_sql": gold}
+            {"id": "x1", "category": "customer", "query": "J1 现在什么进度了？", "gold_sql": gold,
+             "gold_sql_alternatives": list(alternatives)}
         ]), encoding="utf-8")
         runner = BenchmarkRunner(
             pipeline=FakePipeline(self.db, logs), dataset_path=self.dataset,
@@ -178,6 +179,60 @@ class ScoreAllStepsTest(unittest.TestCase):
                 _log("svc_db", [{"order_no": "J1", "delivery_status": "待配送"}])]
         item = self._score(logs, all_steps=True,
                            gold="SELECT order_status FROM erp.orders WHERE order_no = 'NOPE'")
+        self.assertFalse(item.correct)
+
+    def _equivalent(self, logs, *, all_steps=True):
+        return self._score(
+            logs, all_steps=all_steps,
+            gold="SELECT CASE WHEN order_status = '已签单' THEN 1 ELSE 0 END AS is_signed FROM erp.orders WHERE order_no = 'J1'",
+            alternatives=["SELECT order_status FROM erp.orders WHERE order_no = 'J1'"],
+        )
+
+    def test_explicit_equivalent_forms_accept_boolean_or_underlying_fact(self):
+        for rows in ([{"is_signed": 1}], [{"order_no": "J1", "order_status": "已签单"}]):
+            self.assertTrue(self._equivalent([_log("erp_db", rows)]).correct)
+
+    def test_equivalents_keep_wrong_values_rows_and_extra_columns_rejected(self):
+        for rows in (
+            [{"is_signed": 0}],
+            [{"order_status": "生产中"}],
+            [{"is_signed": 1}, {"is_signed": 0}],
+            [{"is_signed": 1, "order_no": "J1", "unasked": "extra"}],
+        ):
+            with self.subTest(rows=rows):
+                self.assertFalse(self._equivalent([_log("erp_db", rows)]).correct)
+
+    def test_equivalent_earlier_fact_still_needs_risk_and_contradiction_checks(self):
+        first = _log("erp_db", [{"order_status": "已签单"}])
+        for later in (
+            _log("prod_db", [], findings=["empty_result"]),
+            _log("prod_db", [{"order_status": "生产中"}]),
+        ):
+            item = self._equivalent([first, later])
+            self.assertFalse(item.correct)
+            self.assertTrue(item.unusable_match)
+
+    def test_equivalent_earlier_fact_must_fit_in_preview(self):
+        logs = [_log("erp_db", [{"note": "x" * 3000}]),
+                _log("erp_db", [{"order_status": "已签单"}]),
+                _log("prod_db", [{"production_status": "等待"}])]
+        self.assertFalse(self._equivalent(logs).correct)
+
+    def test_final_equivalent_is_preferred_to_earlier_primary_form(self):
+        logs = [_log("erp_db", [{"is_signed": 1}]),
+                _log("erp_db", [{"order_status": "已签单"}])]
+        result = self._equivalent(logs)
+        self.assertTrue(result.correct)
+        self.assertEqual(result.matched_step, 2)
+        self.assertEqual(self._equivalent(logs, all_steps=False).matched_step, None)
+        self.assertTrue(self._equivalent(logs, all_steps=False).correct)
+
+    def test_variants_cannot_be_mixed_into_a_partial_answer(self):
+        item = self._score(
+            [_log("erp_db", [{"a": 1, "b": 4}])], all_steps=True,
+            gold="SELECT 1 AS a, 2 AS b FROM erp.orders",
+            alternatives=["SELECT 3 AS a, 4 AS b FROM erp.orders"],
+        )
         self.assertFalse(item.correct)
 
 

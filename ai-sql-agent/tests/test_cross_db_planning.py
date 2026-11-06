@@ -40,7 +40,7 @@ class CrossDbFewShotTest(unittest.TestCase):
     def test_example_only_injected_when_multiple_databases_hit(self):
         """单库问题看到跨库范例会倾向于多拆一步，白花一次调用还多一次出错机会。"""
         self.assertEqual(few_shots_for(1), [])
-        self.assertEqual(len(few_shots_for(2)), 1)
+        self.assertEqual(len(few_shots_for(2)), 2)
 
     def test_example_demonstrates_key_passing_not_just_rules(self):
         """范例必须真的走通一遍：第一步输出关联键，第二步用字面量。"""

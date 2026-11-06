@@ -34,6 +34,11 @@ class CustomerCasesTest(unittest.TestCase):
         from ai_sql_agent.semantic import load_semantic_dir
 
         cls.items = json.loads(CUSTOMER_CASES.read_text(encoding="utf-8"))
+        cls.answer_forms = [
+            {**item, "gold_sql": sql}
+            for item in cls.items
+            for sql in [item["gold_sql"], *item.get("gold_sql_alternatives", [])]
+        ]
         cls.tmpdir = tempfile.TemporaryDirectory()
         root = Path(cls.tmpdir.name)
         cls.layer = load_semantic_dir(build_simple_erp(root))
@@ -68,14 +73,14 @@ class CustomerCasesTest(unittest.TestCase):
             self.assertEqual(set(ORDER_NO.findall(item["gold_sql"])), asked, item["id"])
 
     def test_gold_sql_returns_rows_without_duplicates(self):
-        for item in self.items:
+        for item in self.answer_forms:
             rows = [tuple(row) for row in self.conn.execute(item["gold_sql"])]
             self.assertGreater(len(rows), 0, item["id"])
             self.assertEqual(len(rows), len(set(rows)), item["id"])
 
     def test_gold_reads_one_database(self):
         # 评测比的是最后一步的结果集，标准答案的输出不能横跨两个库
-        for item in self.items:
+        for item in self.answer_forms:
             aliases = {alias for alias, _ in TABLE_REF.findall(item["gold_sql"])}
             self.assertEqual(len(aliases), 1, item["id"])
 
@@ -86,19 +91,19 @@ class CustomerCasesTest(unittest.TestCase):
         模型会把单号当标识带上（规划提示词规则 11），判分允许多输出一列，正好容下它；
         标准答案再带一份单号，模型多带一个别的字段就要被判错了。
         """
-        for item in self.items:
+        for item in self.answer_forms:
             select_list = item["gold_sql"].split(" FROM ")[0]
             several = len(set(ORDER_NO.findall(item["query"]))) > 1
             self.assertEqual("order_no" in select_list, several, item["id"])
 
     def test_gold_does_not_depend_on_names(self):
         # 生成器里的客户名、供应商名和生产那份写法不同，按单号查到的其它字段一致
-        for item in self.items:
+        for item in self.answer_forms:
             for column in ("customer_name", "supplier_name"):
                 self.assertNotIn(column, item["gold_sql"], item["id"])
 
     def test_gold_columns_exist_in_the_semantic_layer(self):
-        for item in self.items:
+        for item in self.answer_forms:
             self.assertTrue(item["gold_columns"], item["id"])
             for qualified in item["gold_columns"]:
                 database, table, column = qualified.split(".")
@@ -106,6 +111,20 @@ class CustomerCasesTest(unittest.TestCase):
                 self.assertIn(column, tables[table]["columns"], f"{item['id']}: {qualified}")
             for alias, table in TABLE_REF.findall(item["gold_sql"]):
                 self.assertIn(table, self.layer.databases[SIMPLE_ERP[alias]].tables, item["id"])
+
+    def test_shipping_question_accepts_boolean_and_date_from_same_record(self):
+        item = next(i for i in self.items if i["id"] == "c24")
+        self.assertEqual(list(self.conn.execute(item["gold_sql"])), [(1,)])
+        self.assertEqual(list(self.conn.execute(item["gold_sql_alternatives"][0])), [("2026-04-13",)])
+        # The Boolean reference follows the DB state; it must not be a constant
+        # tailored to this recorded positive example.
+        self.conn.execute("SAVEPOINT shipping_reference")
+        try:
+            self.conn.execute("UPDATE svc.replacement_part SET shipped_date=NULL WHERE order_no='J25-00060'")
+            self.assertEqual(list(self.conn.execute(item["gold_sql"])), [(0,)])
+        finally:
+            self.conn.execute("ROLLBACK TO shipping_reference")
+            self.conn.execute("RELEASE shipping_reference")
 
 
 class CustomerOfflineRunTest(unittest.TestCase):
