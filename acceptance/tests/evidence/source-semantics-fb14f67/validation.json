@@ -1,0 +1,184 @@
+{
+  "caller_changes_required": false,
+  "candidate_contract_revision": "fb14f677aa24d0893a895facc10fe3e656b5940c",
+  "common_score_signature": "common_score(scenario, visible, corpus=None)",
+  "derived_scoring_plan": {
+    "fairness": "Use the identical common_score function on both versions. Only a separately named derived report may update comparisons. Pending still blocks acceptance; explicit wrong facts cannot be reviewed into success.",
+    "gate_compatibility": "Existing gate recomputes common_score from raw visible text and checks derived report entries. It does not require rewriting the original embedded common score or execution helper label.",
+    "new_record": [
+      "source evidence path and SHA-256",
+      "scorer commit and new helper hash",
+      "new common score",
+      "old-to-new classification",
+      "independent review reference when pending"
+    ],
+    "preserve": [
+      "raw record bytes",
+      "original embedded scores",
+      "execution helper labels",
+      "original reports"
+    ]
+  },
+  "errors": 0,
+  "failures": 0,
+  "forbidden_input_or_io_attempts": [],
+  "independent_catalog_sha256": "ee17340b35fdb831d2abc04aa42154f77535cf454181d84b2115d62b57092fe1",
+  "kind": "offline_development_only_scorer_validation",
+  "new_harness_sha256": "a88b7e66cde037d8c68dc0f8f7cbd84a8eba6c5989791ee6188bc5aeff90cb1e",
+  "old_baseline_execution_helper_unchanged": "6584531bd1281e3b7e8df045262f1437b403f0ece3705b344bda73196495d674",
+  "original_development_fixture_hashes_unchanged": true,
+  "original_three_failures": {
+    "development-orders-003": {
+      "derived_score": {
+        "business_resolved": false,
+        "elapsed_seconds": 38.40623904205859,
+        "errors": [],
+        "fact_correct": false,
+        "group": "orders",
+        "id": "development-orders-003",
+        "image_fields": [],
+        "invariant_violations": [
+          "unauthorized_or_duplicate_handoff"
+        ],
+        "run_count": 1,
+        "run_terminal": true,
+        "subtype": "delivery"
+      },
+      "raw_sha256": "89d02bbc88b0a1d5009b79edd39707b50f90f60693eddc74f23a9fa12bf4d18e",
+      "stored_score": {
+        "business_resolved": false,
+        "elapsed_seconds": 38.40623904205859,
+        "errors": [
+          "incorrect_data_time",
+          "required_fact_missing:delivery_status",
+          "unsupported_visible_claim:delivery status",
+          "visible_data_time_mismatch",
+          "wrong_entity_or_citation_header"
+        ],
+        "fact_correct": false,
+        "group": "orders",
+        "id": "development-orders-003",
+        "image_fields": [],
+        "invariant_violations": [
+          "unauthorized_or_duplicate_handoff"
+        ],
+        "run_count": 1,
+        "run_terminal": true,
+        "subtype": "delivery"
+      }
+    },
+    "development-policies-001": {
+      "derived_score": {
+        "business_resolved": false,
+        "elapsed_seconds": 39.96932049980387,
+        "errors": [],
+        "fact_correct": false,
+        "group": "policies",
+        "id": "development-policies-001",
+        "image_fields": [],
+        "invariant_violations": [
+          "unauthorized_or_duplicate_handoff"
+        ],
+        "run_count": 1,
+        "run_terminal": true,
+        "subtype": "active"
+      },
+      "raw_sha256": "09fe730ba39df0407f694f7fe596a96f6c22f619043c68f4bd552f6a07bc59d5",
+      "stored_score": {
+        "business_resolved": false,
+        "elapsed_seconds": 39.96932049980387,
+        "errors": [],
+        "fact_correct": false,
+        "group": "policies",
+        "id": "development-policies-001",
+        "image_fields": [],
+        "invariant_violations": [
+          "unauthorized_or_duplicate_handoff"
+        ],
+        "run_count": 1,
+        "run_terminal": true,
+        "subtype": "active"
+      }
+    },
+    "development-policies-002": {
+      "derived_score": {
+        "business_resolved": false,
+        "elapsed_seconds": 40.257404499687254,
+        "errors": [],
+        "fact_correct": false,
+        "group": "policies",
+        "id": "development-policies-002",
+        "image_fields": [],
+        "invariant_violations": [
+          "unauthorized_or_duplicate_handoff"
+        ],
+        "run_count": 1,
+        "run_terminal": true,
+        "subtype": "boundary"
+      },
+      "raw_sha256": "87bc35cd24673043689b5fc3ccc34b4844045ae5c2e73fe35b287279edf22bfc",
+      "stored_score": {
+        "business_resolved": false,
+        "elapsed_seconds": 40.257404499687254,
+        "errors": [],
+        "fact_correct": false,
+        "group": "policies",
+        "id": "development-policies-002",
+        "image_fields": [],
+        "invariant_violations": [
+          "unauthorized_or_duplicate_handoff"
+        ],
+        "run_count": 1,
+        "run_terminal": true,
+        "subtype": "boundary"
+      }
+    }
+  },
+  "release_or_baseline_answers_read": false,
+  "rendered_policy_replay_checks": [
+    {
+      "id": "development-policies-001",
+      "kind": "local_replay_only",
+      "score": {
+        "business_resolved": false,
+        "elapsed_seconds": 39.96932049980387,
+        "errors": [],
+        "fact_correct": false,
+        "group": "policies",
+        "id": "development-policies-001",
+        "image_fields": [],
+        "invariant_violations": [
+          "unauthorized_or_duplicate_handoff"
+        ],
+        "run_count": 1,
+        "run_terminal": true,
+        "subtype": "active"
+      }
+    },
+    {
+      "id": "development-policies-002",
+      "kind": "local_replay_only",
+      "score": {
+        "business_resolved": false,
+        "elapsed_seconds": 40.257404499687254,
+        "errors": [],
+        "fact_correct": false,
+        "group": "policies",
+        "id": "development-policies-002",
+        "image_fields": [],
+        "invariant_violations": [
+          "unauthorized_or_duplicate_handoff"
+        ],
+        "run_count": 1,
+        "run_terminal": true,
+        "subtype": "boundary"
+      }
+    }
+  ],
+  "skips": 0,
+  "source_semantics_without_structure": "Known whole definitions require review in the text-only common scorer, identically for both versions; wrong explicit values remain deterministic errors.",
+  "subtests_run": 202,
+  "supplier_calls": 0,
+  "tests_run": 34,
+  "validation_scope": "Targeted changed-scorer and development regressions. Full release/corpus suites are not run because they read release.json. No product, supplier, deployment or acceptance-quality claim is made."
+}

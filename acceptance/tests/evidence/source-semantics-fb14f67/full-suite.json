@@ -1,0 +1,25 @@
+{
+  "errors": 0,
+  "failed_tests": [],
+  "failures": 0,
+  "forbidden_real_answer_reads": [],
+  "frozen_release_fixture_used_by_automated_tests_only": true,
+  "mount_checks": {
+    "attempts": 0,
+    "health": {
+      "healthy": true,
+      "provider_enabled": true,
+      "remaining_requests": 1
+    },
+    "ledger_writable": true,
+    "parent_readonly": true,
+    "receipts": 0,
+    "settings_readonly": true
+  },
+  "mount_network_mode": "none",
+  "new_harness_sha256": "a88b7e66cde037d8c68dc0f8f7cbd84a8eba6c5989791ee6188bc5aeff90cb1e",
+  "provider_mode": "network-disabled mount regression with synthetic credentials",
+  "skips": 0,
+  "subtests": 298,
+  "tests": 82
+}

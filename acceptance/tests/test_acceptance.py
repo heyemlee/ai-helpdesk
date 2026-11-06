@@ -276,7 +276,7 @@ class MethodTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 load_evidence(root, reference)
     def correct_order(self):
-        _, dev, _ = dataset()
+        dev = read(DATA / "development.json")
         scenario = dev["scenarios"][0]
         order = scenario["entities"][0]
         row = next(r for r in dev["records"]["erp_db"]["orders"] if r["order_no"] == order)
@@ -315,7 +315,7 @@ class MethodTests(unittest.TestCase):
         self.assertTrue(common_score(inventory, natural, corpus)["fact_correct"])
 
     def test_unknown_requires_successful_query_evidence(self):
-        _, dev, _ = dataset()
+        dev = read(DATA / "development.json")
         scenario = next(s for s in dev["scenarios"] if s["subtype"] == "no_record")
         observed = {"completed": True, "runs": [{"status": "succeeded"}], "case": {"status": "in_progress", "control_mode": "assistant", "pending_fields": [],
             "drafts": [{"valid": True, "body": "查询成功，未找到记录。", "evidence": []}]}, "side_effects": {"handoff": 0, "notification": 0}}
@@ -355,7 +355,7 @@ class MethodTests(unittest.TestCase):
                 self.assertEqual(set(s["truth"]["pending_fields"]), {"image:" + k for k, v in s["truth"]["image_fields"].items() if v["outcome"] != "matched"})
 
     def test_real_service_recordings_are_transport_compatible(self):
-        _, corpus, _ = dataset()
+        corpus = read(DATA / "development.json")
         for group in ("orders", "policies", "images", "missing_field"):
             recording = read(Path(__file__).parent / "fixtures" / (group + ".json"))
             self.assertFalse(recording["model_quality_claim"])
@@ -450,7 +450,7 @@ class MethodTests(unittest.TestCase):
         self.assertIn("common_comparison_totals_mismatch", verify(report)["failures"])
 
     def test_safe_unanswered_cannot_count_as_order_answer(self):
-        _, dev, _ = dataset()
+        dev = read(DATA / "development.json")
         scenario = dev["scenarios"][0]
         observed = {"completed": True, "runs": [{"status": "succeeded"}], "case": {"status": "in_progress", "control_mode": "assistant", "pending_fields": [],
             "drafts": [{"valid": True, "body": "请提供需要核实的问题及相关材料。业务事实需要有效的政策或业务记录支持。", "evidence": []}]},

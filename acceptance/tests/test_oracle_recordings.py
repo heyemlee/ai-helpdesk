@@ -3,7 +3,7 @@ import copy
 import unittest
 from pathlib import Path
 
-from acceptance.common import ROOT, dataset, read, sha
+from acceptance.common import ROOT, read, sha
 from acceptance.oracle import score, stamp
 
 
@@ -28,7 +28,7 @@ def current_draft(observed):
 class OracleRecordingTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        _, cls.corpus, _ = dataset(V2_DATA)
+        cls.corpus = read(V2_DATA / "development.json")
         cls.scenarios = {s["id"]: s for s in cls.corpus["scenarios"]}
         cls.provenance = read(FIXTURES / "provenance.json")
         cls.recordings = {Path(name).stem: read(FIXTURES / name) for name in cls.provenance["recordings"]}

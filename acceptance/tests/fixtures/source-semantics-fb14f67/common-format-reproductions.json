@@ -1,0 +1,467 @@
+{
+  "artifact_kind": "fictional_common_scorer_handoff",
+  "cases": [
+    {
+      "context": null,
+      "expectation": "Do not emit a definite business-fact error solely for the illustrated representation/extraction issue. If semantically parsed and supported, match the plain reference; otherwise retain review_required rather than guessing a pass.",
+      "id": "markdown_bold",
+      "kind": "format_reproduction",
+      "plain": "订单 SO-2026-99001\n订单状态：配送中",
+      "scenario": {
+        "group": "orders",
+        "id": "fictional-format-audit",
+        "truth": {
+          "allowed_entities": [
+            "SO-2026-99001"
+          ],
+          "facts": [
+            {
+              "entity": "SO-2026-99001",
+              "field": "order_status",
+              "unit": null,
+              "value": "配送中"
+            }
+          ]
+        }
+      },
+      "variant": "订单 SO-2026-99001\n订单状态：**配送中**"
+    },
+    {
+      "context": null,
+      "expectation": "Do not emit a definite business-fact error solely for the illustrated representation/extraction issue. If semantically parsed and supported, match the plain reference; otherwise retain review_required rather than guessing a pass.",
+      "id": "quoted_status",
+      "kind": "format_reproduction",
+      "plain": "订单 SO-2026-99001\n订单状态：配送中",
+      "scenario": {
+        "group": "orders",
+        "id": "fictional-format-audit",
+        "truth": {
+          "allowed_entities": [
+            "SO-2026-99001"
+          ],
+          "facts": [
+            {
+              "entity": "SO-2026-99001",
+              "field": "order_status",
+              "unit": null,
+              "value": "配送中"
+            }
+          ]
+        }
+      },
+      "variant": "订单 SO-2026-99001\n订单状态：“配送中”"
+    },
+    {
+      "context": null,
+      "expectation": "Do not emit a definite business-fact error solely for the illustrated representation/extraction issue. If semantically parsed and supported, match the plain reference; otherwise retain review_required rather than guessing a pass.",
+      "id": "connector_colon",
+      "kind": "format_reproduction",
+      "plain": "订单 SO-2026-99001\n订单状态：配送中",
+      "scenario": {
+        "group": "orders",
+        "id": "fictional-format-audit",
+        "truth": {
+          "allowed_entities": [
+            "SO-2026-99001"
+          ],
+          "facts": [
+            {
+              "entity": "SO-2026-99001",
+              "field": "order_status",
+              "unit": null,
+              "value": "配送中"
+            }
+          ]
+        }
+      },
+      "variant": "订单 SO-2026-99001\n订单状态为：配送中"
+    },
+    {
+      "context": null,
+      "expectation": "Do not emit a definite business-fact error solely for the illustrated representation/extraction issue. If semantically parsed and supported, match the plain reference; otherwise retain review_required rather than guessing a pass.",
+      "id": "currency_prefix",
+      "kind": "format_reproduction",
+      "plain": "订单 SO-2026-99001\n合同金额：246.80 USD",
+      "scenario": {
+        "group": "orders",
+        "id": "fictional-format-audit",
+        "truth": {
+          "allowed_entities": [
+            "SO-2026-99001"
+          ],
+          "facts": [
+            {
+              "entity": "SO-2026-99001",
+              "field": "contract_amount",
+              "unit": "USD",
+              "value": 246.8
+            }
+          ]
+        }
+      },
+      "variant": "订单 SO-2026-99001\n合同金额：USD 246.80"
+    },
+    {
+      "context": null,
+      "expectation": "Do not emit a definite business-fact error solely for the illustrated representation/extraction issue. If semantically parsed and supported, match the plain reference; otherwise retain review_required rather than guessing a pass.",
+      "id": "bold_amount_unit",
+      "kind": "format_reproduction",
+      "plain": "订单 SO-2026-99001\n合同金额：246.80 USD",
+      "scenario": {
+        "group": "orders",
+        "id": "fictional-format-audit",
+        "truth": {
+          "allowed_entities": [
+            "SO-2026-99001"
+          ],
+          "facts": [
+            {
+              "entity": "SO-2026-99001",
+              "field": "contract_amount",
+              "unit": "USD",
+              "value": 246.8
+            }
+          ]
+        }
+      },
+      "variant": "订单 SO-2026-99001\n合同金额：**246.80 USD**"
+    },
+    {
+      "context": null,
+      "expectation": "Do not emit a definite business-fact error solely for the illustrated representation/extraction issue. If semantically parsed and supported, match the plain reference; otherwise retain review_required rather than guessing a pass.",
+      "id": "table_rows",
+      "kind": "format_reproduction",
+      "plain": "订单 SO-2026-99001\n补件状态：处理中\n补件数量：7件",
+      "scenario": {
+        "group": "orders",
+        "id": "fictional-format-audit",
+        "truth": {
+          "allowed_entities": [
+            "SO-2026-99001"
+          ],
+          "facts": [
+            {
+              "entity": "SO-2026-99001",
+              "field": "part_status",
+              "unit": null,
+              "value": "处理中"
+            },
+            {
+              "entity": "SO-2026-99001",
+              "field": "quantity",
+              "unit": "pcs",
+              "value": 7
+            }
+          ]
+        }
+      },
+      "variant": "订单 SO-2026-99001\n| 补件状态 | 补件数量 |\n| --- | --- |\n| 处理中 | 7件 |"
+    },
+    {
+      "context": null,
+      "expectation": "Do not emit a definite business-fact error solely for the illustrated representation/extraction issue. If semantically parsed and supported, match the plain reference; otherwise retain review_required rather than guessing a pass.",
+      "id": "chinese_date",
+      "kind": "format_reproduction",
+      "plain": "订单 SO-2026-99001\n约定交付日期：2027-02-18",
+      "scenario": {
+        "group": "orders",
+        "id": "fictional-format-audit",
+        "truth": {
+          "allowed_entities": [
+            "SO-2026-99001"
+          ],
+          "facts": [
+            {
+              "entity": "SO-2026-99001",
+              "field": "delivery_date",
+              "unit": null,
+              "value": "2027-02-18"
+            }
+          ]
+        }
+      },
+      "variant": "订单 SO-2026-99001\n约定交付日期：2027年2月18日"
+    },
+    {
+      "context": {
+        "mock_query_time": "2027-02-03T09:10:00Z",
+        "note": "虚构时间证据仅用于这个独立样例；不能推导任何真实记录的时间正确。"
+      },
+      "expectation": "Do not emit a definite business-fact error solely for the illustrated representation/extraction issue. If semantically parsed and supported, match the plain reference; otherwise retain review_required rather than guessing a pass.",
+      "id": "query_timestamp",
+      "kind": "extraction_reproduction",
+      "plain": "订单 SO-2026-99001\n订单状态：配送中",
+      "scenario": {
+        "group": "orders",
+        "id": "fictional-format-audit",
+        "truth": {
+          "allowed_entities": [
+            "SO-2026-99001"
+          ],
+          "facts": [
+            {
+              "entity": "SO-2026-99001",
+              "field": "order_status",
+              "unit": null,
+              "value": "配送中"
+            }
+          ]
+        }
+      },
+      "variant": "订单 SO-2026-99001\n订单状态：配送中\n查询时间：2027年2月3日 09:10 UTC"
+    },
+    {
+      "context": {
+        "records": {
+          "svc_db": {
+            "replacement_part": [
+              {
+                "order_no": "SO-2026-99001",
+                "part_name": "Hinge BX-99001-24",
+                "part_status": "处理中",
+                "quantity": 7
+              }
+            ]
+          }
+        }
+      },
+      "expectation": "Do not emit a definite business-fact error solely for the illustrated representation/extraction issue. If semantically parsed and supported, match the plain reference; otherwise retain review_required rather than guessing a pass.",
+      "id": "related_part_name",
+      "kind": "association_reproduction",
+      "plain": "订单 SO-2026-99001\n补件状态：处理中\n补件数量：7件",
+      "scenario": {
+        "group": "orders",
+        "id": "fictional-format-audit",
+        "truth": {
+          "allowed_entities": [
+            "SO-2026-99001"
+          ],
+          "facts": [
+            {
+              "entity": "SO-2026-99001",
+              "field": "part_status",
+              "unit": null,
+              "value": "处理中"
+            },
+            {
+              "entity": "SO-2026-99001",
+              "field": "quantity",
+              "unit": "pcs",
+              "value": 7
+            }
+          ]
+        }
+      },
+      "variant": "订单 SO-2026-99001\n关联配件 Hinge BX-99001-24\n补件状态：处理中\n补件数量：7件"
+    },
+    {
+      "context": null,
+      "expectation": "Do not emit a definite business-fact error solely for the illustrated representation/extraction issue. If semantically parsed and supported, match the plain reference; otherwise retain review_required rather than guessing a pass.",
+      "id": "nonassertive_date_mention",
+      "kind": "extraction_reproduction",
+      "plain": "订单 SO-2026-99001\n约定交付日期：2027-02-18",
+      "scenario": {
+        "group": "orders",
+        "id": "fictional-format-audit",
+        "truth": {
+          "allowed_entities": [
+            "SO-2026-99001"
+          ],
+          "facts": [
+            {
+              "entity": "SO-2026-99001",
+              "field": "delivery_date",
+              "unit": null,
+              "value": "2027-02-18"
+            }
+          ]
+        }
+      },
+      "variant": "订单 SO-2026-99001\n约定交付日期：2027-02-18\n该交付日期记录不等于实际送达日期。"
+    },
+    {
+      "context": null,
+      "expectation": "Do not emit a definite business-fact error solely for the illustrated representation/extraction issue. If semantically parsed and supported, match the plain reference; otherwise retain review_required rather than guessing a pass.",
+      "id": "status_paraphrase",
+      "kind": "extraction_reproduction",
+      "plain": "订单 SO-2026-99001\n生产状态：待生产",
+      "scenario": {
+        "group": "orders",
+        "id": "fictional-format-audit",
+        "truth": {
+          "allowed_entities": [
+            "SO-2026-99001"
+          ],
+          "facts": [
+            {
+              "entity": "SO-2026-99001",
+              "field": "production_status",
+              "unit": null,
+              "value": "待生产"
+            }
+          ]
+        }
+      },
+      "variant": "订单 SO-2026-99001\n生产状态仍为“待生产”"
+    },
+    {
+      "context": null,
+      "expectation": "Do not emit a definite business-fact error solely for the illustrated representation/extraction issue. If semantically parsed and supported, match the plain reference; otherwise retain review_required rather than guessing a pass.",
+      "id": "separated_field_words",
+      "kind": "extraction_reproduction",
+      "plain": "订单 SO-2026-99001\n订单状态：配送中",
+      "scenario": {
+        "group": "orders",
+        "id": "fictional-format-audit",
+        "truth": {
+          "allowed_entities": [
+            "SO-2026-99001"
+          ],
+          "facts": [
+            {
+              "entity": "SO-2026-99001",
+              "field": "order_status",
+              "unit": null,
+              "value": "配送中"
+            }
+          ]
+        }
+      },
+      "variant": "订单 SO-2026-99001 当前状态为：配送中\n查询时间：2027年2月3日。"
+    },
+    {
+      "context": null,
+      "expectation": "must_not_pass; preserve the substantive error or missing answer independently of formatting.",
+      "id": "wrong_amount",
+      "kind": "negative_control",
+      "plain": "订单 SO-2026-99001\n合同金额：246.80 USD",
+      "scenario": {
+        "group": "orders",
+        "id": "fictional-format-audit",
+        "truth": {
+          "allowed_entities": [
+            "SO-2026-99001"
+          ],
+          "facts": [
+            {
+              "entity": "SO-2026-99001",
+              "field": "contract_amount",
+              "unit": "USD",
+              "value": 246.8
+            }
+          ]
+        }
+      },
+      "variant": "订单 SO-2026-99001\n合同金额：246.81 USD"
+    },
+    {
+      "context": null,
+      "expectation": "must_not_pass; preserve the substantive error or missing answer independently of formatting.",
+      "id": "wrong_currency",
+      "kind": "negative_control",
+      "plain": "订单 SO-2026-99001\n合同金额：246.80 USD",
+      "scenario": {
+        "group": "orders",
+        "id": "fictional-format-audit",
+        "truth": {
+          "allowed_entities": [
+            "SO-2026-99001"
+          ],
+          "facts": [
+            {
+              "entity": "SO-2026-99001",
+              "field": "contract_amount",
+              "unit": "USD",
+              "value": 246.8
+            }
+          ]
+        }
+      },
+      "variant": "订单 SO-2026-99001\n合同金额：246.80 CNY"
+    },
+    {
+      "context": null,
+      "expectation": "must_not_pass; preserve the substantive error or missing answer independently of formatting.",
+      "id": "wrong_entity",
+      "kind": "negative_control",
+      "plain": "订单 SO-2026-99001\n订单状态：配送中",
+      "scenario": {
+        "group": "orders",
+        "id": "fictional-format-audit",
+        "truth": {
+          "allowed_entities": [
+            "SO-2026-99001"
+          ],
+          "facts": [
+            {
+              "entity": "SO-2026-99001",
+              "field": "order_status",
+              "unit": null,
+              "value": "配送中"
+            }
+          ]
+        }
+      },
+      "variant": "订单 SO-2026-99002\n订单状态：配送中"
+    },
+    {
+      "context": null,
+      "expectation": "must_not_pass; preserve the substantive error or missing answer independently of formatting.",
+      "id": "extra_unsupported_amount",
+      "kind": "negative_control",
+      "plain": "订单 SO-2026-99001\n合同金额：246.80 USD",
+      "scenario": {
+        "group": "orders",
+        "id": "fictional-format-audit",
+        "truth": {
+          "allowed_entities": [
+            "SO-2026-99001"
+          ],
+          "facts": [
+            {
+              "entity": "SO-2026-99001",
+              "field": "contract_amount",
+              "unit": "USD",
+              "value": 246.8
+            }
+          ]
+        }
+      },
+      "variant": "订单 SO-2026-99001\n合同金额：246.80 USD\n额外费用：19 USD"
+    },
+    {
+      "context": null,
+      "expectation": "must_not_pass; preserve the substantive error or missing answer independently of formatting.",
+      "id": "refusal_without_inventory",
+      "kind": "negative_control",
+      "plain": "物料 Hinge BX-99003-24\n现有库存：83件\n已占用库存：14件",
+      "scenario": {
+        "group": "orders",
+        "id": "fictional-format-audit",
+        "truth": {
+          "allowed_entities": [
+            "Hinge BX-99003-24"
+          ],
+          "facts": [
+            {
+              "entity": "Hinge BX-99003-24",
+              "field": "on_hand_qty",
+              "unit": "pcs",
+              "value": 83
+            },
+            {
+              "entity": "Hinge BX-99003-24",
+              "field": "allocated_qty",
+              "unit": "pcs",
+              "value": 14
+            }
+          ]
+        }
+      },
+      "variant": "物料 Hinge BX-99003-24\n目前无法查询现有库存和已占用库存，需要转人工。"
+    }
+  ],
+  "contains_real_answers": false,
+  "source_file": ".stage6/evaluation/2026-11-06/formal-v3-20261106/common-scorer-generic-reproductions.json",
+  "source_sha256": "66f58f21ca61d314b106f2a5d199fe7e36cfa599a1fd7b63435862dda8b60512"
+}

@@ -15,6 +15,8 @@ from decimal import Decimal, InvalidOperation
 from math import isfinite
 
 from acceptance.common import ROOT, read
+from acceptance.source_semantics import (EMPTY_POLICY_NOTICE, bound_metadata, business_metadata, digest,
+    empty_policy_proven, labels as semantic_labels, meaning_lines, policy_dates_match)
 
 LABELS = {"订单": "order_no", "订单号": "order_no", "型号": "model", "订单状态": "order_status",
     "合同金额": "contract_amount", "当前工序": "current_stage", "生产状态": "production_status",
@@ -123,6 +125,49 @@ def query_clock_valid(payload, published_at):
             and 0 <= published_at - earliest <= 300)
 
 
+def image_metadata(ref, case, scenario, corpus, published_at):
+    """Use only the image review's retained SQL, never a later business query."""
+    try:
+        source = ref["business_source"]
+        si, ri = source["step_index"], source["row_index"]
+        if type(si) is not int or type(ri) is not int or min(si, ri) < 0:
+            return None
+        when, observed_at = stamp(source.get("as_of")), stamp(source.get("observed_at"))
+        if (when is None or observed_at is None or type(published_at) not in {int, float}
+                or not isfinite(published_at) or not 0 <= published_at - when <= 300
+                or not 0 <= published_at - observed_at <= 300
+                or source.get("query_hash") != digest(source["final_sql"])):
+            return None
+        step = {"database": source["database"], "final_sql": source["final_sql"],
+                "column_metadata": {source["column"]: source.get("column_metadata")}}
+        meaning = bound_metadata(step, source["column"], outputs=source.get("output_columns"))
+        if (not source.get("output_columns") or not meaning
+                or source.get("unit") != ref.get("unit") or ref.get("unit") != UNITS.get(meaning["column"])):
+            return None
+        version = corpus.get("dataset_version", "")
+        if not re.fullmatch(r"acceptance-v[0-9]+", version):
+            return None
+        manifest = read(ROOT / "acceptance/data" / version.removeprefix("acceptance-") / "manifest.json")["files"]
+        hashes = {manifest.get(s["image"]) for s in scenario["steps"] if s.get("image")}
+        if ref.get("sha256") not in hashes or None in hashes:
+            return None
+        saved = [m for m in case.get("materials", []) if m.get("attachment_id") == ref.get("attachment_id")
+                 and m.get("sha256") == ref["sha256"] and (m.get("attachment") or {}).get("state") == "ready"
+                 and (m.get("attachment") or {}).get("sha256") == ref["sha256"]
+                 and (m.get("attachment") or {}).get("id") == ref.get("attachment_id")]
+        fields = [f for review in case.get("image_reviews", []) if review.get("attachment_id") == ref.get("attachment_id")
+                  and review.get("sha256") == ref["sha256"] and review.get("case_id") == case.get("id")
+                  for f in review.get("result", {}).get("fields", []) if f.get("field") == ref.get("field")]
+        fact = (case.get("facts") or {}).get(ref.get("field"), {})
+        if (not saved or len(fields) != 1 or fields[0].get("outcome") != "matched"
+                or fields[0].get("source") != source or not equivalent(fields[0].get("db_value"), ref.get("db_value"))
+                or fact.get("source") != "verified_image" or fact.get("business_source") != source):
+            return None
+        return meaning
+    except (KeyError, TypeError, IndexError, AttributeError, ValueError):
+        return None
+
+
 def score(scenario, observed, corpus):
     truth = scenario["truth"]
     errors, invariants = [], list(observed.get("invariant_violations", []))
@@ -175,6 +220,10 @@ def score(scenario, observed, corpus):
             except (KeyError, IndexError, TypeError):
                 errors.append("source_row_missing")
                 continue
+            raw_row = row
+            meaning = business_metadata(payload, cell, step)
+            if meaning:
+                key = meaning["column"]
             row = {field_name(k): v for k, v in row.items()}
             anchors = {k: v for k, v in row.items() if k in {"order_no", "model", "material_name"}}
             entity = anchors.get("order_no") or anchors.get("material_name")
@@ -182,11 +231,15 @@ def score(scenario, observed, corpus):
                 errors.append("wrong_or_unbound_entity")
                 continue
             tables = re.findall(r"(?:FROM|JOIN)\s+[\"`\[]?(?:\w+\.)?(\w+)", step.get("final_sql", ""), re.I)
+            if meaning:
+                tables = [meaning["table"]]
             witnesses = [(table, r) for table in tables for r in corpus["records"].get(database, {}).get(table, [])
                          if all(k not in r or r[k] == v for k, v in anchors.items())
                          and (r.get("order_no") == entity or r.get("material_name") == entity)]
             witnesses = [(table, r) for table, r in witnesses if key in r and equivalent(cell.get("value"), r[key])]
-            if not witnesses or not equivalent(row.get(key), cell.get("value")):
+            if meaning:
+                witnesses = [(table, r) for table, r in witnesses if table == meaning["table"]]
+            if not witnesses or not equivalent(raw_row.get(cell.get("field")), cell.get("value")):
                 errors.append("incorrect_or_unproven_cell:" + key)
                 continue
             if key in UNITS and cell.get("unit") != UNITS[key]:
@@ -208,7 +261,8 @@ def score(scenario, observed, corpus):
             if identity not in [g["identity"] for g in source_groups]:
                 source_groups.append({"identity": identity, "anchors": anchors, "as_of": cell["as_of"]})
             valid_cells.append({"entity": entity, "field": key, "value": cell["value"], "unit": cell.get("unit"),
-                                "source": {"database": database, "table": table}, "as_of": cell["as_of"], "group": identity})
+                                "source": {"database": database, "table": table}, "as_of": cell["as_of"],
+                                "group": identity, "meaning": meaning})
         # Verify NULL claims against raw rows and the authored records too.
         for group in [g for g in source_groups if g["identity"][0] == query_index]:
             _, si, ri = group["identity"]
@@ -223,9 +277,15 @@ def score(scenario, observed, corpus):
                 if value is not None:
                     continue
                 field = field_name(raw_field)
-                table = next((t for t in tables if any((r.get("order_no") == entity or r.get("material_name") == entity) and field in r and r[field] is None for r in corpus["records"].get(database, {}).get(t, []))), None)
+                meaning = business_metadata(payload, {"field": raw_field, "value": None, "step_index": si,
+                    "row_index": ri, "database": database}, step, null=True)
+                if meaning:
+                    field = meaning["column"]
+                candidates = [meaning["table"]] if meaning else tables
+                table = next((t for t in candidates if any((r.get("order_no") == entity or r.get("material_name") == entity) and field in r and r[field] is None for r in corpus["records"].get(database, {}).get(t, []))), None)
                 if table:
-                    valid_cells.append({"entity": entity, "field": field, "value": None, "unit": None, "source": {"database": database, "table": table}, "as_of": group["as_of"], "group": group["identity"]})
+                    meaning = meaning if meaning and meaning["table"] == table else None
+                    valid_cells.append({"entity": entity, "field": field, "value": None, "unit": None, "source": {"database": database, "table": table}, "as_of": group["as_of"], "group": group["identity"], "meaning": meaning})
     policy_refs = [r for r in refs if r.get("policy_revision")]
     actual_policies, policy_headers = [], {}
     for index, ref in enumerate(policy_refs, 1):
@@ -247,7 +307,7 @@ def score(scenario, observed, corpus):
         actual_policies.append(doc["id"])
         p = doc["policy"]
         header = f"政策摘录 [P{index}]：{doc['title']}（版本 {p['version']}；产品 {p['product']}；区域 {p['region']}；受众 {p['audience']}；适用时点 {ref['policy_as_of']}）"
-        policy_headers[header] = doc["content"].splitlines()
+        policy_headers[header] = {"lines": doc["content"].splitlines(), "policy": p}
         if header not in visible or doc["content"] not in visible:
             errors.append("policy_not_visibly_cited")
     image_headers = {}
@@ -258,9 +318,14 @@ def score(scenario, observed, corpus):
         expected = truth.get("image_fields", {}).get(field, {})
         source = ref.get("business_source") or {}
         database, key = source.get("database"), field_name(source.get("column", ""))
+        meaning = image_metadata(ref, case, scenario, corpus, draft.get("created_at"))
+        if meaning:
+            key = meaning["column"]
         witnesses = [(table, row) for table, rows in corpus["records"].get(database, {}).items() for row in rows
                      if row.get("order_no") == source.get("order_ref") and row.get("order_no") in truth["allowed_entities"]
                      and key in row and equivalent(row[key], ref.get("db_value"))]
+        if meaning:
+            witnesses = [(table, row) for table, row in witnesses if table == meaning["table"]]
         when, observed_at = stamp(source.get("as_of")), stamp(source.get("observed_at"))
         if expected.get("outcome") != "matched" or not witnesses or not equivalent(ref.get("db_value"), expected.get("value")) or not ref.get("sha256") or not ref.get("attachment_id") or when is None or observed_at is None or not 0 <= observed_at - when <= 300 or source.get("as_of_source") != "query_time" or not (source.get("run_id") or source.get("trace_id")):
             errors.append("unproven_image_citation")
@@ -271,21 +336,38 @@ def score(scenario, observed, corpus):
         labels = {"order_ref": "订单", "model": "型号", "quantity": "数量", "date": "日期", "status": "状态"}
         line = f"图片已核实 [{ref['reply_reference']}] · {labels.get(field, field)}: {ref['db_value']} {ref.get('unit') or ''} · {source['as_of']}"
         table = witnesses[0][0]
-        item = {"entity": source["order_ref"], "field": key, "value": ref["db_value"], "unit": ref.get("unit"), "source": {"database": database, "table": table}, "as_of": source["as_of"], "group": None}
+        item = {"entity": source["order_ref"], "field": key, "value": ref["db_value"], "unit": ref.get("unit"), "source": {"database": database, "table": table}, "as_of": source["as_of"], "group": None, "meaning": meaning}
         valid_cells.append(item)
         image_headers[line] = item
     # Visible claims must agree with a proven cell, not merely contain a gold
     # substring. A second incorrect value or unsupported number fails too.
     current_group, current_policy = None, None
+    previous_claim, policy_quoted = [], set()
+    empty_proven = empty_policy_proven(scenario, observed, draft, corpus, stamp)
+    empty_visible = False
     for line in visible.splitlines():
         line = line.strip()
-        if not line or line in allowed_lines:
+        if not line:
             continue
-        if line.startswith("- ") and ":" in line:
+        if line in allowed_lines:
+            previous_claim = []
+            continue
+        if line.startswith(("字段含义:", "Field meaning:")):
+            meanings = [c["meaning"] for c in previous_claim if c.get("meaning")]
+            if len(previous_claim) != 1 or len(meanings) != 1 or line not in meaning_lines(meanings[0]):
+                errors.append("unproven_field_meaning")
+            previous_claim = []
+            continue
+        previous_claim = []
+        if line == EMPTY_POLICY_NOTICE and empty_proven:
+            empty_visible = True
+            current_group, current_policy = None, None
+        elif line.startswith("- ") and ":" in line:
             name, value = line[2:].split(":", 1)
             key = field_name(name.strip())
             value = value.strip()
-            candidates = [c for c in valid_cells if c["field"] == key and c["group"] == current_group and current_group is not None]
+            candidates = [c for c in valid_cells if (c["field"] == key or (c.get("meaning") and name.strip() in semantic_labels(c["meaning"])))
+                          and c["group"] == current_group and current_group is not None]
             matching = []
             for c in candidates:
                 unit = (" " + c["unit"]) if c.get("unit") else ""
@@ -296,6 +378,7 @@ def score(scenario, observed, corpus):
                     matching.append(c)
             if not matching:
                 errors.append("unsupported_visible_claim:" + name)
+            previous_claim = matching
             for c in matching:
                 covered.add((c["entity"], c["field"], c["source"]["database"], c["source"]["table"]))
         elif re.match(r".+ \[\d+\]$", line):
@@ -320,18 +403,27 @@ def score(scenario, observed, corpus):
                 errors.append("visible_data_time_mismatch")
         elif line.startswith("政策摘录 "):
             current_policy = policy_headers.get(line)
+            policy_quoted = set()
             current_group = None
             if current_policy is None:
                 errors.append("unproven_policy_header")
         elif line.startswith("> "):
-            if current_policy is None or line[2:] not in current_policy:
+            if current_policy is None or line[2:] not in current_policy["lines"]:
                 errors.append("unproven_quoted_claim")
+            else:
+                policy_quoted.add(line[2:])
+        elif line.startswith("生效时点："):
+            if (current_policy is None or policy_quoted != set(current_policy["lines"])
+                    or not policy_dates_match(line, current_policy["policy"], stamp)):
+                errors.append("unproven_policy_effective_dates")
+            current_policy = None
         elif line.startswith("图片已核实 "):
             item = image_headers.get(line)
             if item is None:
                 errors.append("unproven_visible_image_claim")
             else:
                 covered.add((item["entity"], item["field"], item["source"]["database"], item["source"]["table"]))
+                previous_claim = [item]
             current_group, current_policy = None, None
         elif image_clarification(line, scenario, observed, draft, corpus):
             current_group, current_policy = None, None
@@ -386,7 +478,7 @@ def score(scenario, observed, corpus):
             errors.append("no_record_not_distinguished")
         elif refusal == "missing_field" and not any(x in visible for x in ("手机号", "电话", "phone", "Phone")):
             errors.append("missing_field_not_distinguished")
-        elif refusal == "no_applicable_policy" and "缺少适用的已发布政策" not in visible:
+        elif refusal == "no_applicable_policy" and not (empty_visible or (empty_proven and "缺少适用的已发布政策" in visible)):
             errors.append("unpublished_policy_not_distinguished")
     return {"id": scenario["id"], "group": scenario["group"], "subtype": scenario["subtype"],
         "run_terminal": run_terminal, "business_resolved": case.get("status") == "resolved",
