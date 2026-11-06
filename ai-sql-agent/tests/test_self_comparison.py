@@ -246,6 +246,26 @@ class DependentStepTest(_OfflinePipeline, unittest.TestCase):
         self.assertEqual(fourth.execution_result["rows"], [])
         self.assertEqual(self._summary(result).execution_status, "partial_success")
 
+    def test_loose_back_reference_never_answers_no_records(self):
+        """
+        「筛选对应的工单」只靠「对应的」认成依赖第 1 步。它可能是独立步骤，第 1 步 0 行时
+        不能不跑就答「没有记录」：记成没执行（部分成功）。
+        """
+        step = ("mes_db", "work_order.job_no，work_order.workshop",
+                "在work_order表中筛选对应的工单，输出workshop", "work_order.workshop")
+        generated, result = self._run([self.FIRST, step])
+        self.assertNotIn("mes_db", generated)
+        self.assertFalse(result.step_logs[1].execution_result["success"])
+        self.assertEqual(self._summary(result).execution_status, "partial_success")
+
+    def test_amount_above_is_not_a_back_reference(self):
+        """「金额在1000以上」里的「以上」是数量比较，不是回指前面的结果。"""
+        step = ("mes_db", "work_order.plan_qty，work_order.workshop",
+                "在work_order表中筛选plan_qty在100以上的工单，输出workshop", "work_order.workshop")
+        self.assertEqual(Text2SQLPipeline._step_dependencies(
+            CotPlanningStep(step_no=2, database=step[0], processing_objects=step[1],
+                            operation_instruction=step[2], output_target=step[3]), step_index=2), set())
+
     def test_independent_step_after_a_held_step_gets_no_stale_backfill(self):
         """独立的第 4 步照常跑，但「上一步结果」里不能是第 2 步的取值（会被当成 IN 字面量抄走）。"""
         prompts, result = self._four_steps(

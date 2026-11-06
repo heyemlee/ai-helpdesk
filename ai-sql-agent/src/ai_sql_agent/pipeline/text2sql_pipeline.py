@@ -99,7 +99,7 @@ _EXCLUSION_WORDS = re.compile(
 
 # 回指前面结果的说法（见 `_step_dependencies`）
 _BACK_REFERENCE = re.compile(
-    r"这些|那些|上述|前述|以上|此前|该(?:列表|批|些|组|取值|编号|单号|工程号|订单)|对应的"
+    r"这些|那些|上述|前述|此前|该(?:列表|批|些|组|取值|编号|单号|工程号|订单)|对应的"
 )
 
 # 规划明说「只取前面那些值」的说法：前面 0 行时只有这种步骤能直接答「没有」。
@@ -634,7 +634,7 @@ class Text2SQLPipeline:
         return step_logs
 
     @staticmethod
-    def _step_dependencies(cot_step, *, step_index: int) -> set:
+    def _step_dependencies(cot_step, *, step_index: int, loose: bool = True) -> set:
         """
         这一步的规划文字里引用了前面哪几步的结果。
 
@@ -653,10 +653,11 @@ class Text2SQLPipeline:
         }
         if step_index > 1 and (
             re.search(r"上一步|前一步|上一个步骤|上步|前面(?:查到|得到|输出|的结果)", text)
-            # 「用这些工程号找订单」这类回指也算依赖紧挨着的那一步。认宽一点是故意的：
+            # 「用这些工程号找订单」这类回指也算依赖紧挨着的那一步（loose）。认宽一点是故意的：
             # 只有那一步没交出取值时才有影响，误认的代价是一个独立步骤被记成没执行
-            # （部分成功），漏认的代价是没有筛选条件、把整张表当答案（c18）
-            or _BACK_REFERENCE.search(text)
+            # （部分成功），漏认的代价是没有筛选条件、把整张表当答案（c18）。
+            # 只靠回指认出来的依赖不够确定，不能据此直接答「没有记录」（见 _dependent_step_outcome）
+            or (loose and _BACK_REFERENCE.search(text))
         ):
             steps.add(step_index - 1)
         return steps
@@ -678,8 +679,12 @@ class Text2SQLPipeline:
             str(getattr(cot_step, name, "") or "")
             for name in ("processing_objects", "operation_instruction", "output_target")
         )
+        # 依赖是只靠「这些 / 对应的」这类回指认出来的，就不确定这一步真用了前一步的取值：
+        # 可能是个独立步骤碰巧用了这些词。那样答「没有」是错的，只能记成没执行
+        explicit = self._step_dependencies(cot_step, step_index=step_index, loose=False)
         keeps_only_those = (
-            not _EXCLUSION_WORDS.search(plan_text)
+            set(empty) <= explicit
+            and not _EXCLUSION_WORDS.search(plan_text)
             and bool(_INCLUSION_WORDS.search(cot_step.operation_instruction or ""))
         )
         if failed:
