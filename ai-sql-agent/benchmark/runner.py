@@ -580,6 +580,23 @@ def _rows_cover(gold_rows: List[Dict[str, Any]], predicted_rows: List[Dict[str, 
     return True
 
 
+def _contradicts(gold_rows: List[Dict[str, Any]], rows: List[Dict[str, Any]]) -> bool:
+    """rows 里有和标准答案同名的字段、取值却不在标准答案里（同一件事给了另一个说法）。"""
+    gold_values: Dict[str, set] = {}
+    for row in gold_rows:
+        for column, value in row.items():
+            gold_values.setdefault(column, set()).add(_normalize_value(value))
+    return any(
+        column in gold_values and _normalize_value(value) not in gold_values[column]
+        for row in rows
+        for column, value in row.items()
+    )
+
+
+def _normalize_value(value: Any) -> str:
+    return str(round(value, 6) if isinstance(value, float) else value)
+
+
 def explain_mismatch(gold_rows: List[Dict[str, Any]], predicted_rows: List[Dict[str, Any]]) -> str:
     """
     答错时错在哪，取值见 MISMATCH_LABELS；答对返回空串。**只用来看错因，不改判分**。
@@ -870,9 +887,8 @@ class BenchmarkRunner:
             _answered, flagged, _degraded, flag_reasons = self._risk_signals(pipeline_result)
             # 前面某一步对上了也要客服用得上：带风险提示的结果（has_risk），客服的可信校验
             # 整份不用（backend/app/core/evidence.py），这时算对就是把「客户没拿到」记成「拿到了」
-            usable = (
-                matched_step is not None and not flagged and not degraded
-                and self._visible_to_caller(pipeline_result, matched_step)
+            usable = matched_step is not None and self._earlier_match_usable(
+                gold_rows, pipeline_result, matched_step, flagged=flagged, degraded=degraded
             )
             return BenchmarkItemResult(
                 item_id=item["id"],
@@ -908,9 +924,8 @@ class BenchmarkRunner:
             if matched_step is not None and matched_step != len(pipeline_result.step_logs)
             else None
         )
-        earlier_usable = (
-            earlier is not None and not flagged and not degraded
-            and self._visible_to_caller(pipeline_result, earlier)
+        earlier_usable = earlier is not None and self._earlier_match_usable(
+            gold_rows, pipeline_result, earlier, flagged=flagged, degraded=degraded
         )
         correct = final_correct or earlier_usable
         # 错因说的始终是最后一步：客服照着说的是它（静默错误里「取值不对」要照常数进去）
@@ -940,6 +955,27 @@ class BenchmarkRunner:
             unusable_match=earlier is not None and not earlier_usable,
             route=route,
             route_signals=route_signals,
+        )
+
+    @classmethod
+    def _earlier_match_usable(
+        cls, gold_rows, pipeline_result, step_number: int, *, flagged: bool, degraded: bool
+    ) -> bool:
+        """
+        前面第 step_number 步对上了标准答案，客服能不能把它当答案用：
+
+        - 这次结果不带风险提示、也不是降级答复（带了 has_risk，客服的可信校验整份不用）；
+        - 那一步整段落在 answer 的结果预览里（客服读的就是那一段）；
+        - 别的步骤没有给出矛盾的值：同名字段、取值不在标准答案里（第 1 步「已签单」、
+          最后一步又说「生产中」，客服可能照着后者说）。
+        """
+        if flagged or degraded or not cls._visible_to_caller(pipeline_result, step_number):
+            return False
+        logs = list(getattr(pipeline_result, "step_logs", None) or [])
+        return not any(
+            _contradicts(gold_rows, list((log.execution_result or {}).get("rows") or []))
+            for number, log in enumerate(logs, start=1)
+            if number != step_number and (log.execution_result or {}).get("success")
         )
 
     @staticmethod

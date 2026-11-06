@@ -504,7 +504,8 @@ the evaluation set's rule, and `matched_step` records which step (the 150 evalua
 cases and the gate still compare the last step only). An earlier-step match only counts
 when the helpdesk can use it: the run carries no risk finding (with `has_risk` the
 helpdesk's evidence gate uses none of the result), and the step fits inside the result
-preview embedded in `answer` (about 1,500 characters), which is all the helpdesk reads.
+preview embedded in `answer` (about 1,500 characters), which is all the helpdesk reads,
+and no other step contradicts it (the same column with a value outside the gold result).
 Otherwise the item is wrong and flagged `unusable_match`; `mismatch` still describes the
 last step, since that is what the helpdesk repeats. The report also says why each wrong
 answer is wrong (`mismatch`): empty result, wrong row count, wrong values, or right

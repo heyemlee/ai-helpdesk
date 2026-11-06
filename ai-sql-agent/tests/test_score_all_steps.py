@@ -139,6 +139,19 @@ class ScoreAllStepsTest(unittest.TestCase):
         self.assertEqual(len(preview), ANSWER_PREVIEW_CHARS - 10 + len("……"))
         self.assertTrue(preview.endswith("……"))
 
+    def test_conflicting_value_in_another_step_cancels_the_earlier_match(self):
+        """
+        第 1 步「已签单」对上了，最后一步对同一个字段又说「生产中」：客服可能照着后者说，
+        这是静默答错，不能被前面的对上抹掉。
+        """
+        logs = [_log("erp_db", [{"order_no": "J1", "order_status": "已签单"}]),
+                _log("prod_db", [{"order_no": "J1", "order_status": "生产中"}])]
+        item = self._score(logs, all_steps=True)
+        self.assertFalse(item.correct)
+        self.assertTrue(item.unusable_match)
+        self.assertEqual(item.mismatch, "wrong_values")
+        self.assertTrue(item.silent_error)
+
     def test_no_step_matching_is_still_wrong(self):
         logs = [_log("erp_db", [{"order_no": "J1", "order_status": "生产中"}]),
                 _log("svc_db", [{"order_no": "J1", "delivery_status": "待配送"}])]
