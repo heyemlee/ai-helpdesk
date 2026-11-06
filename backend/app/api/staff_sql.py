@@ -142,6 +142,12 @@ async def proxy(path: str, request: Request, actor=Depends(get_current_actor), a
             if live is None or live.auth_version != actor.auth_version:
                 raise HTTPException(401, "员工授权已变化")
             response = await client.send(req, stream=path == "a2a")
+        if response.status_code == 401:
+            # The employee session was already authenticated. A downstream
+            # service credential failure must not sign the employee out or erase
+            # their pending material/recovery receipt in the console.
+            await response.aclose()
+            raise HTTPException(502, "数据服务凭据被拒绝，请联系管理员")
         initial = {"query": str((body or {}).get("query", "")), "session_id": (body or {}).get("session_id", ""),
                    "route": "", "databases": [], "tables": [], "sqls": [], "success": False, "degraded": False,
                    "has_risk": False, "execution_status": "", "failed_steps": 0, "repaired_steps": 0,

@@ -206,7 +206,7 @@ def main():
                 assert str(error)=='Employee SQL gateway smoke failed'
             else:raise AssertionError('Mismatched restored SQL credentials were accepted')
             check=json.loads((ops.output/'last-sql-gateway-smoke.json').read_text())
-            assert check['status_code']==401 and not check['passed']
+            assert check['status_code']==502 and not check['passed']
             assert not set(ops.running())&set(ops.writers) and ops.gate.exists() and closed_boundary(port)
             report['rotated_sql_key_fail_closed_through_employee_gateway']=True
         finally:(root/'app.env').write_text(active_env)

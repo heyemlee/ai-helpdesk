@@ -59,6 +59,25 @@ it.each([200, 401])('ignores a stale Alice check with status %s after Bob is con
   expect(sessionStorage.getItem('helpdesk.pending-case')).toBe('bob-private-draft')
 })
 
+it('preserves the employee draft on a SQL service credential failure but clears it on actual employee expiry', async () => {
+  const { sqlApi } = await import('@/api/sql/client')
+  let status = 502
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => url.endsWith('/auth/session')
+    ? new Response(JSON.stringify({ actor: { actor_id: 'alice', instance: 'staff', auth_version: 1, roles: ['employee'] }, csrf_token: 'csrf' }))
+    : new Response(JSON.stringify({ detail: 'service unavailable' }), { status })))
+  render(<QueryClientProvider client={new QueryClient()}><SessionGate><input aria-label="draft" defaultValue="retained material" /></SessionGate></QueryClientProvider>)
+  await screen.findByLabelText('draft')
+  sessionStorage.setItem('helpdesk.pending-case', 'pending-receipt')
+  await expect(sqlApi.whoami()).rejects.toBeDefined()
+  expect(screen.getByLabelText('draft')).toHaveValue('retained material')
+  expect(sessionStorage.getItem('helpdesk.pending-case')).toBe('pending-receipt')
+  status = 401
+  await expect(sqlApi.whoami()).rejects.toBeDefined()
+  await screen.findByRole('button', { name: /^登录$/ })
+  expect(sessionStorage.getItem('helpdesk.pending-case')).toBeNull()
+  expect(screen.queryByLabelText('draft')).not.toBeInTheDocument()
+})
+
 it.each(['request', 'attachment', 'chat', 'run', 'sql', 'sql-stream'])('ignores an old employee 401 from %s after identity changes', async kind => {
   const { api, attachmentApi, setSessionIdentity, streamChat, streamRun } = await import('@/api/client')
   const { sqlApi, streamQuery } = await import('@/api/sql/client')

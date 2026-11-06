@@ -311,6 +311,24 @@ async def test_employee_case_listing_filters_audience_without_legacy_admin_acces
     assert (await client.get('/tickets')).status_code == 403
 
 
+async def test_sql_service_credential_failure_does_not_revoke_employee_session(staff, monkeypatch):
+    from app.api.staff_sql import router as sql_router
+    auth, actors, client, app = staff
+    app.include_router(sql_router)
+    monkeypatch.setenv('SQL_AGENT_API_KEY', 'fixture-service-key')
+    app.state.sql_transport = httpx.MockTransport(lambda request: httpx.Response(401, json={'detail':'downstream credentials refused'}))
+    await login(client)
+    response = await client.get('/sql-api/whoami')
+    assert response.status_code == 502
+    assert 'downstream credentials refused' not in response.text
+    assert (await client.get('/auth/session')).status_code == 200
+    assert (await client.get('/private')).status_code == 200
+    assert await auth.db.fetchval('SELECT count(*) FROM staff_sessions') == 1
+    await auth.logout(actors['alice'])
+    assert (await client.get('/sql-api/whoami')).status_code == 401
+    assert (await client.get('/auth/session')).status_code == 401
+
+
 @pytest.mark.parametrize('backend', ['postgres', 'sqlite'])
 async def test_policy_catalog_filters_before_pagination_and_hides_content_and_counts(staff, tmp_path, backend):
     from app.core.embedder import Embedder
