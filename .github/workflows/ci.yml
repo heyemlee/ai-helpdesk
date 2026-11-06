@@ -357,19 +357,27 @@ jobs:
 
   images:
     name: Docker images
+    needs: [backend, frontend, attachments-browser, contract, sql-agent]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
 
-      # 只构建不推送：验证三个 Dockerfile 始终可构建
-      - name: Build frontend image
-        run: docker build -t ai-helpdesk-frontend:ci frontend
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
 
-      - name: Build backend image
-        run: docker build -t ai-helpdesk:ci --target production backend
+      - name: Install isolated operations dependencies
+        run: pip install -r scripts/operations/requirements.txt
 
-      - name: Build SQL Agent image
-        run: docker build -f ai-sql-agent/deploy/Dockerfile -t ai-sql-agent:ci ai-sql-agent
+      - name: Encrypted snapshots and retention failure checks
+        run: python -m unittest discover -s scripts/operations -p 'test_*.py'
+
+      # Build once from this committed source; staging and publication reuse IDs.
+      - name: Build immutable application release
+        run: python scripts/operations/build_release.py --ref HEAD --output /tmp/release.json
 
       - name: SQL Agent smoke (api_key auth, no external dependencies)
         # 无 Key 返回 401，有 Key 返回 200，/metrics 有数据
@@ -379,11 +387,12 @@ jobs:
           cat > /tmp/api_keys.json <<'JSON'
           {"keys": [{"key": "ci-smoke-key", "caller": "ci", "user_id": "ci"}]}
           JSON
+          SQL_IMAGE="$(python -c 'import json; print(json.load(open("/tmp/release.json"))["images"]["sql"])')"
           docker run -d --name ai-sql-agent-ci -p 8000:8000 \
             -e AI_SQL_AUTH_MODE=api_key \
             -e AI_SQL_API_KEYS_FILE=/run/secrets/api_keys.json \
             -v /tmp/api_keys.json:/run/secrets/api_keys.json:ro \
-            ai-sql-agent:ci
+            "$SQL_IMAGE"
           for i in $(seq 1 30); do
             curl -fs localhost:8000/health && break
             sleep 2
@@ -402,3 +411,44 @@ jobs:
           test -n "$metrics"
           head -n 5 <<< "$metrics"
           docker rm -f ai-sql-agent-ci
+
+      - name: Restore and failed-release rollback with private local objects
+        # Preserve container UIDs on Linux private files; the script restricts
+        # every bind/volume/port to its own disposable temporary Compose project.
+        run: sudo env "PATH=$PATH" python scripts/operations/drill.py --manifest /tmp/release.json --report /tmp/recovery-local.json
+
+      - name: Restore and failed-release rollback with private S3 objects
+        run: sudo env "PATH=$PATH" python scripts/operations/drill.py --manifest /tmp/release.json --report /tmp/recovery-s3.json --s3
+
+      - name: Hand only sanitized reports back to the runner
+        if: always()
+        run: |
+          for report in /tmp/recovery-local.json /tmp/recovery-s3.json; do
+            if [ -f "$report" ]; then
+              sudo chown "$(id -u):$(id -g)" "$report"
+              sudo chmod 0600 "$report"
+            fi
+          done
+
+      - name: Publish the exact verified images when registry publication is enabled
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.AI_HELPDESK_PUBLISH_IMAGES == 'true'
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REGISTRY_OWNER: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          python scripts/operations/publish_release.py --manifest /tmp/release.json \
+            --report /tmp/recovery-local.json --report /tmp/recovery-s3.json \
+            --registry "ghcr.io/${REGISTRY_OWNER,,}" --output /tmp/published-release.json
+
+      - name: Preserve release and recovery evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: immutable-release-evidence
+          path: |
+            /tmp/release.json
+            /tmp/recovery-local.json
+            /tmp/recovery-s3.json
+            /tmp/published-release.json

@@ -1,0 +1,103 @@
+# Immutable application images. No source mounts, fixed container names or builds.
+x-backend: &backend
+  image: ${BACKEND_IMAGE:?Use a verified immutable release manifest}
+  env_file: ${APP_ENV_FILE:?Explicit environment file required}
+  environment: &environment
+    POSTGRES_DSN: postgresql://helpdesk:${POSTGRES_PASSWORD:?}@postgres:5432/helpdesk
+    REDIS_URL: redis://redis:6379/0
+    AI_HELPDESK_INSTANCE: staff
+    AI_HELPDESK_STAFF_AUTH: local
+    AI_HELPDESK_PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?}
+    AI_HELPDESK_RUN_MODE: queued
+    AI_HELPDESK_ROLE: api
+    AI_HELPDESK_ATTACHMENT_STORAGE: ${OBJECT_STORAGE:-local}
+    AI_HELPDESK_ATTACHMENT_DIR: /state/objects
+    AI_HELPDESK_MODEL_SETTINGS_PATH: /state/config/model_settings.json
+    SQL_AGENT_URL: http://sql-agent:8000
+    SQL_AGENT_ADMIN_API_KEY_FILE: /state/config/sql_admin_key
+    AI_HELPDESK_METRICS_TOKEN_FILE: /state/config/metrics_token
+    AI_HELPDESK_FRONTEND_DIST: /nonexistent
+    AI_HELPDESK_OPERATIONS_REPORT_DIR: /state/operations
+  volumes:
+    - ${STATE_ROOT:?}/objects:/state/objects
+    - ${STATE_ROOT:?}/config:/state/config
+    - ${REPORT_ROOT:?}:/state/operations:ro
+  networks: [private, outbound]
+  restart: unless-stopped
+  stop_grace_period: 100s
+  depends_on:
+    postgres: {condition: service_healthy}
+    redis: {condition: service_healthy}
+  healthcheck:
+    test: [CMD, curl, -fsS, 'http://localhost:8000/readyz']
+    interval: 3s
+    timeout: 2s
+    retries: 40
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-pgvector/pgvector:pg16}
+    environment:
+      POSTGRES_USER: helpdesk
+      POSTGRES_DB: helpdesk
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+    volumes: [postgres:/var/lib/postgresql/data]
+    networks: [private]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U helpdesk -d helpdesk']
+      interval: 2s
+      retries: 30
+  redis:
+    image: ${REDIS_IMAGE:-redis:7-alpine}
+    command: [redis-server, --appendonly, 'yes']
+    volumes: [redis:/data]
+    networks: [private]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 2s
+      retries: 30
+  api: *backend
+  worker:
+    <<: *backend
+    environment:
+      <<: *environment
+      AI_HELPDESK_ROLE: worker
+  sql-agent:
+    image: ${SQL_IMAGE:?Use a verified immutable release manifest}
+    env_file: ${SQL_ENV_FILE:?Explicit SQL environment file required}
+    environment:
+      AI_SQL_AUTH_MODE: api_key
+      AI_SQL_API_KEYS_FILE: /state/config/sql_keys.json
+      AI_SQL_MEMORY_DB_PATH: /state/sql/memory.db
+      AI_SQL_AUDIT_DB_PATH: /state/sql/audit.db
+      AI_SQL_RUNS_DB_PATH: /state/sql/runs.db
+      AI_SQL_MODEL_SETTINGS_PATH: /state/config/sql_models.json
+    volumes:
+      - ${STATE_ROOT:?}/sql:/state/sql
+      - ${STATE_ROOT:?}/config:/state/config
+    # One service, one uvicorn worker; no employee impersonation.
+    command: [uvicorn, 'ai_sql_agent.api.app:app', --host, 0.0.0.0, --port, '8000', --workers, '1']
+    networks: [private, outbound]
+    restart: unless-stopped
+  frontend:
+    image: ${FRONTEND_IMAGE:?Use a verified immutable release manifest}
+    environment:
+      API_UPSTREAM: api:8000
+      CONSOLE_PUBLIC_HOST: ${PUBLIC_HOST:?Exact employee hostname required}
+    networks: [private]
+    depends_on:
+      api: {condition: service_healthy}
+    restart: unless-stopped
+  ingress:
+    image: ${INGRESS_IMAGE:-nginx:1.27-alpine}
+    ports: ['127.0.0.1:${CONSOLE_PORT:?}:80']
+    volumes:
+      - ./ingress.conf:/etc/nginx/conf.d/default.conf:ro
+      - ${GATE_ROOT:?}:/gate:ro
+    networks: [private, outbound]
+    restart: unless-stopped
+networks:
+  private: {internal: true}
+  outbound: {}
+volumes:
+  postgres: {}
+  redis: {}

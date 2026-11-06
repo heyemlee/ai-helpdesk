@@ -1,0 +1,6 @@
+[Unit]
+Description=Restore latest Helpdesk backup into an isolated temporary project
+[Service]
+Type=oneshot
+UMask=0077
+ExecStart=/opt/helpdesk/ops-venv/bin/python /opt/helpdesk/scripts/operations/verify.py --config /etc/helpdesk/operations.json

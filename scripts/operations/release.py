@@ -1,0 +1,122 @@
+#!/usr/bin/env python3
+"""Apply immutable images behind a closed ingress; fail back only to a tested safe release."""
+import argparse
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import time
+from recovery import Operations, atomic_json, digest
+
+
+def validated_manifest(file):
+    manifest = json.loads(Path(file).read_text())
+    if manifest.get('staff_boundary') != 1 or manifest.get('contract') != '1.14':
+        raise ValueError('Release lacks the minimum employee/contract boundary; keep maintenance closed')
+    if set(manifest.get('images',{})) != {'backend','frontend','sql'}:
+        raise ValueError('Exactly three application image identities are required')
+    for image in manifest['images'].values():
+        if not re.fullmatch(r'(?:sha256:|[^\s]+@sha256:)[0-9a-f]{64}', image):
+            raise ValueError('Immutable image ID or registry digest required')
+        info = json.loads(subprocess.check_output(['docker','image','inspect',image]))[0]
+        labels = info['Config'].get('Labels') or {}
+        if labels.get('ai-helpdesk.staff-boundary') != '1' or labels.get('org.opencontainers.image.revision') != manifest['revision']:
+            raise ValueError('Image does not match the release manifest')
+    return manifest
+
+
+def apply(ops, manifest, probe):
+    source = Path(ops.c['env_file']).read_text().splitlines()
+    images = {'BACKEND_IMAGE':manifest['images']['backend'], 'SQL_IMAGE':manifest['images']['sql'], 'FRONTEND_IMAGE':manifest['images']['frontend']}
+    lines = [line for line in source if line.split('=',1)[0] not in images]
+    lines += [k+'='+v for k,v in images.items()]
+    candidate = ops.output/'candidate.env'; candidate.write_text('\n'.join(lines)+'\n'); candidate.chmod(0o600)
+    ops.compose[ops.compose.index('--env-file')+1] = str(candidate)
+    ops.run('up','-d','--no-deps','--no-build','--pull','never','api','frontend')
+    if {'worker','sql-agent'} & set(ops.running()):
+        raise RuntimeError('Writers started before employee/business verification')
+    # Container health alone never reopens access.
+    for _ in range(60):
+        check = ops.run('exec','-T','api','curl','-fsS','http://localhost:8000/readyz',check=False)
+        if check.returncode == 0:
+            break
+        time.sleep(1)
+    result = ops.run('exec','-T','api','python','scripts/release_smoke.py', input=Path(probe).read_bytes())
+    if not json.loads(result.stdout)['passed']:
+        raise ValueError('Employee/business smoke failed')
+    checks=json.loads(result.stdout)
+    checks['workers_closed_during_business_smoke']=True
+    return checks
+
+
+def activate(ops, probe):
+    # Validation has passed. Persist the exact image configuration before reopen.
+    candidate = ops.output/'candidate.env'
+    destination = Path(ops.c['env_file'])
+    staged = destination.with_suffix('.next')
+    staged.write_bytes(candidate.read_bytes()); staged.chmod(0o600)
+    os.replace(staged, destination)
+    ops.compose[ops.compose.index('--env-file')+1] = str(destination)
+    for service in ['sql-agent', 'worker']:
+        ops.run('up','-d','--no-deps','--no-build','--pull','never',service)
+        for attempt in range(60):
+            check = ops.run('exec','-T',service,'python','-c',
+                "import urllib.request;urllib.request.urlopen('http://localhost:8000/readyz',timeout=2)",check=False)
+            if check.returncode == 0: break
+            if attempt == 59: raise RuntimeError('Worker/data service readiness failed')
+            time.sleep(1)
+        if service == 'sql-agent':
+            result=ops.run('exec','-T','api','python','scripts/release_smoke.py','--sql',input=Path(probe).read_bytes())
+            gateway=json.loads(result.stdout)
+            atomic_json(ops.output/'last-sql-gateway-smoke.json',gateway)
+            if not gateway['passed']:
+                raise ValueError('Employee SQL gateway smoke failed')
+            ops.run('exec','-T','api','python','-c',
+                "import os,httpx; r=httpx.get('http://sql-agent:8000/whoami',headers={'X-API-Key':os.environ['SQL_AGENT_API_KEY']});r.raise_for_status();i=r.json()['identity'];assert i['user_id']==os.getenv('SQL_AGENT_USER_ID','ai-helpdesk') and not i['is_admin'] and not i.get('can_impersonate',False)")
+
+
+def deploy(ops, target, probe):
+    candidate = validated_manifest(target)  # Old unsafe images rejected before any switch.
+    existing_file = ops.output/'active-release.json'
+    previous = json.loads(existing_file.read_text()) if existing_file.exists() else None
+    if ops.marker.exists():
+        state = json.loads(ops.marker.read_text())
+        if state['phase'] != 'awaiting_business_smoke':
+            raise ValueError('Recovery is not complete or access review is missing')
+    ops.close_writers('release_validation')
+    try:
+        checks = apply(ops, candidate, probe)
+        activate(ops,probe)
+    except BaseException:
+        if previous:
+            rollback = ops.output/'rollback.json'; atomic_json(rollback,previous)
+            try:
+                safe = validated_manifest(rollback)
+                ops.close_writers('rollback_validation')
+                apply(ops,safe,probe)
+                activate(ops,probe)
+                ops.run('up','-d','--no-build','ingress')
+                ops.gate.unlink(missing_ok=True); ops.marker.unlink(missing_ok=True)
+                atomic_json(ops.output/'last-release.json',{'outcome':'rolled_back','revision':safe['revision'],'at':time.time()})
+            except BaseException:
+                ops.close_writers('rollback_failed_writers_closed')
+        else:
+            ops.close_writers('release_failed_writers_closed')
+        raise
+    atomic_json(existing_file,candidate)
+    atomic_json(ops.output/'last-release.json',{'outcome':'validated','revision':candidate['revision'],'manifest_sha256':digest(target),'checks':checks,'at':time.time()})
+    ops.run('up','-d','--no-build','ingress')
+    ops.gate.unlink(missing_ok=True); ops.marker.unlink(missing_ok=True)
+    ops.metric('release',time.time())
+    return {'outcome':'validated','revision':candidate['revision'],'images':candidate['images'],'checks':checks,
+            'sql_gateway':json.loads((ops.output/'last-sql-gateway-smoke.json').read_text())}
+
+
+def main():
+    p=argparse.ArgumentParser();p.add_argument('--config',required=True);p.add_argument('--manifest',required=True);p.add_argument('--probe',required=True);p.add_argument('--allow-production',action='store_true')
+    args=p.parse_args()
+    print(json.dumps(deploy(Operations(args.config,args.allow_production),args.manifest,args.probe)))
+
+
+if __name__ == '__main__': main()

@@ -1,12 +1,34 @@
 """Read-only employee/ownership/security smoke. Credentials enter through stdin."""
 import json
+import os
 import sys
+from pathlib import Path
 
 import httpx
+
+SESSION = Path('/tmp/helpdesk-release-probe-session.json')
+
+
+def sql_gateway(options):
+    """Use the employee session already checked before SQL/worker startup."""
+    saved = json.loads(SESSION.read_text())
+    try:
+        with httpx.Client(base_url='http://frontend', headers={
+            'Host': httpx.URL(options['origin']).host, 'Origin': options['origin'],
+            'Cookie': saved['cookie'], 'X-Employee-Session': saved['identity'], 'X-Console-Request': '1',
+        }, timeout=15) as client:
+            response = client.get('/sql-api/whoami')
+            identity = response.json().get('identity', {}) if response.status_code == 200 else {}
+            passed = response.status_code == 200 and identity.get('user_id') == saved['actor_id'] and identity.get('is_admin') is False and identity.get('can_impersonate') is False
+            print(json.dumps({'passed': passed, 'status_code': response.status_code, 'check': 'employee_session_through_sql_gateway'}))
+    finally:
+        SESSION.unlink(missing_ok=True)
 
 
 def main():
     options = json.load(sys.stdin)
+    if '--sql' in sys.argv:
+        return sql_gateway(options)
     origin = options['origin']
     with httpx.Client(base_url='http://frontend', headers={'Host': httpx.URL(origin).host, 'Origin': origin}, timeout=30) as client:
         assert client.get('/api/auth/session').status_code == 401
@@ -43,6 +65,13 @@ def main():
             preview = client.get('/api/attachments/'+material['attachment_id']+'/content?preview=true')
             assert preview.status_code == 200 and hashlib.sha256(preview.content).hexdigest() == options['attachment_previews'][material['attachment_id']]
             downloaded += 2
+        # Transient credential stays inside the closed API container and is
+        # consumed/unlinked by the next gateway check; never written to stdout.
+        saved = {'cookie': client.headers['Cookie'], 'actor_id': session['actor']['actor_id'],
+                 'identity': session['actor']['actor_id'] + ':' + str(session['actor']['auth_version'])}
+        with os.fdopen(os.open(SESSION, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600), 'w') as file:
+            os.fchmod(file.fileno(), 0o600)
+            json.dump(saved, file)
         print(json.dumps({'passed':True,'attachment_downloads_verified':downloaded,'checks':['employee_login','admin_denied','sql_admin_denied','legacy_bypass_denied','history_owner','case_facts','private_attachment_hashes']}))
 
 
