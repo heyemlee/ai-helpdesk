@@ -304,7 +304,7 @@ class MethodTests(unittest.TestCase):
 
     def test_real_service_recordings_are_transport_compatible(self):
         _, corpus, _ = dataset()
-        for group in ("orders", "policies", "images"):
+        for group in ("orders", "policies", "images", "missing_field"):
             recording = read(Path(__file__).parent / "fixtures" / (group + ".json"))
             self.assertFalse(recording["model_quality_claim"])
             self.assertEqual(recording["provenance"]["provider_mode"], "simulated")

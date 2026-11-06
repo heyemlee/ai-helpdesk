@@ -307,7 +307,7 @@ def score(scenario, observed, corpus):
             errors.append("null_field_query_not_proven")
         if refusal == "no_record" and "未找到记录" not in visible:
             errors.append("no_record_not_distinguished")
-        elif refusal == "missing_field" and not any(x in visible for x in ("手机号", "phone")):
+        elif refusal == "missing_field" and not any(x in visible for x in ("手机号", "电话", "phone", "Phone")):
             errors.append("missing_field_not_distinguished")
         elif refusal == "no_applicable_policy" and "缺少适用的已发布政策" not in visible:
             errors.append("unpublished_policy_not_distinguished")
