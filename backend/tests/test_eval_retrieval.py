@@ -205,6 +205,13 @@ def test_judge_reports_right_numbers_superseded_numbers_and_inventions(ev):
     assert ev._judge(n06, "具体情况我这边不方便说。", known, handoff=True)["outcome"] == "declined"
     # 下了结论但没有数字：判不出编没编，交给人看
     assert ev._judge(n06, "我们是一家老牌工厂。", known, handoff=False)["outcome"] == "unclear"
+    # 编了一条政策、再缀一句"联系客服"的套话，仍然是要人看的，不是拒答
+    n02 = ev.Case(id="n-02", type="unanswerable", lang="zh", query="可以用比特币付款吗", gold=[])
+    assert ev._judge(n02, "我们不支持比特币付款，如有疑问请联系客服。", known, handoff=False)["outcome"] == "unclear"
+    crypto = "We don't accept crypto; please reach out to customer service with any questions."
+    assert ev._judge(n02, crypto, known, handoff=False)["outcome"] == "unclear"
+    assert ev._judge(n02, "We don't have information about crypto payments.", known,
+                     handoff=False)["outcome"] == "declined"
     # 问题里自己带的数不算编
     n12 = ev.Case(id="n", type="unanswerable", lang="zh", query="离工厂 300 英里能送吗", gold=[])
     assert ev._judge(n12, "300 英里我这边确认不了。", known, handoff=False)["invented"] == []

@@ -61,5 +61,5 @@ All 78 judged cases also ran once against the same kind of fake model, with no r
 
 - The 52 documents and all questions were written by the same author. Real customer phrasing and policies will behave differently.
 - A right figure in the reply does not make the reply right, and a missing one can be a fair answer: a specialist may decline to quote, or hand off. The handoff column separates those.
-- "Declined" is read from wording and handoffs. A reply that states something the corpus does not support, without a number, lands in the list for a person, not in "made up".
+- "Declined" means the reply says the information is missing or can't be confirmed, or the orchestrator actually handed off. A closing "contact customer service" line doesn't count: models add one to made-up answers too. A reply that states something the corpus does not support, without a number, lands in the list for a person, not in "made up".
 - The 44 statement cases are not covered; only a judge or a person can score them.

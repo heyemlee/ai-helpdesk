@@ -546,16 +546,17 @@ SKILLS_DIR = _ROOT / "skills"
 
 MODE_LABEL = {"direct": "直检", "rewrite_rerank": "改写+重排", "": "没检索"}
 
-# 明说"资料里没有、确认不了、交给人工"的说法。只收说"不知道"的，不收"不支持""不提供"：
-# 那是替知识库下了结论，正是要人看的那一类。
+# 明说"资料里没有、我确认不了"的说法。转没转人工看编排器的结果（handoff），不看措辞。
+# 两类都不算：「如有疑问请联系客服」这种收尾套话——模型几乎每条都会带一句，编了答案也会；
+# 「不支持」「无法提供」「我们没有」这种替知识库下的结论——正是要人看的那一类。
 _DECLINE_RE = re.compile(
     r"没有找到|未找到|没找到|找不到|查不到|没有查到|未查到|没查到"
-    r"|没有相关|暂无相关|没有这方面|没有关于|没有提到|未提及|没有提及|没有说明|未说明|没有列出|未列出"
-    r"|资料[里中]?没有|知识库[里中]?没有|无法确认|无法提供|无法回答|无法给出|没法确认|不能确认|确认不了|回答不了"
-    r"|不清楚|不确定|转人工|人工客服|转交|为您转接|联系客服|咨询客服"
-    r"|don'?t have|do not have|no information|not (?:able|sure)|unable to|can'?t confirm|cannot confirm"
-    r"|could(?:n'?t| not) find|not (?:mentioned|covered|listed|specified)|doesn'?t (?:cover|mention|say)"
-    r"|customer service|human (?:agent|colleague|team)|check with|reach out",
+    r"|没有相关(?:的)?(?:信息|资料|说明|规定)|暂无相关|没有这方面的|没有提到|未提及|没有提及|没有说明|未说明"
+    r"|没有列出|未列出|资料[里中]?没有|知识库[里中]?没有|无法确认|没法确认|不能确认|确认不了"
+    r"|无法回答|回答不了|不清楚|不确定"
+    r"|no information|(?:don'?t|do not) have (?:any )?(?:information|details|data)|not sure"
+    r"|(?:can'?t|cannot|unable to) confirm|could(?:n'?t| not) find|don'?t know"
+    r"|not (?:mentioned|covered|listed|specified) in|doesn'?t (?:cover|mention|say)",
     re.I,
 )
 # 折过的文本里的一个数：整数、小数、8:00、1/16。「7-10」是两个数
