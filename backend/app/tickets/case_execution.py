@@ -30,6 +30,13 @@ class CaseExecutor:
 
     async def __call__(self, ctx: RunContext) -> RunOutcome:
         run = ctx.run
+        if self.service.actors:
+            try:
+                actor = await self.service.actors.from_snapshot(run.case_context)
+                actor.require_policy(run.case_context["snapshot"].get("policy_scope"))
+            except HTTPException:
+                payload, _ = await self.service.complete(run, {"response": "员工授权已失效", "actor_access_changed": True})
+                return RunOutcome(SUCCEEDED, ("result", payload), result=payload, persisted=True)
         turn = self.event_log.open_turn(conv_id=run.conv_id, request_id=run.request_id)
         try:
             with bind_policy_scope(PolicyScope.model_validate(run.case_context["snapshot"].get("policy_scope") or {})), bind_run(ctx.scope), bind(turn), (admission.shed() if ctx.degrade.shed else contextlib.nullcontext()):

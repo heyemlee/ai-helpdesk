@@ -76,7 +76,8 @@ class KeyValueFormatter(logging.Formatter):
             base = f"{base} {rendered}"
         if record.exc_info:
             base = f"{base}\n{self.formatException(record.exc_info)}"
-        return base
+        from .redaction import text
+        return text(base)
 
 
 class JsonFormatter(logging.Formatter):
@@ -98,7 +99,8 @@ class JsonFormatter(logging.Formatter):
         payload.update(getattr(record, _FIELDS_ATTR, {}) or {})
         if record.exc_info:
             payload["exception"] = self.formatException(record.exc_info)
-        return json.dumps(payload, ensure_ascii=False, default=str)
+        from .redaction import data
+        return json.dumps(data(payload), ensure_ascii=False, default=str)
 
 
 def configure_logging(

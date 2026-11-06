@@ -120,7 +120,7 @@ describe('工单列表', () => {
     mocks.tickets.mockRejectedValue(new ApiError(401, '401 Unauthorized: 缺少或错误的 X-API-Key'))
     show()
     expect(await screen.findByText('Tickets could not be loaded')).toBeInTheDocument()
-    expect(screen.getByText(/requires a staff access key/)).toBeInTheDocument()
+    expect(screen.getByText(/employee session has expired/)).toBeInTheDocument()
     expect(screen.queryByText('No tickets yet')).not.toBeInTheDocument()
   })
 })

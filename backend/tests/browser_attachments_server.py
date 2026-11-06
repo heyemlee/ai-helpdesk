@@ -13,16 +13,15 @@ from contextlib import asynccontextmanager
 from types import SimpleNamespace as NS
 
 from evidence_fixtures import with_evidence
-from fastapi import Request
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, Request
 from PIL import Image
 from redis.asyncio import Redis
 
 from app.agents.agent_orchestrator import AgentType, OrchestratorResult
 from app.api import main
-from app.core.actor import ActorContext
 from app.core.embedder import Embedder
 from app.core.llm_utils import create_llm_client
+from app.core.staff_auth import StaffAuth, hash_password
 from app.runs.config import RunConfig
 from app.storage.pg import Database
 from app.storage.vector_store import PgStore
@@ -31,7 +30,7 @@ from app.tools.sql_agent_client import SQLAgentClient
 
 assert os.environ.get("ATTACHMENT_BROWSER_FIXTURE") == "1"
 assert os.environ["TEST_POSTGRES_DSN"].rsplit(":", 1)[-1].split("/")[0] != "5433"
-actor = ActorContext("browser-employee", frozenset({"employee", "admin"}), "staff")
+external = FastAPI()
 state = {"active": True, "fail_upload": False, "model_calls": 0, "queries": [], "waiting": ""}
 holds = {"model": asyncio.Event(), "answer": asyncio.Event()}
 for hold in holds.values():
@@ -39,28 +38,9 @@ for hold in holds.values():
 app = main.app
 
 
-async def lookup(actor_id, instance, *, conn=None):
-    return actor if state["active"] and actor_id == actor.actor_id and instance == actor.instance else None
-
-
-@app.middleware("http")
-async def test_identity(request, call_next):
-    if request.cookies.get("test_employee") == "yes" and state["active"]:
-        request.scope["actor"] = actor
-    return await call_next(request)
-
-
-@app.post("/test/login")
-async def login():
-    state["active"] = True
-    response = JSONResponse({"ok": True})
-    response.set_cookie("test_employee", "yes", httponly=True, samesite="strict")
-    return response
-
-
 @app.post("/test/revoke")
-async def revoke():
-    state["active"] = False
+async def revoke(request: Request):
+    await main.app.state.staff_auth.logout(request.scope["actor"])
     return {"ok": True}
 
 
@@ -71,8 +51,8 @@ async def fail_upload():
 
 
 @app.get("/test/state")
-async def inspection():
-    return {**state, "cases": (await main._cases.list(actor))["tickets"]}
+async def inspection(request: Request):
+    return {**state, "cases": (await main._cases.list(request.scope["actor"]))["tickets"]}
 
 
 @app.post("/test/hold/{stage}")
@@ -84,7 +64,7 @@ async def hold_stage(stage: str, release: bool = False):
     return {"ok": True}
 
 
-@app.post("/test/model/v1/responses")
+@external.post("/test/model/v1/responses")
 async def model(request: Request):
     body = await request.json()
     assert body["model"] == "gpt-6.1-sol" and body["text"]["format"]["strict"]
@@ -106,7 +86,7 @@ async def model(request: Request):
             "usage": {"input_tokens": 120, "output_tokens": 80, "total_tokens": 200}}
 
 
-@app.post("/test/sql/query")
+@external.post("/test/sql/query")
 async def query(request: Request):
     body = await request.json()
     assert body["user_id"] == "ai-helpdesk" and "SO-1" in body["query"]
@@ -157,9 +137,13 @@ async def lifespan(_):
     main._tool_manager = NS(call=call, search_with_rewrite=search_with_rewrite)
     main._orchestrator = NS(run=answer, get_stats=lambda: {}, routing_config=lambda: None)
     main._prepare_request = prepare
-    app.state.actor_directory.provider = lookup
+    main.app.state.staff_auth = StaffAuth(db, "staff", origin=os.environ["BROWSER_FRONTEND_URL"])
+    encoded = hash_password("browser-test-password-only")
+    for login, role in (("browser-admin", "admin"), ("browser-employee", "employee"), ("browser-operations", "operations")):
+        await db.execute("INSERT INTO staff_accounts(actor_id,instance,login,password_hash,role) VALUES($1,'staff',$1,$2,$3)", login, encoded, role)
+    main.app.state.actor_directory.provider = main.app.state.staff_auth.provider
     await main._start_cases()
-    objects = app.state.attachments.objects
+    objects = main.app.state.attachments.objects
     put = objects.put
 
     async def flaky(*args):
@@ -177,3 +161,12 @@ async def lifespan(_):
 
 
 app.router.lifespan_context = lifespan
+
+
+class FixtureGateway:
+    async def __call__(self, scope, receive, send):
+        target = external if scope.get("path", "").startswith(("/test/model/", "/test/sql/")) else main.app
+        await target(scope, receive, send)
+
+
+app = FixtureGateway()

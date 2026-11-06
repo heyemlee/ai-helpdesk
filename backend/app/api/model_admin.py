@@ -59,6 +59,7 @@ from app.core.llm_utils import (
 )
 from app.core.model_runtime import ModelRuntime, chat_config_from, embedder_for
 from app.core.openai_compat import AsyncOpenAICompat, GatewayResponseError, schema_enforced_for
+from app.core.staff_auth import admin_write
 
 logger = logging.getLogger(__name__)
 
@@ -116,6 +117,9 @@ def edit_problem(request: Request) -> str:
         return "disabled"
     if not ms.editable_here():
         return "read_only_instance"
+    if request.scope.get("staff_session"):
+        request.scope["actor"].require_role("admin")
+        return ""
     host = urlsplit(f"//{request.headers.get('host', '')}").hostname or ""
     if not _is_loopback_name(host):
         return "not_local"
@@ -135,6 +139,8 @@ def _require_edit(request: Request) -> None:
 
 def _saved_by(request: Request) -> str:
     """记一笔是谁存的。员工实例没有账号体系，能记下的只有请求从哪来。"""
+    if request.scope.get("staff_session"):
+        return request.scope["actor"].actor_id
     ip = request.headers.get("x-real-ip") or (request.client.host if request.client else "")
     return f"console@{ip}" if ip else "console"
 
@@ -601,6 +607,8 @@ async def save_chat(request: Request):
         candidate = chat_candidate(body, runtime)
     except ms.ModelSettingsError as ex:
         raise _invalid(ex) from None
+    from app.core.redaction import register_secret
+    register_secret(candidate.get("api_key"))
     result = await probe_chat(candidate)
     if not result["ok"] and not body.get("force"):
         raise HTTPException(422, {"code": "test_failed", "message": "连接测试没通过，没有保存。",
@@ -609,7 +617,8 @@ async def save_chat(request: Request):
     previous = runtime.chat
     values = {name: candidate[name] for name in ms.FIELDS["chat"]}
     try:
-        entry = ms.save_section(runtime.path, "chat", values, saved_by=_saved_by(request))
+        async with admin_write():
+            entry = ms.save_section(runtime.path, "chat", values, saved_by=_saved_by(request))
     except ms.ModelSettingsError as ex:
         raise HTTPException(409, {"code": ex.code, "message": ex.message}) from None
     store = ms.load_store(runtime.path)
@@ -635,7 +644,8 @@ async def clear_chat(request: Request):
         raise HTTPException(409, {"code": "env_incomplete",
                                   "message": f"服务端没有可用的对话模型配置：{ex}"}) from None
     try:
-        ms.clear_section(runtime.path, "chat")
+        async with admin_write():
+            ms.clear_section(runtime.path, "chat")
     except ms.ModelSettingsError as ex:
         raise HTTPException(409, {"code": ex.code, "message": ex.message}) from None
     runtime.apply_chat(env_cfg)
@@ -685,6 +695,8 @@ async def save_embedding(request: Request):
         candidate = embedding_candidate(body, runtime)
     except ms.ModelSettingsError as ex:
         raise _invalid(ex) from None
+    from app.core.redaction import register_secret
+    register_secret(candidate.get("api_key"))
     result = await probe_embedding(candidate)
     if not result["ok"]:
         raise HTTPException(422, {"code": "test_failed", "message": "连接测试没通过，没有切换。",
@@ -695,7 +707,8 @@ async def save_embedding(request: Request):
     target = embedder_for(values)
     saved_by = _saved_by(request)
     try:
-        runtime.start_embedding_switch(target, values=values, saved_by=saved_by)
+        async with admin_write():
+            runtime.start_embedding_switch(target, values=values, saved_by=saved_by)
     except ms.ModelSettingsError as ex:
         raise HTTPException(409, {"code": ex.code, "message": ex.message}) from None
     logger.info(
@@ -717,7 +730,8 @@ async def clear_embedding(request: Request):
     if target.signature == runtime.embedder.signature:
         # 现在用的就是 .env 那一份（比如页面保存的和 .env 恰好一样）：不用重算，只删文件里那组
         try:
-            ms.clear_section(runtime.path, "embedding")
+            async with admin_write():
+                ms.clear_section(runtime.path, "embedding")
         except ms.ModelSettingsError as ex:
             raise HTTPException(409, {"code": ex.code, "message": ex.message}) from None
         # 向量空间一样，但 Key、地址、查询前缀可能是页面上改过的：运行中的连接也要换回 .env
@@ -726,7 +740,8 @@ async def clear_embedding(request: Request):
         runtime._stamp = ms.file_stamp(runtime.path)
         return describe(runtime, request)
     try:
-        runtime.start_embedding_switch(target, values=None, saved_by=_saved_by(request))
+        async with admin_write():
+            runtime.start_embedding_switch(target, values=None, saved_by=_saved_by(request))
     except ms.ModelSettingsError as ex:
         raise HTTPException(409, {"code": ex.code, "message": ex.message}) from None
     logger.info(f"model_settings.switch_started section=embedding restore=env by={_saved_by(request)}")

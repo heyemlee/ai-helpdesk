@@ -146,7 +146,7 @@ describe('浏览文档', () => {
 
     mocks.documents.mockRejectedValue(new ApiError(401, '401 Unauthorized: 缺少或错误的 X-API-Key'))
     show()
-    expect(await screen.findByText(/requires a staff access key/)).toBeInTheDocument()
+    expect(await screen.findByText(/employee session has expired/)).toBeInTheDocument()
   })
 
   it('筛选词发给后端，命中的词在标题和片段里标出来', async () => {

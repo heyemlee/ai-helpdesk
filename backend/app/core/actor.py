@@ -14,10 +14,35 @@ class ActorContext:
     actor_id: str
     roles: frozenset[str]
     instance: str
+    auth_version: int = 0
 
     def require_employee(self) -> None:
         if not self.actor_id or not self.instance or not self.roles.intersection({"employee", "operations", "admin"}):
             raise HTTPException(403, {"code": "employee_required", "message": "需要已验证的员工身份"})
+
+    def require_role(self, *roles: str) -> None:
+        self.require_employee()
+        if "admin" not in self.roles and not self.roles.intersection(roles):
+            raise HTTPException(403, {"code": "role_required", "message": "当前员工角色没有此操作权限"})
+
+    def require_policy(self, scope) -> None:
+        data = scope.model_dump() if hasattr(scope, "model_dump") else (scope or {})
+        audience = data.get("audience", "")
+        allowed = {"", "customer", "staff", "employee"}
+        if self.roles.intersection({"operations", "admin"}):
+            allowed.add("operations")
+        if "admin" in self.roles:
+            allowed.add("admin")
+        if audience not in allowed:
+            raise HTTPException(403, "当前角色无权访问该政策受众")
+
+    def readable_audiences(self):
+        if "admin" in self.roles:
+            return None
+        return ["", "customer", "staff", "employee"] + (["operations"] if "operations" in self.roles else [])
+
+    def snapshot(self) -> dict:
+        return {"actor_id": self.actor_id, "instance": self.instance, "auth_version": self.auth_version}
 
 
 def get_current_actor(request: Request) -> ActorContext:
@@ -52,4 +77,13 @@ class ActorDirectory:
         return actor
 
     async def refresh(self, actor: ActorContext, *, conn=None) -> ActorContext:
-        return await self.resolve(actor.actor_id, actor.instance, conn=conn)
+        current = await self.resolve(actor.actor_id, actor.instance, conn=conn)
+        if current.auth_version != actor.auth_version:
+            raise HTTPException(401, "员工授权已变化，请重新登录")
+        return current
+
+    async def from_snapshot(self, snapshot: dict, *, conn=None) -> ActorContext:
+        current = await self.resolve(snapshot.get("actor_id", ""), snapshot.get("instance", ""), conn=conn)
+        if current.auth_version != snapshot.get("auth_version", 0):
+            raise HTTPException(401, "提交时的员工授权已失效")
+        return current

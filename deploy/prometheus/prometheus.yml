@@ -20,6 +20,8 @@ rule_files:
 scrape_configs:
   # ai-helpdesk 主应用指标
   - job_name: 'ai-helpdesk-app'
+    authorization:
+      credentials_file: /run/secrets/metrics_token
     static_configs:
       - targets: ['ai-helpdesk:8000']
         labels:

@@ -22,6 +22,7 @@ beforeEach(() => {
   state = initial(); sent = []; rejectInput = 'none'
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
     const path = url.replace('/api', '')
+    if (path === '/auth/conversations') return response({ conv_id: 'owned-new' })
     if (path === '/tickets/cases') return response({ tickets: [state] })
     if (path === '/tickets/tk_case1/case') return response(state)
     const body = JSON.parse(String(init?.body ?? '{}'))

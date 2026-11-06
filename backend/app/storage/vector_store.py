@@ -50,6 +50,7 @@ from typing import TYPE_CHECKING, Any
 from app.core.embedder import cosine
 from app.core.lexical import bm25_scores
 from app.core.policy_scope import current_scope, sql_filter
+from app.core.staff_auth import authorize_admin
 
 if TYPE_CHECKING:
     from app.storage.pg import Database
@@ -191,6 +192,19 @@ def doc_filter_sql(
         return where, order_tail, params
     title_all = " AND ".join(f"lower(title) LIKE {mark(i)} {esc}" for i in range(len(terms)))
     return where, f"CASE WHEN {title_all} THEN 0 ELSE 1 END, {order_tail}", params
+
+
+def audience_filter(where, params, audiences, *, postgres=False):
+    if audiences is None:
+        return where, params
+    params = list(params)
+    if postgres:
+        params.append(audiences)
+        clause = f"COALESCE(policy->>'audience','') = ANY(${len(params)}::text[])"
+    else:
+        clause = "COALESCE(json_extract(policy,'$.audience'),'') IN (" + ",".join(f"?{len(params)+i+1}" for i in range(len(audiences))) + ")"
+        params.extend(audiences)
+    return where + (" AND " if where else " WHERE ") + clause, params
 
 
 class LocalStore:
@@ -372,10 +386,11 @@ class LocalStore:
                 self._db.commit()
         await asyncio.to_thread(_w)
 
-    async def kb_count(self) -> int:
+    async def kb_count(self, *, audiences=None) -> int:
+        where, params = audience_filter("", [], audiences, postgres=False)
         def _q() -> int:
             with self._lock:
-                return self._db.execute("SELECT COUNT(*) AS n FROM policy_chunks").fetchone()["n"]
+                return self._db.execute(("SELECT COUNT(*) AS n FROM policy_chunks" + (" WHERE doc_id IN (SELECT id FROM policy_documents " + where + ")" if audiences is not None else "")), params).fetchone()["n"]
         return await asyncio.to_thread(_q)
 
     # ── 文档 ──────────────────────────────────────────────────────────────────
@@ -425,7 +440,7 @@ class LocalStore:
 
     async def kb_doc_list(
         self, terms: list[str], limit: int, offset: int = 0, with_content: bool = False,
-        category_in: list[str] | None = None, category_not_in: list[str] | None = None,
+        category_in: list[str] | None = None, category_not_in: list[str] | None = None, audiences=None,
     ) -> tuple[list[dict[str, Any]], int]:
         """
         文档列表，返回 (本页, 符合条件的总数)。
@@ -438,6 +453,7 @@ class LocalStore:
         where, order, params = doc_filter_sql(
             terms, lambda i: f"?{i + 1}", category_in, category_not_in
         )
+        where, params = audience_filter(where, params, audiences, postgres=False)
         body = ", content" if with_content else ""
 
         def _q() -> tuple[list[dict[str, Any]], int]:
@@ -456,9 +472,11 @@ class LocalStore:
             return [dict(r) for r in rows], total
         return await asyncio.to_thread(_q)
 
-    async def kb_doc_category_counts(self, terms: list[str]) -> dict[str, int]:
+    async def kb_doc_category_counts(self, terms: list[str], *, audiences=None) -> dict[str, int]:
         """按分类数文档（存的是什么就按什么数），筛选词和 kb_doc_list 同一个口径。"""
         where, _, params = doc_filter_sql(terms, lambda i: f"?{i + 1}")
+
+        where, params = audience_filter(where, params, audiences, postgres=False)
 
         def _q() -> dict[str, int]:
             with self._lock:
@@ -527,13 +545,14 @@ class LocalStore:
                 self._db.commit()
         await asyncio.to_thread(_w)
 
-    async def kb_doc_stats(self) -> dict[str, int]:
+    async def kb_doc_stats(self, *, audiences=None) -> dict[str, int]:
+        where, params = audience_filter("", [], audiences, postgres=False)
         def _q() -> dict[str, int]:
             with self._lock:
                 row = self._db.execute(
                     "SELECT COUNT(*) AS total,"
                     " COALESCE(SUM(CASE WHEN origin <> 'original' THEN 1 ELSE 0 END), 0) AS legacy"
-                    " FROM policy_documents"
+                    " FROM policy_documents " + where, params
                 ).fetchone()
             return {"total": row["total"], "legacy": row["legacy"]}
         return await asyncio.to_thread(_q)
@@ -807,18 +826,20 @@ class PgStore:
         return {r["id"] for r in rows}
 
     async def kb_add(self, chunks: list[dict[str, Any]]) -> None:
-        await self._db.executemany(
-            "INSERT INTO policy_chunks"
-            " (id, title, content, chunk_index, total_chunks, ingested_at, embedding, tokens,"
-            "  doc_id)"
-            " VALUES ($1, $2, $3, $4, $5, $6, $7::vector, to_tsvector('simple', $8), $9)"
-            " ON CONFLICT (id) DO NOTHING",
-            [(c["id"], c["title"], c["content"], c["chunk_index"],
-              c["total_chunks"], c["ingested_at"], self._vec(c["embedding"]),
-              c.get("tokens", ""), c.get("doc_id", ""))
-             for c in chunks],
-        )
-        await self._bump_kb_revision()
+        async with self._db.transaction() as conn:
+            await authorize_admin(conn)
+            await conn.executemany(
+                "INSERT INTO policy_chunks"
+                " (id, title, content, chunk_index, total_chunks, ingested_at, embedding, tokens,"
+                "  doc_id)"
+                " VALUES ($1, $2, $3, $4, $5, $6, $7::vector, to_tsvector('simple', $8), $9)"
+                " ON CONFLICT (id) DO NOTHING",
+                [(c["id"], c["title"], c["content"], c["chunk_index"],
+                  c["total_chunks"], c["ingested_at"], self._vec(c["embedding"]),
+                  c.get("tokens", ""), c.get("doc_id", ""))
+                 for c in chunks],
+            )
+            await self._bump_kb_revision(conn)
 
     async def kb_search(self, embedding: list[float], top_k: int, *, scope=None) -> list[dict[str, Any]]:
         predicate, args = sql_filter(scope or current_scope(), postgres=True, start=3)
@@ -859,27 +880,30 @@ class PgStore:
         )
         await self._bump_kb_revision()
 
-    async def kb_count(self) -> int:
-        row = await self._db.fetchrow("SELECT COUNT(*) AS n FROM policy_chunks")
+    async def kb_count(self, *, audiences=None) -> int:
+        where, params = audience_filter("", [], audiences, postgres=True)
+        row = await self._db.fetchrow(("SELECT COUNT(*) AS n FROM policy_chunks" + (" WHERE doc_id IN (SELECT id FROM policy_documents " + where + ")" if audiences is not None else "")), *params)
         return row["n"]
 
     # ── 文档（与 LocalStore 同构，说明见那边）────────────────────────────────
 
     async def kb_doc_add(self, doc: dict[str, Any]) -> bool:
-        # ON CONFLICT DO NOTHING + RETURNING：冲突时不返回行。两个实例同时启动、
-        # 同时给同一批历史分片归档时，后到的那个在这里落空，不会写出第二份。
-        row = await self._db.fetchrow(
-            "INSERT INTO policy_documents"
-            " (id, title, content, content_hash, origin, source_type, source_name,"
-            "  chunk_count, created_at, category, policy, policy_revision)"
-            " VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12)"
-            " ON CONFLICT (id) DO NOTHING RETURNING id",
-            doc["id"], doc["title"], doc["content"], doc["content_hash"],
-            doc.get("origin", "original"), doc.get("source_type", ""),
-            doc.get("source_name", ""), doc.get("chunk_count", 0), doc["created_at"],
-            doc.get("category", ""), json.dumps(doc.get("policy", {})), doc.get("policy_revision", "legacy"),
-        )
-        return row is not None
+        async with self._db.transaction() as conn:
+            await authorize_admin(conn)
+            # ON CONFLICT DO NOTHING + RETURNING：冲突时不返回行。两个实例同时启动、
+            # 同时给同一批历史分片归档时，后到的那个在这里落空，不会写出第二份。
+            row = await conn.fetchrow(
+                "INSERT INTO policy_documents"
+                " (id, title, content, content_hash, origin, source_type, source_name,"
+                "  chunk_count, created_at, category, policy, policy_revision)"
+                " VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12)"
+                " ON CONFLICT (id) DO NOTHING RETURNING id",
+                doc["id"], doc["title"], doc["content"], doc["content_hash"],
+                doc.get("origin", "original"), doc.get("source_type", ""),
+                doc.get("source_name", ""), doc.get("chunk_count", 0), doc["created_at"],
+                doc.get("category", ""), json.dumps(doc.get("policy", {})), doc.get("policy_revision", "legacy"),
+            )
+            return row is not None
 
     async def kb_doc_get(self, doc_id: str) -> dict[str, Any] | None:
         row = await self._db.fetchrow(
@@ -902,11 +926,12 @@ class PgStore:
 
     async def kb_doc_list(
         self, terms: list[str], limit: int, offset: int = 0, with_content: bool = False,
-        category_in: list[str] | None = None, category_not_in: list[str] | None = None,
+        category_in: list[str] | None = None, category_not_in: list[str] | None = None, audiences=None,
     ) -> tuple[list[dict[str, Any]], int]:
         where, order, params = doc_filter_sql(
             terms, lambda i: f"${i + 1}", category_in, category_not_in
         )
+        where, params = audience_filter(where, params, audiences, postgres=True)
         body = ", content" if with_content else ""
         total = await self._db.fetchrow(
             f"SELECT COUNT(*) AS n FROM policy_documents {where}", *params
@@ -921,8 +946,10 @@ class PgStore:
         )
         return [dict(r) for r in rows], total["n"]
 
-    async def kb_doc_category_counts(self, terms: list[str]) -> dict[str, int]:
+    async def kb_doc_category_counts(self, terms: list[str], *, audiences=None) -> dict[str, int]:
         where, _, params = doc_filter_sql(terms, lambda i: f"${i + 1}")
+        where, params = audience_filter(where, params, audiences, postgres=True)
+
         rows = await self._db.fetch(
             f"SELECT category, COUNT(*) AS n FROM policy_documents {where} GROUP BY category", *params
         )
@@ -944,12 +971,14 @@ class PgStore:
             return
         sets = ", ".join(f"{c} = ${i + 2}" for i, c in enumerate(cols))
         async with self._db.transaction() as conn:
+            await authorize_admin(conn)
             await conn.execute(f"UPDATE policy_documents SET {sets} WHERE id=$1", doc_id, *(fields[c] for c in cols))
             if "policy" in fields:
                 await self._bump_kb_revision(conn)
 
     async def kb_policy_update(self, doc_id, policy, expected_revision, content_hash):
         async with self._db.transaction() as conn:
+            await authorize_admin(conn)
             changed = await conn.fetchval(
                 "UPDATE policy_documents SET policy=$2::jsonb,policy_revision=$3,content_hash=$5"
                 " WHERE id=$1 AND policy_revision=$4 RETURNING id", doc_id, policy, uuid.uuid4().hex, expected_revision, content_hash)
@@ -958,15 +987,18 @@ class PgStore:
             return bool(changed)
 
     async def kb_doc_delete(self, doc_id: str) -> None:
-        await self._db.execute("DELETE FROM policy_chunks WHERE doc_id = $1", doc_id)
-        await self._db.execute("DELETE FROM policy_documents WHERE id = $1", doc_id)
-        await self._bump_kb_revision()
+        async with self._db.transaction() as conn:
+            await authorize_admin(conn)
+            await conn.execute("DELETE FROM policy_chunks WHERE doc_id = $1", doc_id)
+            await conn.execute("DELETE FROM policy_documents WHERE id = $1", doc_id)
+            await self._bump_kb_revision(conn)
 
-    async def kb_doc_stats(self) -> dict[str, int]:
+    async def kb_doc_stats(self, *, audiences=None) -> dict[str, int]:
+        where, params = audience_filter("", [], audiences, postgres=True)
         row = await self._db.fetchrow(
             "SELECT COUNT(*) AS total,"
             " COALESCE(SUM(CASE WHEN origin <> 'original' THEN 1 ELSE 0 END), 0) AS legacy"
-            " FROM policy_documents"
+            " FROM policy_documents " + where, *params
         )
         return {"total": row["total"], "legacy": row["legacy"]}
 
@@ -1121,6 +1153,7 @@ class PgStore:
         手工建过的向量索引会随旧列一起删掉，需要重建。
         """
         async with self._db.transaction() as conn:
+            await authorize_admin(conn)
             await conn.execute("DROP VIEW kb_chunks")
             for table, vectors in (("policy_chunks", kb), ("memory_episodic", episodic)):
                 await conn.execute(

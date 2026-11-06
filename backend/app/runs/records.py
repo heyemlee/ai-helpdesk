@@ -55,6 +55,7 @@ class RunRecord:
     error: str = ""
     case_context: dict[str, Any] | None = None
     policy_scope: dict[str, Any] = field(default_factory=dict)
+    actor_context: dict[str, Any] = field(default_factory=dict)
     # 每次执行一条：谁跑的、哪一轮、怎么结束的
     history: list[dict[str, Any]] = field(default_factory=list)
     created_at: float = field(default_factory=time.time)

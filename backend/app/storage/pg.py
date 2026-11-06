@@ -372,6 +372,10 @@ class Database:
                         FOR EACH ROW EXECUTE FUNCTION helpdesk_evidence_approval();
                     """)
                     await conn.execute("INSERT INTO helpdesk_migrations VALUES('policy-evidence-v1')")
+                if not await conn.fetchval("SELECT 1 FROM helpdesk_migrations WHERE version='staff-auth-v1'"):
+                    from app.core.staff_schema import SCHEMA as staff_schema
+                    await conn.execute(staff_schema)
+                    await conn.execute("INSERT INTO helpdesk_migrations VALUES('staff-auth-v1')")
             if verify_dim:
                 await self._check_vector_dim(conn, "policy_chunks", dim)
                 await self._check_vector_dim(conn, "memory_episodic", dim)
@@ -427,6 +431,10 @@ class Database:
     async def fetch(self, sql: str, *args: Any) -> list[asyncpg.Record]:
         async with self._require_pool().acquire() as conn:
             return await conn.fetch(sql, *args)
+
+    async def fetchval(self, sql: str, *args: Any) -> Any:
+        async with self._require_pool().acquire() as conn:
+            return await conn.fetchval(sql, *args)
 
     async def fetchrow(self, sql: str, *args: Any) -> asyncpg.Record | None:
         async with self._require_pool().acquire() as conn:

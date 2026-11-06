@@ -129,3 +129,28 @@ groups:
         annotations:
           summary: "采样消费者丢掉了迟迟不结束的轮次"
           description: "有轮次开着超过 10 分钟都没等到终结事件或 turn_abandoned：它的尾巴在写入那一侧丢了（看 TurnEventsDropped），或者跑它的进程被杀、又没有别的执行接手。这些轮次没有进评测候选。"
+
+  - name: employee-recovery
+    rules:
+      - alert: HelpdeskBackupStale
+        expr: (time() - aihd_backup_last_success_timestamp_seconds > 7200) and on(instance) (helpdesk_operations_monitoring_configured == 1)
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "加密备份超过两小时未成功"
+      - alert: HelpdeskRecoveryVerificationStale
+        expr: (time() - aihd_restore_verification_last_success_timestamp_seconds > 172800) and on(instance) (helpdesk_operations_monitoring_configured == 1)
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "隔离恢复验证超过两天未成功"
+      - alert: HelpdeskCaseResultsRejected
+        expr: sum(increase(helpdesk_case_rejections_total[10m])) > 10
+        labels: {severity: warning}
+        annotations:
+          summary: "旧工单结果或权限变化导致持续拒绝写入"
+      - alert: HelpdeskEmployeeLoginFailures
+        expr: sum(increase(helpdesk_staff_auth_events_total{action="login_denied"}[10m])) > 30
+        labels: {severity: warning}
+        annotations:
+          summary: "员工登录失败次数异常"

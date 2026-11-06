@@ -10,7 +10,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, renderHook } from '@testing-library/react'
 import { render, screen } from '@/test/render'
-import { parseSseBlock } from '@/api/client'
+import { api, parseSseBlock } from '@/api/client'
 import { applyStreamEvent, useChatStream, type ChatMessage } from '@/hooks/useChatStream'
 import { MessageBubble } from '../MessageBubble'
 import { TurnExplanation } from '../TurnExplanation'
@@ -52,6 +52,7 @@ function sseResponse(frames: string[], breakAfter = false): Response {
 const settings = { userId: 'u1', conversationId: '', apiBaseUrl: '/api' }
 
 describe('image Case continuation', () => {
+  vi.spyOn(api, 'newConversation').mockResolvedValue({ conv_id: 'owned-new' })
   const materials = { attachments: [{ id: 'at_1', filename: 'order.png', sha256: 'sha', media_type: 'image/png',
     byte_size: 50, width: 10, height: 10, state: 'ready', error_code: '' }], caseChoice: 'new', issueType: 'order' as const }
 

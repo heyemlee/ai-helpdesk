@@ -77,6 +77,8 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.core.actor import get_current_actor
 from app.core.policy_scope import PolicyMetadata, PolicyScope, bind_policy_scope
+from app.core.staff_auth import current_actor
+from app.core.staff_auth import mode as staff_auth_mode
 
 load_dotenv()
 
@@ -225,6 +227,8 @@ async def lifespan(app: FastAPI):
     for section, problem in (saved_models.get("problems") or {}).items():
         logger.warning(f"控制台保存的模型连接（{section}）读不出来，按没有处理: {problem}")
     cfg = chat_config_from(saved_models)
+    from app.core.redaction import register_secret
+    register_secret(cfg.get("api_key"))
     logger.info(
         f"LLM 供应商: {cfg['provider']}  模型: {cfg['model']}  "
         f"base_url: {cfg.get('base_url') or '(官方)'}  来源: {cfg['source']}"
@@ -280,6 +284,15 @@ async def lifespan(app: FastAPI):
             db_path=os.getenv("CONVERSATION_LOG_DB_PATH", str(pathlib.Path(_ROOT) / "data" / "conversations.db"))
         )
         logger.warning("存储后端: SQLite 本地兜底（未配置 POSTGRES_DSN，仅适用于 demo/联调）")
+    if staff_auth_mode() == "local":
+        from app.core.staff_auth import StaffAuth, check_config
+        check_config(os.environ)
+        app.state.staff_auth = StaffAuth(_pg_database, _INSTANCE,
+            origin=os.getenv("AI_HELPDESK_PUBLIC_ORIGIN", "http://localhost:5174"))
+        app.state.actor_directory = ActorDirectory(app.state.staff_auth.provider)
+    else:
+        app.state.staff_auth = None
+
     # 库里的向量得是当前这个 Embedding 模型算的。换过模型而没重建向量的，在这里停下
     # ——维度相同的话后面一路都不会报错，只是语义检索返回的东西和问题无关。
     await check_embedding_signature(vector_store, embedder)
@@ -530,8 +543,15 @@ async def lifespan(app: FastAPI):
     if _pg_database is not None and _INSTANCE and os.getenv("REDIS_URL", "").strip():
         await _start_cases()
 
+    maintenance = None
+    if getattr(app.state, "staff_auth", None) is not None and _RUN_CONFIG.role in {"worker", "all"}:
+        from app.core.staff_maintenance import run as staff_maintenance
+        maintenance = asyncio.create_task(staff_maintenance(app.state.staff_auth, getattr(_cases, "attachments", None)))
     logger.info("ai-helpdesk 已就绪")
     yield
+    if maintenance is not None:
+        maintenance.cancel()
+        await asyncio.gather(maintenance, return_exceptions=True)
 
     # 停机：先停 worker（等手上的 run 跑完，到时限没跑完的交还给别的 worker），再关别的——
     # 在跑的 run 还要用下面这些组件
@@ -615,7 +635,10 @@ async def _request_validation_error(request: HttpRequest, exc: RequestValidation
     detail 里会回显没通过校验的原值。原值里有孤立代理字符时（/chat 挡掉的坏 id 正是这种），
     默认的 UTF-8 编码会抛错，客户端拿到的就成了 500。
     """
-    return _AsciiJSONResponse(status_code=422, content={"detail": jsonable_encoder(exc.errors())})
+    errors = exc.errors()
+    if request.url.path.startswith(("/auth/", "/admin/employees")):
+        errors = [{k: v for k, v in error.items() if k not in {"input", "ctx"}} for error in errors]
+    return _AsciiJSONResponse(status_code=422, content={"detail": jsonable_encoder(errors)})
 
 
 from app.agents.tool_loop import LoopConfig, LoopSetup, deadline_for, deadline_warnings  # noqa: E402
@@ -707,6 +730,9 @@ async def request_id_middleware(request: HttpRequest, call_next):
 # 设了 AI_HELPDESK_ALLOWED_HOSTS 才启用（compose 给员工实例设了），见 app/core/browser_guard.py。
 # 必须在所有中间件注册完之后装：后注册的在外层，被拒的请求进不了 CORS 和上面的请求日志
 _ALLOWED_HOSTS = browser_guard.install(app)
+from app.core.staff_auth import StaffSessionMiddleware  # noqa: E402
+
+app.add_middleware(StaffSessionMiddleware)
 
 
 # ── 鉴权 ──────────────────────────────────────────────────────────────────────
@@ -721,7 +747,7 @@ _PROTECT_CHAT = os.getenv("AI_HELPDESK_PROTECT_CHAT", "false").strip().lower() i
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
-def require_api_key(api_key: str | None = Security(_api_key_header)) -> None:
+def require_api_key(api_key: str | None = Security(_api_key_header), request: HttpRequest = None) -> None:
     """
     写操作/管理端点的鉴权依赖。未配置 AI_HELPDESK_API_KEY 时放行（demo 模式）。
 
@@ -731,6 +757,9 @@ def require_api_key(api_key: str | None = Security(_api_key_header)) -> None:
     lifespan 的 ASGI 容器（测试里就是这么用的）会绕过那次校验，而绕过之后
     原来的 `return` 是**放行**。一个防护的缺席不能被解释成"不需要防护"。
     """
+    if request is not None and request.scope.get("staff_session"):
+        get_current_actor(request)
+        return
     if not _API_KEY:
         if is_production():
             raise HTTPException(
@@ -811,11 +840,11 @@ def require_token_issuer_source(request: HttpRequest) -> None:
         raise HTTPException(403, "此端点仅对网关开放")
 
 
-def protect_chat(api_key: str | None = Security(_api_key_header)) -> None:
+def protect_chat(api_key: str | None = Security(_api_key_header), request: HttpRequest = None) -> None:
     """/chat 的可选鉴权，由 AI_HELPDESK_PROTECT_CHAT 控制。"""
     if not _PROTECT_CHAT:
         return
-    require_api_key(api_key)
+    require_api_key(api_key, request)
 
 
 class TokenRequest(BaseModel):
@@ -860,6 +889,10 @@ async def issue_user_token(body: TokenRequest):
 async def resolve_user_id(req: "ChatRequest", user_token: str | None) -> str:
     """从令牌推导可信 user_id；鉴权未开启时保持旧行为。超限抛 429。"""
     from app.core.auth import AuthError
+    actor = current_actor.get()
+    if actor is not None:
+        actor = await app.state.actor_directory.refresh(actor)
+        return actor.actor_id
     try:
         user_id = _user_auth.verify(user_token, req.user_id) if _user_auth else (req.user_id or "anonymous")
     except AuthError as exc:
@@ -1091,7 +1124,11 @@ from app.api import model_admin as _model_admin  # noqa: E402
 from app.api.attachment_api import router as attachment_router  # noqa: E402
 from app.api.case_api import optional_actor, readable_case_run, require_actor  # noqa: E402
 from app.api.case_api import router as case_router  # noqa: E402
+from app.api.staff_api import router as staff_router  # noqa: E402
+from app.api.staff_sql import router as staff_sql_router
 
+app.include_router(staff_router)
+app.include_router(staff_sql_router)
 app.include_router(attachment_router)
 
 app.include_router(_model_admin.router, dependencies=[Depends(require_api_key)])
@@ -1457,6 +1494,7 @@ async def chat(
             result = await _orchestrator.run(orch_req)
 
             # 4. 转人工 → 落工单（失败不影响响应）
+            await _check_staff_work(req.policy_scope)
             stage = "after"
             ticket_id = await _create_handoff_ticket(result, user_id, conv_id, req.message,
                                                      turn.turn_id)
@@ -1768,6 +1806,7 @@ async def _finish_turn(
     直接跑完的一轮和按提交点收尾的一轮（_resume_frames）都走这里，副作用只有这一份写法。
     """
     state.stage = "after"
+    await _check_staff_work(req.policy_scope)
     ticket_id = await _create_handoff_ticket(final, user_id, conv_id, req.message, turn.turn_id)
     await _remember_turn(user_id, conv_id, req.message, final.response)
     _spawn_background(_log_turn(conv_id, user_id, req.message, final.response,
@@ -1927,7 +1966,19 @@ async def _execute_run(ctx: RunContext) -> RunOutcome:
     run 跑完、事件还在攒批的那一刻被杀，run 是成功的，它那一轮在日志里却永远没有结束——没人
     会替一个成功的 run 补 turn_abandoned。演练（docs/evaluation/chaos-drill.md）撞上过一次。
     """
-    outcome = await _run_queued_turn(ctx)
+    actor = None
+    if getattr(app.state, "staff_auth", None) is not None:
+        try:
+            actor = await app.state.actor_directory.from_snapshot(ctx.run.actor_context)
+            actor.require_policy(ctx.run.policy_scope)
+            await app.state.staff_auth.conversation(actor, ctx.run.conv_id)
+        except HTTPException:
+            return RunOutcome("failed", ("error", {"detail": "Employee authorization changed"}), error="actor_access_changed")
+    reset_actor = current_actor.set(actor)
+    try:
+        outcome = await _run_queued_turn(ctx)
+    finally:
+        current_actor.reset(reset_actor)
     if not await _event_log.flush(timeout_s=1.0):
         logger.warning("run %s 这一轮的事件 1 秒内没送到，照常收尾（日志之后补上或计数丢掉）", ctx.run.run_id)
     return outcome
@@ -1994,7 +2045,7 @@ async def _start_cases() -> None:
     from app.tickets.cases import CASE_SUFFIX, CaseService
 
     namespace = _INSTANCE + CASE_SUFFIX
-    config = dataclasses.replace(_RUN_CONFIG, mode="queued")
+    config = dataclasses.replace(_RUN_CONFIG, mode="queued", retention_days=0)
     store = PgRunStore(_pg_database, namespace)
     broker = RedisBroker(_infra_redis, namespace)
     channel = RedisChannel(_infra_redis)
@@ -2004,7 +2055,7 @@ async def _start_cases() -> None:
     attachments = AttachmentService(_pg_database, objects, app.state.actor_directory, _INSTANCE) if objects else None
     app.state.attachments = attachments if config.serves_api else None
     _cases = CaseService(_pg_database, _INSTANCE, run_service=runs, attachments=attachments,
-                         knowledge_base=_knowledge_base, actors=app.state.actor_directory,
+                         knowledge_base=_knowledge_base, actors=app.state.actor_directory, identity_store=getattr(app.state, "staff_auth", None),
                          attachment_resolver=attachments.resolve if attachments else None,
                          webhook_url=os.getenv("TICKET_WEBHOOK_URL", "").strip())
     app.state.case_service = _cases if config.serves_api else None
@@ -2044,13 +2095,32 @@ async def _start_cases() -> None:
         await _case_worker.start()
 
 
+async def _check_staff_work(scope=None):
+    actor = current_actor.get()
+    if actor is not None:
+        actor = await app.state.actor_directory.refresh(actor)
+        if scope is not None:
+            actor.require_policy(scope)
+    return actor
+
+
 async def _validate_chat_policy_scope(req, actor):
     scope = req.policy_scope
+    auth = getattr(app.state, "staff_auth", None)
+    if auth is not None:
+        actor = await app.state.actor_directory.refresh(require_actor(actor))
+        actor.require_policy(scope)
+        req.user_id = actor.actor_id
+        if not req.conv_id:
+            req.conv_id = await auth.new_conversation(actor)
+        elif not req.case_id:
+            await auth.conversation(actor, req.conv_id)
     if scope.as_of is not None or scope.audience not in {"", "customer"}:
         actor = require_actor(actor)
         actor = await app.state.actor_directory.refresh(actor)
         if actor.instance != _INSTANCE:
             raise HTTPException(403, "政策范围不属于当前实例")
+        actor.require_policy(scope)
     # Product and region are exact explicit conditions, never wildcard selectors.
     # Audiences other than public/customer require a current employee identity.
 
@@ -2113,8 +2183,8 @@ async def _start_runs() -> None:
     from app.runs.memo import RedisMemo
     from app.runs.store import PgRunStore
 
-    store = PgRunStore(_pg_database, _INSTANCE + ":policy-v1")
-    broker = RedisBroker(_infra_redis, _INSTANCE + ":policy-v1")
+    store = PgRunStore(_pg_database, _INSTANCE + (":staff-v1" if staff_auth_mode() == "local" else ":policy-v1"))
+    broker = RedisBroker(_infra_redis, _INSTANCE + (":staff-v1" if staff_auth_mode() == "local" else ":policy-v1"))
     channel = RedisChannel(_infra_redis)
     await broker.ensure_group()
     if _RUN_CONFIG.serves_api:
@@ -2141,6 +2211,7 @@ async def _submit_run(req: ChatRequest, user_id: str, conv_id: str, idempotency_
         run, _created = await _runs.submit(
             conv_id=conv_id, user_id=user_id, message=req.message, request_id=current_request_id(),
             idempotency_key=key, transport=transport, policy_scope=req.policy_scope.model_dump(mode="json"),
+            actor_context=current_actor.get().snapshot() if current_actor.get() else {},
         )
     except Backpressure as bp:
         logger.warning("积压 %d 条，拒收（%ss 后再试）", bp.backlog, bp.retry_after_s)
@@ -2233,6 +2304,11 @@ async def _readable_run(run_id: str, user_token: str | None, actor=None):
     run = await _runs.get(run_id)
     if run is None:
         raise HTTPException(404, f"run 不存在或已超出保留期: {run_id}")
+    if getattr(app.state, "staff_auth", None) is not None:
+        fresh = await app.state.actor_directory.refresh(require_actor(actor))
+        await app.state.staff_auth.conversation(fresh, run.conv_id)
+        fresh.require_policy(run.policy_scope)
+        return run
     if _user_auth is not None and _user_auth.enabled:
         from app.core.auth import AuthError
         try:
@@ -2540,6 +2616,8 @@ async def monitor_summary():
 @app.get("/metrics")
 async def prometheus_metrics():
     """Prometheus 指标入口。"""
+    from app.core.staff_maintenance import operation_metrics
+    operation_metrics()
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
@@ -2628,6 +2706,7 @@ async def _log_turn(
 
 
 async def _remember_turn(user_id: str, conv_id: str, message: str, answer: str) -> None:
+    await _check_staff_work()
     """
     一轮的两条写进工作记忆。排队模式下按 run 只写一次（一轮可能跑不止一遍，客户的原话
     不能在记忆里出现两次），两条要么都写要么都不写；inline 和原来一样逐条写。
@@ -2743,6 +2822,7 @@ class SearchRequest(BaseModel):
 
 @app.post("/search", dependencies=[Depends(require_api_key)])
 async def search(body: SearchRequest, actor=Depends(policy_employee)):
+    actor.require_policy(body.policy_scope)
     """
     演示检索优化链路：
       查询改写 → 并行召回（每路内部是 dense+lexical 混合）→ 去重
@@ -2959,10 +3039,10 @@ async def _import_response(
 
 
 @app.get("/knowledge/stats", tags=["知识库"])
-async def knowledge_stats():
+async def knowledge_stats(actor=Depends(policy_employee)):
     """知识库统计：文档数、片段数，以及其中有多少篇是由历史分片归档来的。"""
     kb = _require_knowledge_base()
-    return await kb.document_stats()
+    return await kb.document_stats(actor=actor)
 
 
 @app.get("/knowledge/documents", tags=["知识库"], dependencies=[Depends(require_api_key)])
@@ -2986,19 +3066,19 @@ async def list_knowledge_documents(
     kb = _require_knowledge_base()
     return await kb.list_documents(
         query=q.strip()[:200], limit=max(1, min(limit, 500)), offset=max(0, offset),
-        category=category.strip()[:64] or None,
+        category=category.strip()[:64] or None, actor=actor,
     )
 
 
 @app.get("/knowledge/categories", tags=["知识库"], dependencies=[Depends(require_api_key)])
-async def list_knowledge_categories():
+async def list_knowledge_categories(actor=Depends(policy_employee)):
     """
     知识库的分类（按客户从咨询到售后的顺序）和每类的篇数，外加未分类的篇数。
 
     分类是固定的一组，用来整理和浏览文档；检索不看分类。
     """
     kb = _require_knowledge_base()
-    return await kb.category_overview()
+    return await kb.category_overview(actor=actor)
 
 
 @app.patch("/knowledge/documents/{doc_id}", tags=["知识库"],
@@ -3034,7 +3114,7 @@ async def update_knowledge_document(doc_id: str, body: DocumentPatch, actor=Depe
 async def get_knowledge_document(doc_id: str, actor=Depends(policy_employee)):
     """一篇文档的正文，以及它被切成的片段（检索用的就是这些片段）。"""
     kb = _require_knowledge_base()
-    document = await kb.get_document(doc_id)
+    document = await kb.get_document(doc_id, actor=actor)
     if document is None:
         raise HTTPException(404, f"文档不存在: {doc_id}")
     return document

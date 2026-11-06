@@ -44,6 +44,13 @@ class AttachmentService:
             + (" FOR UPDATE OF a" if conn and lock else ""), attachment_id, self.instance, actor.actor_id)
         if not row:
             raise HTTPException(404, "Not Found")
+        scopes = await db.fetch("SELECT c.policy_scope FROM case_materials m JOIN ticket_case_state c ON c.case_id=m.case_id"
+                                " WHERE m.attachment_id=$1 AND c.instance=$2", attachment_id, self.instance)
+        # A shared attachment cannot be used to bypass any linked Case audience.
+        import json
+        for linked in scopes:
+            value = linked["policy_scope"]
+            actor.require_policy(json.loads(value) if isinstance(value, str) else value)
         if ready and row["state"] != "ready":
             raise failure(409, "attachment_unavailable")
         return dict(row)

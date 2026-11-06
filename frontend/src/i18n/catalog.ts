@@ -46,8 +46,8 @@ export const EN = {
   'shell.status.connecting': 'Connecting',
 
   // ── 接口错误：说下一步，不说状态码 ────────────────────────────────────────
-  'err.401': 'This server requires a staff access key. Add it under Admin & diagnostics → Overview → Connection.',
-  'err.401.rejected': 'The server rejected the staff access key saved in this tab. Check it under Admin & diagnostics → Overview → Connection.',
+  'err.401': 'Your employee session has expired. Sign in again to continue.',
+  'err.401.rejected': 'Your employee session has expired. Sign in again to continue. Check it under Admin & diagnostics → Overview → Connection.',
   'err.503': 'The service is still starting up. Try again in a moment.',
   'err.server': 'The server returned an error.',
   'err.network': 'The server could not be reached. Check that it is running.',
@@ -802,8 +802,8 @@ export const ZH: Record<Key, string> = {
   'shell.status.ok': '在线',
   'shell.status.connecting': '连接中',
 
-  'err.401': '服务端需要员工访问密钥。请在“管理与诊断 → 概览 → 连接”里填写。',
-  'err.401.rejected': '服务端不接受这个标签页里保存的员工访问密钥。请到“管理与诊断 → 概览 → 连接”核对。',
+  'err.401': '员工会话已失效，请重新登录后继续。',
+  'err.401.rejected': '员工会话已失效，请重新登录后继续。',
   'err.503': '服务还在启动，请稍后再试。',
   'err.server': '服务端返回了错误。',
   'err.network': '连不上服务端，请确认它在运行。',

@@ -22,7 +22,7 @@ from app.runs.store import _COLUMNS, _NOW, _record
 
 ACTIVE = {"open", "waiting_for_info", "in_progress"}
 STATUSES = ACTIVE | {"resolved", "cancelled"}
-CASE_SUFFIX = ":case-v2"
+CASE_SUFFIX = ":case-v3"
 
 
 def dumps(value) -> str:
@@ -108,7 +108,7 @@ class CaseAdoption(BaseModel):
 
 class CaseService:
     def __init__(self, db, instance: str, *, run_service=None, webhook_url: str = "", attachment_resolver=None,
-                 attachments=None, knowledge_base=None, actors=None):
+                 attachments=None, knowledge_base=None, actors=None, identity_store=None):
         self.db = db
         self.instance = instance
         self.run_instance = instance + CASE_SUFFIX
@@ -118,11 +118,24 @@ class CaseService:
         self.attachment_resolver = attachment_resolver
         self.attachments = attachments
         self.knowledge_base, self.actors = knowledge_base, actors
+        self.identity_store = identity_store
 
     def authorize(self, actor: ActorContext):
         actor.require_employee()
         if actor.instance != self.instance:
             raise HTTPException(404, "Not Found")
+
+    async def fresh_actor(self, actor, *, conn=None):
+        actor = await self.actors.refresh(actor, conn=conn) if self.actors else actor
+        self.authorize(actor)
+        return actor
+
+    @staticmethod
+    def operator(actor, case, *, takeover=False):
+        actor.require_role("operations")
+        owner = case.get("owner_actor_id")
+        if owner and owner != actor.actor_id and "admin" not in actor.roles:
+            raise HTTPException(403, "此工单由其他运营人员负责；需管理员重新接管")
 
     async def _locked(self, conn, case_id: str, actor: ActorContext | None = None):
         # All writers (including the legacy trigger) lock parent then sidecar.
@@ -170,12 +183,14 @@ class CaseService:
 
     async def adopt(self, actor: ActorContext, case_id: str, body: CaseAdoption):
         """Explicit administrator migration of an unknown historical ticket."""
-        self.authorize(actor)
+        actor = await self.fresh_actor(actor)
         if "admin" not in actor.roles:
             raise HTTPException(403, "只有管理员可以确认历史工单的归属")
         if not body.reason.strip():
             raise HTTPException(422, "请记录归属依据")
         async with self.db.transaction() as conn:
+            actor = await self.fresh_actor(actor, conn=conn)
+            actor.require_role("admin")
             ticket = await conn.fetchrow("SELECT * FROM tickets WHERE id=$1 FOR UPDATE", case_id)
             row = await conn.fetchrow("SELECT * FROM ticket_case_state WHERE case_id=$1 FOR UPDATE", case_id)
             if not ticket or not row or row["instance"] != "":
@@ -201,7 +216,9 @@ class CaseService:
         return await self.get(actor, case_id)
 
     async def accept_input(self, actor: ActorContext, body: CaseInput, *, request_id="", transport="case"):
-        self.authorize(actor)
+        actor = await self.fresh_actor(actor)
+        if body.policy_scope is not None:
+            actor.require_policy(body.policy_scope)
         digest = hashlib.sha256(dumps({
             "actor": actor.actor_id, "input": body.model_dump(),
             "updated_fields": sorted(body.model_fields_set & {"customer_ref", "order_refs"}),
@@ -214,6 +231,9 @@ class CaseService:
             if {a["id"] for a in attachments} != set(body.attachment_ids) or any(not a.get("sha256") for a in attachments):
                 raise HTTPException(422, "附件校验未完成")
         async with self.db.transaction() as conn:
+            actor = await self.fresh_actor(actor, conn=conn)
+            if self.identity_store and body.new_case:
+                await self.identity_store.conversation(actor, body.conv_id, conn=conn)
             await conn.execute("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", "case-input:" + body.message_id)
             prior = await conn.fetchrow("SELECT * FROM case_messages WHERE message_id=$1", body.message_id)
             if prior:
@@ -236,6 +256,7 @@ class CaseService:
                 )
                 await conn.execute("UPDATE ticket_case_state SET instance=$2 WHERE case_id=$1", case_id, self.instance)
             c = await self._locked(conn, case_id, actor)
+            actor.require_policy(body.policy_scope or decode(c.get("policy_scope"), {}))
             ticket_conv = await conn.fetchval("SELECT conv_id FROM tickets WHERE id=$1", case_id)
             if ticket_conv != body.conv_id:
                 raise HTTPException(404, "工单不属于此会话")
@@ -321,7 +342,7 @@ class CaseService:
                 " WHERE m.case_id=$1 AND l.role='user' ORDER BY l.seq DESC LIMIT 12", case_id)][::-1]
             context = {"case_id": case_id, "message_id": body.message_id, "expected_case_version": c["version"],
                        "expected_control_version": c["control_version"], "actor_id": actor.actor_id,
-                       "roles": sorted(actor.roles), "instance": actor.instance, "snapshot": snapshot}
+                       "roles": sorted(actor.roles), "instance": actor.instance, "auth_version": actor.auth_version, "snapshot": snapshot}
             await conn.execute(
                 f"INSERT INTO agent_runs(run_id,instance,idempotency_key,conv_id,user_id,message,request_id,transport,"
                 f"case_context,created_at,updated_at,dispatched_at)"
@@ -340,6 +361,7 @@ class CaseService:
                 "run_id": run_id, "deduplicated": False}
 
     async def get(self, actor: ActorContext, case_id: str):
+        actor = await self.fresh_actor(actor)
         if self.attachments:
             actor = await self.attachments.actor(actor)
         self.authorize(actor)
@@ -358,6 +380,7 @@ class CaseService:
         if not row:
             raise HTTPException(404, "Not Found")
         c = dict(row)
+        actor.require_policy(decode(c.get("policy_scope"), {}))
         for k in ("facts", "pending_fields", "order_refs", "policy_scope"):
             c[k] = decode(c[k])
         c["messages"] = [dict(r) for r in await conn.fetch(
@@ -396,7 +419,7 @@ class CaseService:
         return c
 
     async def list(self, actor: ActorContext, conv_id: str | None = None):
-        self.authorize(actor)
+        actor = await self.fresh_actor(actor)
         rows = await self.db.fetch(
             "SELECT t.id,t.conv_id,t.last_message,t.created_at,c.* FROM tickets t"
             " JOIN ticket_case_state c ON c.case_id=t.id WHERE c.instance=$1"
@@ -405,6 +428,10 @@ class CaseService:
         result = []
         for row in rows:
             c = dict(row)
+            try:
+                actor.require_policy(decode(c.get("policy_scope"), {}))
+            except HTTPException:
+                continue
             for k in ("facts", "order_refs", "pending_fields"):
                 c[k] = decode(c[k])
             result.append(c)
@@ -412,7 +439,10 @@ class CaseService:
 
     async def mutate(self, actor: ActorContext, case_id: str, body: CaseMutation):
         async with self.db.transaction() as conn:
+            actor = await self.fresh_actor(actor, conn=conn)
             c = await self._locked(conn, case_id, actor)
+            actor.require_policy(decode(c.get("policy_scope"), {}))
+            self.operator(actor, c)
             self._expected(c, body.expected_version, body.expected_control_version)
             if body.operation in ("takeover", "release"):
                 c["control_mode"] = "human" if body.operation == "takeover" else "assistant"
@@ -457,9 +487,10 @@ class CaseService:
 
     async def approve(self, actor: ActorContext, case_id: str, draft_id: str, body: DraftApproval):
         async with self.db.transaction() as conn:
-            if self.actors:
-                actor = await self.actors.refresh(actor, conn=conn)
+            actor = await self.fresh_actor(actor, conn=conn)
             c = await self._locked(conn, case_id, actor)
+            actor.require_policy(decode(c.get("policy_scope"), {}))
+            self.operator(actor, c)
             self._expected(c, body.expected_version, body.expected_control_version)
             d = await conn.fetchrow("SELECT * FROM case_drafts WHERE id=$1 AND case_id=$2 FOR UPDATE", draft_id, case_id)
             if not d:
@@ -483,7 +514,7 @@ class CaseService:
         Call only after the trusted extractor/verifier checked the business source.
         Authorization and immutable attachment hash are rechecked at adoption.
         """
-        self.authorize(actor)
+        actor = await self.fresh_actor(actor)
         if (not evidence_id or len(evidence_id) > 256 or not facts or len(facts) > 40
                 or any(not isinstance(v, str) or not v.strip() or len(v) > 1000 or "\x00" in v
                        for v in [*facts, *facts.values()])):
@@ -494,7 +525,9 @@ class CaseService:
         if not refs or refs[0].get("sha256") != sha256:
             raise conflict("attachment_changed")
         async with self.db.transaction() as conn:
+            actor = await self.fresh_actor(actor, conn=conn)
             c = await self._locked(conn, case_id, actor)
+            actor.require_policy(decode(c.get("policy_scope"), {}))
             key = f"evidence:{case_id}:{evidence_id}"
             payload = {"attachment_id": attachment_id, "sha256": sha256, "facts": facts}
             previous = await conn.fetchval("SELECT data FROM case_actions WHERE action_key=$1", key)
@@ -545,7 +578,7 @@ class CaseService:
         # PostgreSQL cannot lock an external object's future contents.
         if self.attachments:
             try:
-                actor = await self.attachments.actors.resolve(ctx["actor_id"], ctx["instance"])
+                actor = await self.attachments.actors.from_snapshot(ctx)
                 for material in sources.values():
                     _, row = await self.attachments.content(actor, material["attachment_id"])
                     if row["sha256"] != material["sha256"]:
@@ -564,6 +597,12 @@ class CaseService:
                 raise conflict("run_lease_lost")
             c = await self._locked(conn, ctx["case_id"])
             reason = ""
+            if self.actors:
+                try:
+                    actor = await self.actors.from_snapshot(ctx, conn=conn)
+                    actor.require_policy(decode(c.get("policy_scope"), {}))
+                except HTTPException:
+                    reason = "actor_access_changed"
             if c["version"] != ctx["expected_case_version"]:
                 reason = "case_version_changed"
             elif c["control_version"] != ctx["expected_control_version"]:
@@ -573,11 +612,13 @@ class CaseService:
             # Human-owned inputs may be recorded, but can never publish an AI draft.
             elif c["control_mode"] == "human":
                 reason = "human_control"
+            elif result.get("actor_access_changed"):
+                reason = "actor_access_changed"
             elif result.get("service_unavailable"):
                 reason = "service_unavailable"
             if not reason and self.attachments:
                 try:
-                    actor = await self.attachments.actors.resolve(ctx["actor_id"], ctx["instance"], conn=conn)
+                    actor = await self.attachments.actors.from_snapshot(ctx, conn=conn)
                     for material in sorted(sources.values(), key=lambda m: m["attachment_id"]):
                         row = await self.attachments.get(actor, material["attachment_id"], conn=conn)
                         if row["sha256"] != material["sha256"]:

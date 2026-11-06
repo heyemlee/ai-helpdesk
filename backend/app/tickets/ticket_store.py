@@ -483,7 +483,9 @@ class PgTicketStore:
     async def update_status(self, ticket_id: str, status: str) -> Ticket:
         if status not in VALID_STATUSES:
             raise ValueError(f"非法状态: {status}，可选 {VALID_STATUSES}")
+        from app.core.staff_auth import authorize_operations
         async with self._db.transaction() as conn:
+            await authorize_operations(conn)
             row = await conn.fetchrow("SELECT * FROM tickets WHERE id=$1 FOR UPDATE", ticket_id)
             if row is None:
                 raise KeyError(ticket_id)

@@ -11,19 +11,20 @@
  */
 import type { ReactElement, ReactNode } from 'react'
 import { render as rtlRender, type RenderOptions } from '@testing-library/react'
+import { EmployeeContext } from '@/auth/session'
 import { LangProvider, type Lang } from '@/i18n'
 
 export * from '@testing-library/react'
 
 export function render(
   ui: ReactElement,
-  { lang = 'zh' as Lang, wrapper, ...options }: RenderOptions & { lang?: Lang } = {},
+  { lang = 'zh' as Lang, role = 'admin', wrapper, ...options }: RenderOptions & { lang?: Lang; role?: string } = {},
 ) {
   // 用 initial 而不是写 localStorage：jsdom 在没有 origin 时根本没有 localStorage
   const Outer = wrapper
   const Wrapper = ({ children }: { children: ReactNode }) =>
     Outer
-      ? <LangProvider initial={lang}><Outer>{children}</Outer></LangProvider>
-      : <LangProvider initial={lang}>{children}</LangProvider>
+      ? <LangProvider initial={lang}><Outer><EmployeeContext.Provider value={{ actor_id: 'test', instance: 'staff', auth_version: 1, roles: [role] }}>{children}</EmployeeContext.Provider></Outer></LangProvider>
+      : <LangProvider initial={lang}><EmployeeContext.Provider value={{ actor_id: 'test', instance: 'staff', auth_version: 1, roles: [role] }}>{children}</EmployeeContext.Provider></LangProvider>
   return rtlRender(ui, { wrapper: Wrapper, ...options })
 }

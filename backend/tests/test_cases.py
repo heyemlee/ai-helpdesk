@@ -14,7 +14,7 @@ from app.tickets.cases import CaseAdoption, CaseInput, CaseMutation, CaseService
 
 PG = os.getenv("TEST_POSTGRES_DSN", "")
 pytestmark = pytest.mark.skipif(not PG, reason="TEST_POSTGRES_DSN is required")
-ACTOR = ActorContext("employee-1", frozenset({"employee"}), "staff")
+ACTOR = ActorContext("employee-1", frozenset({"operations"}), "staff")
 ADMIN = ActorContext("admin-1", frozenset({"admin"}), "staff")
 ANSWER = {"response": "请核对草稿。", "handoff": False}
 
@@ -261,7 +261,7 @@ async def test_unknown_legacy_scope_requires_explicit_admin_adoption_and_blocks_
         with pytest.raises(asyncpg.ObjectNotInPrerequisiteStateError):
             await b.db.execute("UPDATE tickets SET status='open' WHERE id=$1", t.id)
         assert await legacy.get(t.id) is None
-    assert (await CaseService(a.db, "customer").list(ActorContext("other", frozenset({"employee"}), "customer")))["tickets"] == []
+    assert (await CaseService(a.db, "customer").list(ActorContext("other", frozenset({"operations"}), "customer")))["tickets"] == []
 
 
 async def test_old_scan_claim_and_dispatch_paths_cannot_reach_case_runs(pair):
@@ -271,7 +271,7 @@ async def test_old_scan_claim_and_dispatch_paths_cannot_reach_case_runs(pair):
     assert await old.due_for_dispatch(idle_s=-1, lease_grace_s=0) == []
     assert await old.claim(r["run_id"], "old-worker", 60) is None
     await old.mark_dispatched([r["run_id"]])
-    current = PgRunStore(a.db, "staff:case-v2")
+    current = PgRunStore(a.db, "staff:case-v3")
     assert r["run_id"] in await current.due_for_dispatch(idle_s=-1, lease_grace_s=0)
 
 
@@ -430,7 +430,7 @@ async def test_public_entrypoints_use_same_case_worker_and_employee_boundary(pai
     a, _ = pair
     client = redis.from_url(os.environ["TEST_REDIS_URL"], decode_responses=True)
     namespace = "test-" + uuid.uuid4().hex[:10]
-    actor = ActorContext("trusted-employee", frozenset({"employee"}), namespace)
+    actor = ActorContext("trusted-employee", frozenset({"operations"}), namespace)
     monkeypatch.setattr(main, "_pg_database", a.db)
     monkeypatch.setattr(main, "_infra_redis", client)
     monkeypatch.setattr(main, "_INSTANCE", namespace)
@@ -470,7 +470,7 @@ async def test_public_entrypoints_use_same_case_worker_and_employee_boundary(pai
             public = await http.get(f"/runs/{run_id}")
             assert public.status_code == 200 and public.json()["status"] == "succeeded"
             record = await main._cases.run(run_id)
-            assert record.user_id == actor.actor_id and record.instance == namespace + ":case-v2"
+            assert record.user_id == actor.actor_id and record.instance == namespace + ":case-v3"
             if transport == "/chat/stream":
                 assert "event: result" in response.text and "event: delta" not in response.text
             # Complete the same Case with explicit material, then approve the

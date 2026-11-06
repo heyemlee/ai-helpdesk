@@ -1,3 +1,4 @@
+import { usePermissions } from '@/auth/session'
 import { useHealth } from '@/api/hooks'
 import { useT } from '@/i18n'
 import type { Key } from '@/i18n/catalog'
@@ -25,6 +26,7 @@ export function Sidebar({ base, view, onNewChat, theme, onToggleTheme, busy }: {
   onToggleTheme: () => void
   busy?: boolean
 }) {
+  const { admin } = usePermissions()
   const health = useHealth(base)
   const { t, lang, toggle: toggleLang } = useT()
   const status = health.isError ? 'down' : health.data?.status === 'ok' ? 'ok' : 'connecting'
@@ -57,13 +59,13 @@ export function Sidebar({ base, view, onNewChat, theme, onToggleTheme, busy }: {
         </nav>
       </div>
       <div className="rail-foot">
-        <nav aria-label={t('nav.section.admin')}>
+        {admin && <nav aria-label={t('nav.section.admin')}>
           <a href={href.admin()} className={`nav-item nav-admin${view === 'admin' ? ' is-active' : ''}`}
              aria-current={view === 'admin' ? 'page' : undefined} title={t('nav.admin')}>
             <Icon name="settings" />
             <span><span className="label-full">{t('nav.admin')}</span><span className="label-short">{t('nav.admin.short')}</span></span>
           </a>
-        </nav>
+        </nav>}
         <div className="service-status">
           <span>{t('shell.status')}</span>
           <Chip tone={status === 'ok' ? 'success' : status === 'down' ? 'danger' : 'neutral'} dot>

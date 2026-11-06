@@ -659,7 +659,7 @@ class KnowledgeBase:
         return facets, uncategorized
 
     async def list_documents(
-        self, query: str = "", limit: int = 100, offset: int = 0, category: str | None = None,
+        self, query: str = "", limit: int = 100, offset: int = 0, category: str | None = None, actor=None,
     ) -> dict[str, Any]:
         """
         文档列表。query 为空是浏览全部（新导入的在前）；非空时按空白拆成词，
@@ -672,6 +672,7 @@ class KnowledgeBase:
         `categories` 是每个大类里满足筛选词的篇数，不受 category 影响——工作台
         拿它画分类目录：选中了"送货与收货"，其它分类各有几篇匹配也照样看得见。
         """
+        access = {"audiences": actor.readable_audiences()} if actor is not None else {}
         terms = [t for t in (query or "").split() if t][:8]
         selected = (category or "").strip()
         filters: dict[str, list[str]] = {}
@@ -688,7 +689,7 @@ class KnowledgeBase:
             applied = key or selected
 
         rows, matched = await self._store.kb_doc_list(
-            terms, limit=limit, offset=offset, with_content=bool(terms), **filters
+            terms, limit=limit, offset=offset, with_content=bool(terms), **filters, **access
         )
         documents = []
         for row in rows:
@@ -701,9 +702,9 @@ class KnowledgeBase:
                 }
             documents.append(item)
         facets, uncategorized = self._category_facets(
-            await self._store.kb_doc_category_counts(terms)
+            await self._store.kb_doc_category_counts(terms, **access)
         )
-        stats = await self._store.kb_doc_stats()
+        stats = await self._store.kb_doc_stats(**access)
         return {
             "query": " ".join(terms),
             "category": applied,
@@ -713,12 +714,13 @@ class KnowledgeBase:
             "uncategorized": uncategorized,
             "total_documents": stats["total"],
             "legacy_documents": stats["legacy"],
-            "total_chunks": await self._store.kb_count(),
+            "total_chunks": await self._store.kb_count(**access),
         }
 
-    async def category_overview(self) -> dict[str, Any]:
+    async def category_overview(self, actor=None) -> dict[str, Any]:
         """全部大类（按 CATEGORIES 的顺序）和各自的篇数，外加未分类的篇数。"""
-        facets, uncategorized = self._category_facets(await self._store.kb_doc_category_counts([]))
+        access = {"audiences": actor.readable_audiences()} if actor is not None else {}
+        facets, uncategorized = self._category_facets(await self._store.kb_doc_category_counts([], **access))
         return {"categories": facets, "uncategorized": uncategorized}
 
     async def set_document_category(self, doc_id: str, category: Any) -> dict[str, Any] | None:
@@ -737,10 +739,12 @@ class KnowledgeBase:
             logger.info(f"文档 {doc_id} 的分类改为 {key or '未分类'}")
         return self._present({**row, "category": key})
 
-    async def get_document(self, doc_id: str) -> dict[str, Any] | None:
+    async def get_document(self, doc_id: str, actor=None) -> dict[str, Any] | None:
         """一篇文档的正文和它名下的分片。不存在返回 None。"""
         row = await self._store.kb_doc_get(doc_id)
         if row is None:
+            return None
+        if actor is not None and actor.readable_audiences() is not None and metadata(row.get("policy")).audience not in actor.readable_audiences():
             return None
         passages = await self._store.kb_doc_chunks(doc_id)
         return {
@@ -768,12 +772,13 @@ class KnowledgeBase:
         briefs = await self._store.kb_doc_briefs(wanted)
         return {b["id"]: document_heading(b["head"]) or b["title"] for b in briefs}
 
-    async def document_stats(self) -> dict[str, int]:
-        stats = await self._store.kb_doc_stats()
+    async def document_stats(self, actor=None) -> dict[str, int]:
+        access = {"audiences": actor.readable_audiences()} if actor is not None else {}
+        stats = await self._store.kb_doc_stats(**access)
         return {
             "total_documents": stats["total"],
             "legacy_documents": stats["legacy"],
-            "total_chunks": await self._store.kb_count(),
+            "total_chunks": await self._store.kb_count(**access),
         }
 
     async def search_async(self, query: str, top_k: int = 5) -> list[dict[str, Any]]:

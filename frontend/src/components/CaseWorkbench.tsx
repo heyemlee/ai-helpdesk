@@ -1,9 +1,10 @@
+import { usePermissions } from '@/auth/session'
 import { ScopeFields } from './PolicyFields'
 import type { PolicyScope } from '@/api/types'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { SafeMarkdown } from './SafeMarkdown'
 import { EvidenceDetails } from './EvidenceDetails'
-import { ApiError, caseApi, loadSettings } from '@/api/client'
+import { ApiError, api, caseApi, loadSettings } from '@/api/client'
 import type { Attachment, CaseAction, CaseDetail, CaseInput, CaseSummary } from '@/api/types'
 import { useT } from '@/i18n'
 import { AttachmentPicker, AttachmentView, ImageReviewTable, imageFieldLabel } from './Attachments'
@@ -23,6 +24,7 @@ export function CaseWorkbench({ base, ticketId }: { base: string; ticketId?: str
   const en = lang === 'en'
   const text = (zh: string, english: string) => en ? english : zh
   const label = (key: string) => labels[key]?.[en ? 1 : 0] ?? imageFieldLabel(key, en)
+  const { operations } = usePermissions()
   const [list, setList] = useState<CaseSummary[]>([])
   const [selected, setSelected] = useState(ticketId ?? '')
   const [current, setCurrent] = useState<CaseDetail | null>(null)
@@ -102,7 +104,7 @@ export function CaseWorkbench({ base, ticketId }: { base: string; ticketId?: str
       const fingerprint = JSON.stringify({ selected, conv, message, cleanFacts, issue, customer, ids, policyScope })
       if (pending.current?.fingerprint !== fingerprint) {
         pending.current = { fingerprint, body: {
-          message_id: id(), message, policy_scope: policyScope, conv_id: current?.conv_id ?? conv, facts: cleanFacts,
+          message_id: id(), message, policy_scope: policyScope, conv_id: current?.conv_id ?? (await api.newConversation(base)).conv_id, facts: cleanFacts,
           ...(ids.length ? { attachment_ids: ids } : {}),
           ...(current ? { case_id: current.id, expected_version: current.version, expected_control_version: current.control_version }
             : { new_case: true, issue_type: issue, customer_ref: customer }),
@@ -148,16 +150,16 @@ export function CaseWorkbench({ base, ticketId }: { base: string; ticketId?: str
             {current.owner_actor_id && ` · ${text('负责人', 'Owner')}: ${current.owner_actor_id}`}</p>
           <p>{text('业务客户', 'Customer reference')}: {current.customer_ref || '—'} · {text('订单', 'Orders')}: {current.order_refs.join(', ') || current.facts.order_ref?.value || '—'}</p>
           <div className="case-actions">
-            <button className="btn btn-secondary" disabled={busy} onClick={() => act(current.control_mode === 'human' ? 'release' : 'takeover')}>
+            <button className="btn btn-secondary" disabled={busy || !operations} onClick={() => act(current.control_mode === 'human' ? 'release' : 'takeover')}>
               {current.control_mode === 'human' ? text('交回助手', 'Release to assistant') : text('人工接管', 'Take over')}
             </button>
             {!closed && <>
-              <button className="btn btn-secondary" disabled={busy} onClick={() => act('status', 'resolved')}>{text('标记解决', 'Resolve')}</button>
-              <button className="btn btn-secondary" disabled={busy} onClick={() => act('status', 'cancelled')}>{text('取消问题', 'Cancel case')}</button>
+              <button className="btn btn-secondary" disabled={busy || !operations} onClick={() => act('status', 'resolved')}>{text('标记解决', 'Resolve')}</button>
+              <button className="btn btn-secondary" disabled={busy || !operations} onClick={() => act('status', 'cancelled')}>{text('取消问题', 'Cancel case')}</button>
             </>}
           </div>
           {closed && <div className="case-reopen"><label>{text('重开原因', 'Reason to reopen')}<input value={reason} onChange={e => setReason(e.target.value)} /></label>
-            <button className="btn btn-primary" disabled={busy || !reason.trim()} onClick={() => act('reopen')}>{text('重开问题', 'Reopen')}</button></div>}
+            <button className="btn btn-primary" disabled={busy || !operations || !reason.trim()} onClick={() => act('reopen')}>{text('重开问题', 'Reopen')}</button></div>}
           <h3>{text('材料与待补项', 'Materials and missing information')}</h3>
           <dl>{Object.entries(current.facts).map(([field, fact]) => <div key={field}>
             <dt>{label(field)}</dt><dd>{fact.value} · {['verified_evidence', 'verified_image'].includes(fact.source) ? text('证据已核实', 'Verified evidence') : text('员工提交', 'Employee supplied')}</dd>
@@ -196,7 +198,7 @@ export function CaseWorkbench({ base, ticketId }: { base: string; ticketId?: str
             <p>{text('版本', 'Version')} {d.version} · {d.valid ? (d.status === 'approved' ? text('已确认', 'Approved') : text('待确认', 'Pending approval')) : text('已失效', 'Invalidated')}</p>
             <SafeMarkdown>{d.body}</SafeMarkdown>
             <EvidenceDetails records={d.evidence} />
-            <button className="btn btn-secondary" disabled={busy || !d.valid || d.status === 'approved'} onClick={() => perform(async () => { setCurrent(await caseApi.approve(base, current, d)) })}>
+            <button className="btn btn-secondary" disabled={busy || !operations || !d.valid || d.status === 'approved'} onClick={() => perform(async () => { setCurrent(await caseApi.approve(base, current, d)) })}>
               {text('确认此版本草稿', 'Approve this version')}
             </button>
             <p className="note neutral">{text('确认草稿只记录内部审批，不会向客户发送。', 'Approval records an internal decision; it does not send a message to the customer.')}</p>

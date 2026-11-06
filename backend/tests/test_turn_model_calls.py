@@ -202,7 +202,7 @@ async def test_a_blocked_call_is_recorded_without_going_out():
     assert inner.requests == []
 
 
-async def test_a_failed_call_records_the_error_type_and_keeps_the_message_in_the_body():
+async def test_a_failed_call_records_type_without_provider_error_body():
     turn, store = _turn()
     with bind(turn), model_call_tag(purpose="rerank", round=2):
         with pytest.raises(TimeoutError):
@@ -210,7 +210,7 @@ async def test_a_failed_call_records_the_error_type_and_keeps_the_message_in_the
 
     [call] = await _model_calls(store, turn)
     assert (call["data"]["status"], call["data"]["error_type"], call["data"]["round"]) == ("error", "TimeoutError", 2)
-    assert call["body"]["error"] == "上游超时"
+    assert call["body"]["error"] == "TimeoutError"
 
 
 async def test_nothing_is_recorded_with_the_log_off():

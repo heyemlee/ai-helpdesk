@@ -60,6 +60,7 @@ STAFF_ONLY = [
     ("GET", "/knowledge/documents/doc_x"),
     ("PATCH", "/knowledge/documents/doc_x"),
     ("GET", "/knowledge/categories"),
+    ("GET", "/knowledge/stats"),
     ("GET", "/sops"),
     ("POST", "/search"),
     ("POST", "/knowledge/add"),
@@ -83,7 +84,7 @@ def test_staff_endpoints_reject_anonymous_callers(monkeypatch, method, path):
     assert client.request(method, path, headers={"X-API-Key": "wrong"}).status_code == 401
     # 带对钥匙就越过鉴权，落到业务层（组件没初始化 → 503，或请求体不对 → 422）
     status = client.request(method, path, headers={"X-API-Key": "s3cret"}).status_code
-    if path in {"/search", "/knowledge/add", "/knowledge/upload"} or path.startswith("/knowledge/documents"):
+    if path == "/search" or path.startswith("/knowledge/"):
         assert status == 401  # shared key is not an employee/admin identity
     else:
         assert status != 401

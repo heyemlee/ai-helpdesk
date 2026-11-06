@@ -2,10 +2,57 @@ import { test, expect } from '@playwright/test'
 import path from 'node:path'
 const fixture = (name: string) => path.join(import.meta.dirname, 'fixtures', name)
 
-test.beforeEach(async ({ page }) => {
+test.beforeEach(async ({ page }, info) => {
   await page.addInitScript(() => localStorage.setItem('helpdesk.lang', 'zh'))
-  await page.request.post('/api/test/login')
   await page.goto('/')
+  const login = info.title.startsWith('employee role') ? 'browser-employee' : info.title.startsWith('two tabs') ? 'browser-operations' : 'browser-admin'
+  await page.getByLabel('员工账号').fill(login)
+  await page.getByLabel('密码', { exact: true }).fill('browser-test-password-only')
+  await page.getByRole('button', { name: '登录', exact: true }).click()
+  await expect(page.getByRole('button', { name: '退出登录' })).toBeVisible()
+  const session = await (await page.request.get('/api/auth/session')).json()
+  await page.context().setExtraHTTPHeaders({ Origin: process.env.BROWSER_FRONTEND_URL!, 'X-CSRF-Token': session.csrf_token })
+})
+
+test('employee role can submit a Case but cannot administer or take over work', async ({ page }) => {
+  await expect(page.locator('.nav-admin')).toHaveCount(0)
+  expect((await page.request.get('/api/admin/employees')).status()).toBe(403)
+  expect((await page.request.get('/api/tickets')).status()).toBe(403)
+  await page.goto('/#/tickets')
+  const work = page.getByRole('region', { name: '跨消息工单' })
+  await expect(work).toBeVisible()
+  await work.getByLabel('问题类型').selectOption('missing_parts')
+  await work.locator('input[type=file]').setInputFiles(fixture('clear.png'))
+  await expect(work.getByRole('img', { name: 'clear.png' })).toBeVisible()
+  await work.getByRole('button', { name: '保存并继续' }).click()
+  await expect(work.getByText('图片已核实').first()).toBeVisible({ timeout: 30_000 })
+  await expect(work.getByRole('button', { name: '人工接管' })).toBeDisabled()
+  await expect(work.getByRole('button', { name: '确认此版本草稿' })).toBeDisabled()
+})
+
+test('two tabs preserve a draft during an outage and erase it when another employee logs in', async ({ page }) => {
+  const other = await page.context().newPage()
+  await other.goto('/#/tickets')
+  await other.getByRole('button', { name: '进入跨消息工单' }).click()
+  const input = other.getByLabel('补充说明')
+  await input.fill('operations private draft')
+  await other.evaluate(() => sessionStorage.setItem('helpdesk.pending-case', 'operations-receipt'))
+  await other.route('**/api/auth/session', route => route.fulfill({ status: 503, body: '{}' }))
+  await other.evaluate(() => window.dispatchEvent(new Event('focus')))
+  await expect(other.getByRole('alert').filter({ hasText: '已保留当前输入' })).toBeVisible()
+  await expect(input).toHaveValue('operations private draft')
+  await other.unroute('**/api/auth/session')
+  await page.getByRole('button', { name: '退出登录' }).click()
+  await page.getByLabel('员工账号').fill('browser-employee')
+  await page.getByLabel('密码', { exact: true }).fill('browser-test-password-only')
+  await page.getByRole('button', { name: '登录', exact: true }).click()
+  await expect(page.getByText('browser-employee · employee')).toBeVisible()
+  await other.evaluate(() => window.dispatchEvent(new Event('focus')))
+  await expect(other.getByText('browser-employee · employee')).toBeVisible()
+  await expect(other.getByLabel('补充说明')).toHaveValue('')
+  expect(await other.evaluate(() => sessionStorage.getItem('helpdesk.pending-case'))).toBeNull()
+  await expect(other.locator('.nav-admin')).toHaveCount(0)
+  await other.close()
 })
 
 test('chat image-only submission, continuation, reload, private preview and download', async ({ page, browser }) => {
@@ -34,7 +81,7 @@ test('chat image-only submission, continuation, reload, private preview and down
   await stranger.close()
   await page.request.post('/api/test/revoke')
   await page.getByRole('button', { name: '重试预览' }).first().click()
-  await expect(page.getByText('预览不可用，请检查登录权限后重试。')).toBeVisible()
+  await expect(page.getByRole('button', { name: '登录', exact: true })).toBeVisible()
 })
 
 test('workbench retains upload retries, exposes conflict, accepts clearer supplement', async ({ page }) => {

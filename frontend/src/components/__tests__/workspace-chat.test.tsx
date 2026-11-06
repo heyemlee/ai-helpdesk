@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest'
 import { render, screen, within } from '@/test/render'
 import { MessageBubble } from '../MessageBubble'
 import { ScopeGuide } from '../ChatPanel'
-import { setStaffKey } from '@/api/client'
+import { setCsrfToken } from '@/api/client'
 import { applyChatResponse, restoreMessages, type ChatMessage } from '@/hooks/useChatStream'
 import type { ChatResponse, ConversationEntry, RoutingConfig, Ticket } from '@/api/types'
 
@@ -405,19 +405,19 @@ describe('请求失败', () => {
     render(<MessageBubble message={failed({ errorStatus: 401 })} />, { lang: 'en' })
     const alert = screen.getByRole('alert')
     expect(alert).toHaveTextContent('The reply could not be completed.')
-    expect(alert).toHaveTextContent('This server requires a staff access key. Add it under Admin & diagnostics → Overview → Connection.')
+    expect(alert).toHaveTextContent('Your employee session has expired. Sign in again to continue.')
     expect(alert).toHaveTextContent('401 Unauthorized: 缺少或错误的 X-API-Key')
     expect(within(alert).getByRole('link', { name: 'Open connection settings' })).toHaveAttribute('href', '#/admin')
   })
 
   it('带了钥匙还是 401：说钥匙被拒了，不再叫人"去填"', () => {
-    setStaffKey('not-the-right-key')
+    setCsrfToken('not-the-right-key')
     try {
       render(<MessageBubble message={failed({ errorStatus: 401 })} />, { lang: 'en' })
-      expect(screen.getByRole('alert')).toHaveTextContent('The server rejected the staff access key saved in this tab.')
+      expect(screen.getByRole('alert')).toHaveTextContent('Your employee session has expired. Sign in again to continue.')
       expect(screen.getByRole('link', { name: 'Open connection settings' })).toBeInTheDocument()
     } finally {
-      setStaffKey('')
+      setCsrfToken('')
     }
   })
 

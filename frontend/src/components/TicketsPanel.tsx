@@ -1,3 +1,4 @@
+import { usePermissions } from '@/auth/session'
 import { useEffect, useRef, useState } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -55,13 +56,14 @@ export function StatusChip({ status }: { status: string }) {
  */
 export function TicketsPanel({ base, ticketId }: { base: string; ticketId?: string }) {
   const { lang } = useT()
-  const [cases, setCases] = useState(false)
+  const { operations } = usePermissions()
+  const [cases, setCases] = useState(!operations)
   return <>
-    <div className="case-switch">
+    {operations && <div className="case-switch">
       <button className="btn btn-secondary" aria-pressed={cases} onClick={() => setCases(!cases)}>
         {cases ? (lang === 'en' ? 'Back to legacy tickets' : '查看历史工单') : (lang === 'en' ? 'Open Case workspace' : '进入跨消息工单')}
       </button>
-    </div>
+    </div>}
     {cases ? <div className="page scroll"><div className="page-inner"><CaseWorkbench base={base} ticketId={ticketId} /></div></div>
       : <LegacyTicketsPanel base={base} ticketId={ticketId} onAdopt={() => setCases(true)} />}
   </>

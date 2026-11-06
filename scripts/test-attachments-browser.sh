@@ -34,7 +34,7 @@ BASE_ENV=(env -i "HOME=$HOME" "PATH=$PATH" "TMPDIR=${TMPDIR:-/tmp}" LANG=en_US.U
 cd "$COPY/backend"
 "${BASE_ENV[@]}" ANTHROPIC_API_KEY=test-key ATTACHMENT_BROWSER_FIXTURE=1 \
   "TEST_POSTGRES_DSN=postgresql://test:test@127.0.0.1:$PG_PORT/test" "TEST_REDIS_URL=redis://127.0.0.1:$REDIS_PORT/0" \
-  "BROWSER_API_URL=http://127.0.0.1:$API_PORT" AI_HELPDESK_ATTACHMENT_STORAGE=local "AI_HELPDESK_ATTACHMENT_DIR=$COPY/objects" \
+  "BROWSER_API_URL=http://127.0.0.1:$API_PORT" "BROWSER_FRONTEND_URL=http://127.0.0.1:$FRONT_PORT" AI_HELPDESK_INSTANCE=staff AI_HELPDESK_STAFF_AUTH=local AI_HELPDESK_ATTACHMENT_STORAGE=local "AI_HELPDESK_ATTACHMENT_DIR=$COPY/objects" \
   "$PY" -m uvicorn browser_attachments_server:app --app-dir tests --host 127.0.0.1 --port "$API_PORT" > "$COPY/api.log" 2>&1 &
 API_PID=$!
 cd "$COPY/frontend"
@@ -48,7 +48,7 @@ PY
 "${BASE_ENV[@]}" "VITE_API_URL=http://127.0.0.1:$API_PORT" ./node_modules/.bin/vite --host 127.0.0.1 --port "$FRONT_PORT" > "$COPY/frontend.log" 2>&1 &
 FRONT_PID=$!
 for _ in $(seq 1 60); do
-  if curl -fsS "http://127.0.0.1:$FRONT_PORT" >/dev/null 2>&1 && curl -fsS "http://127.0.0.1:$API_PORT/health" >/dev/null 2>&1; then break; fi
+  if curl -fsS "http://127.0.0.1:$FRONT_PORT" >/dev/null 2>&1 && curl -fsS "http://127.0.0.1:$API_PORT/livez" >/dev/null 2>&1; then break; fi
   if ! kill -0 "$API_PID" 2>/dev/null; then cat "$COPY/api.log"; exit 1; fi
   sleep 1
 done

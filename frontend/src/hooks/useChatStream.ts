@@ -293,7 +293,7 @@ export function useChatStream(
           if (retrying) body = retrying.body
           else {
             const current = choice === 'new' ? null : await caseApi.get(settings.apiBaseUrl, choice)
-            body = { ...body, message_id: newId(), conv_id: current?.conv_id || settings.conversationId || newId(),
+            body = { ...body, message_id: newId(), conv_id: current?.conv_id || settings.conversationId || (await api.newConversation(settings.apiBaseUrl)).conv_id,
               attachment_ids: materials?.attachments.map(a => a.id) || [],
               ...(current ? { case_id: current.id, expected_version: current.version, expected_control_version: current.control_version }
                 : { new_case: true, issue_type: materials?.issueType || 'general' }) }

@@ -16,7 +16,7 @@ class MaterialWorkflow:
 
     async def review(self, run):
         ctx = run.case_context
-        actor = await self.attachments.actors.resolve(ctx["actor_id"], ctx["instance"])
+        actor = await self.attachments.actors.from_snapshot(ctx)
         reviews, queries = [], {}
         for material in ctx["snapshot"]["review_materials"]:
             attachment_id, sha = material["attachment_id"], material["sha256"]
