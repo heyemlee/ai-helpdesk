@@ -119,6 +119,24 @@ class DependentStepTest(_OfflinePipeline, unittest.TestCase):
             result = pipeline.run("SO-NOPE 这单的工单在哪个车间")
         return generated, result
 
+    @staticmethod
+    def _summary(result):
+        """和 /query、A2A 同一套汇总：execution_status、failed_steps 都从这里出。"""
+        from ai_sql_agent.api.result_summary import summarize_result
+        from ai_sql_agent.memory import ConversationMemoryContext, ShortTermContext
+        from ai_sql_agent.pipeline import RoutedSqlAgentResult
+        from ai_sql_agent.pipeline.routing import RouteDecision, RouteType
+
+        routed = RoutedSqlAgentResult(
+            decision=RouteDecision(route=RouteType.DATABASE_QUERY, confidence=1.0, reason="test"),
+            answer="",
+            memory_context=ConversationMemoryContext(
+                short_term=ShortTermContext(session_id="s", user_id="u")
+            ),
+            pipeline_result=result,
+        )
+        return summarize_result(routed)
+
     def test_step_using_an_empty_step_answers_no_rows_without_querying(self):
         generated, result = self._run([self.FIRST, self.USES_IT])
         self.assertNotIn("mes_db", generated)
@@ -130,6 +148,10 @@ class DependentStepTest(_OfflinePipeline, unittest.TestCase):
         self.assertIsNone(second.execution_result["error"])
         self.assertEqual(second.sql, "")
         self.assertIn("第 1 步查到 0 行", second.execution_result["held_reason"])
+        # 查过了、答案是没有：客服据实说没有记录，而不是「部分结果」
+        summary = self._summary(result)
+        self.assertEqual(summary.execution_status, "no_data")
+        self.assertEqual(summary.failed_steps, 0)
 
     def test_exclusion_step_is_held_and_not_reported_as_empty(self):
         """「排除上一步那些工程号」，上一步 0 行时正确答案是全部工单：不能说成没有。"""
@@ -138,6 +160,7 @@ class DependentStepTest(_OfflinePipeline, unittest.TestCase):
         second = result.step_logs[1]
         self.assertFalse(second.execution_result["success"])
         self.assertIn("全部记录", second.execution_result["error"])
+        self.assertEqual(self._summary(result).execution_status, "partial_success")
 
     def test_step_using_a_failed_step_is_held(self):
         generated, result = self._run(
@@ -155,6 +178,7 @@ class DependentStepTest(_OfflinePipeline, unittest.TestCase):
         second = result.step_logs[1]
         self.assertTrue(second.execution_result["success"])
         self.assertGreater(second.execution_result["row_count"], 0)
+        self.assertEqual(self._summary(result).execution_status, "success")
 
 class ReplayedHistoryIsGuardedTest(_OfflinePipeline, unittest.TestCase):
     """
