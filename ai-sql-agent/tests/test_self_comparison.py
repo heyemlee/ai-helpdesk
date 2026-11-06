@@ -162,6 +162,23 @@ class DependentStepTest(_OfflinePipeline, unittest.TestCase):
         self.assertIn("全部记录", second.execution_result["error"])
         self.assertEqual(self._summary(result).execution_status, "partial_success")
 
+    def test_unrecognised_or_annotating_wording_is_held_not_answered_empty(self):
+        """
+        说不清是不是「只取这些值」的，前一步 0 行时不能答「没有」：排除、标注的正确答案是
+        其余全部。认不出来就按没执行算（partial_success）。
+        """
+        for instruction in (
+            "先读取上一步结果中的job_no列表；再结合这些job_no处理工单；最后输出workshop",
+            "列出全部工单，并标出是否属于上一步的job_no；最后输出workshop",
+            "先读取上一步结果中的job_no列表；再过滤掉这些job_no的工单；最后输出workshop",
+        ):
+            step = (self.USES_IT[0], self.USES_IT[1], instruction, self.USES_IT[3])
+            generated, result = self._run([self.FIRST, step])
+            self.assertNotIn("mes_db", generated, instruction)
+            second = result.step_logs[1]
+            self.assertFalse(second.execution_result["success"], instruction)
+            self.assertEqual(self._summary(result).execution_status, "partial_success", instruction)
+
     def test_step_using_a_failed_step_is_held(self):
         generated, result = self._run(
             [self.FIRST, self.USES_IT], first_sql="SELECT job_no FROM no_such_table;"

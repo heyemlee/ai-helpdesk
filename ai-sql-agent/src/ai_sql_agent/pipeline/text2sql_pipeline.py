@@ -91,8 +91,17 @@ _MAX_BACKFILL_ROWS = 50
 # 规划里「排除前面那些记录」的说法（见 `_dependent_step_outcome`）。前面 0 行时，
 # 只看那些记录的答案是没有，排除那些记录的答案是其余全部，两者必须分开。
 _EXCLUSION_WORDS = re.compile(
-    r"排除|剔除|除去|去掉|不在|不属于|不包含|不含|之外|以外|未出现|没有出现|没出现|"
-    r"NOT\s+IN|NOT\s+EXISTS|EXCEPT",
+    r"排除|剔除|除去|去掉|去除|过滤掉|排掉|不在|不属于|不包含|不含|之外|以外|非上|"
+    r"未出现|没有出现|没出现|标出|标注|是否属于|是否在|NOT\s+IN|NOT\s+EXISTS|EXCEPT|LEFT\s+JOIN",
+    re.I,
+)
+
+# 规划明说「只取前面那些值」的说法：前面 0 行时只有这种步骤能直接答「没有」。
+# 认不出来的不算——默认是没执行，不是「没有记录」。
+_INCLUSION_WORDS = re.compile(
+    r"落在[^；;。]{0,20}(?:列表|范围|取值)内|在(?:该|这些|上述)[^；;。]{0,12}(?:列表|取值|范围)(?:之)?内|"
+    r"筛选(?:出)?(?:这些|该|上述|对应)|只(?:看|保留|取|查)(?:这些|该|上述)|属于(?:这些|该|上述)|"
+    r"\bIN\s*\(",
     re.I,
 )
 
@@ -568,10 +577,10 @@ class Text2SQLPipeline:
         只拦**真用到**前面结果的步骤（`_step_dependencies`）；不依赖前面的步骤照常跑
         （规则 3 也允许按库拆出彼此独立的步骤）。拦下时分三种（`_dependent_step_outcome`）：
 
-        - 依赖的步骤查到 0 行、这一步是「只看这些记录」：答案就是没有，记成执行成功、0 行
-          （契约 §4.6.1 的 no_data，客服会据实说没有记录）；
-        - 依赖的步骤查到 0 行、这一步是「排除这些记录」：答案是其余全部，没有取值写不出来，
-          记成没执行；
+        - 依赖的步骤查到 0 行、规划**明说**只取这些值（`_INCLUSION_WORDS`）：答案就是没有，
+          记成执行成功、0 行（契约 §4.6.1 的 no_data，客服会据实说没有记录）；
+        - 依赖的步骤查到 0 行、其它说法（排除、标注，或者认不出来）：答案可能是其余全部，
+          没有取值写不出来，记成没执行——默认按这一种，不把「其余全部」说成「没有」；
         - 依赖的步骤没查成：取值未知，记成没执行。
 
         后两种让整次查询成为 partial_success：只有成功的那几步能当依据。
@@ -647,23 +656,33 @@ class Text2SQLPipeline:
         if not failed and not empty:
             return None
 
-        instruction = f"{cot_step.operation_instruction or ''} {cot_step.output_target or ''}"
-        excluding = bool(_EXCLUSION_WORDS.search(instruction))
+        # 「答案就是没有」只在规划明说「只取这些值」时才成立；说法认不出来一律按没执行算
+        # （宁可报部分成功，也不把「其余全部」说成「没有记录」）。排除的说法优先：
+        # 「筛选不在这些 job_no 里的工单」两种词都有，按排除算
+        plan_text = " ".join(
+            str(getattr(cot_step, name, "") or "")
+            for name in ("processing_objects", "operation_instruction", "output_target")
+        )
+        keeps_only_those = (
+            not _EXCLUSION_WORDS.search(plan_text)
+            and bool(_INCLUSION_WORDS.search(cot_step.operation_instruction or ""))
+        )
         if failed:
             reason = f"第 {'、'.join(map(str, failed))} 步没有查成"
             message = f"{reason}，这一步要用它的取值，取值不知道，所以没有执行。"
             success = False
-        elif excluding:
-            reason = f"第 {'、'.join(map(str, empty))} 步查到 0 行"
-            message = (
-                f"{reason}。这一步是排除那些记录，没有可排除的，答案应是符合其它条件的全部记录；"
-                "没有取值写不出这个条件（只会被丢掉或者写成和字段自己比较），所以没有执行。"
-            )
-            success = False
-        else:
+        elif keeps_only_those:
             reason = f"第 {'、'.join(map(str, empty))} 步查到 0 行"
             message = ""
             success = True
+        else:
+            reason = f"第 {'、'.join(map(str, empty))} 步查到 0 行"
+            message = (
+                f"{reason}。这一步要用那些取值，但看不出是只取这些值，还是排除它们或只拿来标注："
+                "只取这些值的话答案是没有，排除或标注的话答案是符合其它条件的全部记录。"
+                "没有取值写不出这一步（条件只会被丢掉或者写成和字段自己比较），所以没有执行。"
+            )
+            success = False
 
         log_event(
             _logger,
