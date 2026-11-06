@@ -1,0 +1,41 @@
+{
+  "caller_changes_required": false,
+  "common_score_signature": "common_score(scenario, visible, corpus=None)",
+  "errors": 0,
+  "failed_tests": [],
+  "failures": 0,
+  "fixed_release_corpus_used_only_by_automated_tests": true,
+  "forbidden_real_answer_or_io_attempts": [],
+  "kind": "offline_common_text_grammar_validation",
+  "mode": "full",
+  "mount_checks": {
+    "attempts": 0,
+    "health": {
+      "healthy": true,
+      "provider_enabled": true,
+      "remaining_requests": 1
+    },
+    "ledger_writable": true,
+    "parent_readonly": true,
+    "receipts": 0,
+    "settings_readonly": true
+  },
+  "mount_network_mode": "none",
+  "new_harness_sha256": "68964a48f9d688038ab318471e4279a153655d42b0b53ddefa1d8e0113feb75e",
+  "new_helper_scope": "Subsequent separately attributed derived scoring or new runs only. Old execution and score identities stay fixed.",
+  "old_raw_answers_and_embedded_scores_modified": false,
+  "original_baseline_execution_helper_unchanged": "6584531bd1281e3b7e8df045262f1437b403f0ece3705b344bda73196495d674",
+  "prior_frozen_scoring_helper_unchanged": "a88b7e66cde037d8c68dc0f8f7cbd84a8eba6c5989791ee6188bc5aeff90cb1e",
+  "protected_code_sha256": {
+    "acceptance/oracle.py": "3999bd7e01c976ffd65b59999dd0d8fa53ff50b1fcb343f9f22f0bd006801ae1",
+    "acceptance/source_semantics.py": "d79a36c672a77d31f5787369fc7cf37bf1ce5c0155920c7df109db783d66a294"
+  },
+  "protected_code_unchanged_from_commit": "51e2e671f758d88c33b3ce7cf61ae4490f8a1bbe",
+  "provider_mode": "network-disabled mount regression with synthetic credentials",
+  "real_baseline_or_release_model_answers_read": false,
+  "shared_rules_for_both_versions": true,
+  "skips": 0,
+  "subtests": 420,
+  "tests": 96,
+  "validation_scope": "Fictional grammar and fixed offline acceptance regression. No new supplier run, product quality or deployment claim."
+}

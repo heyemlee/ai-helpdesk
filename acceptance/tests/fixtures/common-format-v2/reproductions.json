@@ -1,0 +1,1463 @@
+{
+  "schema_version": 2,
+  "artifact_kind": "fictional_common_scorer_reproductions",
+  "scope": "Only fictional grammar families, independently specified source rows/query metadata, expectations and negative controls. No original evaluation IDs, responses, business answers, amounts, order numbers or dates are copied.",
+  "usage_boundary": [
+    "Correct factual content must not be called definitely wrong solely for unsupported presentation syntax.",
+    "This is not authorization to turn all unparsed claims into passes. Unknown semantics/provenance stays review_required.",
+    "Continue checking every numeric assertion, unit, date role, entity relation, unknown row/column and final answer completeness.",
+    "Do not modify product answers, gold, question-specific allowances or quality thresholds using these cases."
+  ],
+  "expected_result_definition": {
+    "semantic_fact_correct": "Independent full-content judgment using the fictional scenario, source rows and query evidence supplied in the same case. This is not an automatically granted production/evaluation score.",
+    "observed_frozen_common_score": "Actual output of unchanged frozen helper code on the scenario, visible and corpus only. Query evidence is supplied for semantic validation; the text-only scorer API does not receive it.",
+    "overrides": "For a negative control, scenario_override/corpus_override/query_evidence_override replace the corresponding family field in full."
+  },
+  "family_count": 12,
+  "positive_variant_count": 23,
+  "negative_control_count": 31,
+  "families": [
+    {
+      "id": "v2_ordered_list",
+      "grammar_family": "编号作为列表标记而非业务数量",
+      "scenario": {
+        "group": "orders",
+        "truth": {
+          "answerable": true,
+          "allowed_entities": [
+            "SO-2026-Z88001"
+          ],
+          "facts": [
+            {
+              "entity": "SO-2026-Z88001",
+              "field": "contract_amount",
+              "value": 328.4,
+              "unit": "USD",
+              "source": {
+                "database": "erp_db",
+                "table": "orders"
+              }
+            },
+            {
+              "entity": "SO-2026-Z88001",
+              "field": "order_status",
+              "value": "待发货",
+              "unit": null,
+              "source": {
+                "database": "erp_db",
+                "table": "orders"
+              }
+            }
+          ]
+        }
+      },
+      "corpus": {
+        "records": {
+          "erp_db": {
+            "orders": [
+              {
+                "order_no": "SO-2026-Z88001",
+                "contract_amount": 328.4,
+                "order_status": "待发货"
+              }
+            ]
+          }
+        }
+      },
+      "query_evidence": [],
+      "plain_reference": {
+        "visible": "订单 SO-2026-Z88001\n合同金额：328.40 USD\n订单状态：待发货"
+      },
+      "positive_variants": [
+        {
+          "name": "arabic_dot",
+          "visible": "订单 SO-2026-Z88001\n1. 合同金额：328.40 USD\n2. 订单状态：待发货",
+          "semantic_fact_correct": true,
+          "reason": "仅增加行首序号。",
+          "automated_acceptance_boundary": "Do not declare an incorrect business fact solely because this representation is unparsed. Source-proven scalar claims may match the plain reference; unresolved meaning or unverified query-time provenance must remain review_required, not automatic pass."
+        },
+        {
+          "name": "parenthesized_ordinal",
+          "visible": "订单 SO-2026-Z88001\n(1) 合同金额：328.40 USD\n(2) 订单状态：待发货",
+          "semantic_fact_correct": true,
+          "reason": "圆括号包围的是行首编号，不是金额注释。",
+          "automated_acceptance_boundary": "Do not declare an incorrect business fact solely because this representation is unparsed. Source-proven scalar claims may match the plain reference; unresolved meaning or unverified query-time provenance must remain review_required, not automatic pass."
+        }
+      ],
+      "negative_controls": [
+        {
+          "name": "wrong_amount_under_ordinal",
+          "visible": "订单 SO-2026-Z88001\n1. 合同金额：329.40 USD\n2. 订单状态：待发货",
+          "semantic_fact_correct": false,
+          "reason": "金额与来源不同。",
+          "automated_acceptance_boundary": "Must not auto-pass. A recognized source contradiction or required-fact omission is incorrect; unresolved syntax remains reviewable and must receive the stated failing semantic judgment, never be deleted to pass."
+        },
+        {
+          "name": "extra_charge_under_ordinal",
+          "visible": "订单 SO-2026-Z88001\n1. 合同金额：328.40 USD\n2. 订单状态：待发货\n3. 加收款：78.30 USD",
+          "semantic_fact_correct": false,
+          "reason": "第三项是无来源额外收费，不是可删除的列表元数据。",
+          "automated_acceptance_boundary": "Must not auto-pass. A recognized source contradiction or required-fact omission is incorrect; unresolved syntax remains reviewable and must receive the stated failing semantic judgment, never be deleted to pass."
+        }
+      ],
+      "expected_handling": "只能将满足列表位置和边界的数字识别为序号；编号后的业务数字、未知项目和额外行必须继续校验。",
+      "evidence_role": "requested_general_grammar_extension"
+    },
+    {
+      "id": "v2_inline_query_metadata",
+      "grammar_family": "查询元数据与普通说明同句或有自然前缀",
+      "scenario": {
+        "group": "orders",
+        "truth": {
+          "answerable": true,
+          "allowed_entities": [
+            "SO-2026-Z88001"
+          ],
+          "facts": [
+            {
+              "entity": "SO-2026-Z88001",
+              "field": "order_status",
+              "value": "待发货",
+              "unit": null,
+              "source": {
+                "database": "erp_db",
+                "table": "orders"
+              }
+            }
+          ]
+        }
+      },
+      "corpus": {
+        "records": {
+          "erp_db": {
+            "orders": [
+              {
+                "order_no": "SO-2026-Z88001",
+                "order_status": "待发货"
+              }
+            ]
+          }
+        }
+      },
+      "query_evidence": [
+        {
+          "database": "erp_db",
+          "table": "orders",
+          "query_time": "2028-04-12T08:17:26Z",
+          "columns": [
+            "order_no",
+            "order_status"
+          ],
+          "row_count": 1,
+          "rows": [
+            {
+              "order_no": "SO-2026-Z88001",
+              "order_status": "待发货"
+            }
+          ],
+          "fixture_only": true
+        }
+      ],
+      "plain_reference": {
+        "visible": "订单 SO-2026-Z88001\n订单状态：待发货"
+      },
+      "positive_variants": [
+        {
+          "name": "time_then_sentence",
+          "visible": "订单 SO-2026-Z88001\n订单状态：待发货\n查询时间：2028-04-12 08:17 UTC。这里显示订单记录。",
+          "semantic_fact_correct": true,
+          "reason": "查询时间匹配独立虚构查询证据；后一句不改变状态。",
+          "automated_acceptance_boundary": "Do not declare an incorrect business fact solely because this representation is unparsed. Source-proven scalar claims may match the plain reference; unresolved meaning or unverified query-time provenance must remain review_required, not automatic pass."
+        },
+        {
+          "name": "prefixed_time",
+          "visible": "订单 SO-2026-Z88001\n订单状态：待发货\n数据查询时间：2028-04-12 08:17 UTC。",
+          "semantic_fact_correct": true,
+          "reason": "数据查询时间为查询元数据标签的自然变体。",
+          "automated_acceptance_boundary": "Do not declare an incorrect business fact solely because this representation is unparsed. Source-proven scalar claims may match the plain reference; unresolved meaning or unverified query-time provenance must remain review_required, not automatic pass."
+        },
+        {
+          "name": "time_inside_sentence",
+          "visible": "订单 SO-2026-Z88001\n订单状态：待发货\n本条结果于2028-04-12 08:17 UTC查询取得。",
+          "semantic_fact_correct": true,
+          "reason": "日期时间明确限定查询行为，有虚构原始事件支持。",
+          "automated_acceptance_boundary": "Do not declare an incorrect business fact solely because this representation is unparsed. Source-proven scalar claims may match the plain reference; unresolved meaning or unverified query-time provenance must remain review_required, not automatic pass."
+        },
+        {
+          "name": "asof_day_in_prose",
+          "visible": "订单 SO-2026-Z88001\n订单状态：待发货\n资料来自截至2028年4月12日的查询。",
+          "semantic_fact_correct": true,
+          "reason": "截至日期明确修饰查询，与独立查询事件同日。",
+          "automated_acceptance_boundary": "Do not declare an incorrect business fact solely because this representation is unparsed. Source-proven scalar claims may match the plain reference; unresolved meaning or unverified query-time provenance must remain review_required, not automatic pass."
+        }
+      ],
+      "negative_controls": [
+        {
+          "name": "metadata_followed_by_business_number",
+          "visible": "订单 SO-2026-Z88001\n订单状态：待发货\n查询时间：2028-04-12 08:17 UTC。加收款：78.30 USD。",
+          "semantic_fact_correct": false,
+          "reason": "后半句是新增无来源业务金额，不能随整行元数据一起删掉。",
+          "automated_acceptance_boundary": "Must not auto-pass. A recognized source contradiction or required-fact omission is incorrect; unresolved syntax remains reviewable and must receive the stated failing semantic judgment, never be deleted to pass."
+        },
+        {
+          "name": "wrong_query_day",
+          "visible": "订单 SO-2026-Z88001\n订单状态：待发货\n数据查询时间：2028-04-13 08:17 UTC。",
+          "semantic_fact_correct": false,
+          "reason": "所称查询日与独立虚构查询证据相差一天。",
+          "automated_acceptance_boundary": "Must not auto-pass. A recognized source contradiction or required-fact omission is incorrect; unresolved syntax remains reviewable and must receive the stated failing semantic judgment, never be deleted to pass."
+        }
+      ],
+      "expected_handling": "分句识别查询时点并保留剩余断言；仅靠文本无法证明查询来源时应待审，不因日期数字未绑定就当错金额/数量。",
+      "evidence_role": "generalized_format_or_association_family"
+    },
+    {
+      "id": "v2_localized_query_time",
+      "grammar_family": "中文日期空格、连接词与括号时区组合",
+      "scenario": {
+        "group": "orders",
+        "truth": {
+          "answerable": true,
+          "allowed_entities": [
+            "SO-2026-Z88001"
+          ],
+          "facts": [
+            {
+              "entity": "SO-2026-Z88001",
+              "field": "order_status",
+              "value": "待发货",
+              "unit": null,
+              "source": {
+                "database": "erp_db",
+                "table": "orders"
+              }
+            }
+          ]
+        }
+      },
+      "corpus": {
+        "records": {
+          "erp_db": {
+            "orders": [
+              {
+                "order_no": "SO-2026-Z88001",
+                "order_status": "待发货"
+              }
+            ]
+          }
+        }
+      },
+      "query_evidence": [
+        {
+          "database": "erp_db",
+          "table": "orders",
+          "query_time": "2028-04-12T08:17:26Z",
+          "columns": [
+            "order_no",
+            "order_status"
+          ],
+          "row_count": 1,
+          "rows": [
+            {
+              "order_no": "SO-2026-Z88001",
+              "order_status": "待发货"
+            }
+          ],
+          "fixture_only": true
+        }
+      ],
+      "plain_reference": {
+        "visible": "订单 SO-2026-Z88001\n订单状态：待发货"
+      },
+      "positive_variants": [
+        {
+          "name": "spaced_date_and_fullwidth_zone",
+          "visible": "订单 SO-2026-Z88001\n订单状态：待发货\n查询时间：2028 年 4 月 12 日 08:17（UTC）。",
+          "semantic_fact_correct": true,
+          "reason": "空格与全角括号不改变日期、时区。",
+          "automated_acceptance_boundary": "Do not declare an incorrect business fact solely because this representation is unparsed. Source-proven scalar claims may match the plain reference; unresolved meaning or unverified query-time provenance must remain review_required, not automatic pass."
+        },
+        {
+          "name": "copular_time_label",
+          "visible": "订单 SO-2026-Z88001\n订单状态：待发货\n查询时间为2028 年 4 月 12 日。",
+          "semantic_fact_correct": true,
+          "reason": "为连接标签与日期，仍是查询元数据。",
+          "automated_acceptance_boundary": "Do not declare an incorrect business fact solely because this representation is unparsed. Source-proven scalar claims may match the plain reference; unresolved meaning or unverified query-time provenance must remain review_required, not automatic pass."
+        }
+      ],
+      "negative_controls": [
+        {
+          "name": "invalid_calendar_date",
+          "visible": "订单 SO-2026-Z88001\n订单状态：待发货\n查询时间：2028 年 2 月 30 日 08:17（UTC）。",
+          "semantic_fact_correct": false,
+          "reason": "不存在的日历日期，不能通过格式归一化接受。",
+          "automated_acceptance_boundary": "Must not auto-pass. A recognized source contradiction or required-fact omission is incorrect; unresolved syntax remains reviewable and must receive the stated failing semantic judgment, never be deleted to pass."
+        },
+        {
+          "name": "wrong_timezone",
+          "visible": "订单 SO-2026-Z88001\n订单状态：待发货\n查询时间：2028 年 4 月 12 日 08:17（UTC+02:00）。",
+          "semantic_fact_correct": false,
+          "reason": "来源为08:17Z，同一表面时间改成+02:00后不是同一时点。",
+          "automated_acceptance_boundary": "Must not auto-pass. A recognized source contradiction or required-fact omission is incorrect; unresolved syntax remains reviewable and must receive the stated failing semantic judgment, never be deleted to pass."
+        }
+      ],
+      "expected_handling": "归一化排版须保留并验证年月日、时分及时区；来源不够时保留待审，不能默认时间都正确。",
+      "evidence_role": "generalized_format_or_association_family"
+    },
+    {
+      "id": "v2_parenthetical_status",
+      "grammar_family": "状态值后括号中的来源或查询时点",
+      "scenario": {
+        "group": "orders",
+        "truth": {
+          "answerable": true,
+          "allowed_entities": [
+            "SO-2026-Z88001"
+          ],
+          "facts": [
+            {
+              "entity": "SO-2026-Z88001",
+              "field": "delivery_date",
+              "value": "2028-04-17",
+              "unit": null,
+              "source": {
+                "database": "erp_db",
+                "table": "orders"
+              }
+            },
+            {
+              "entity": "SO-2026-Z88001",
+              "field": "delivery_status",
+              "value": "配送中",
+              "unit": null,
+              "source": {
+                "database": "svc_db",
+                "table": "delivery"
+              }
+            }
+          ]
+        }
+      },
+      "corpus": {
+        "records": {
+          "erp_db": {
+            "orders": [
+              {
+                "order_no": "SO-2026-Z88001",
+                "delivery_date": "2028-04-17"
+              }
+            ]
+          },
+          "svc_db": {
+            "delivery": [
+              {
+                "order_no": "SO-2026-Z88001",
+                "delivery_status": "配送中",
+                "delivered_date": null
+              }
+            ]
+          }
+        }
+      },
+      "query_evidence": [
+        {
+          "database": "erp_db",
+          "table": "orders",
+          "query_time": "2028-04-12T08:17:26Z",
+          "columns": [
+            "order_no",
+            "delivery_date"
+          ],
+          "row_count": 1,
+          "rows": [
+            {
+              "order_no": "SO-2026-Z88001",
+              "delivery_date": "2028-04-17"
+            }
+          ],
+          "fixture_only": true
+        },
+        {
+          "database": "svc_db",
+          "table": "delivery",
+          "query_time": "2028-04-12T08:17:26Z",
+          "columns": [
+            "order_no",
+            "delivery_status",
+            "delivered_date"
+          ],
+          "row_count": 1,
+          "rows": [
+            {
+              "order_no": "SO-2026-Z88001",
+              "delivery_status": "配送中",
+              "delivered_date": null
+            }
+          ],
+          "fixture_only": true
+        }
+      ],
+      "plain_reference": {
+        "visible": "订单 SO-2026-Z88001\n约定交付日期：2028-04-17\n配送状态：配送中"
+      },
+      "positive_variants": [
+        {
+          "name": "status_with_query_date",
+          "visible": "订单 SO-2026-Z88001\n约定交付日期：2028-04-17\n配送状态：配送中（查询时点：2028-04-12）。",
+          "semantic_fact_correct": true,
+          "reason": "业务状态与括号内查询日各自有来源。",
+          "automated_acceptance_boundary": "Do not declare an incorrect business fact solely because this representation is unparsed. Source-proven scalar claims may match the plain reference; unresolved meaning or unverified query-time provenance must remain review_required, not automatic pass."
+        },
+        {
+          "name": "status_with_source_note",
+          "visible": "订单 SO-2026-Z88001\n约定交付日期：2028-04-17\n配送状态：配送中（配送记录）。",
+          "semantic_fact_correct": true,
+          "reason": "括注只说明字段来源。",
+          "automated_acceptance_boundary": "Do not declare an incorrect business fact solely because this representation is unparsed. Source-proven scalar claims may match the plain reference; unresolved meaning or unverified query-time provenance must remain review_required, not automatic pass."
+        }
+      ],
+      "negative_controls": [
+        {
+          "name": "wrong_status_before_parenthesis",
+          "visible": "订单 SO-2026-Z88001\n约定交付日期：2028-04-17\n配送状态：已送达（查询时点：2028-04-12）。",
+          "semantic_fact_correct": false,
+          "reason": "主状态与来源配送中相反。",
+          "automated_acceptance_boundary": "Must not auto-pass. A recognized source contradiction or required-fact omission is incorrect; unresolved syntax remains reviewable and must receive the stated failing semantic judgment, never be deleted to pass."
+        },
+        {
+          "name": "false_delivery_hidden_in_parenthesis",
+          "visible": "订单 SO-2026-Z88001\n约定交付日期：2028-04-17\n配送状态：配送中（实际送达日期：2028-04-09）。",
+          "semantic_fact_correct": false,
+          "reason": "括号内新增了与delivered_date=null冲突的实际日期，不能整体剥掉括注。",
+          "automated_acceptance_boundary": "Must not auto-pass. A recognized source contradiction or required-fact omission is incorrect; unresolved syntax remains reviewable and must receive the stated failing semantic judgment, never be deleted to pass."
+        }
+      ],
+      "expected_handling": "将值与限定语分开但不丢掉限定语内容；括号中可能含独立业务断言，必须继续核对。",
+      "evidence_role": "generalized_format_or_association_family"
+    },
+    {
+      "id": "v2_parenthetical_amount",
+      "grammar_family": "金额、币种与紧随其后的来源括注",
+      "scenario": {
+        "group": "orders",
+        "truth": {
+          "answerable": true,
+          "allowed_entities": [
+            "SO-2026-Z88001"
+          ],
+          "facts": [
+            {
+              "entity": "SO-2026-Z88001",
+              "field": "contract_amount",
+              "value": 328.4,
+              "unit": "USD",
+              "source": {
+                "database": "erp_db",
+                "table": "orders"
+              }
+            },
+            {
+              "entity": "SO-2026-Z88001",
+              "field": "order_status",
+              "value": "待发货",
+              "unit": null,
+              "source": {
+                "database": "erp_db",
+                "table": "orders"
+              }
+            }
+          ]
+        }
+      },
+      "corpus": {
+        "records": {
+          "erp_db": {
+            "orders": [
+              {
+                "order_no": "SO-2026-Z88001",
+                "contract_amount": 328.4,
+                "order_status": "待发货"
+              }
+            ]
+          }
+        }
+      },
+      "query_evidence": [],
+      "plain_reference": {
+        "visible": "订单 SO-2026-Z88001\n合同金额：328.40 USD\n订单状态：待发货"
+      },
+      "positive_variants": [
+        {
+          "name": "amount_source_annotation",
+          "visible": "订单 SO-2026-Z88001\n合同金额：328.40 USD（订单记录）\n订单状态：待发货",
+          "semantic_fact_correct": true,
+          "reason": "仅在带币种金额后补充来源说明。",
+          "automated_acceptance_boundary": "Do not declare an incorrect business fact solely because this representation is unparsed. Source-proven scalar claims may match the plain reference; unresolved meaning or unverified query-time provenance must remain review_required, not automatic pass."
+        }
+      ],
+      "negative_controls": [
+        {
+          "name": "wrong_amount_with_annotation",
+          "visible": "订单 SO-2026-Z88001\n合同金额：329.40 USD（订单记录）\n订单状态：待发货",
+          "semantic_fact_correct": false,
+          "reason": "金额错误仍须保留。",
+          "automated_acceptance_boundary": "Must not auto-pass. A recognized source contradiction or required-fact omission is incorrect; unresolved syntax remains reviewable and must receive the stated failing semantic judgment, never be deleted to pass."
+        },
+        {
+          "name": "wrong_currency_with_annotation",
+          "visible": "订单 SO-2026-Z88001\n合同金额：328.40 CNY（订单记录）\n订单状态：待发货",
+          "semantic_fact_correct": false,
+          "reason": "CNY不能作为USD的格式变体。",
+          "automated_acceptance_boundary": "Must not auto-pass. A recognized source contradiction or required-fact omission is incorrect; unresolved syntax remains reviewable and must receive the stated failing semantic judgment, never be deleted to pass."
+        },
+        {
+          "name": "extra_charge_in_parenthesis",
+          "visible": "订单 SO-2026-Z88001\n合同金额：328.40 USD（另加78.30 USD）\n订单状态：待发货",
+          "semantic_fact_correct": false,
+          "reason": "括号中新增费用没有来源。",
+          "automated_acceptance_boundary": "Must not auto-pass. A recognized source contradiction or required-fact omission is incorrect; unresolved syntax remains reviewable and must receive the stated failing semantic judgment, never be deleted to pass."
+        }
+      ],
+      "expected_handling": "金额数字和显式币种须与来源比较；括注只说明来源时不应改变数值，新增费用不得删除。",
+      "evidence_role": "requested_general_grammar_extension"
+    },
+    {
+      "id": "v2_parenthetical_date",
+      "grammar_family": "中文日期与计划性质括注",
+      "scenario": {
+        "group": "orders",
+        "truth": {
+          "answerable": true,
+          "allowed_entities": [
+            "SO-2026-Z88001"
+          ],
+          "facts": [
+            {
+              "entity": "SO-2026-Z88001",
+              "field": "delivery_date",
+              "value": "2028-04-17",
+              "unit": null,
+              "source": {
+                "database": "erp_db",
+                "table": "orders"
+              }
+            },
+            {
+              "entity": "SO-2026-Z88001",
+              "field": "delivery_status",
+              "value": "配送中",
+              "unit": null,
+              "source": {
+                "database": "svc_db",
+                "table": "delivery"
+              }
+            }
+          ]
+        }
+      },
+      "corpus": {
+        "records": {
+          "erp_db": {
+            "orders": [
+              {
+                "order_no": "SO-2026-Z88001",
+                "delivery_date": "2028-04-17"
+              }
+            ]
+          },
+          "svc_db": {
+            "delivery": [
+              {
+                "order_no": "SO-2026-Z88001",
+                "delivery_status": "配送中",
+                "delivered_date": null
+              }
+            ]
+          }
+        }
+      },
+      "query_evidence": [
+        {
+          "database": "erp_db",
+          "table": "orders",
+          "query_time": "2028-04-12T08:17:26Z",
+          "columns": [
+            "order_no",
+            "delivery_date"
+          ],
+          "row_count": 1,
+          "rows": [
+            {
+              "order_no": "SO-2026-Z88001",
+              "delivery_date": "2028-04-17"
+            }
+          ],
+          "fixture_only": true
+        },
+        {
+          "database": "svc_db",
+          "table": "delivery",
+          "query_time": "2028-04-12T08:17:26Z",
+          "columns": [
+            "order_no",
+            "delivery_status",
+            "delivered_date"
+          ],
+          "row_count": 1,
+          "rows": [
+            {
+              "order_no": "SO-2026-Z88001",
+              "delivery_status": "配送中",
+              "delivered_date": null
+            }
+          ],
+          "fixture_only": true
+        }
+      ],
+      "plain_reference": {
+        "visible": "订单 SO-2026-Z88001\n约定交付日期：2028-04-17\n配送状态：配送中"
+      },
+      "positive_variants": [
+        {
+          "name": "planned_date_annotation",
+          "visible": "订单 SO-2026-Z88001\n约定交付日期：2028年4月17日（计划）\n配送状态：配送中",
+          "semantic_fact_correct": true,
+          "reason": "同一计划日期带类型说明。",
+          "automated_acceptance_boundary": "Do not declare an incorrect business fact solely because this representation is unparsed. Source-proven scalar claims may match the plain reference; unresolved meaning or unverified query-time provenance must remain review_required, not automatic pass."
+        },
+        {
+          "name": "same_date_repeated_in_type_explanation",
+          "visible": "订单 SO-2026-Z88001\n约定交付日期：2028-04-17\n配送状态：配送中\n4月17日是上述计划日期，不是实际送达日期。",
+          "semantic_fact_correct": true,
+          "reason": "明确回指同段已给出的完整计划日期并否定实际送达含义，不是另造日期。",
+          "automated_acceptance_boundary": "Do not declare an incorrect business fact solely because this representation is unparsed. Source-proven scalar claims may match the plain reference; unresolved meaning or unverified query-time provenance must remain review_required, not automatic pass."
+        }
+      ],
+      "negative_controls": [
+        {
+          "name": "wrong_day_with_annotation",
+          "visible": "订单 SO-2026-Z88001\n约定交付日期：2028年4月18日（计划）\n配送状态：配送中",
+          "semantic_fact_correct": false,
+          "reason": "计划日期数值改变一天。",
+          "automated_acceptance_boundary": "Must not auto-pass. A recognized source contradiction or required-fact omission is incorrect; unresolved syntax remains reviewable and must receive the stated failing semantic judgment, never be deleted to pass."
+        },
+        {
+          "name": "plan_relabelled_actual",
+          "visible": "订单 SO-2026-Z88001\n实际送达日期：2028年4月17日（已送达）\n配送状态：配送中",
+          "semantic_fact_correct": false,
+          "reason": "把计划日期当成实际日期且遗漏所问计划字段，源实际日期为空。",
+          "automated_acceptance_boundary": "Must not auto-pass. A recognized source contradiction or required-fact omission is incorrect; unresolved syntax remains reviewable and must receive the stated failing semantic judgment, never be deleted to pass."
+        },
+        {
+          "name": "contradictory_date_in_explanation",
+          "visible": "订单 SO-2026-Z88001\n约定交付日期：2028-04-17\n配送状态：配送中\n4月18日是上述计划日期。",
+          "semantic_fact_correct": false,
+          "reason": "解释句回指了与正文和来源不同的日，不可把所有日期复述都删除。",
+          "automated_acceptance_boundary": "Must not auto-pass. A recognized source contradiction or required-fact omission is incorrect; unresolved syntax remains reviewable and must receive the stated failing semantic judgment, never be deleted to pass."
+        }
+      ],
+      "expected_handling": "括注不能让计划与实际日期互换；日历值、字段角色、必要字段完整性都应保留。",
+      "evidence_role": "generalized_format_or_association_family"
+    },
+    {
+      "id": "v2_contextual_parts_table",
+      "grammar_family": "中文表头需根据同表来源绑定字段",
+      "scenario": {
+        "group": "orders",
+        "truth": {
+          "answerable": true,
+          "allowed_entities": [
+            "SO-2026-Z88001"
+          ],
+          "facts": [
+            {
+              "entity": "SO-2026-Z88001",
+              "field": "part_status",
+              "value": "处理中",
+              "unit": null,
+              "source": {
+                "database": "svc_db",
+                "table": "replacement_part"
+              }
+            },
+            {
+              "entity": "SO-2026-Z88001",
+              "field": "quantity",
+              "value": 7,
+              "unit": "pcs",
+              "source": {
+                "database": "svc_db",
+                "table": "replacement_part"
+              }
+            }
+          ]
+        }
+      },
+      "corpus": {
+        "records": {
+          "svc_db": {
+            "replacement_part": [
+              {
+                "order_no": "SO-2026-Z88001",
+                "part_name": "Hinge BX-88001-24",
+                "part_status": "处理中",
+                "quantity": 7
+              },
+              {
+                "order_no": "SO-2026-Z88002",
+                "part_name": "Hinge BX-88002-24",
+                "part_status": "处理中",
+                "quantity": 7
+              }
+            ]
+          },
+          "erp_db": {
+            "order_item": [
+              {
+                "order_no": "SO-2026-Z88001",
+                "quantity": 19
+              }
+            ]
+          }
+        }
+      },
+      "query_evidence": [
+        {
+          "database": "svc_db",
+          "table": "replacement_part",
+          "query_time": "2028-04-12T08:17:26Z",
+          "columns": [
+            "part_name",
+            "part_status",
+            "quantity"
+          ],
+          "row_count": 1,
+          "rows": [
+            {
+              "part_name": "Hinge BX-88001-24",
+              "part_status": "处理中",
+              "quantity": 7
+            }
+          ],
+          "fixture_only": true
+        }
+      ],
+      "plain_reference": {
+        "visible": "订单 SO-2026-Z88001\n补件状态：处理中\n补件数量：7 件"
+      },
+      "positive_variants": [
+        {
+          "name": "current_status_and_generic_quantity",
+          "visible": "订单 SO-2026-Z88001\n| 补件名称 | 当前状态 | 数量 |\n|---|---|---:|\n| Hinge BX-88001-24 | 处理中 | 7 件 |",
+          "semantic_fact_correct": true,
+          "reason": "同表配件、状态、带单位数量指向replacement_part；order_item中的19不是这里的数量。",
+          "automated_acceptance_boundary": "Do not declare an incorrect business fact solely because this representation is unparsed. Source-proven scalar claims may match the plain reference; unresolved meaning or unverified query-time provenance must remain review_required, not automatic pass."
+        },
+        {
+          "name": "natural_chinese_headers",
+          "visible": "订单 SO-2026-Z88001\n| 部件 | 申请状态 | 件数 |\n|---|---|---:|\n| Hinge BX-88001-24 | 处理中 | 7 个 |",
+          "semantic_fact_correct": true,
+          "reason": "自然中文表头与同单补件行语义明确；不认识的表头可以待审，不能因留下数字直接判错数。",
+          "automated_acceptance_boundary": "Do not declare an incorrect business fact solely because this representation is unparsed. Source-proven scalar claims may match the plain reference; unresolved meaning or unverified query-time provenance must remain review_required, not automatic pass."
+        }
+      ],
+      "negative_controls": [
+        {
+          "name": "wrong_table_quantity",
+          "visible": "订单 SO-2026-Z88001\n| 补件名称 | 当前状态 | 数量 |\n|---|---|---:|\n| Hinge BX-88001-24 | 处理中 | 8 件 |",
+          "semantic_fact_correct": false,
+          "reason": "同表补件数量与来源不同。",
+          "automated_acceptance_boundary": "Must not auto-pass. A recognized source contradiction or required-fact omission is incorrect; unresolved syntax remains reviewable and must receive the stated failing semantic judgment, never be deleted to pass."
+        },
+        {
+          "name": "unit_missing_everywhere",
+          "visible": "订单 SO-2026-Z88001\n| 补件名称 | 当前状态 | 数量 |\n|---|---|---:|\n| Hinge BX-88001-24 | 处理中 | 7 |",
+          "semantic_fact_correct": false,
+          "reason": "整段未给件/个/pcs，不能由配件类型猜单位。",
+          "automated_acceptance_boundary": "Must not auto-pass. A recognized source contradiction or required-fact omission is incorrect; unresolved syntax remains reviewable and must receive the stated failing semantic judgment, never be deleted to pass."
+        },
+        {
+          "name": "unproved_extra_column",
+          "visible": "订单 SO-2026-Z88001\n| 补件名称 | 当前状态 | 数量 | 补收款 |\n|---|---|---:|---:|\n| Hinge BX-88001-24 | 处理中 | 7 件 | 78.30 USD |",
+          "semantic_fact_correct": false,
+          "reason": "额外列是无来源费用，不能为识别已知列而丢弃。",
+          "automated_acceptance_boundary": "Must not auto-pass. A recognized source contradiction or required-fact omission is incorrect; unresolved syntax remains reviewable and must receive the stated failing semantic judgment, never be deleted to pass."
+        }
+      ],
+      "expected_handling": "字段绑定需同时考虑表头、表格所在业务范围和独立源表，不能将当前状态无条件映射为某一种状态，也不能丢弃未知列。",
+      "evidence_role": "generalized_format_or_association_family"
+    },
+    {
+      "id": "v2_source_linked_part",
+      "grammar_family": "来源行证明的配件关联不依赖唯一展示标签",
+      "scenario": {
+        "group": "orders",
+        "truth": {
+          "answerable": true,
+          "allowed_entities": [
+            "SO-2026-Z88001"
+          ],
+          "facts": [
+            {
+              "entity": "SO-2026-Z88001",
+              "field": "part_status",
+              "value": "处理中",
+              "unit": null,
+              "source": {
+                "database": "svc_db",
+                "table": "replacement_part"
+              }
+            },
+            {
+              "entity": "SO-2026-Z88001",
+              "field": "quantity",
+              "value": 7,
+              "unit": "pcs",
+              "source": {
+                "database": "svc_db",
+                "table": "replacement_part"
+              }
+            }
+          ]
+        }
+      },
+      "corpus": {
+        "records": {
+          "svc_db": {
+            "replacement_part": [
+              {
+                "order_no": "SO-2026-Z88001",
+                "part_name": "Hinge BX-88001-24",
+                "part_status": "处理中",
+                "quantity": 7
+              },
+              {
+                "order_no": "SO-2026-Z88002",
+                "part_name": "Hinge BX-88002-24",
+                "part_status": "处理中",
+                "quantity": 7
+              }
+            ]
+          },
+          "erp_db": {
+            "order_item": [
+              {
+                "order_no": "SO-2026-Z88001",
+                "quantity": 19
+              }
+            ]
+          }
+        }
+      },
+      "query_evidence": [
+        {
+          "database": "svc_db",
+          "table": "replacement_part",
+          "query_time": "2028-04-12T08:17:26Z",
+          "columns": [
+            "part_name",
+            "part_status",
+            "quantity"
+          ],
+          "row_count": 1,
+          "rows": [
+            {
+              "part_name": "Hinge BX-88001-24",
+              "part_status": "处理中",
+              "quantity": 7
+            }
+          ],
+          "fixture_only": true
+        }
+      ],
+      "plain_reference": {
+        "visible": "订单 SO-2026-Z88001\n补件状态：处理中\n补件数量：7 件"
+      },
+      "positive_variants": [
+        {
+          "name": "part_name_label",
+          "visible": "订单 SO-2026-Z88001\n补件名称：Hinge BX-88001-24\n补件状态：处理中\n补件数量：7 件",
+          "semantic_fact_correct": true,
+          "reason": "同单replacement_part行证明该配件属于所问订单。",
+          "automated_acceptance_boundary": "Do not declare an incorrect business fact solely because this representation is unparsed. Source-proven scalar claims may match the plain reference; unresolved meaning or unverified query-time provenance must remain review_required, not automatic pass."
+        },
+        {
+          "name": "part_noun_and_parenthesis",
+          "visible": "订单 SO-2026-Z88001\n配件 Hinge BX-88001-24（五金件）\n补件状态：处理中\n补件数量：7 件",
+          "semantic_fact_correct": true,
+          "reason": "名称前后有普通名词说明，实体关系仍由源行证明。",
+          "automated_acceptance_boundary": "Do not declare an incorrect business fact solely because this representation is unparsed. Source-proven scalar claims may match the plain reference; unresolved meaning or unverified query-time provenance must remain review_required, not automatic pass."
+        }
+      ],
+      "negative_controls": [
+        {
+          "name": "part_from_other_order",
+          "visible": "订单 SO-2026-Z88001\n补件名称：Hinge BX-88002-24\n补件状态：处理中\n补件数量：7 件",
+          "semantic_fact_correct": false,
+          "reason": "该配件虽存在，但属于另一个订单，不能按全库存在性放行。",
+          "automated_acceptance_boundary": "Must not auto-pass. A recognized source contradiction or required-fact omission is incorrect; unresolved syntax remains reviewable and must receive the stated failing semantic judgment, never be deleted to pass."
+        },
+        {
+          "name": "nonexistent_part",
+          "visible": "订单 SO-2026-Z88001\n补件名称：Hinge BX-88003-24\n补件状态：处理中\n补件数量：7 件",
+          "semantic_fact_correct": false,
+          "reason": "配件名没有任何相应源行。",
+          "automated_acceptance_boundary": "Must not auto-pass. A recognized source contradiction or required-fact omission is incorrect; unresolved syntax remains reviewable and must receive the stated failing semantic judgment, never be deleted to pass."
+        },
+        {
+          "name": "wrong_parent_order_asserted",
+          "visible": "订单 SO-2026-Z88001\n补件名称：Hinge BX-88001-24\n补件状态：处理中\n补件数量：7 件\n本项补件所属订单：SO-2026-Z88002",
+          "semantic_fact_correct": false,
+          "reason": "把已证明属于所问订单的配件另指为另一订单，不能只证明配件在库中存在。",
+          "automated_acceptance_boundary": "Must not auto-pass. A recognized source contradiction or required-fact omission is incorrect; unresolved syntax remains reviewable and must receive the stated failing semantic judgment, never be deleted to pass."
+        }
+      ],
+      "expected_handling": "只认可独立来源行中order_no到part_name的实际关联，并保留显示订单范围；标签同义改写本身不是业务实体变化。",
+      "evidence_role": "generalized_format_or_association_family"
+    },
+    {
+      "id": "v2_key_value_table",
+      "grammar_family": "字段名称位于首列的两列表格",
+      "scenario": {
+        "group": "orders",
+        "truth": {
+          "answerable": true,
+          "allowed_entities": [
+            "SO-2026-Z88001"
+          ],
+          "facts": [
+            {
+              "entity": "SO-2026-Z88001",
+              "field": "delivery_date",
+              "value": "2028-04-17",
+              "unit": null,
+              "source": {
+                "database": "erp_db",
+                "table": "orders"
+              }
+            },
+            {
+              "entity": "SO-2026-Z88001",
+              "field": "delivery_status",
+              "value": "已送达",
+              "unit": null,
+              "source": {
+                "database": "svc_db",
+                "table": "delivery"
+              }
+            }
+          ]
+        }
+      },
+      "corpus": {
+        "records": {
+          "erp_db": {
+            "orders": [
+              {
+                "order_no": "SO-2026-Z88001",
+                "delivery_date": "2028-04-17"
+              }
+            ]
+          },
+          "svc_db": {
+            "delivery": [
+              {
+                "order_no": "SO-2026-Z88001",
+                "delivery_status": "已送达",
+                "delivered_date": "2028-04-09"
+              }
+            ]
+          }
+        }
+      },
+      "query_evidence": [
+        {
+          "database": "erp_db",
+          "table": "orders",
+          "query_time": "2028-04-12T08:17:26Z",
+          "columns": [
+            "order_no",
+            "delivery_date"
+          ],
+          "row_count": 1,
+          "rows": [
+            {
+              "order_no": "SO-2026-Z88001",
+              "delivery_date": "2028-04-17"
+            }
+          ],
+          "fixture_only": true
+        },
+        {
+          "database": "svc_db",
+          "table": "delivery",
+          "query_time": "2028-04-12T08:17:26Z",
+          "columns": [
+            "order_no",
+            "delivery_status",
+            "delivered_date"
+          ],
+          "row_count": 1,
+          "rows": [
+            {
+              "order_no": "SO-2026-Z88001",
+              "delivery_status": "已送达",
+              "delivered_date": "2028-04-09"
+            }
+          ],
+          "fixture_only": true
+        }
+      ],
+      "plain_reference": {
+        "visible": "订单 SO-2026-Z88001\n约定交付日期：2028-04-17\n配送状态：已送达\n实际送达日期：2028-04-09"
+      },
+      "positive_variants": [
+        {
+          "name": "vertical_business_fields",
+          "visible": "订单 SO-2026-Z88001\n| 项目 | 查询结果 |\n|---|---|\n| 约定交付日期 | 2028年4月17日 |\n| 配送状态 | 已送达 |\n| 实际送达日期 | 2028年4月9日 |",
+          "semantic_fact_correct": true,
+          "reason": "每一行是字段-值配对；计划与实际日期分别来自两字段。",
+          "automated_acceptance_boundary": "Do not declare an incorrect business fact solely because this representation is unparsed. Source-proven scalar claims may match the plain reference; unresolved meaning or unverified query-time provenance must remain review_required, not automatic pass."
+        },
+        {
+          "name": "table_with_date_role_restatement",
+          "visible": "订单 SO-2026-Z88001\n| 项目 | 查询结果 |\n|---|---|\n| 约定交付日期 | 2028年4月17日 |\n| 配送状态 | 已送达 |\n| 实际送达日期 | 2028年4月9日 |\n计划为4月17日；实际送达为4月9日。",
+          "semantic_fact_correct": true,
+          "reason": "正文分别复述同表两种日期角色，年由完整日期回指确定。",
+          "automated_acceptance_boundary": "Do not declare an incorrect business fact solely because this representation is unparsed. Source-proven scalar claims may match the plain reference; unresolved meaning or unverified query-time provenance must remain review_required, not automatic pass."
+        }
+      ],
+      "negative_controls": [
+        {
+          "name": "swapped_plan_and_actual",
+          "visible": "订单 SO-2026-Z88001\n| 项目 | 查询结果 |\n|---|---|\n| 约定交付日期 | 2028年4月9日 |\n| 配送状态 | 已送达 |\n| 实际送达日期 | 2028年4月17日 |",
+          "semantic_fact_correct": false,
+          "reason": "计划和实际值被对调，不能只检查出现了两个正确日期数字。",
+          "automated_acceptance_boundary": "Must not auto-pass. A recognized source contradiction or required-fact omission is incorrect; unresolved syntax remains reviewable and must receive the stated failing semantic judgment, never be deleted to pass."
+        },
+        {
+          "name": "extra_unsupported_row",
+          "visible": "订单 SO-2026-Z88001\n| 项目 | 查询结果 |\n|---|---|\n| 约定交付日期 | 2028年4月17日 |\n| 配送状态 | 已送达 |\n| 实际送达日期 | 2028年4月9日 |\n| 补收款 | 78.30 USD |",
+          "semantic_fact_correct": false,
+          "reason": "额外未知业务行仍须核验，不可丢弃。",
+          "automated_acceptance_boundary": "Must not auto-pass. A recognized source contradiction or required-fact omission is incorrect; unresolved syntax remains reviewable and must receive the stated failing semantic judgment, never be deleted to pass."
+        },
+        {
+          "name": "wrong_actual_in_restatement",
+          "visible": "订单 SO-2026-Z88001\n| 项目 | 查询结果 |\n|---|---|\n| 约定交付日期 | 2028年4月17日 |\n| 配送状态 | 已送达 |\n| 实际送达日期 | 2028年4月9日 |\n实际送达为4月10日。",
+          "semantic_fact_correct": false,
+          "reason": "正文额外实际日期与表格和来源4月9日不一致。",
+          "automated_acceptance_boundary": "Must not auto-pass. A recognized source contradiction or required-fact omission is incorrect; unresolved syntax remains reviewable and must receive the stated failing semantic judgment, never be deleted to pass."
+        }
+      ],
+      "expected_handling": "区别横向列式表与纵向字段-值表；同名日期须绑定各自角色，全部行仍参与额外事实检查。",
+      "evidence_role": "generalized_format_or_association_family"
+    },
+    {
+      "id": "v2_record_count_and_total",
+      "grammar_family": "记录计数、业务总量与正文补充单位",
+      "scenario": {
+        "group": "orders",
+        "truth": {
+          "answerable": true,
+          "allowed_entities": [
+            "SO-2026-Z88001"
+          ],
+          "facts": [
+            {
+              "entity": "SO-2026-Z88001",
+              "field": "part_status",
+              "value": "处理中",
+              "unit": null,
+              "source": {
+                "database": "svc_db",
+                "table": "replacement_part"
+              }
+            },
+            {
+              "entity": "SO-2026-Z88001",
+              "field": "quantity",
+              "value": 7,
+              "unit": "pcs",
+              "source": {
+                "database": "svc_db",
+                "table": "replacement_part"
+              }
+            }
+          ]
+        }
+      },
+      "corpus": {
+        "records": {
+          "svc_db": {
+            "replacement_part": [
+              {
+                "order_no": "SO-2026-Z88001",
+                "part_name": "Hinge BX-88001-24",
+                "part_status": "处理中",
+                "quantity": 7
+              },
+              {
+                "order_no": "SO-2026-Z88002",
+                "part_name": "Hinge BX-88002-24",
+                "part_status": "处理中",
+                "quantity": 7
+              }
+            ]
+          },
+          "erp_db": {
+            "order_item": [
+              {
+                "order_no": "SO-2026-Z88001",
+                "quantity": 19
+              }
+            ]
+          }
+        }
+      },
+      "query_evidence": [
+        {
+          "database": "svc_db",
+          "table": "replacement_part",
+          "query_time": "2028-04-12T08:17:26Z",
+          "columns": [
+            "part_name",
+            "part_status",
+            "quantity"
+          ],
+          "row_count": 1,
+          "rows": [
+            {
+              "part_name": "Hinge BX-88001-24",
+              "part_status": "处理中",
+              "quantity": 7
+            }
+          ],
+          "fixture_only": true
+        }
+      ],
+      "plain_reference": {
+        "visible": "订单 SO-2026-Z88001\n补件状态：处理中\n补件数量：7 件"
+      },
+      "positive_variants": [
+        {
+          "name": "supported_row_count_and_total",
+          "visible": "订单 SO-2026-Z88001\n补件状态：处理中\n补件数量：7 件\n查得1条补件记录，合计7件。",
+          "semantic_fact_correct": true,
+          "reason": "记录数1来自查询row_count，合计7来自同一结果集。",
+          "automated_acceptance_boundary": "Do not declare an incorrect business fact solely because this representation is unparsed. Source-proven scalar claims may match the plain reference; unresolved meaning or unverified query-time provenance must remain review_required, not automatic pass."
+        },
+        {
+          "name": "unit_supplied_in_same_scoped_total",
+          "visible": "订单 SO-2026-Z88001\n| 补件名称 | 申请状态 | 补件数量 |\n|---|---|---:|\n| Hinge BX-88001-24 | 处理中 | 7 |\n本次补件合计为7件。",
+          "semantic_fact_correct": true,
+          "reason": "唯一补件行的裸数字7由同段总量7件明确补足单位，并非从源库暗补单位。",
+          "automated_acceptance_boundary": "Do not declare an incorrect business fact solely because this representation is unparsed. Source-proven scalar claims may match the plain reference; unresolved meaning or unverified query-time provenance must remain review_required, not automatic pass."
+        }
+      ],
+      "negative_controls": [
+        {
+          "name": "wrong_record_count",
+          "visible": "订单 SO-2026-Z88001\n补件状态：处理中\n补件数量：7 件\n查得2条补件记录，合计7件。",
+          "semantic_fact_correct": false,
+          "reason": "记录数与查询结果1条不一致。",
+          "automated_acceptance_boundary": "Must not auto-pass. A recognized source contradiction or required-fact omission is incorrect; unresolved syntax remains reviewable and must receive the stated failing semantic judgment, never be deleted to pass."
+        },
+        {
+          "name": "wrong_total",
+          "visible": "订单 SO-2026-Z88001\n补件状态：处理中\n补件数量：7 件\n查得1条补件记录，合计8件。",
+          "semantic_fact_correct": false,
+          "reason": "总量8与所问补件结果7相矛盾。",
+          "automated_acceptance_boundary": "Must not auto-pass. A recognized source contradiction or required-fact omission is incorrect; unresolved syntax remains reviewable and must receive the stated failing semantic judgment, never be deleted to pass."
+        },
+        {
+          "name": "no_unit_in_row_or_total",
+          "visible": "订单 SO-2026-Z88001\n| 补件名称 | 申请状态 | 补件数量 |\n|---|---|---:|\n| Hinge BX-88001-24 | 处理中 | 7 |\n本次补件合计为7。",
+          "semantic_fact_correct": false,
+          "reason": "表格和正文均无明确单位。",
+          "automated_acceptance_boundary": "Must not auto-pass. A recognized source contradiction or required-fact omission is incorrect; unresolved syntax remains reviewable and must receive the stated failing semantic judgment, never be deleted to pass."
+        }
+      ],
+      "expected_handling": "记录条数与物品数量是不同字段；可按来源计数核验，但不能把所有额外数字当序号或全部删除。只有范围清楚且数值一致的正文单位才可补足表格。",
+      "evidence_role": "generalized_format_or_association_family"
+    },
+    {
+      "id": "v2_null_field_with_time",
+      "grammar_family": "空字段措辞与查询时点说明的组合",
+      "scenario": {
+        "group": "orders",
+        "truth": {
+          "answerable": true,
+          "allowed_entities": [
+            "SO-2026-Z88001"
+          ],
+          "facts": [
+            {
+              "entity": "SO-2026-Z88001",
+              "field": "delivery_date",
+              "value": "2028-04-17",
+              "unit": null,
+              "source": {
+                "database": "erp_db",
+                "table": "orders"
+              }
+            },
+            {
+              "entity": "SO-2026-Z88001",
+              "field": "delivery_status",
+              "value": "配送中",
+              "unit": null,
+              "source": {
+                "database": "svc_db",
+                "table": "delivery"
+              }
+            }
+          ]
+        }
+      },
+      "corpus": {
+        "records": {
+          "erp_db": {
+            "orders": [
+              {
+                "order_no": "SO-2026-Z88001",
+                "delivery_date": "2028-04-17"
+              }
+            ]
+          },
+          "svc_db": {
+            "delivery": [
+              {
+                "order_no": "SO-2026-Z88001",
+                "delivery_status": "配送中",
+                "delivered_date": null
+              }
+            ]
+          }
+        }
+      },
+      "query_evidence": [
+        {
+          "database": "erp_db",
+          "table": "orders",
+          "query_time": "2028-04-12T08:17:26Z",
+          "columns": [
+            "order_no",
+            "delivery_date"
+          ],
+          "row_count": 1,
+          "rows": [
+            {
+              "order_no": "SO-2026-Z88001",
+              "delivery_date": "2028-04-17"
+            }
+          ],
+          "fixture_only": true
+        },
+        {
+          "database": "svc_db",
+          "table": "delivery",
+          "query_time": "2028-04-12T08:17:26Z",
+          "columns": [
+            "order_no",
+            "delivery_status",
+            "delivered_date"
+          ],
+          "row_count": 1,
+          "rows": [
+            {
+              "order_no": "SO-2026-Z88001",
+              "delivery_status": "配送中",
+              "delivered_date": null
+            }
+          ],
+          "fixture_only": true
+        }
+      ],
+      "plain_reference": {
+        "visible": "订单 SO-2026-Z88001\n约定交付日期：2028-04-17\n配送状态：配送中\n实际送达日期：未登记"
+      },
+      "positive_variants": [
+        {
+          "name": "empty_field_paraphrase_with_metadata",
+          "visible": "订单 SO-2026-Z88001\n约定交付日期：2028-04-17\n配送状态：配送中\n实际送达日期：未记录（该字段为空）。\n查询时间为2028 年4月12日。",
+          "semantic_fact_correct": true,
+          "reason": "实际日期的null由源行及查询投影证明；另附日期是查询时点。",
+          "automated_acceptance_boundary": "Do not declare an incorrect business fact solely because this representation is unparsed. Source-proven scalar claims may match the plain reference; unresolved meaning or unverified query-time provenance must remain review_required, not automatic pass."
+        }
+      ],
+      "negative_controls": [
+        {
+          "name": "null_claim_against_nonnull_source",
+          "visible": "订单 SO-2026-Z88001\n约定交付日期：2028-04-17\n配送状态：配送中\n实际送达日期：未记录（该字段为空）。\n查询时间为2028 年4月12日。",
+          "semantic_fact_correct": false,
+          "reason": "来源实际日期非空，却声称该字段为空。",
+          "corpus_override": {
+            "records": {
+              "erp_db": {
+                "orders": [
+                  {
+                    "order_no": "SO-2026-Z88001",
+                    "delivery_date": "2028-04-17"
+                  }
+                ]
+              },
+              "svc_db": {
+                "delivery": [
+                  {
+                    "order_no": "SO-2026-Z88001",
+                    "delivery_status": "配送中",
+                    "delivered_date": "2028-04-09"
+                  }
+                ]
+              }
+            }
+          },
+          "query_evidence_override": [
+            {
+              "database": "erp_db",
+              "table": "orders",
+              "query_time": "2028-04-12T08:17:26Z",
+              "columns": [
+                "order_no",
+                "delivery_date"
+              ],
+              "row_count": 1,
+              "rows": [
+                {
+                  "order_no": "SO-2026-Z88001",
+                  "delivery_date": "2028-04-17"
+                }
+              ],
+              "fixture_only": true
+            },
+            {
+              "database": "svc_db",
+              "table": "delivery",
+              "query_time": "2028-04-12T08:17:26Z",
+              "columns": [
+                "order_no",
+                "delivery_status",
+                "delivered_date"
+              ],
+              "row_count": 1,
+              "rows": [
+                {
+                  "order_no": "SO-2026-Z88001",
+                  "delivery_status": "配送中",
+                  "delivered_date": "2028-04-09"
+                }
+              ],
+              "fixture_only": true
+            }
+          ],
+          "automated_acceptance_boundary": "Must not auto-pass. A recognized source contradiction or required-fact omission is incorrect; unresolved syntax remains reviewable and must receive the stated failing semantic judgment, never be deleted to pass."
+        },
+        {
+          "name": "invented_actual_date",
+          "visible": "订单 SO-2026-Z88001\n约定交付日期：2028-04-17\n配送状态：配送中\n实际送达日期：2028年4月9日。\n查询时间为2028 年4月12日。",
+          "semantic_fact_correct": false,
+          "reason": "实际日期来源为空，新增肯定日期无来源。",
+          "automated_acceptance_boundary": "Must not auto-pass. A recognized source contradiction or required-fact omission is incorrect; unresolved syntax remains reviewable and must receive the stated failing semantic judgment, never be deleted to pass."
+        }
+      ],
+      "expected_handling": "把已证明的null陈述与无法查询/未返回字段分开；缺失声明必须绑定所述字段来源，不能由措辞直接豁免。",
+      "evidence_role": "generalized_format_or_association_family"
+    },
+    {
+      "id": "v2_prose_entity_status_binding",
+      "grammar_family": "句中订单实体与当前状态的绑定",
+      "scenario": {
+        "group": "orders",
+        "truth": {
+          "answerable": true,
+          "allowed_entities": [
+            "SO-2026-Z88001"
+          ],
+          "facts": [
+            {
+              "entity": "SO-2026-Z88001",
+              "field": "order_status",
+              "value": "待发货",
+              "unit": null,
+              "source": {
+                "database": "erp_db",
+                "table": "orders"
+              }
+            }
+          ]
+        }
+      },
+      "corpus": {
+        "records": {
+          "erp_db": {
+            "orders": [
+              {
+                "order_no": "SO-2026-Z88001",
+                "order_status": "待发货"
+              }
+            ]
+          }
+        }
+      },
+      "query_evidence": [
+        {
+          "database": "erp_db",
+          "table": "orders",
+          "query_time": "2028-04-12T08:17:26Z",
+          "columns": [
+            "order_no",
+            "order_status"
+          ],
+          "row_count": 1,
+          "rows": [
+            {
+              "order_no": "SO-2026-Z88001",
+              "order_status": "待发货"
+            }
+          ],
+          "fixture_only": true
+        }
+      ],
+      "plain_reference": {
+        "visible": "订单 SO-2026-Z88001\n订单状态：待发货"
+      },
+      "positive_variants": [
+        {
+          "name": "prefixed_sentence_with_entity",
+          "visible": "查询结果显示，订单 SO-2026-Z88001 的当前状态为：待发货。\n本条查询日期为2028 年4月12日。",
+          "semantic_fact_correct": true,
+          "reason": "实体与状态在同一句中明确绑定，前缀和的不是业务值。",
+          "automated_acceptance_boundary": "Do not declare an incorrect business fact solely because this representation is unparsed. Source-proven scalar claims may match the plain reference; unresolved meaning or unverified query-time provenance must remain review_required, not automatic pass."
+        }
+      ],
+      "negative_controls": [
+        {
+          "name": "wrong_entity_in_same_syntax",
+          "visible": "查询结果显示，订单 SO-2026-Z88002 的当前状态为：待发货。\n本条查询日期为2028 年4月12日。",
+          "semantic_fact_correct": false,
+          "reason": "句法相同但订单不同。",
+          "automated_acceptance_boundary": "Must not auto-pass. A recognized source contradiction or required-fact omission is incorrect; unresolved syntax remains reviewable and must receive the stated failing semantic judgment, never be deleted to pass."
+        },
+        {
+          "name": "wrong_status_in_same_syntax",
+          "visible": "查询结果显示，订单 SO-2026-Z88001 的当前状态为：已取消。\n本条查询日期为2028 年4月12日。",
+          "semantic_fact_correct": false,
+          "reason": "句法相同但业务状态不同。",
+          "automated_acceptance_boundary": "Must not auto-pass. A recognized source contradiction or required-fact omission is incorrect; unresolved syntax remains reviewable and must receive the stated failing semantic judgment, never be deleted to pass."
+        },
+        {
+          "name": "historical_only_and_current_withheld",
+          "visible": "订单 SO-2026-Z88001 上次记录为待发货；目前无法核实当前订单状态。",
+          "semantic_fact_correct": false,
+          "reason": "只确认旧记录并保留当前所问结论，不是完整的当前状态回答。",
+          "automated_acceptance_boundary": "Must not auto-pass. A recognized source contradiction or required-fact omission is incorrect; unresolved syntax remains reviewable and must receive the stated failing semantic judgment, never be deleted to pass."
+        }
+      ],
+      "expected_handling": "支持实体与字段词之间的正常语序，不局限于行首模板；仍检查实体、状态及最后采纳的时间范围。",
+      "evidence_role": "generalized_format_or_association_family"
+    }
+  ],
+  "source_file": ".stage6/evaluation/2026-11-06/formal-v3-20261106/common-scorer-generic-reproductions-v2.json",
+  "source_sha256": "465c91add21d63ad63ed9ac48faf6c88fd26a01779c4cac2473af62ba57b8e0e",
+  "contains_real_answers": false
+}
