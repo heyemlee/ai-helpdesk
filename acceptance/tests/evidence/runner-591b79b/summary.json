@@ -1,0 +1,23 @@
+{
+  "kind": "acceptance_runner_validation",
+  "runner_revision": "591b79b6ae7e2d1b84c5c202f5ccd396badfccb3",
+  "harness_sha256": "cf4e103510e7f07c23b61ac9e5bd6617caac4c05006578ad06e51e3a0d2b054f",
+  "harness_unchanged_during_tests": true,
+  "tests_run": 44,
+  "skipped": 0,
+  "exit_code": 0,
+  "network_mode": "none",
+  "real_credentials_mounted": false,
+  "supplier_attempts": 0,
+  "supplier_receipts": 0,
+  "product_revision_for_mount_test": "6090071d35d72ed7af65ae7288420d7dc132e90f",
+  "owned_container_cleanup": {
+    "aihd-stage6-images-f4928ff46e": true
+  },
+  "files": {
+    "tests.log": "e645c3782987ce17c43de5866f3216bce2efc54e749926348c272ac45daf1fd4",
+    "mounts/result.json": "590da3fff8ef33ff4b3b27069e6fda3307c8f72bb783c765799726d391b441f4",
+    "mounts/compose.log": "bc2fcaa097d3ba78af532d3e09f39a68e4401798882d3125b56f58f6827cd6a3"
+  },
+  "passed": true
+}
