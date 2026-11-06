@@ -1,0 +1,732 @@
+{
+  "caller_changes_required": false,
+  "common_score_signature": "common_score(scenario, visible, corpus=None)",
+  "copied_fixture_sha256": "c5577e8ae1f81e1c8c1eaf1b1eb6d3d9aaa352086e07174deac56bf54bc4211f",
+  "errors": 0,
+  "failed_tests": [],
+  "failures": 0,
+  "fictional_handoff_sha256": "c35088d2744ef098f5e4135f603c378c6000bf38b9af2b27f735305a3d185304",
+  "fictional_results": {
+    "positive_variants": {
+      "cases": [
+        {
+          "errors": [
+            "unparsed_claim:part_name",
+            "unparsed_additional_prose"
+          ],
+          "family": "grammar_v3_source_identity",
+          "full_fictional_semantic_truth": "supported",
+          "limitation": null,
+          "original_text_retained": true,
+          "review_applied": false,
+          "status": "review_required",
+          "variant": "category_prefix"
+        },
+        {
+          "errors": [
+            "unparsed_additional_prose"
+          ],
+          "family": "grammar_v3_source_identity",
+          "full_fictional_semantic_truth": "supported",
+          "limitation": null,
+          "original_text_retained": true,
+          "review_applied": false,
+          "status": "review_required",
+          "variant": "category_parenthesis"
+        },
+        {
+          "errors": [
+            "unbound_numeric_claim",
+            "unparsed_additional_prose"
+          ],
+          "family": "grammar_v3_query_word_order",
+          "full_fictional_semantic_truth": "supported",
+          "limitation": null,
+          "original_text_retained": true,
+          "review_applied": false,
+          "status": "review_required",
+          "variant": "time_before_query_verb"
+        },
+        {
+          "errors": [
+            "unbound_numeric_claim",
+            "unparsed_additional_prose"
+          ],
+          "family": "grammar_v3_query_word_order",
+          "full_fictional_semantic_truth": "supported",
+          "limitation": null,
+          "original_text_retained": true,
+          "review_applied": false,
+          "status": "review_required",
+          "variant": "query_clause_then_boundary"
+        },
+        {
+          "errors": [
+            "unparsed_aggregate_provenance",
+            "unbound_numeric_claim",
+            "unparsed_additional_prose"
+          ],
+          "family": "grammar_v3_count_total",
+          "full_fictional_semantic_truth": "supported",
+          "limitation": null,
+          "original_text_retained": true,
+          "review_applied": false,
+          "status": "review_required",
+          "variant": "count_then_total"
+        },
+        {
+          "errors": [
+            "unparsed_unit_binding:quantity",
+            "unparsed_claim:quantity",
+            "unparsed_required_fact:quantity",
+            "unbound_numeric_claim",
+            "unparsed_additional_prose"
+          ],
+          "family": "grammar_v3_count_total",
+          "full_fictional_semantic_truth": "supported",
+          "limitation": null,
+          "original_text_retained": true,
+          "review_applied": false,
+          "status": "review_required",
+          "variant": "unit_in_scoped_total"
+        },
+        {
+          "errors": [
+            "unparsed_table_header_context",
+            "unparsed_required_fact:delivery_status",
+            "unparsed_required_fact:delivery_date"
+          ],
+          "family": "grammar_v3_vertical_roles",
+          "full_fictional_semantic_truth": "supported",
+          "limitation": null,
+          "original_text_retained": true,
+          "review_applied": false,
+          "status": "review_required",
+          "variant": "role_qualified_rows"
+        },
+        {
+          "errors": [
+            "unparsed_table_header_context",
+            "unparsed_required_fact:delivery_status",
+            "unparsed_required_fact:delivery_date",
+            "unbound_numeric_claim",
+            "unparsed_additional_prose"
+          ],
+          "family": "grammar_v3_vertical_roles",
+          "full_fictional_semantic_truth": "supported",
+          "limitation": null,
+          "original_text_retained": true,
+          "review_applied": false,
+          "status": "review_required",
+          "variant": "vertical_with_local_restatement"
+        },
+        {
+          "errors": [
+            "unbound_numeric_claim",
+            "unparsed_additional_prose"
+          ],
+          "family": "grammar_v3_short_date_reference",
+          "full_fictional_semantic_truth": "supported",
+          "limitation": null,
+          "original_text_retained": true,
+          "review_applied": false,
+          "status": "review_required",
+          "variant": "negative_inference"
+        },
+        {
+          "errors": [
+            "unbound_numeric_claim",
+            "unparsed_additional_prose"
+          ],
+          "family": "grammar_v3_short_date_reference",
+          "full_fictional_semantic_truth": "supported",
+          "limitation": null,
+          "original_text_retained": true,
+          "review_applied": false,
+          "status": "review_required",
+          "variant": "contrastive_date_roles"
+        }
+      ],
+      "counts": {
+        "review_required": 10
+      }
+    },
+    "proven_negative_controls": {
+      "cases": [
+        {
+          "errors": [
+            "wrong_entity",
+            "unparsed_claim:part_name",
+            "unparsed_additional_prose"
+          ],
+          "family": "grammar_v3_source_identity",
+          "full_fictional_semantic_truth": "contradicted",
+          "limitation": null,
+          "original_text_retained": null,
+          "review_applied": false,
+          "status": "incorrect",
+          "variant": "part_from_other_order"
+        },
+        {
+          "errors": [
+            "incorrect_claim:contract_amount"
+          ],
+          "family": "grammar_v3_source_identity",
+          "full_fictional_semantic_truth": "contradicted",
+          "limitation": null,
+          "original_text_retained": null,
+          "review_applied": false,
+          "status": "incorrect",
+          "variant": "wrong_amount"
+        },
+        {
+          "errors": [
+            "incorrect_claim:contract_amount"
+          ],
+          "family": "grammar_v3_source_identity",
+          "full_fictional_semantic_truth": "contradicted",
+          "limitation": null,
+          "original_text_retained": null,
+          "review_applied": false,
+          "status": "incorrect",
+          "variant": "wrong_currency"
+        },
+        {
+          "errors": [
+            "incorrect_claim:delivered_date"
+          ],
+          "family": "grammar_v3_source_identity",
+          "full_fictional_semantic_truth": "contradicted",
+          "limitation": null,
+          "original_text_retained": null,
+          "review_applied": false,
+          "status": "incorrect",
+          "variant": "wrong_date_role"
+        },
+        {
+          "errors": [
+            "unbound_numeric_claim",
+            "unparsed_additional_prose"
+          ],
+          "family": "grammar_v3_source_identity",
+          "full_fictional_semantic_truth": "contradicted",
+          "limitation": "The source_schema binding 额外费用 to extra_charge, its unit and closed scope is not an API argument.",
+          "original_text_retained": true,
+          "review_applied": false,
+          "status": "review_required",
+          "variant": "extra_charge"
+        },
+        {
+          "errors": [
+            "unbound_numeric_claim",
+            "unparsed_additional_prose"
+          ],
+          "family": "grammar_v3_source_identity",
+          "full_fictional_semantic_truth": "contradicted",
+          "limitation": "Applicable published rules and their scope are not API arguments; a boolean column cannot supply their meaning.",
+          "original_text_retained": true,
+          "review_applied": false,
+          "status": "review_required",
+          "variant": "unauthorized_guarantee"
+        },
+        {
+          "errors": [
+            "wrong_entity",
+            "unparsed_entity"
+          ],
+          "family": "grammar_v3_query_word_order",
+          "full_fictional_semantic_truth": "contradicted",
+          "limitation": null,
+          "original_text_retained": null,
+          "review_applied": false,
+          "status": "incorrect",
+          "variant": "wrong_order"
+        },
+        {
+          "errors": [
+            "incorrect_claim:contract_amount"
+          ],
+          "family": "grammar_v3_query_word_order",
+          "full_fictional_semantic_truth": "contradicted",
+          "limitation": null,
+          "original_text_retained": null,
+          "review_applied": false,
+          "status": "incorrect",
+          "variant": "wrong_amount"
+        },
+        {
+          "errors": [
+            "incorrect_claim:contract_amount"
+          ],
+          "family": "grammar_v3_query_word_order",
+          "full_fictional_semantic_truth": "contradicted",
+          "limitation": null,
+          "original_text_retained": null,
+          "review_applied": false,
+          "status": "incorrect",
+          "variant": "wrong_currency"
+        },
+        {
+          "errors": [
+            "incorrect_claim:delivered_date"
+          ],
+          "family": "grammar_v3_query_word_order",
+          "full_fictional_semantic_truth": "contradicted",
+          "limitation": null,
+          "original_text_retained": null,
+          "review_applied": false,
+          "status": "incorrect",
+          "variant": "wrong_date_role"
+        },
+        {
+          "errors": [
+            "unbound_numeric_claim",
+            "unparsed_additional_prose"
+          ],
+          "family": "grammar_v3_query_word_order",
+          "full_fictional_semantic_truth": "contradicted",
+          "limitation": "The source_schema binding 额外费用 to extra_charge, its unit and closed scope is not an API argument.",
+          "original_text_retained": true,
+          "review_applied": false,
+          "status": "review_required",
+          "variant": "extra_charge"
+        },
+        {
+          "errors": [
+            "unbound_numeric_claim",
+            "unparsed_additional_prose"
+          ],
+          "family": "grammar_v3_query_word_order",
+          "full_fictional_semantic_truth": "contradicted",
+          "limitation": "Applicable published rules and their scope are not API arguments; a boolean column cannot supply their meaning.",
+          "original_text_retained": true,
+          "review_applied": false,
+          "status": "review_required",
+          "variant": "unauthorized_guarantee"
+        },
+        {
+          "errors": [
+            "wrong_entity",
+            "unparsed_entity"
+          ],
+          "family": "grammar_v3_count_total",
+          "full_fictional_semantic_truth": "contradicted",
+          "limitation": null,
+          "original_text_retained": null,
+          "review_applied": false,
+          "status": "incorrect",
+          "variant": "wrong_order"
+        },
+        {
+          "errors": [
+            "incorrect_claim:contract_amount"
+          ],
+          "family": "grammar_v3_count_total",
+          "full_fictional_semantic_truth": "contradicted",
+          "limitation": null,
+          "original_text_retained": null,
+          "review_applied": false,
+          "status": "incorrect",
+          "variant": "wrong_amount"
+        },
+        {
+          "errors": [
+            "incorrect_claim:contract_amount"
+          ],
+          "family": "grammar_v3_count_total",
+          "full_fictional_semantic_truth": "contradicted",
+          "limitation": null,
+          "original_text_retained": null,
+          "review_applied": false,
+          "status": "incorrect",
+          "variant": "wrong_currency"
+        },
+        {
+          "errors": [
+            "incorrect_claim:delivered_date"
+          ],
+          "family": "grammar_v3_count_total",
+          "full_fictional_semantic_truth": "contradicted",
+          "limitation": null,
+          "original_text_retained": null,
+          "review_applied": false,
+          "status": "incorrect",
+          "variant": "wrong_date_role"
+        },
+        {
+          "errors": [
+            "unbound_numeric_claim",
+            "unparsed_additional_prose"
+          ],
+          "family": "grammar_v3_count_total",
+          "full_fictional_semantic_truth": "contradicted",
+          "limitation": "The source_schema binding 额外费用 to extra_charge, its unit and closed scope is not an API argument.",
+          "original_text_retained": true,
+          "review_applied": false,
+          "status": "review_required",
+          "variant": "extra_charge"
+        },
+        {
+          "errors": [
+            "unbound_numeric_claim",
+            "unparsed_additional_prose"
+          ],
+          "family": "grammar_v3_count_total",
+          "full_fictional_semantic_truth": "contradicted",
+          "limitation": "Applicable published rules and their scope are not API arguments; a boolean column cannot supply their meaning.",
+          "original_text_retained": true,
+          "review_applied": false,
+          "status": "review_required",
+          "variant": "unauthorized_guarantee"
+        },
+        {
+          "errors": [
+            "unparsed_aggregate_provenance",
+            "unbound_numeric_claim",
+            "unparsed_additional_prose"
+          ],
+          "family": "grammar_v3_count_total",
+          "full_fictional_semantic_truth": "contradicted",
+          "limitation": "No trusted query projection, returned rows or row_count reaches this API.",
+          "original_text_retained": true,
+          "review_applied": false,
+          "status": "review_required",
+          "variant": "wrong_row_count"
+        },
+        {
+          "errors": [
+            "unparsed_aggregate_provenance",
+            "unbound_numeric_claim",
+            "unparsed_additional_prose"
+          ],
+          "family": "grammar_v3_count_total",
+          "full_fictional_semantic_truth": "contradicted",
+          "limitation": "The corpus does not declare a complete query result set or establish aggregate scope.",
+          "original_text_retained": true,
+          "review_applied": false,
+          "status": "review_required",
+          "variant": "wrong_total"
+        },
+        {
+          "errors": [
+            "required_unit_explicitly_missing:quantity",
+            "incorrect_claim:quantity",
+            "unparsed_required_fact:quantity",
+            "unbound_numeric_claim",
+            "unparsed_additional_prose"
+          ],
+          "family": "grammar_v3_count_total",
+          "full_fictional_semantic_truth": "contradicted",
+          "limitation": null,
+          "original_text_retained": null,
+          "review_applied": false,
+          "status": "incorrect",
+          "variant": "missing_unit_in_every_span"
+        },
+        {
+          "errors": [
+            "wrong_entity",
+            "unparsed_entity",
+            "unparsed_or_ambiguous_claim:delivered_date",
+            "unbound_numeric_claim",
+            "unparsed_additional_prose"
+          ],
+          "family": "grammar_v3_vertical_roles",
+          "full_fictional_semantic_truth": "contradicted",
+          "limitation": null,
+          "original_text_retained": null,
+          "review_applied": false,
+          "status": "incorrect",
+          "variant": "wrong_order"
+        },
+        {
+          "errors": [
+            "incorrect_claim:contract_amount"
+          ],
+          "family": "grammar_v3_vertical_roles",
+          "full_fictional_semantic_truth": "contradicted",
+          "limitation": null,
+          "original_text_retained": null,
+          "review_applied": false,
+          "status": "incorrect",
+          "variant": "wrong_amount"
+        },
+        {
+          "errors": [
+            "incorrect_claim:contract_amount"
+          ],
+          "family": "grammar_v3_vertical_roles",
+          "full_fictional_semantic_truth": "contradicted",
+          "limitation": null,
+          "original_text_retained": null,
+          "review_applied": false,
+          "status": "incorrect",
+          "variant": "wrong_currency"
+        },
+        {
+          "errors": [
+            "incorrect_claim:delivered_date"
+          ],
+          "family": "grammar_v3_vertical_roles",
+          "full_fictional_semantic_truth": "contradicted",
+          "limitation": null,
+          "original_text_retained": null,
+          "review_applied": false,
+          "status": "incorrect",
+          "variant": "wrong_date_role"
+        },
+        {
+          "errors": [
+            "unbound_numeric_claim",
+            "unparsed_additional_prose"
+          ],
+          "family": "grammar_v3_vertical_roles",
+          "full_fictional_semantic_truth": "contradicted",
+          "limitation": "The source_schema binding 额外费用 to extra_charge, its unit and closed scope is not an API argument.",
+          "original_text_retained": true,
+          "review_applied": false,
+          "status": "review_required",
+          "variant": "extra_charge"
+        },
+        {
+          "errors": [
+            "unbound_numeric_claim",
+            "unparsed_additional_prose"
+          ],
+          "family": "grammar_v3_vertical_roles",
+          "full_fictional_semantic_truth": "contradicted",
+          "limitation": "Applicable published rules and their scope are not API arguments; a boolean column cannot supply their meaning.",
+          "original_text_retained": true,
+          "review_applied": false,
+          "status": "review_required",
+          "variant": "unauthorized_guarantee"
+        },
+        {
+          "errors": [
+            "unparsed_table_header_context",
+            "unparsed_required_fact:delivery_status",
+            "unparsed_required_fact:delivery_date"
+          ],
+          "family": "grammar_v3_vertical_roles",
+          "full_fictional_semantic_truth": "contradicted",
+          "limitation": "Unknown table headers do not prove current assertion context; preserve the full table for review.",
+          "original_text_retained": true,
+          "review_applied": false,
+          "status": "review_required",
+          "variant": "swapped_roles_in_table"
+        },
+        {
+          "errors": [
+            "wrong_entity",
+            "unparsed_entity",
+            "unparsed_or_ambiguous_claim:delivered_date",
+            "unbound_numeric_claim",
+            "unparsed_additional_prose"
+          ],
+          "family": "grammar_v3_short_date_reference",
+          "full_fictional_semantic_truth": "contradicted",
+          "limitation": null,
+          "original_text_retained": null,
+          "review_applied": false,
+          "status": "incorrect",
+          "variant": "wrong_order"
+        },
+        {
+          "errors": [
+            "incorrect_claim:contract_amount"
+          ],
+          "family": "grammar_v3_short_date_reference",
+          "full_fictional_semantic_truth": "contradicted",
+          "limitation": null,
+          "original_text_retained": null,
+          "review_applied": false,
+          "status": "incorrect",
+          "variant": "wrong_amount"
+        },
+        {
+          "errors": [
+            "incorrect_claim:contract_amount"
+          ],
+          "family": "grammar_v3_short_date_reference",
+          "full_fictional_semantic_truth": "contradicted",
+          "limitation": null,
+          "original_text_retained": null,
+          "review_applied": false,
+          "status": "incorrect",
+          "variant": "wrong_currency"
+        },
+        {
+          "errors": [
+            "incorrect_claim:delivered_date"
+          ],
+          "family": "grammar_v3_short_date_reference",
+          "full_fictional_semantic_truth": "contradicted",
+          "limitation": null,
+          "original_text_retained": null,
+          "review_applied": false,
+          "status": "incorrect",
+          "variant": "wrong_date_role"
+        },
+        {
+          "errors": [
+            "unbound_numeric_claim",
+            "unparsed_additional_prose"
+          ],
+          "family": "grammar_v3_short_date_reference",
+          "full_fictional_semantic_truth": "contradicted",
+          "limitation": "The source_schema binding 额外费用 to extra_charge, its unit and closed scope is not an API argument.",
+          "original_text_retained": true,
+          "review_applied": false,
+          "status": "review_required",
+          "variant": "extra_charge"
+        },
+        {
+          "errors": [
+            "unbound_numeric_claim",
+            "unparsed_additional_prose"
+          ],
+          "family": "grammar_v3_short_date_reference",
+          "full_fictional_semantic_truth": "contradicted",
+          "limitation": "Applicable published rules and their scope are not API arguments; a boolean column cannot supply their meaning.",
+          "original_text_retained": true,
+          "review_applied": false,
+          "status": "review_required",
+          "variant": "unauthorized_guarantee"
+        },
+        {
+          "errors": [
+            "unbound_numeric_claim",
+            "unparsed_additional_prose"
+          ],
+          "family": "grammar_v3_short_date_reference",
+          "full_fictional_semantic_truth": "contradicted",
+          "limitation": "The anaphoric date and affirmative role change are outside the bounded scalar parser.",
+          "original_text_retained": true,
+          "review_applied": false,
+          "status": "review_required",
+          "variant": "affirmative_actual_role_change"
+        },
+        {
+          "errors": [
+            "unbound_numeric_claim",
+            "unparsed_additional_prose"
+          ],
+          "family": "grammar_v3_short_date_reference",
+          "full_fictional_semantic_truth": "contradicted",
+          "limitation": "The partial date's role and antecedent are not fully parsed; raw text must be independently reviewed.",
+          "original_text_retained": true,
+          "review_applied": false,
+          "status": "review_required",
+          "variant": "wrong_short_date_restatement"
+        }
+      ],
+      "counts": {
+        "incorrect": 21,
+        "review_required": 15
+      }
+    },
+    "unresolved_controls": {
+      "cases": [
+        {
+          "errors": [
+            "unparsed_entity_relation",
+            "unparsed_additional_prose"
+          ],
+          "family": "grammar_v3_source_identity",
+          "full_fictional_semantic_truth": "unresolved",
+          "limitation": null,
+          "original_text_retained": true,
+          "review_applied": false,
+          "status": "review_required",
+          "variant": "relation_not_provided"
+        },
+        {
+          "errors": [
+            "unbound_numeric_claim",
+            "unparsed_additional_prose"
+          ],
+          "family": "grammar_v3_query_word_order",
+          "full_fictional_semantic_truth": "unresolved",
+          "limitation": null,
+          "original_text_retained": true,
+          "review_applied": false,
+          "status": "review_required",
+          "variant": "query_timestamp_without_provenance"
+        },
+        {
+          "errors": [
+            "unbound_numeric_claim",
+            "unparsed_additional_prose"
+          ],
+          "family": "grammar_v3_count_total",
+          "full_fictional_semantic_truth": "unresolved",
+          "limitation": null,
+          "original_text_retained": true,
+          "review_applied": false,
+          "status": "review_required",
+          "variant": "unresolved_extra_number"
+        },
+        {
+          "errors": [
+            "unbound_numeric_claim",
+            "unparsed_additional_prose"
+          ],
+          "family": "grammar_v3_vertical_roles",
+          "full_fictional_semantic_truth": "unresolved",
+          "limitation": null,
+          "original_text_retained": true,
+          "review_applied": false,
+          "status": "review_required",
+          "variant": "unresolved_extra_number"
+        },
+        {
+          "errors": [
+            "unbound_numeric_claim",
+            "unparsed_additional_prose"
+          ],
+          "family": "grammar_v3_short_date_reference",
+          "full_fictional_semantic_truth": "unresolved",
+          "limitation": null,
+          "original_text_retained": true,
+          "review_applied": false,
+          "status": "review_required",
+          "variant": "ambiguous_year_and_role"
+        }
+      ],
+      "counts": {
+        "review_required": 5
+      }
+    }
+  },
+  "fixed_release_corpus_used_only_by_automated_tests": false,
+  "forbidden_real_answer_or_io_attempts": [],
+  "kind": "offline_common_text_grammar_validation",
+  "legacy_semantics_evidence": {
+    "distinct_changed_calls": 40,
+    "file": "legacy-semantics.json",
+    "sha256": "bf1bf2bf35ef480c1149c103e08f94c5fb42d1dd2505546691e950c484a12456"
+  },
+  "mode": "targeted",
+  "new_harness_sha256": "0086140f201fa63e8438e79bb74960dbdef1bbfa362126f05de1c90732441b7b",
+  "new_helper_scope": "Subsequent separately attributed derived scoring or new runs only. Old execution and score identities stay fixed.",
+  "old_raw_answers_and_embedded_scores_modified": false,
+  "original_baseline_execution_helper_unchanged": "6584531bd1281e3b7e8df045262f1437b403f0ece3705b344bda73196495d674",
+  "pending_review_policy": "No automatic correctness for unresolved numbers, units, relationships, headers, provenance or required fields. External whole-answer review stays mandatory and raw-record hash bound; deterministic errors retain precedence.",
+  "prior_frozen_scoring_helper_unchanged": "68964a48f9d688038ab318471e4279a153655d42b0b53ddefa1d8e0113feb75e",
+  "protected_code_sha256": {
+    "acceptance/comparison.py": "78c5d0d1d20957b70a1d0614b1ad248865233c54a0c3a4135e1de78587ab159f",
+    "acceptance/gate.py": "0225c4f478401ad9a872d74fd1b6855d66be0e79dfdaf096bf77599599248eb9",
+    "acceptance/oracle.py": "3999bd7e01c976ffd65b59999dd0d8fa53ff50b1fcb343f9f22f0bd006801ae1",
+    "acceptance/review.py": "f333236dea47763023a6d942f81228d1aa04fa4024bdeb0a41e7e41d1ccaf842",
+    "acceptance/source_semantics.py": "d79a36c672a77d31f5787369fc7cf37bf1ce5c0155920c7df109db783d66a294"
+  },
+  "protected_code_unchanged_from_commit": "607ad9fe8fa3ad8ead11afa8e583172c9a33e7af",
+  "real_baseline_or_release_model_answers_read": false,
+  "runtime_query_evidence_or_applicable_rules_consumed": false,
+  "shared_rules_for_both_versions": true,
+  "skips": 0,
+  "subtests": 418,
+  "supplier_calls": 0,
+  "tests": 61,
+  "validation_scope": "Fictional grammar and fixed offline acceptance regression. No new supplier run, product quality or deployment claim."
+}

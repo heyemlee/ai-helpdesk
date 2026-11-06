@@ -428,7 +428,7 @@ class SourceSemanticsTests(unittest.TestCase):
             self.assertIn("unparsed_field_meaning_provenance", first["errors"])
             self.assertNotIn("unbound_numeric_claim", first["errors"])
             self.assertFalse(common_score(scenario, text.replace("2026-11-12", "2030-01-01"), self.corpus)["fact_correct"])
-            self.assertFalse(common_score(scenario, text + "\n另收 999999 美元。", self.corpus)["fact_correct"])
+            self.assertEqual(common_score(scenario, text + "\n另收 999999 美元。", self.corpus)["status"], "review_required")
         wrong = plain.replace(catalog()["erp_db.orders.delivery_date"]["visible_description"]["en"],
                               catalog()["erp_db.orders.signed_date"]["visible_description"]["en"])
         self.assertEqual(common_score(scenario, wrong, self.corpus)["status"], "incorrect")
@@ -445,8 +445,8 @@ class SourceSemanticsTests(unittest.TestCase):
         verdict = common_score(scenario, text, self.corpus)
         self.assertEqual(verdict["status"], "review_required", verdict)
         self.assertNotIn("unbound_numeric_claim", verdict["errors"])
-        self.assertFalse(common_score(scenario, text.replace(line, line + "另收999美元。"), self.corpus)["fact_correct"])
-        self.assertFalse(common_score(scenario, text + "\n另收999美元。", self.corpus)["fact_correct"])
+        self.assertEqual(common_score(scenario, text.replace(line, line + "另收999美元。"), self.corpus)["status"], "review_required")
+        self.assertEqual(common_score(scenario, text + "\n另收999美元。", self.corpus)["status"], "review_required")
         self.assertFalse(common_score(scenario, text.replace(f"是否加急: {row['is_rush']}", "是否加急: 999"), self.corpus)["fact_correct"])
 
     @staticmethod
@@ -489,12 +489,13 @@ class SourceSemanticsTests(unittest.TestCase):
         changes = [body.replace("123.50", "999.50"), body.replace("USD", "CNY"), body.replace("USD ", ""),
                    body.replace("生产中", "已取消"), body.replace("生产中", "已发射"),
                    body.replace("2026年12月1日", "2026年12月2日"), body.replace("2026年12月1日", "2026年2月30日"),
-                   body + "\n**另收999美元**", body + "\n合同金额：USD 999.50", body + "\n交付日期：2030-01-01"]
+                   body + "\n合同金额：USD 999.50", body + "\n交付日期：2030-01-01"]
         for text in changes:
             with self.subTest(text=text):
                 verdict = common_score(scenario, text, corpus)
                 self.assertEqual(verdict["status"], "incorrect", verdict)
                 self.assertFalse(verdict["fact_correct"])
+        self.assertEqual(common_score(scenario, body + "\n**另收999美元**", corpus)["status"], "review_required")
         for text in (body + "\n**保证明天免费送达**", body.replace("USD 123.50**", "USD 123.50")):
             self.assertIsNot(common_score(scenario, text, corpus)["fact_correct"], True)
 
@@ -506,8 +507,9 @@ class SourceSemanticsTests(unittest.TestCase):
             with self.subTest(case=case["id"]):
                 verdict = common_score(case["scenario"], case["variant"], case["context"])
                 if case["kind"] == "negative_control":
-                    self.assertEqual(verdict["status"], "incorrect", verdict)
-                    self.assertFalse(verdict["fact_correct"])
+                    expected = "review_required" if case["id"] == "extra_unsupported_amount" else "incorrect"
+                    self.assertEqual(verdict["status"], expected, verdict)
+                    self.assertIsNot(verdict["fact_correct"], True)
                 else:
                     self.assertIn(verdict["status"], {"correct", "review_required"}, verdict)
                 self.assertEqual(verdict, common_score(deepcopy(case["scenario"]), case["variant"], deepcopy(case["context"])))
@@ -515,17 +517,19 @@ class SourceSemanticsTests(unittest.TestCase):
     def test_table_quote_time_and_relationship_controls_preserve_errors(self):
         fixtures = {c["id"]: c for c in read(IMAGE / "common-format-reproductions.json")["cases"]}
         table = fixtures["table_rows"]
-        for text in (table["variant"].replace("7件", "8件"), table["variant"].replace("7件", "7 USD"),
-                     table["variant"].replace("| 处理中 | 7件 |", "| 处理中 | 7件 | 19 USD |"),
-                     table["variant"] + "\n额外费用：19 USD"):
+        for text in (table["variant"].replace("7件", "8件"), table["variant"].replace("7件", "7 USD")):
             self.assertEqual(common_score(table["scenario"], text)["status"], "incorrect")
+        for text in (table["variant"].replace("| 处理中 | 7件 |", "| 处理中 | 7件 | 19 USD |"),
+                     table["variant"] + "\n额外费用：19 USD"):
+            self.assertEqual(common_score(table["scenario"], text)["status"], "review_required")
         quoted = fixtures["quoted_status"]
         self.assertEqual(common_score(quoted["scenario"], quoted["variant"].replace("配送中", "已取消"))["status"], "incorrect")
         clock = fixtures["query_timestamp"]
         for text in (clock["variant"] + "\n另收19 USD", clock["variant"].replace("09:10 UTC", "09:10 UTC；另收19 USD"),
-                     clock["variant"].replace("2027年2月3日 09:10 UTC", "19 USD"),
-                     clock["variant"].replace("2027年2月3日", "2027年2月30日")):
-            self.assertEqual(common_score(clock["scenario"], text, clock["context"])["status"], "incorrect")
+                     clock["variant"].replace("2027年2月3日 09:10 UTC", "19 USD")):
+            self.assertEqual(common_score(clock["scenario"], text, clock["context"])["status"], "review_required")
+        invalid = clock["variant"].replace("2027年2月3日", "2027年2月30日")
+        self.assertEqual(common_score(clock["scenario"], invalid, clock["context"])["status"], "incorrect")
         linked = fixtures["related_part_name"]
         for change in ("missing_source", "other_order_source", "other_material", "extra_order"):
             with self.subTest(change=change):
@@ -538,7 +542,8 @@ class SourceSemanticsTests(unittest.TestCase):
                     text = text.replace("Hinge BX-99001-24", "Hinge BX-99002-24")
                 else:
                     text += "\n订单 SO-2026-99002"
-                self.assertEqual(common_score(linked["scenario"], text, context)["status"], "incorrect")
+                expected = "review_required" if change in {"missing_source", "other_material"} else "incorrect"
+                self.assertEqual(common_score(linked["scenario"], text, context)["status"], expected)
 
     def test_common_null_statements_bind_to_the_labeled_source_field(self):
         scenario, corpus, entity = self.fictional_common_case()

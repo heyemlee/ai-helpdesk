@@ -51,8 +51,13 @@ class CommonFormatTests(unittest.TestCase):
                 with self.subTest(family=f["id"], variant=variant["name"]):
                     result = common_score(variant.get("scenario_override", f["scenario"]), variant["visible"],
                                           variant.get("corpus_override", f["corpus"]))
-                    # Query event evidence is intentionally outside this API.
-                    expected = "review_required" if variant["name"] in {"wrong_query_day", "wrong_timezone"} else "incorrect"
+                    # Unknown charges/joins and query aggregates have no bound
+                    # contradiction in this API. The v3 migration ledger lists
+                    # each former numeric-fallback assertion and its reason.
+                    pending = {"wrong_query_day", "wrong_timezone", "extra_charge_under_ordinal",
+                               "metadata_followed_by_business_number", "extra_charge_in_parenthesis", "unproved_extra_column",
+                               "nonexistent_part", "extra_unsupported_row", "wrong_record_count", "wrong_total"}
+                    expected = "review_required" if variant["name"] in pending else "incorrect"
                     self.assertEqual(result["status"], expected, result)
                     self.assertIsNot(result["fact_correct"], True)
 
@@ -71,8 +76,8 @@ class CommonFormatTests(unittest.TestCase):
             with self.subTest(marker=marker):
                 variant = text.replace("1. ", marker).replace("2. ", marker)
                 self.assertEqual(common_score(scenario, variant, corpus)["status"], "correct")
-                for extra in ("3. 加收款：61.25 USD", "3. 合同金额：18 USD"):
-                    self.assertEqual(common_score(scenario, variant + "\n" + extra, corpus)["status"], "incorrect")
+                self.assertEqual(common_score(scenario, variant + "\n3. 加收款：61.25 USD", corpus)["status"], "review_required")
+                self.assertEqual(common_score(scenario, variant + "\n3. 合同金额：18 USD", corpus)["status"], "incorrect")
                 self.assertIsNot(common_score(scenario, variant + "\n(3) 数量：91 件", corpus)["fact_correct"], True)
         self.assertEqual(common_score(scenario, text + "\n3. 免收全部费用", corpus)["status"], "review_required")
 
@@ -83,7 +88,7 @@ class CommonFormatTests(unittest.TestCase):
                 variant = text.replace("328.40 USD（订单记录）", amount)
                 self.assertEqual(common_score(scenario, variant, corpus)["status"], "review_required")
                 self.assertEqual(common_score(scenario, variant.replace("328.40", "327.40"), corpus)["status"], "incorrect")
-                self.assertEqual(common_score(scenario, variant.replace("订单记录", "另收61.25 USD"), corpus)["status"], "incorrect")
+                self.assertEqual(common_score(scenario, variant.replace("订单记录", "另收61.25 USD"), corpus)["status"], "review_required")
         variant = text.replace("合同金额：328.40 USD（订单记录）", "合同金额（订单记录）：328.40 USD")
         self.assertEqual(common_score(scenario, variant, corpus)["status"], "review_required")
 
@@ -156,13 +161,13 @@ class CommonFormatTests(unittest.TestCase):
         scenario, text, corpus = self.case("localized_query_time")
         for suffix in ("；另收61.25 USD", "。另收61.25 USD", "，另收61.25 USD", "\n另收61.25 USD"):
             with self.subTest(suffix=suffix):
-                self.assertEqual(common_score(scenario, text + suffix, corpus)["status"], "incorrect")
+                self.assertEqual(common_score(scenario, text + suffix, corpus)["status"], "review_required")
         for value in ("25:17", "08:71", "08:17:99", "08:17（UTC+15:00）"):
             with self.subTest(time=value):
                 variant = text.replace("08:17（UTC）", value)
                 self.assertEqual(common_score(scenario, variant, corpus)["status"], "incorrect")
         scenario, text, corpus = self.case("key_value_table", index=1)
-        self.assertEqual(common_score(scenario, text + "\n另收61.25 USD", corpus)["status"], "incorrect")
+        self.assertEqual(common_score(scenario, text + "\n另收61.25 USD", corpus)["status"], "review_required")
         self.assertEqual(common_score(scenario, text.replace("实际送达为4月9日", "实际送达为4月10日"), corpus)["status"], "incorrect")
 
     def test_shared_total_unit_requires_one_matching_source_row(self):

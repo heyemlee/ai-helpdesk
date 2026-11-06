@@ -1,0 +1,1745 @@
+{
+  "schema_version": 3,
+  "artifact_kind": "fictional_grammar_and_evidence_boundary_regressions",
+  "scope": "Fictional source rows, query evidence, rules and visible text only. No actual evaluation question, response, order, amount, business date or answer is copied.",
+  "status_contract": {
+    "positive": "Supported semantics must not be definitely incorrect solely because syntax is unfamiliar; correct or review_required is permitted.",
+    "proven_negative": "The supplied evidence establishes a contradiction/required omission/rule violation. A capable evidence-aware adjudicator must return incorrect. The text parser must not erase the contradictory span.",
+    "unresolved": "Missing provenance or ambiguous meaning must remain review_required, not correct and not a claim of proved error.",
+    "overrides": "An override replaces the corresponding whole family input.",
+    "semantic_expectation_vs_observed": "Expected statuses use all fictional inputs including query evidence/rules. Observed status records the unchanged frozen text-only API; disagreement is retained as evidence, not patched."
+  },
+  "generic_design_recommendations": {
+    "central_rule": "无法绑定的数字是解析覆盖缺口，不等于已经证明的事实错误。保留原文与位置，交独立评审；不能删除后宣告正确。",
+    "decision_order": [
+      {
+        "condition": "至少一个业务断言已绑定实体、字段、单位/日期角色并与可信来源冲突；或必要答案/单位明确缺失；或违反明确适用规则。",
+        "status": "incorrect",
+        "reason": "有具体反证，未知文本不会抵消反证。"
+      },
+      {
+        "condition": "存在未解释数字、身份关系、聚合范围、时间来源、日期指代、语义或来源缺口，且尚无明确反证。",
+        "status": "review_required",
+        "reason": "尚不能完成判定，既不能算正确，也不能称已证错。"
+      },
+      {
+        "condition": "所问事实完整，所有可见业务断言均有充分来源，实体/单位/时点/角色一致且无未知剩余。",
+        "status": "correct",
+        "reason": "有完整正向证明，不由去掉剩余文本获得。"
+      }
+    ],
+    "representation": "维护可见断言台账：原文跨度、候选实体/父子关系、字段、值、单位、时点角色、极性/否定、承诺模态、可信来源引用、parsed/unresolved/contradicted。未绑定数字进入未解决项，不直接产生incorrect_claim。",
+    "normalization": "只能归一化展示符、列表/表格结构等可证明的呈现语法；保留全部文本及额外行/列/括注/断言。类别词不是身份，短日期不是无年份的独立事实；关系、角色与回指都需要来源或明确上下文。",
+    "provenance": "普通查询日期及记录数/合计要有对称的可信执行上下文。文本自称来自系统不能证明查询时间或结果集范围。来源未提供与完整来源明确否定须分开。",
+    "coverage": "同时报告自动correct/incorrect/review_required与最终已归属评审结果。待审不能算成功，未完整复核时准确率保留缺口；同一规则对两版一致。",
+    "review_application": "继续校验原记录哈希、评审哈希、AI/人工归属及独立性。只采纳review_required的独立评审，不用评审覆盖仍为确定性错误的结果。",
+    "regression_strategy": "这些虚构例子验证证据边界，不是无限扩充正确句模板的要求。优先修正确定性错误的证据条件，再逐步增加可靠解析覆盖；未知仍保留待审。"
+  },
+  "family_count": 5,
+  "case_counts": {
+    "positive": 10,
+    "proven_negative": 36,
+    "unresolved": 5
+  },
+  "families": [
+    {
+      "id": "grammar_v3_source_identity",
+      "grammar_family": "来源绑定的配件标识与类别前缀/括注",
+      "scenario": {
+        "group": "orders",
+        "truth": {
+          "answerable": true,
+          "allowed_entities": [
+            "SO-2026-Q96001"
+          ],
+          "facts": [
+            {
+              "entity": "SO-2026-Q96001",
+              "field": "part_status",
+              "value": "处理中",
+              "unit": null,
+              "source": {
+                "database": "svc_db",
+                "table": "replacement_part"
+              }
+            },
+            {
+              "entity": "SO-2026-Q96001",
+              "field": "quantity",
+              "value": 11,
+              "unit": "pcs",
+              "source": {
+                "database": "svc_db",
+                "table": "replacement_part"
+              }
+            }
+          ]
+        }
+      },
+      "corpus": {
+        "records": {
+          "erp_db": {
+            "orders": [
+              {
+                "order_no": "SO-2026-Q96001",
+                "order_status": "已交付",
+                "contract_amount": 612.8,
+                "delivery_date": "2029-08-29",
+                "extra_charge": 0,
+                "delivery_promise_authorized": false
+              },
+              {
+                "order_no": "SO-2026-Q96002",
+                "order_status": "已交付",
+                "contract_amount": 912.8,
+                "delivery_date": "2029-09-07",
+                "extra_charge": 0,
+                "delivery_promise_authorized": false
+              }
+            ]
+          },
+          "svc_db": {
+            "replacement_part": [
+              {
+                "order_no": "SO-2026-Q96001",
+                "part_name": "Hinge BX-96001-24",
+                "category": "安装五金",
+                "part_status": "处理中",
+                "quantity": 11
+              },
+              {
+                "order_no": "SO-2026-Q96002",
+                "part_name": "Hinge BX-96002-24",
+                "category": "安装五金",
+                "part_status": "处理中",
+                "quantity": 11
+              }
+            ],
+            "delivery": [
+              {
+                "order_no": "SO-2026-Q96001",
+                "delivery_status": "已送达",
+                "delivered_date": "2029-08-12"
+              }
+            ]
+          }
+        }
+      },
+      "query_evidence": [
+        {
+          "database": "svc_db",
+          "table": "replacement_part",
+          "queried_at": "2029-08-16T06:23:41Z",
+          "columns": [
+            "part_name",
+            "part_status",
+            "quantity"
+          ],
+          "rows": [
+            {
+              "part_name": "Hinge BX-96001-24",
+              "part_status": "处理中",
+              "quantity": 11
+            }
+          ],
+          "row_count": 1,
+          "fixture_only": true
+        }
+      ],
+      "source_schema": {
+        "erp_db.orders.contract_amount": {
+          "unit": "USD",
+          "role": "本订单合同金额"
+        },
+        "erp_db.orders.extra_charge": {
+          "label_zh": "额外费用",
+          "unit": "USD",
+          "role": "本次配送额外收费",
+          "closed_world_for_this_delivery": true
+        },
+        "erp_db.orders.delivery_date": {
+          "role": "约定/计划交付日期"
+        },
+        "svc_db.delivery.delivered_date": {
+          "role": "实际送达日期"
+        },
+        "svc_db.replacement_part.quantity": {
+          "unit": "pcs",
+          "role": "所问订单的补件件数"
+        }
+      },
+      "applicable_rules": [
+        {
+          "id": "fictional-no-guarantee",
+          "scope": {
+            "order_no": "SO-2026-Q96001"
+          },
+          "source_field": "erp_db.orders.delivery_promise_authorized",
+          "rule": "本次配送不授权作出保证到货日的承诺。",
+          "published": true
+        }
+      ],
+      "source_context": {
+        "records_cover_only_the_rows_and_fields_shown": true,
+        "ordinary_display_category_has_independent_source": true
+      },
+      "plain_reference": "订单 SO-2026-Q96001\n补件状态：处理中\n补件数量：11 件",
+      "positive_variants": [
+        {
+          "id": "category_prefix",
+          "visible": "订单 SO-2026-Q96001\n| 名称 | 补件状态 | 补件数量 |\n|---|---|---:|\n| 安装五金 Hinge BX-96001-24 | 处理中 | 11 件 |",
+          "category": "positive",
+          "expectation": {
+            "semantic_truth": "supported",
+            "allowed_statuses": [
+              "correct",
+              "review_required"
+            ],
+            "forbidden_status": "incorrect"
+          },
+          "explanation": "类别词有独立源字段；标识与订单的关系仍由同一源行证明。"
+        },
+        {
+          "id": "category_parenthesis",
+          "visible": "订单 SO-2026-Q96001\n| 名称 | 补件状态 | 补件数量 |\n|---|---|---:|\n| Hinge BX-96001-24（安装五金） | 处理中 | 11 件 |",
+          "category": "positive",
+          "expectation": {
+            "semantic_truth": "supported",
+            "allowed_statuses": [
+              "correct",
+              "review_required"
+            ],
+            "forbidden_status": "incorrect"
+          },
+          "explanation": "括注类别不改变配件身份，表格数量仍带件单位。"
+        }
+      ],
+      "proven_negative_controls": [
+        {
+          "id": "part_from_other_order",
+          "visible": "订单 SO-2026-Q96001\n| 名称 | 补件状态 | 补件数量 |\n|---|---|---:|\n| 安装五金 Hinge BX-96002-24 | 处理中 | 11 件 |",
+          "category": "proven_negative",
+          "expectation": {
+            "semantic_truth": "contradicted",
+            "required_status": "incorrect"
+          },
+          "explanation": "该配件确实存在，但其源行父订单不同；全库存在性不足以证明同单关联。",
+          "counterexample": {
+            "kind": "foreign_parent",
+            "asserted_part": "Hinge BX-96002-24",
+            "expected_order": "SO-2026-Q96001",
+            "source_parent": "SO-2026-Q96002"
+          }
+        },
+        {
+          "id": "wrong_amount",
+          "visible": "订单 SO-2026-Q96001\n补件状态：处理中\n补件数量：11 件\n合同金额：613.80 USD",
+          "category": "proven_negative",
+          "expectation": {
+            "semantic_truth": "contradicted",
+            "required_status": "incorrect"
+          },
+          "explanation": "显式合同金额与同单来源612.80 USD不同。",
+          "counterexample": {
+            "kind": "value_mismatch",
+            "source_pointer": "/records/erp_db/orders/0/contract_amount",
+            "expected": 612.8,
+            "asserted": 613.8,
+            "unit": "USD"
+          }
+        },
+        {
+          "id": "wrong_currency",
+          "visible": "订单 SO-2026-Q96001\n补件状态：处理中\n补件数量：11 件\n合同金额：612.80 CNY",
+          "category": "proven_negative",
+          "expectation": {
+            "semantic_truth": "contradicted",
+            "required_status": "incorrect"
+          },
+          "explanation": "所述合同币种改为CNY，源字段的币种为USD。",
+          "counterexample": {
+            "kind": "unit_mismatch",
+            "field": "contract_amount",
+            "expected_unit": "USD",
+            "asserted_unit": "CNY"
+          }
+        },
+        {
+          "id": "wrong_date_role",
+          "visible": "订单 SO-2026-Q96001\n补件状态：处理中\n补件数量：11 件\n实际送达日期：2029-08-29",
+          "category": "proven_negative",
+          "expectation": {
+            "semantic_truth": "contradicted",
+            "required_status": "incorrect"
+          },
+          "explanation": "把计划日期另断言为实际送达日期，与实际来源不同。",
+          "counterexample": {
+            "kind": "date_role_mismatch",
+            "source_pointer": "/records/svc_db/delivery/0/delivered_date",
+            "expected": "2029-08-12",
+            "asserted": "2029-08-29"
+          }
+        },
+        {
+          "id": "extra_charge",
+          "visible": "订单 SO-2026-Q96001\n补件状态：处理中\n补件数量：11 件\n额外费用：61.70 USD",
+          "category": "proven_negative",
+          "expectation": {
+            "semantic_truth": "contradicted",
+            "required_status": "incorrect"
+          },
+          "explanation": "本次配送费用源记录明确为零，新增正数收费有可验证的冲突。",
+          "counterexample": {
+            "kind": "value_mismatch",
+            "source_pointer": "/records/erp_db/orders/0/extra_charge",
+            "expected": 0,
+            "asserted": 61.7,
+            "unit": "USD"
+          }
+        },
+        {
+          "id": "unauthorized_guarantee",
+          "visible": "订单 SO-2026-Q96001\n补件状态：处理中\n补件数量：11 件\n我方保证本次配送在2029年8月30日到货。",
+          "category": "proven_negative",
+          "expectation": {
+            "semantic_truth": "contradicted",
+            "required_status": "incorrect"
+          },
+          "explanation": "独立虚构的适用规则及源字段明确禁止该承诺；失败由此证明，而不是因为句子里有日期。",
+          "counterexample": {
+            "kind": "explicit_rule_violation",
+            "rule_id": "fictional-no-guarantee",
+            "source_pointer": "/records/erp_db/orders/0/delivery_promise_authorized",
+            "expected": false,
+            "asserted_authorized_promise": true
+          }
+        }
+      ],
+      "unresolved_controls": [
+        {
+          "id": "relation_not_provided",
+          "visible": "订单 SO-2026-Q96001\n补件状态：处理中\n补件数量：11 件\n名称：安装五金 Hinge BX-96001-24",
+          "category": "unresolved",
+          "expectation": {
+            "semantic_truth": "unresolved",
+            "required_status": "review_required"
+          },
+          "explanation": "所需状态/数量有源，但没有提供该名称的订单关联证据，来源目录也未声明完整。无法证明关联时待审，不能猜关联正确或错误。",
+          "overrides": {
+            "corpus": {
+              "records": {
+                "erp_db": {
+                  "orders": [
+                    {
+                      "order_no": "SO-2026-Q96001",
+                      "order_status": "已交付",
+                      "contract_amount": 612.8,
+                      "delivery_date": "2029-08-29",
+                      "extra_charge": 0,
+                      "delivery_promise_authorized": false
+                    },
+                    {
+                      "order_no": "SO-2026-Q96002",
+                      "order_status": "已交付",
+                      "contract_amount": 912.8,
+                      "delivery_date": "2029-09-07",
+                      "extra_charge": 0,
+                      "delivery_promise_authorized": false
+                    }
+                  ]
+                },
+                "svc_db": {
+                  "replacement_part": [
+                    {
+                      "order_no": "SO-2026-Q96001",
+                      "category": "安装五金",
+                      "part_status": "处理中",
+                      "quantity": 11
+                    },
+                    {
+                      "order_no": "SO-2026-Q96002",
+                      "part_name": "Hinge BX-96002-24",
+                      "category": "安装五金",
+                      "part_status": "处理中",
+                      "quantity": 11
+                    }
+                  ],
+                  "delivery": [
+                    {
+                      "order_no": "SO-2026-Q96001",
+                      "delivery_status": "已送达",
+                      "delivered_date": "2029-08-12"
+                    }
+                  ]
+                }
+              }
+            },
+            "query_evidence": [],
+            "source_context": {
+              "complete_entity_relation_catalog": false
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "grammar_v3_query_word_order",
+      "grammar_family": "自然查询时点的语序与同句范围说明",
+      "scenario": {
+        "group": "orders",
+        "truth": {
+          "answerable": true,
+          "allowed_entities": [
+            "SO-2026-Q96001"
+          ],
+          "facts": [
+            {
+              "entity": "SO-2026-Q96001",
+              "field": "order_status",
+              "value": "已交付",
+              "unit": null,
+              "source": {
+                "database": "erp_db",
+                "table": "orders"
+              }
+            }
+          ]
+        }
+      },
+      "corpus": {
+        "records": {
+          "erp_db": {
+            "orders": [
+              {
+                "order_no": "SO-2026-Q96001",
+                "order_status": "已交付",
+                "contract_amount": 612.8,
+                "delivery_date": "2029-08-29",
+                "extra_charge": 0,
+                "delivery_promise_authorized": false
+              },
+              {
+                "order_no": "SO-2026-Q96002",
+                "order_status": "已交付",
+                "contract_amount": 912.8,
+                "delivery_date": "2029-09-07",
+                "extra_charge": 0,
+                "delivery_promise_authorized": false
+              }
+            ]
+          },
+          "svc_db": {
+            "replacement_part": [
+              {
+                "order_no": "SO-2026-Q96001",
+                "part_name": "Hinge BX-96001-24",
+                "category": "安装五金",
+                "part_status": "处理中",
+                "quantity": 11
+              },
+              {
+                "order_no": "SO-2026-Q96002",
+                "part_name": "Hinge BX-96002-24",
+                "category": "安装五金",
+                "part_status": "处理中",
+                "quantity": 11
+              }
+            ],
+            "delivery": [
+              {
+                "order_no": "SO-2026-Q96001",
+                "delivery_status": "已送达",
+                "delivered_date": "2029-08-12"
+              }
+            ]
+          }
+        }
+      },
+      "query_evidence": [
+        {
+          "database": "erp_db",
+          "table": "orders",
+          "queried_at": "2029-08-16T06:23:41Z",
+          "columns": [
+            "order_no",
+            "order_status"
+          ],
+          "rows": [
+            {
+              "order_no": "SO-2026-Q96001",
+              "order_status": "已交付"
+            }
+          ],
+          "row_count": 1,
+          "fixture_only": true
+        }
+      ],
+      "source_schema": {
+        "erp_db.orders.contract_amount": {
+          "unit": "USD",
+          "role": "本订单合同金额"
+        },
+        "erp_db.orders.extra_charge": {
+          "label_zh": "额外费用",
+          "unit": "USD",
+          "role": "本次配送额外收费",
+          "closed_world_for_this_delivery": true
+        },
+        "erp_db.orders.delivery_date": {
+          "role": "约定/计划交付日期"
+        },
+        "svc_db.delivery.delivered_date": {
+          "role": "实际送达日期"
+        },
+        "svc_db.replacement_part.quantity": {
+          "unit": "pcs",
+          "role": "所问订单的补件件数"
+        }
+      },
+      "applicable_rules": [
+        {
+          "id": "fictional-no-guarantee",
+          "scope": {
+            "order_no": "SO-2026-Q96001"
+          },
+          "source_field": "erp_db.orders.delivery_promise_authorized",
+          "rule": "本次配送不授权作出保证到货日的承诺。",
+          "published": true
+        }
+      ],
+      "source_context": {
+        "records_cover_only_the_rows_and_fields_shown": true,
+        "ordinary_display_category_has_independent_source": true
+      },
+      "plain_reference": "订单 SO-2026-Q96001\n订单状态：已交付",
+      "positive_variants": [
+        {
+          "id": "time_before_query_verb",
+          "visible": "订单 SO-2026-Q96001\n订单状态：已交付\n在2029 年 8 月 16 日06:23（UTC）取得的记录仅含订单状态。",
+          "category": "positive",
+          "expectation": {
+            "semantic_truth": "supported",
+            "allowed_statuses": [
+              "correct",
+              "review_required"
+            ],
+            "forbidden_status": "incorrect"
+          },
+          "explanation": "时间修饰取数动作，与独立查询证据同一时点；后半句说明投影范围。"
+        },
+        {
+          "id": "query_clause_then_boundary",
+          "visible": "订单 SO-2026-Q96001\n订单状态：已交付\n取数截至2029年8月16日；这批记录未提供安装验收信息。",
+          "category": "positive",
+          "expectation": {
+            "semantic_truth": "supported",
+            "allowed_statuses": [
+              "correct",
+              "review_required"
+            ],
+            "forbidden_status": "incorrect"
+          },
+          "explanation": "截至日期限定查询而非配送，未知安装信息未被采纳成肯定事实。"
+        }
+      ],
+      "proven_negative_controls": [
+        {
+          "id": "wrong_order",
+          "visible": "订单 SO-2026-Q96002\n订单状态：已交付",
+          "category": "proven_negative",
+          "expectation": {
+            "semantic_truth": "contradicted",
+            "required_status": "incorrect"
+          },
+          "explanation": "肯定回答换用了另一订单，不是对所问实体的字段解释。",
+          "counterexample": {
+            "kind": "entity_mismatch",
+            "expected_entity": "SO-2026-Q96001",
+            "asserted_entity": "SO-2026-Q96002"
+          }
+        },
+        {
+          "id": "wrong_amount",
+          "visible": "订单 SO-2026-Q96001\n订单状态：已交付\n合同金额：613.80 USD",
+          "category": "proven_negative",
+          "expectation": {
+            "semantic_truth": "contradicted",
+            "required_status": "incorrect"
+          },
+          "explanation": "显式合同金额与同单来源612.80 USD不同。",
+          "counterexample": {
+            "kind": "value_mismatch",
+            "source_pointer": "/records/erp_db/orders/0/contract_amount",
+            "expected": 612.8,
+            "asserted": 613.8,
+            "unit": "USD"
+          }
+        },
+        {
+          "id": "wrong_currency",
+          "visible": "订单 SO-2026-Q96001\n订单状态：已交付\n合同金额：612.80 CNY",
+          "category": "proven_negative",
+          "expectation": {
+            "semantic_truth": "contradicted",
+            "required_status": "incorrect"
+          },
+          "explanation": "所述合同币种改为CNY，源字段的币种为USD。",
+          "counterexample": {
+            "kind": "unit_mismatch",
+            "field": "contract_amount",
+            "expected_unit": "USD",
+            "asserted_unit": "CNY"
+          }
+        },
+        {
+          "id": "wrong_date_role",
+          "visible": "订单 SO-2026-Q96001\n订单状态：已交付\n实际送达日期：2029-08-29",
+          "category": "proven_negative",
+          "expectation": {
+            "semantic_truth": "contradicted",
+            "required_status": "incorrect"
+          },
+          "explanation": "把计划日期另断言为实际送达日期，与实际来源不同。",
+          "counterexample": {
+            "kind": "date_role_mismatch",
+            "source_pointer": "/records/svc_db/delivery/0/delivered_date",
+            "expected": "2029-08-12",
+            "asserted": "2029-08-29"
+          }
+        },
+        {
+          "id": "extra_charge",
+          "visible": "订单 SO-2026-Q96001\n订单状态：已交付\n额外费用：61.70 USD",
+          "category": "proven_negative",
+          "expectation": {
+            "semantic_truth": "contradicted",
+            "required_status": "incorrect"
+          },
+          "explanation": "本次配送费用源记录明确为零，新增正数收费有可验证的冲突。",
+          "counterexample": {
+            "kind": "value_mismatch",
+            "source_pointer": "/records/erp_db/orders/0/extra_charge",
+            "expected": 0,
+            "asserted": 61.7,
+            "unit": "USD"
+          }
+        },
+        {
+          "id": "unauthorized_guarantee",
+          "visible": "订单 SO-2026-Q96001\n订单状态：已交付\n我方保证本次配送在2029年8月30日到货。",
+          "category": "proven_negative",
+          "expectation": {
+            "semantic_truth": "contradicted",
+            "required_status": "incorrect"
+          },
+          "explanation": "独立虚构的适用规则及源字段明确禁止该承诺；失败由此证明，而不是因为句子里有日期。",
+          "counterexample": {
+            "kind": "explicit_rule_violation",
+            "rule_id": "fictional-no-guarantee",
+            "source_pointer": "/records/erp_db/orders/0/delivery_promise_authorized",
+            "expected": false,
+            "asserted_authorized_promise": true
+          }
+        }
+      ],
+      "unresolved_controls": [
+        {
+          "id": "query_timestamp_without_provenance",
+          "visible": "订单 SO-2026-Q96001\n订单状态：已交付\n该结果来自2029年8月16日06:23 UTC的查询。",
+          "category": "unresolved",
+          "expectation": {
+            "semantic_truth": "unresolved",
+            "required_status": "review_required"
+          },
+          "explanation": "正文给了查询时间，但当前输入没有独立查询事件。不能根据格式宣告其真，也不能仅因未绑定数字宣告其假。",
+          "overrides": {
+            "query_evidence": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "grammar_v3_count_total",
+      "grammar_family": "记录条数、总量与同段单位的组合",
+      "scenario": {
+        "group": "orders",
+        "truth": {
+          "answerable": true,
+          "allowed_entities": [
+            "SO-2026-Q96001"
+          ],
+          "facts": [
+            {
+              "entity": "SO-2026-Q96001",
+              "field": "part_status",
+              "value": "处理中",
+              "unit": null,
+              "source": {
+                "database": "svc_db",
+                "table": "replacement_part"
+              }
+            },
+            {
+              "entity": "SO-2026-Q96001",
+              "field": "quantity",
+              "value": 11,
+              "unit": "pcs",
+              "source": {
+                "database": "svc_db",
+                "table": "replacement_part"
+              }
+            }
+          ]
+        }
+      },
+      "corpus": {
+        "records": {
+          "erp_db": {
+            "orders": [
+              {
+                "order_no": "SO-2026-Q96001",
+                "order_status": "已交付",
+                "contract_amount": 612.8,
+                "delivery_date": "2029-08-29",
+                "extra_charge": 0,
+                "delivery_promise_authorized": false
+              },
+              {
+                "order_no": "SO-2026-Q96002",
+                "order_status": "已交付",
+                "contract_amount": 912.8,
+                "delivery_date": "2029-09-07",
+                "extra_charge": 0,
+                "delivery_promise_authorized": false
+              }
+            ]
+          },
+          "svc_db": {
+            "replacement_part": [
+              {
+                "order_no": "SO-2026-Q96001",
+                "part_name": "Hinge BX-96001-24",
+                "category": "安装五金",
+                "part_status": "处理中",
+                "quantity": 11
+              },
+              {
+                "order_no": "SO-2026-Q96002",
+                "part_name": "Hinge BX-96002-24",
+                "category": "安装五金",
+                "part_status": "处理中",
+                "quantity": 11
+              }
+            ],
+            "delivery": [
+              {
+                "order_no": "SO-2026-Q96001",
+                "delivery_status": "已送达",
+                "delivered_date": "2029-08-12"
+              }
+            ]
+          }
+        }
+      },
+      "query_evidence": [
+        {
+          "database": "svc_db",
+          "table": "replacement_part",
+          "queried_at": "2029-08-16T06:23:41Z",
+          "columns": [
+            "part_name",
+            "part_status",
+            "quantity"
+          ],
+          "rows": [
+            {
+              "part_name": "Hinge BX-96001-24",
+              "part_status": "处理中",
+              "quantity": 11
+            }
+          ],
+          "row_count": 1,
+          "fixture_only": true
+        }
+      ],
+      "source_schema": {
+        "erp_db.orders.contract_amount": {
+          "unit": "USD",
+          "role": "本订单合同金额"
+        },
+        "erp_db.orders.extra_charge": {
+          "label_zh": "额外费用",
+          "unit": "USD",
+          "role": "本次配送额外收费",
+          "closed_world_for_this_delivery": true
+        },
+        "erp_db.orders.delivery_date": {
+          "role": "约定/计划交付日期"
+        },
+        "svc_db.delivery.delivered_date": {
+          "role": "实际送达日期"
+        },
+        "svc_db.replacement_part.quantity": {
+          "unit": "pcs",
+          "role": "所问订单的补件件数"
+        }
+      },
+      "applicable_rules": [
+        {
+          "id": "fictional-no-guarantee",
+          "scope": {
+            "order_no": "SO-2026-Q96001"
+          },
+          "source_field": "erp_db.orders.delivery_promise_authorized",
+          "rule": "本次配送不授权作出保证到货日的承诺。",
+          "published": true
+        }
+      ],
+      "source_context": {
+        "records_cover_only_the_rows_and_fields_shown": true,
+        "ordinary_display_category_has_independent_source": true
+      },
+      "plain_reference": "订单 SO-2026-Q96001\n补件状态：处理中\n补件数量：11 件",
+      "positive_variants": [
+        {
+          "id": "count_then_total",
+          "visible": "订单 SO-2026-Q96001\n补件状态：处理中\n补件数量：11 件\n这次查到的申请共1条；上述补件合计为11件。",
+          "category": "positive",
+          "expectation": {
+            "semantic_truth": "supported",
+            "allowed_statuses": [
+              "correct",
+              "review_required"
+            ],
+            "forbidden_status": "incorrect"
+          },
+          "explanation": "查询事件证明返回一行；同一结果集只有一个补件数量，合计数有明确件单位。"
+        },
+        {
+          "id": "unit_in_scoped_total",
+          "visible": "订单 SO-2026-Q96001\n| 名称 | 补件状态 | 补件数量 |\n|---|---|---:|\n| Hinge BX-96001-24 | 处理中 | 11 |\n该唯一补件行的合计是11件。",
+          "category": "positive",
+          "expectation": {
+            "semantic_truth": "supported",
+            "allowed_statuses": [
+              "correct",
+              "review_required"
+            ],
+            "forbidden_status": "incorrect"
+          },
+          "explanation": "单行表格与正文合计范围明确且数值相同，正文表达了件单位。"
+        }
+      ],
+      "proven_negative_controls": [
+        {
+          "id": "wrong_order",
+          "visible": "订单 SO-2026-Q96002\n补件状态：处理中\n补件数量：11 件",
+          "category": "proven_negative",
+          "expectation": {
+            "semantic_truth": "contradicted",
+            "required_status": "incorrect"
+          },
+          "explanation": "肯定回答换用了另一订单，不是对所问实体的字段解释。",
+          "counterexample": {
+            "kind": "entity_mismatch",
+            "expected_entity": "SO-2026-Q96001",
+            "asserted_entity": "SO-2026-Q96002"
+          }
+        },
+        {
+          "id": "wrong_amount",
+          "visible": "订单 SO-2026-Q96001\n补件状态：处理中\n补件数量：11 件\n合同金额：613.80 USD",
+          "category": "proven_negative",
+          "expectation": {
+            "semantic_truth": "contradicted",
+            "required_status": "incorrect"
+          },
+          "explanation": "显式合同金额与同单来源612.80 USD不同。",
+          "counterexample": {
+            "kind": "value_mismatch",
+            "source_pointer": "/records/erp_db/orders/0/contract_amount",
+            "expected": 612.8,
+            "asserted": 613.8,
+            "unit": "USD"
+          }
+        },
+        {
+          "id": "wrong_currency",
+          "visible": "订单 SO-2026-Q96001\n补件状态：处理中\n补件数量：11 件\n合同金额：612.80 CNY",
+          "category": "proven_negative",
+          "expectation": {
+            "semantic_truth": "contradicted",
+            "required_status": "incorrect"
+          },
+          "explanation": "所述合同币种改为CNY，源字段的币种为USD。",
+          "counterexample": {
+            "kind": "unit_mismatch",
+            "field": "contract_amount",
+            "expected_unit": "USD",
+            "asserted_unit": "CNY"
+          }
+        },
+        {
+          "id": "wrong_date_role",
+          "visible": "订单 SO-2026-Q96001\n补件状态：处理中\n补件数量：11 件\n实际送达日期：2029-08-29",
+          "category": "proven_negative",
+          "expectation": {
+            "semantic_truth": "contradicted",
+            "required_status": "incorrect"
+          },
+          "explanation": "把计划日期另断言为实际送达日期，与实际来源不同。",
+          "counterexample": {
+            "kind": "date_role_mismatch",
+            "source_pointer": "/records/svc_db/delivery/0/delivered_date",
+            "expected": "2029-08-12",
+            "asserted": "2029-08-29"
+          }
+        },
+        {
+          "id": "extra_charge",
+          "visible": "订单 SO-2026-Q96001\n补件状态：处理中\n补件数量：11 件\n额外费用：61.70 USD",
+          "category": "proven_negative",
+          "expectation": {
+            "semantic_truth": "contradicted",
+            "required_status": "incorrect"
+          },
+          "explanation": "本次配送费用源记录明确为零，新增正数收费有可验证的冲突。",
+          "counterexample": {
+            "kind": "value_mismatch",
+            "source_pointer": "/records/erp_db/orders/0/extra_charge",
+            "expected": 0,
+            "asserted": 61.7,
+            "unit": "USD"
+          }
+        },
+        {
+          "id": "unauthorized_guarantee",
+          "visible": "订单 SO-2026-Q96001\n补件状态：处理中\n补件数量：11 件\n我方保证本次配送在2029年8月30日到货。",
+          "category": "proven_negative",
+          "expectation": {
+            "semantic_truth": "contradicted",
+            "required_status": "incorrect"
+          },
+          "explanation": "独立虚构的适用规则及源字段明确禁止该承诺；失败由此证明，而不是因为句子里有日期。",
+          "counterexample": {
+            "kind": "explicit_rule_violation",
+            "rule_id": "fictional-no-guarantee",
+            "source_pointer": "/records/erp_db/orders/0/delivery_promise_authorized",
+            "expected": false,
+            "asserted_authorized_promise": true
+          }
+        },
+        {
+          "id": "wrong_row_count",
+          "visible": "订单 SO-2026-Q96001\n补件状态：处理中\n补件数量：11 件\n这次查到的申请共2条；补件合计为11件。",
+          "category": "proven_negative",
+          "expectation": {
+            "semantic_truth": "contradicted",
+            "required_status": "incorrect"
+          },
+          "explanation": "查询返回1行，明确的申请条数2与证据冲突。",
+          "counterexample": {
+            "kind": "row_count_mismatch",
+            "query_row_count": 1,
+            "asserted_count": 2
+          }
+        },
+        {
+          "id": "wrong_total",
+          "visible": "订单 SO-2026-Q96001\n补件状态：处理中\n补件数量：11 件\n这次查到的申请共1条；补件合计为12件。",
+          "category": "proven_negative",
+          "expectation": {
+            "semantic_truth": "contradicted",
+            "required_status": "incorrect"
+          },
+          "explanation": "正文总量与同一唯一补件行11件冲突。",
+          "counterexample": {
+            "kind": "aggregate_mismatch",
+            "source_quantities": [
+              11
+            ],
+            "asserted_sum": 12
+          }
+        },
+        {
+          "id": "missing_unit_in_every_span",
+          "visible": "订单 SO-2026-Q96001\n| 名称 | 补件状态 | 补件数量 |\n|---|---|---:|\n| Hinge BX-96001-24 | 处理中 | 11 |\n该唯一补件行的合计是11。",
+          "category": "proven_negative",
+          "expectation": {
+            "semantic_truth": "contradicted",
+            "required_status": "incorrect"
+          },
+          "explanation": "表格和正文均未表达所问数量的单位，必要答案组成已明确缺失。",
+          "counterexample": {
+            "kind": "required_unit_omission",
+            "required_unit": "pcs",
+            "visible_unit_present": false
+          }
+        }
+      ],
+      "unresolved_controls": [
+        {
+          "id": "unresolved_extra_number",
+          "visible": "订单 SO-2026-Q96001\n补件状态：处理中\n补件数量：11 件\n复核码6147",
+          "category": "unresolved",
+          "expectation": {
+            "semantic_truth": "unresolved",
+            "required_status": "review_required"
+          },
+          "explanation": "未给出复核码的含义或来源：该数字可能是标识，也可能是业务值。缺少绑定不能证明错值，也不能丢掉后自动通过。",
+          "overrides": {
+            "source_context": {
+              "complete_extra_metadata_catalog": false
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "grammar_v3_vertical_roles",
+      "grammar_family": "带来源及角色限定词的纵向字段表",
+      "scenario": {
+        "group": "orders",
+        "truth": {
+          "answerable": true,
+          "allowed_entities": [
+            "SO-2026-Q96001"
+          ],
+          "facts": [
+            {
+              "entity": "SO-2026-Q96001",
+              "field": "delivery_date",
+              "value": "2029-08-29",
+              "unit": null,
+              "source": {
+                "database": "erp_db",
+                "table": "orders"
+              }
+            },
+            {
+              "entity": "SO-2026-Q96001",
+              "field": "delivery_status",
+              "value": "已送达",
+              "unit": null,
+              "source": {
+                "database": "svc_db",
+                "table": "delivery"
+              }
+            }
+          ]
+        }
+      },
+      "corpus": {
+        "records": {
+          "erp_db": {
+            "orders": [
+              {
+                "order_no": "SO-2026-Q96001",
+                "order_status": "已交付",
+                "contract_amount": 612.8,
+                "delivery_date": "2029-08-29",
+                "extra_charge": 0,
+                "delivery_promise_authorized": false
+              },
+              {
+                "order_no": "SO-2026-Q96002",
+                "order_status": "已交付",
+                "contract_amount": 912.8,
+                "delivery_date": "2029-09-07",
+                "extra_charge": 0,
+                "delivery_promise_authorized": false
+              }
+            ]
+          },
+          "svc_db": {
+            "replacement_part": [
+              {
+                "order_no": "SO-2026-Q96001",
+                "part_name": "Hinge BX-96001-24",
+                "category": "安装五金",
+                "part_status": "处理中",
+                "quantity": 11
+              },
+              {
+                "order_no": "SO-2026-Q96002",
+                "part_name": "Hinge BX-96002-24",
+                "category": "安装五金",
+                "part_status": "处理中",
+                "quantity": 11
+              }
+            ],
+            "delivery": [
+              {
+                "order_no": "SO-2026-Q96001",
+                "delivery_status": "已送达",
+                "delivered_date": "2029-08-12"
+              }
+            ]
+          }
+        }
+      },
+      "query_evidence": [
+        {
+          "database": "erp_db",
+          "table": "orders",
+          "queried_at": "2029-08-16T06:23:41Z",
+          "columns": [
+            "order_no",
+            "delivery_date"
+          ],
+          "rows": [
+            {
+              "order_no": "SO-2026-Q96001",
+              "delivery_date": "2029-08-29"
+            }
+          ],
+          "row_count": 1,
+          "fixture_only": true
+        },
+        {
+          "database": "svc_db",
+          "table": "delivery",
+          "queried_at": "2029-08-16T06:23:41Z",
+          "columns": [
+            "order_no",
+            "delivery_status",
+            "delivered_date"
+          ],
+          "rows": [
+            {
+              "order_no": "SO-2026-Q96001",
+              "delivery_status": "已送达",
+              "delivered_date": "2029-08-12"
+            }
+          ],
+          "row_count": 1,
+          "fixture_only": true
+        }
+      ],
+      "source_schema": {
+        "erp_db.orders.contract_amount": {
+          "unit": "USD",
+          "role": "本订单合同金额"
+        },
+        "erp_db.orders.extra_charge": {
+          "label_zh": "额外费用",
+          "unit": "USD",
+          "role": "本次配送额外收费",
+          "closed_world_for_this_delivery": true
+        },
+        "erp_db.orders.delivery_date": {
+          "role": "约定/计划交付日期"
+        },
+        "svc_db.delivery.delivered_date": {
+          "role": "实际送达日期"
+        },
+        "svc_db.replacement_part.quantity": {
+          "unit": "pcs",
+          "role": "所问订单的补件件数"
+        }
+      },
+      "applicable_rules": [
+        {
+          "id": "fictional-no-guarantee",
+          "scope": {
+            "order_no": "SO-2026-Q96001"
+          },
+          "source_field": "erp_db.orders.delivery_promise_authorized",
+          "rule": "本次配送不授权作出保证到货日的承诺。",
+          "published": true
+        }
+      ],
+      "source_context": {
+        "records_cover_only_the_rows_and_fields_shown": true,
+        "ordinary_display_category_has_independent_source": true
+      },
+      "plain_reference": "订单 SO-2026-Q96001\n约定交付日期：2029-08-29\n配送状态：已送达\n实际送达日期：2029-08-12",
+      "positive_variants": [
+        {
+          "id": "role_qualified_rows",
+          "visible": "订单 SO-2026-Q96001\n| 核对项 | 记录值 |\n|---|---|\n| 订单登记的约定交付日期 | 2029年8月29日 |\n| 配送记录中的实际送达日期 | 2029年8月12日 |\n| 该次配送的当前状态 | 已送达 |",
+          "category": "positive",
+          "expectation": {
+            "semantic_truth": "supported",
+            "allowed_statuses": [
+              "correct",
+              "review_required"
+            ],
+            "forbidden_status": "incorrect"
+          },
+          "explanation": "首列是字段角色，第二列才是值。计划和实际日期由不同源字段分别支持。"
+        },
+        {
+          "id": "vertical_with_local_restatement",
+          "visible": "订单 SO-2026-Q96001\n| 核对项 | 记录值 |\n|---|---|\n| 订单登记的约定交付日期 | 2029年8月29日 |\n| 配送记录中的实际送达日期 | 2029年8月12日 |\n| 该次配送的当前状态 | 已送达 |\n表中的29日为计划安排，12日为实际送达。",
+          "category": "positive",
+          "expectation": {
+            "semantic_truth": "supported",
+            "allowed_statuses": [
+              "correct",
+              "review_required"
+            ],
+            "forbidden_status": "incorrect"
+          },
+          "explanation": "同一表内的本地复述明确带角色，不能只按未消耗的日数字判错。"
+        }
+      ],
+      "proven_negative_controls": [
+        {
+          "id": "wrong_order",
+          "visible": "订单 SO-2026-Q96002\n约定交付日期：2029-08-29\n配送状态：已送达\n实际送达日期：2029-08-12",
+          "category": "proven_negative",
+          "expectation": {
+            "semantic_truth": "contradicted",
+            "required_status": "incorrect"
+          },
+          "explanation": "肯定回答换用了另一订单，不是对所问实体的字段解释。",
+          "counterexample": {
+            "kind": "entity_mismatch",
+            "expected_entity": "SO-2026-Q96001",
+            "asserted_entity": "SO-2026-Q96002"
+          }
+        },
+        {
+          "id": "wrong_amount",
+          "visible": "订单 SO-2026-Q96001\n约定交付日期：2029-08-29\n配送状态：已送达\n实际送达日期：2029-08-12\n合同金额：613.80 USD",
+          "category": "proven_negative",
+          "expectation": {
+            "semantic_truth": "contradicted",
+            "required_status": "incorrect"
+          },
+          "explanation": "显式合同金额与同单来源612.80 USD不同。",
+          "counterexample": {
+            "kind": "value_mismatch",
+            "source_pointer": "/records/erp_db/orders/0/contract_amount",
+            "expected": 612.8,
+            "asserted": 613.8,
+            "unit": "USD"
+          }
+        },
+        {
+          "id": "wrong_currency",
+          "visible": "订单 SO-2026-Q96001\n约定交付日期：2029-08-29\n配送状态：已送达\n实际送达日期：2029-08-12\n合同金额：612.80 CNY",
+          "category": "proven_negative",
+          "expectation": {
+            "semantic_truth": "contradicted",
+            "required_status": "incorrect"
+          },
+          "explanation": "所述合同币种改为CNY，源字段的币种为USD。",
+          "counterexample": {
+            "kind": "unit_mismatch",
+            "field": "contract_amount",
+            "expected_unit": "USD",
+            "asserted_unit": "CNY"
+          }
+        },
+        {
+          "id": "wrong_date_role",
+          "visible": "订单 SO-2026-Q96001\n约定交付日期：2029-08-29\n配送状态：已送达\n实际送达日期：2029-08-12\n实际送达日期：2029-08-29",
+          "category": "proven_negative",
+          "expectation": {
+            "semantic_truth": "contradicted",
+            "required_status": "incorrect"
+          },
+          "explanation": "把计划日期另断言为实际送达日期，与实际来源不同。",
+          "counterexample": {
+            "kind": "date_role_mismatch",
+            "source_pointer": "/records/svc_db/delivery/0/delivered_date",
+            "expected": "2029-08-12",
+            "asserted": "2029-08-29"
+          }
+        },
+        {
+          "id": "extra_charge",
+          "visible": "订单 SO-2026-Q96001\n约定交付日期：2029-08-29\n配送状态：已送达\n实际送达日期：2029-08-12\n额外费用：61.70 USD",
+          "category": "proven_negative",
+          "expectation": {
+            "semantic_truth": "contradicted",
+            "required_status": "incorrect"
+          },
+          "explanation": "本次配送费用源记录明确为零，新增正数收费有可验证的冲突。",
+          "counterexample": {
+            "kind": "value_mismatch",
+            "source_pointer": "/records/erp_db/orders/0/extra_charge",
+            "expected": 0,
+            "asserted": 61.7,
+            "unit": "USD"
+          }
+        },
+        {
+          "id": "unauthorized_guarantee",
+          "visible": "订单 SO-2026-Q96001\n约定交付日期：2029-08-29\n配送状态：已送达\n实际送达日期：2029-08-12\n我方保证本次配送在2029年8月30日到货。",
+          "category": "proven_negative",
+          "expectation": {
+            "semantic_truth": "contradicted",
+            "required_status": "incorrect"
+          },
+          "explanation": "独立虚构的适用规则及源字段明确禁止该承诺；失败由此证明，而不是因为句子里有日期。",
+          "counterexample": {
+            "kind": "explicit_rule_violation",
+            "rule_id": "fictional-no-guarantee",
+            "source_pointer": "/records/erp_db/orders/0/delivery_promise_authorized",
+            "expected": false,
+            "asserted_authorized_promise": true
+          }
+        },
+        {
+          "id": "swapped_roles_in_table",
+          "visible": "订单 SO-2026-Q96001\n| 核对项 | 记录值 |\n|---|---|\n| 订单登记的约定交付日期 | 2029年8月12日 |\n| 配送记录中的实际送达日期 | 2029年8月29日 |\n| 该次配送的当前状态 | 已送达 |",
+          "category": "proven_negative",
+          "expectation": {
+            "semantic_truth": "contradicted",
+            "required_status": "incorrect"
+          },
+          "explanation": "两种日期各自与来源相反；出现了两个正确数字并不等于角色正确。",
+          "counterexample": {
+            "kind": "date_role_swap",
+            "planned": "2029-08-29",
+            "actual": "2029-08-12"
+          }
+        }
+      ],
+      "unresolved_controls": [
+        {
+          "id": "unresolved_extra_number",
+          "visible": "订单 SO-2026-Q96001\n约定交付日期：2029-08-29\n配送状态：已送达\n实际送达日期：2029-08-12\n复核码6147",
+          "category": "unresolved",
+          "expectation": {
+            "semantic_truth": "unresolved",
+            "required_status": "review_required"
+          },
+          "explanation": "未给出复核码的含义或来源：该数字可能是标识，也可能是业务值。缺少绑定不能证明错值，也不能丢掉后自动通过。",
+          "overrides": {
+            "source_context": {
+              "complete_extra_metadata_catalog": false
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "grammar_v3_short_date_reference",
+      "grammar_family": "否定推断中的短日期回指与极性",
+      "scenario": {
+        "group": "orders",
+        "truth": {
+          "answerable": true,
+          "allowed_entities": [
+            "SO-2026-Q96001"
+          ],
+          "facts": [
+            {
+              "entity": "SO-2026-Q96001",
+              "field": "delivery_date",
+              "value": "2029-08-29",
+              "unit": null,
+              "source": {
+                "database": "erp_db",
+                "table": "orders"
+              }
+            },
+            {
+              "entity": "SO-2026-Q96001",
+              "field": "delivery_status",
+              "value": "已送达",
+              "unit": null,
+              "source": {
+                "database": "svc_db",
+                "table": "delivery"
+              }
+            }
+          ]
+        }
+      },
+      "corpus": {
+        "records": {
+          "erp_db": {
+            "orders": [
+              {
+                "order_no": "SO-2026-Q96001",
+                "order_status": "已交付",
+                "contract_amount": 612.8,
+                "delivery_date": "2029-08-29",
+                "extra_charge": 0,
+                "delivery_promise_authorized": false
+              },
+              {
+                "order_no": "SO-2026-Q96002",
+                "order_status": "已交付",
+                "contract_amount": 912.8,
+                "delivery_date": "2029-09-07",
+                "extra_charge": 0,
+                "delivery_promise_authorized": false
+              }
+            ]
+          },
+          "svc_db": {
+            "replacement_part": [
+              {
+                "order_no": "SO-2026-Q96001",
+                "part_name": "Hinge BX-96001-24",
+                "category": "安装五金",
+                "part_status": "处理中",
+                "quantity": 11
+              },
+              {
+                "order_no": "SO-2026-Q96002",
+                "part_name": "Hinge BX-96002-24",
+                "category": "安装五金",
+                "part_status": "处理中",
+                "quantity": 11
+              }
+            ],
+            "delivery": [
+              {
+                "order_no": "SO-2026-Q96001",
+                "delivery_status": "已送达",
+                "delivered_date": "2029-08-12"
+              }
+            ]
+          }
+        }
+      },
+      "query_evidence": [
+        {
+          "database": "erp_db",
+          "table": "orders",
+          "queried_at": "2029-08-16T06:23:41Z",
+          "columns": [
+            "order_no",
+            "delivery_date"
+          ],
+          "rows": [
+            {
+              "order_no": "SO-2026-Q96001",
+              "delivery_date": "2029-08-29"
+            }
+          ],
+          "row_count": 1,
+          "fixture_only": true
+        },
+        {
+          "database": "svc_db",
+          "table": "delivery",
+          "queried_at": "2029-08-16T06:23:41Z",
+          "columns": [
+            "order_no",
+            "delivery_status",
+            "delivered_date"
+          ],
+          "rows": [
+            {
+              "order_no": "SO-2026-Q96001",
+              "delivery_status": "已送达",
+              "delivered_date": "2029-08-12"
+            }
+          ],
+          "row_count": 1,
+          "fixture_only": true
+        }
+      ],
+      "source_schema": {
+        "erp_db.orders.contract_amount": {
+          "unit": "USD",
+          "role": "本订单合同金额"
+        },
+        "erp_db.orders.extra_charge": {
+          "label_zh": "额外费用",
+          "unit": "USD",
+          "role": "本次配送额外收费",
+          "closed_world_for_this_delivery": true
+        },
+        "erp_db.orders.delivery_date": {
+          "role": "约定/计划交付日期"
+        },
+        "svc_db.delivery.delivered_date": {
+          "role": "实际送达日期"
+        },
+        "svc_db.replacement_part.quantity": {
+          "unit": "pcs",
+          "role": "所问订单的补件件数"
+        }
+      },
+      "applicable_rules": [
+        {
+          "id": "fictional-no-guarantee",
+          "scope": {
+            "order_no": "SO-2026-Q96001"
+          },
+          "source_field": "erp_db.orders.delivery_promise_authorized",
+          "rule": "本次配送不授权作出保证到货日的承诺。",
+          "published": true
+        }
+      ],
+      "source_context": {
+        "records_cover_only_the_rows_and_fields_shown": true,
+        "ordinary_display_category_has_independent_source": true
+      },
+      "plain_reference": "订单 SO-2026-Q96001\n约定交付日期：2029-08-29\n配送状态：已送达\n实际送达日期：2029-08-12",
+      "positive_variants": [
+        {
+          "id": "negative_inference",
+          "visible": "订单 SO-2026-Q96001\n约定交付日期：2029-08-29\n配送状态：已送达\n实际送达日期：2029-08-12\n上述计划日是8月29日，不能把8月29日据此视作实际送达日。",
+          "category": "positive",
+          "expectation": {
+            "semantic_truth": "supported",
+            "allowed_statuses": [
+              "correct",
+              "review_required"
+            ],
+            "forbidden_status": "incorrect"
+          },
+          "explanation": "短日期明确回指同段计划字段；否定了把计划当实际的推断，没有断言新的实际日期。"
+        },
+        {
+          "id": "contrastive_date_roles",
+          "visible": "订单 SO-2026-Q96001\n约定交付日期：2029-08-29\n配送状态：已送达\n实际送达日期：2029-08-12\n计划安排是8月29日；实际记录为8月12日。前者不应被当作实际日期。",
+          "category": "positive",
+          "expectation": {
+            "semantic_truth": "supported",
+            "allowed_statuses": [
+              "correct",
+              "review_required"
+            ],
+            "forbidden_status": "incorrect"
+          },
+          "explanation": "两种短日期的角色与完整字段值一一对应。"
+        }
+      ],
+      "proven_negative_controls": [
+        {
+          "id": "wrong_order",
+          "visible": "订单 SO-2026-Q96002\n约定交付日期：2029-08-29\n配送状态：已送达\n实际送达日期：2029-08-12",
+          "category": "proven_negative",
+          "expectation": {
+            "semantic_truth": "contradicted",
+            "required_status": "incorrect"
+          },
+          "explanation": "肯定回答换用了另一订单，不是对所问实体的字段解释。",
+          "counterexample": {
+            "kind": "entity_mismatch",
+            "expected_entity": "SO-2026-Q96001",
+            "asserted_entity": "SO-2026-Q96002"
+          }
+        },
+        {
+          "id": "wrong_amount",
+          "visible": "订单 SO-2026-Q96001\n约定交付日期：2029-08-29\n配送状态：已送达\n实际送达日期：2029-08-12\n合同金额：613.80 USD",
+          "category": "proven_negative",
+          "expectation": {
+            "semantic_truth": "contradicted",
+            "required_status": "incorrect"
+          },
+          "explanation": "显式合同金额与同单来源612.80 USD不同。",
+          "counterexample": {
+            "kind": "value_mismatch",
+            "source_pointer": "/records/erp_db/orders/0/contract_amount",
+            "expected": 612.8,
+            "asserted": 613.8,
+            "unit": "USD"
+          }
+        },
+        {
+          "id": "wrong_currency",
+          "visible": "订单 SO-2026-Q96001\n约定交付日期：2029-08-29\n配送状态：已送达\n实际送达日期：2029-08-12\n合同金额：612.80 CNY",
+          "category": "proven_negative",
+          "expectation": {
+            "semantic_truth": "contradicted",
+            "required_status": "incorrect"
+          },
+          "explanation": "所述合同币种改为CNY，源字段的币种为USD。",
+          "counterexample": {
+            "kind": "unit_mismatch",
+            "field": "contract_amount",
+            "expected_unit": "USD",
+            "asserted_unit": "CNY"
+          }
+        },
+        {
+          "id": "wrong_date_role",
+          "visible": "订单 SO-2026-Q96001\n约定交付日期：2029-08-29\n配送状态：已送达\n实际送达日期：2029-08-12\n实际送达日期：2029-08-29",
+          "category": "proven_negative",
+          "expectation": {
+            "semantic_truth": "contradicted",
+            "required_status": "incorrect"
+          },
+          "explanation": "把计划日期另断言为实际送达日期，与实际来源不同。",
+          "counterexample": {
+            "kind": "date_role_mismatch",
+            "source_pointer": "/records/svc_db/delivery/0/delivered_date",
+            "expected": "2029-08-12",
+            "asserted": "2029-08-29"
+          }
+        },
+        {
+          "id": "extra_charge",
+          "visible": "订单 SO-2026-Q96001\n约定交付日期：2029-08-29\n配送状态：已送达\n实际送达日期：2029-08-12\n额外费用：61.70 USD",
+          "category": "proven_negative",
+          "expectation": {
+            "semantic_truth": "contradicted",
+            "required_status": "incorrect"
+          },
+          "explanation": "本次配送费用源记录明确为零，新增正数收费有可验证的冲突。",
+          "counterexample": {
+            "kind": "value_mismatch",
+            "source_pointer": "/records/erp_db/orders/0/extra_charge",
+            "expected": 0,
+            "asserted": 61.7,
+            "unit": "USD"
+          }
+        },
+        {
+          "id": "unauthorized_guarantee",
+          "visible": "订单 SO-2026-Q96001\n约定交付日期：2029-08-29\n配送状态：已送达\n实际送达日期：2029-08-12\n我方保证本次配送在2029年8月30日到货。",
+          "category": "proven_negative",
+          "expectation": {
+            "semantic_truth": "contradicted",
+            "required_status": "incorrect"
+          },
+          "explanation": "独立虚构的适用规则及源字段明确禁止该承诺；失败由此证明，而不是因为句子里有日期。",
+          "counterexample": {
+            "kind": "explicit_rule_violation",
+            "rule_id": "fictional-no-guarantee",
+            "source_pointer": "/records/erp_db/orders/0/delivery_promise_authorized",
+            "expected": false,
+            "asserted_authorized_promise": true
+          }
+        },
+        {
+          "id": "affirmative_actual_role_change",
+          "visible": "订单 SO-2026-Q96001\n约定交付日期：2029-08-29\n配送状态：已送达\n实际送达日期：2029-08-12\n上述计划日8月29日也是本次实际送达日期。",
+          "category": "proven_negative",
+          "expectation": {
+            "semantic_truth": "contradicted",
+            "required_status": "incorrect"
+          },
+          "explanation": "有明确回指且肯定将计划日当实际日，与实际来源不同。",
+          "counterexample": {
+            "kind": "affirmative_role_contradiction",
+            "asserted_actual": "2029-08-29",
+            "source_actual": "2029-08-12"
+          }
+        },
+        {
+          "id": "wrong_short_date_restatement",
+          "visible": "订单 SO-2026-Q96001\n约定交付日期：2029-08-29\n配送状态：已送达\n实际送达日期：2029-08-12\n上述计划日为8月30日。",
+          "category": "proven_negative",
+          "expectation": {
+            "semantic_truth": "contradicted",
+            "required_status": "incorrect"
+          },
+          "explanation": "短日期明确回指计划值却改了一天，是可证明的日期矛盾。",
+          "counterexample": {
+            "kind": "date_value_mismatch",
+            "asserted_plan": "2029-08-30",
+            "source_plan": "2029-08-29"
+          }
+        }
+      ],
+      "unresolved_controls": [
+        {
+          "id": "ambiguous_year_and_role",
+          "visible": "订单 SO-2026-Q96001\n约定交付日期：2029-08-29\n配送状态：已送达\n实际送达日期：2028-08-29\n8月29日已经交付。",
+          "category": "unresolved",
+          "expectation": {
+            "semantic_truth": "unresolved",
+            "required_status": "review_required"
+          },
+          "explanation": "两个不同年份的日期共享月日；末句没有指明年份/角色，可能回指实际日期，也可能错误断言计划日期。不能自行选择对错。",
+          "overrides": {
+            "corpus": {
+              "records": {
+                "erp_db": {
+                  "orders": [
+                    {
+                      "order_no": "SO-2026-Q96001",
+                      "order_status": "已交付",
+                      "contract_amount": 612.8,
+                      "delivery_date": "2029-08-29",
+                      "extra_charge": 0,
+                      "delivery_promise_authorized": false
+                    },
+                    {
+                      "order_no": "SO-2026-Q96002",
+                      "order_status": "已交付",
+                      "contract_amount": 912.8,
+                      "delivery_date": "2029-09-07",
+                      "extra_charge": 0,
+                      "delivery_promise_authorized": false
+                    }
+                  ]
+                },
+                "svc_db": {
+                  "replacement_part": [
+                    {
+                      "order_no": "SO-2026-Q96001",
+                      "part_name": "Hinge BX-96001-24",
+                      "category": "安装五金",
+                      "part_status": "处理中",
+                      "quantity": 11
+                    },
+                    {
+                      "order_no": "SO-2026-Q96002",
+                      "part_name": "Hinge BX-96002-24",
+                      "category": "安装五金",
+                      "part_status": "处理中",
+                      "quantity": 11
+                    }
+                  ],
+                  "delivery": [
+                    {
+                      "order_no": "SO-2026-Q96001",
+                      "delivery_status": "已送达",
+                      "delivered_date": "2028-08-29"
+                    }
+                  ]
+                }
+              }
+            },
+            "query_evidence": [
+              {
+                "database": "erp_db",
+                "table": "orders",
+                "queried_at": "2029-08-16T06:23:41Z",
+                "columns": [
+                  "order_no",
+                  "delivery_date"
+                ],
+                "rows": [
+                  {
+                    "order_no": "SO-2026-Q96001",
+                    "delivery_date": "2029-08-29"
+                  }
+                ],
+                "row_count": 1,
+                "fixture_only": true
+              },
+              {
+                "database": "svc_db",
+                "table": "delivery",
+                "queried_at": "2029-08-16T06:23:41Z",
+                "columns": [
+                  "order_no",
+                  "delivery_status",
+                  "delivered_date"
+                ],
+                "rows": [
+                  {
+                    "order_no": "SO-2026-Q96001",
+                    "delivery_status": "已送达",
+                    "delivered_date": "2028-08-29"
+                  }
+                ],
+                "row_count": 1,
+                "fixture_only": true
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "source_file": ".stage6/evaluation/2026-11-06/formal-v3-20261106/common-scorer-generic-reproductions-v3.json",
+  "source_sha256": "c35088d2744ef098f5e4135f603c378c6000bf38b9af2b27f735305a3d185304",
+  "contains_real_answers": false
+}

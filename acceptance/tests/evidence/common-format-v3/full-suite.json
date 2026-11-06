@@ -1,0 +1,44 @@
+{
+  "caller_changes_required": false,
+  "common_score_signature": "common_score(scenario, visible, corpus=None)",
+  "errors": 0,
+  "failed_tests": [],
+  "failures": 0,
+  "fixed_release_corpus_used_only_by_automated_tests": true,
+  "forbidden_real_answer_or_io_attempts": [],
+  "kind": "offline_common_text_grammar_validation",
+  "mode": "full",
+  "mount_checks": {
+    "attempts": 0,
+    "health": {
+      "healthy": true,
+      "provider_enabled": true,
+      "remaining_requests": 1
+    },
+    "ledger_writable": true,
+    "parent_readonly": true,
+    "receipts": 0,
+    "settings_readonly": true
+  },
+  "mount_network_mode": "none",
+  "new_harness_sha256": "0086140f201fa63e8438e79bb74960dbdef1bbfa362126f05de1c90732441b7b",
+  "new_helper_scope": "Subsequent separately attributed derived scoring or new runs only. Old execution and score identities stay fixed.",
+  "old_raw_answers_and_embedded_scores_modified": false,
+  "original_baseline_execution_helper_unchanged": "6584531bd1281e3b7e8df045262f1437b403f0ece3705b344bda73196495d674",
+  "prior_frozen_scoring_helper_unchanged": "68964a48f9d688038ab318471e4279a153655d42b0b53ddefa1d8e0113feb75e",
+  "protected_code_sha256": {
+    "acceptance/comparison.py": "78c5d0d1d20957b70a1d0614b1ad248865233c54a0c3a4135e1de78587ab159f",
+    "acceptance/gate.py": "0225c4f478401ad9a872d74fd1b6855d66be0e79dfdaf096bf77599599248eb9",
+    "acceptance/oracle.py": "3999bd7e01c976ffd65b59999dd0d8fa53ff50b1fcb343f9f22f0bd006801ae1",
+    "acceptance/review.py": "f333236dea47763023a6d942f81228d1aa04fa4024bdeb0a41e7e41d1ccaf842",
+    "acceptance/source_semantics.py": "d79a36c672a77d31f5787369fc7cf37bf1ce5c0155920c7df109db783d66a294"
+  },
+  "protected_code_unchanged_from_commit": "607ad9fe8fa3ad8ead11afa8e583172c9a33e7af",
+  "provider_mode": "network-disabled mount regression with synthetic credentials",
+  "real_baseline_or_release_model_answers_read": false,
+  "shared_rules_for_both_versions": true,
+  "skips": 0,
+  "subtests": 514,
+  "tests": 109,
+  "validation_scope": "Fictional grammar and fixed offline acceptance regression. No new supplier run, product quality or deployment claim."
+}
