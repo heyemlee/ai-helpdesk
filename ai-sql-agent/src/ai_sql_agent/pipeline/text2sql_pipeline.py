@@ -610,8 +610,10 @@ class Text2SQLPipeline:
     def _chain_stopped_step(self, cot_step, *, step_index: int, reason: str) -> StepExecutionLog:
         """上一步没有交出取值时，这一步的日志：没有生成 SQL、没有执行，写明为什么。"""
         message = (
-            f"{reason}，没有可以传给这一步的取值。这一步要用上一步的结果当筛选条件，"
-            "所以没有执行：没有上一步的取值就查不出属于它的记录，硬查只会去掉筛选、查出不相干的数据。"
+            f"{reason}，没有可以传给这一步的取值，这一步没有执行，结果没法确定："
+            "要是只看上一步那些记录（IN / =），答案是没有；要是排除上一步那些记录"
+            "（NOT IN / NOT EXISTS），答案是符合其它条件的全部记录。"
+            "没有取值硬查，筛选条件只会被丢掉或者写成和字段自己比较。"
         )
         log_event(
             _logger,
@@ -1685,8 +1687,9 @@ class Text2SQLPipeline:
                 sql=sql,
                 success=False,
                 error=(
-                    f"筛选条件把字段和它自己比较，恒为真：{'；'.join(found)}。等于不筛选，"
-                    "会把整张表查出来，所以没有执行。改成用具体取值（字面量）的筛选条件。"
+                    f"筛选条件把字段和它自己比较：{'；'.join(found)}。这种条件不是按取值筛选——"
+                    "IN / = 恒为真，会把整张表查出来；NOT IN / != 恒为假，一行都查不出来——"
+                    "所以没有执行。改成用具体取值（字面量）的筛选条件。"
                 ),
             )
         return self.mcp_router.execute({"database": database, "sql": sql})
