@@ -168,8 +168,11 @@ def _squash(text: str) -> str:
 
 # 区间的几种写法：7-10、7–10、7~10、7 到 10、7 至 10、7 to 10
 _RANGE_RE = re.compile(r"(?<=\d)(?:-|–|—|~|到|至|to)(?=\d)")
-# 千分位：1,200、12,500。后面恰好三位数才算，「3,5,7」那种列举不动
+# 千分位：1,200、12,500。逗号紧挨着、后面恰好三位数才算，「3,5,7」「150, 280」那种列举不动
 _THOUSANDS_RE = re.compile(r"(?<=\d),(?=\d{3}(?!\d))")
+# 换行，和后面紧跟着数字的句号（编号列表「…$150.\n2. …」「…$150. 2. …」）：去空白之前换成「|」，
+# 不然两边的数会连成一个（$150.2、$1502），答对的被判成缺数字
+_BREAK_RE = re.compile(r"\s*[\r\n]+\s*|\.\s+(?=\d)")
 
 
 def _fold(text: str) -> str:
@@ -177,11 +180,13 @@ def _fold(text: str) -> str:
     比数字用的写法：全角转半角、小写、去掉空白和千分位、区间连接统一成「-」、分数斜杠统一成「/」。
 
     「7 到 10 个工作日」「7–10 business days」「7-10个工作日」折完都是 7-10 开头，
-    「$8,000」和「8000 美元」里都是 8000，「34½」和「34-1/2」都带 1/2。
+    「$8,000」和「8000 美元」里都是 8000，「34½」和「34-1/2」都带 1/2。换行和编号前的句号
+    变成「|」，数字跨不过去。
     """
     text = unicodedata.normalize("NFKC", text or "").lower().replace("⁄", "/")
+    text = _BREAK_RE.sub("|", _THOUSANDS_RE.sub("", text))
     text = re.sub(r"\s+", "", text)
-    return _RANGE_RE.sub("-", _THOUSANDS_RE.sub("", text))
+    return _RANGE_RE.sub("-", text)
 
 
 def _contains(folded: str, variant: str) -> bool:
@@ -547,18 +552,22 @@ SKILLS_DIR = _ROOT / "skills"
 MODE_LABEL = {"direct": "直检", "rewrite_rerank": "改写+重排", "": "没检索"}
 
 # 明说"资料里没有、我确认不了"的说法。转没转人工看编排器的结果（handoff），不看措辞。
-# 两类都不算：「如有疑问请联系客服」这种收尾套话——模型几乎每条都会带一句，编了答案也会；
-# 「不支持」「无法提供」「我们没有」这种替知识库下的结论——正是要人看的那一类。
+# 三类都不算：「如有疑问请联系客服」这种收尾套话——模型几乎每条都会带一句，编了答案也会；
+# 「不支持」「无法提供」「我们没有」这种替知识库下的结论——正是要人看的那一类；对客户说的
+# 「如果您不确定……」「If you're not sure……」——那是在说客户。所以「不确定」「not sure」只认
+# 第一人称，对客户的条件句判之前先拿掉（_CUSTOMER_IF_RE）。
 _DECLINE_RE = re.compile(
     r"没有找到|未找到|没找到|找不到|查不到|没有查到|未查到|没查到"
     r"|没有相关(?:的)?(?:信息|资料|说明|规定)|暂无相关|没有这方面的|没有提到|未提及|没有提及|没有说明|未说明"
     r"|没有列出|未列出|资料[里中]?没有|知识库[里中]?没有|无法确认|没法确认|不能确认|确认不了"
-    r"|无法回答|回答不了|不清楚|不确定"
-    r"|no information|(?:don'?t|do not) have (?:any )?(?:information|details|data)|not sure"
-    r"|(?:can'?t|cannot|unable to) confirm|could(?:n'?t| not) find|don'?t know"
-    r"|not (?:mentioned|covered|listed|specified) in|doesn'?t (?:cover|mention|say)",
+    r"|无法回答|回答不了|(?:我|我们)(?:这边|目前|暂时|也|还|并)?不(?:太)?(?:清楚|确定)"
+    r"|no information|(?:don['’]?t|do not) have (?:any )?(?:information|details|data)"
+    r"|\b(?:i|we)(?:['’]m| am|['’]re| are)? not (?:sure|certain)|\b(?:i|we) (?:don['’]?t|do not) know"
+    r"|(?:can['’]?t|cannot|unable to) confirm|could(?:n['’]?t| not) find"
+    r"|not (?:mentioned|covered|listed|specified) in|doesn['’]?t (?:cover|mention|say)",
     re.I,
 )
+_CUSTOMER_IF_RE = re.compile(r"(?:如果|若|假如|要是|万一)您[^，。！？；,.!?;\n]*|\bif you[^,.!?;\n]*", re.I)
 # 折过的文本里的一个数：整数、小数、8:00、1/16。「7-10」是两个数
 _NUMBER_RE = re.compile(r"\d+(?:[.:/]\d+)*")
 
@@ -578,7 +587,7 @@ def _judge(case: Case, answer: str, known: str, handoff: bool) -> dict[str, Any]
             stale=[fact[0] for fact in case.stale_facts if any(_contains(folded, v) for v in fact)],
         )
     elif not case.answerable:
-        declined = handoff or bool(_DECLINE_RE.search(answer or ""))
+        declined = handoff or bool(_DECLINE_RE.search(_CUSTOMER_IF_RE.sub("", answer or "")))
         verdict["outcome"] = "invented" if invented else "declined" if declined else "unclear"
     return verdict
 

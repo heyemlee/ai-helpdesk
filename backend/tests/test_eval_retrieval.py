@@ -158,6 +158,13 @@ def test_numbers_compare_across_spacing_ranges_and_currency_formats(ev):
     assert has("Delivery is $150.00 per order", "$150")
     assert has("标准高度是 34½ 英寸", "341/2")
     assert has("Ｃ－６执照", "c-6")
+    # 编号列表：行尾的数和下一行的编号不能连成一个（$150.2、$1502、17:302）
+    assert has("1. Zone A is $150.\n2. Orders over $8,000 ship free.", "$150")
+    assert has("1. A 区 $150\n2. 满 $8,000 免运费", "$150")
+    assert has("Zone A is $150. 2. Orders over $8,000 ship free.", "$150")
+    assert has("1. 周一至周五 8:30 到 17:30\n2. 周末不值班", "17:30")
+    # 列举里的逗号带空格，不是千分位
+    assert has("Zones A, B and C cost 150, 280 and 450 dollars", "280")
     # 两头不能连着更长的数：这几处出错会把旧价格、别的钟点算成"答对"
     assert not has("运费 1500 美元", "150")
     assert not has("周一至周五 8:00 到 15:30", "5:30")
@@ -198,6 +205,8 @@ def test_judge_reports_right_numbers_superseded_numbers_and_inventions(ev):
     assert (old["correct"], old["missing"], old["stale"]) == (False, ["150美元"], ["120美元"])
     made_up = ev._judge(v01, "A 区每单 150 美元，满 5000 美元免运费。", known, handoff=False)
     assert made_up["correct"] and made_up["invented"] == ["5000"]
+    listed = ev._judge(v01, "1. Zone A is $150.\n2. Orders over $8,000 ship free.", known, handoff=False)
+    assert listed["correct"] and "150.2" not in listed["invented"]
 
     n06 = ev.Case(id="n-06", type="unanswerable", lang="zh", query="你们公司是哪一年成立的", gold=[])
     assert ev._judge(n06, "我们成立于 1998 年。", known, handoff=False)["outcome"] == "invented"
@@ -212,6 +221,14 @@ def test_judge_reports_right_numbers_superseded_numbers_and_inventions(ev):
     assert ev._judge(n02, crypto, known, handoff=False)["outcome"] == "unclear"
     assert ev._judge(n02, "We don't have information about crypto payments.", known,
                      handoff=False)["outcome"] == "declined"
+    # 「不确定」「not sure」说的是客户的时候也不算：编了政策，再对客户说一句条件句
+    customer_hedge = "我们不支持比特币付款。如果您不确定用哪种方式，可以联系客服。"
+    assert ev._judge(n02, customer_hedge, known, handoff=False)["outcome"] == "unclear"
+    customer_hedge_en = "We don't accept Bitcoin. If you're not sure which method to use, contact us."
+    assert ev._judge(n02, customer_hedge_en, known, handoff=False)["outcome"] == "unclear"
+    # 第一人称说自己不确定，才是拒答
+    assert ev._judge(n02, "这个我不太确定，资料里也没有写。", known, handoff=False)["outcome"] == "declined"
+    assert ev._judge(n02, "I’m not sure whether we take crypto.", known, handoff=False)["outcome"] == "declined"
     # 问题里自己带的数不算编
     n12 = ev.Case(id="n", type="unanswerable", lang="zh", query="离工厂 300 英里能送吗", gold=[])
     assert ev._judge(n12, "300 英里我这边确认不了。", known, handoff=False)["invented"] == []
