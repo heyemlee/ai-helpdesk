@@ -48,6 +48,7 @@ MISMATCH_LABELS = {
     "row_count": "行数不对",
     "wrong_values": "取值不对",
     "extra_columns": "取值都对，多输出了列",
+    "matched_unusable": "前面某一步对上了，但带了风险提示，客服不会拿它当依据",
 }
 """答错时错在哪（`explain_mismatch`）。只用来看错因，不参与判分。"""
 
@@ -217,7 +218,8 @@ class BenchmarkItemResult:
     matched_step: Optional[int] = None
     """
     按所有步骤判分时（`score_all_steps`），和标准答案对上的是第几步（从 1 数）；
-    最后一步就对上了也记最后一步。没对上、或者没按所有步骤判，为 None。
+    最后一步就对上了也记最后一步。前面某一步对上、但这次结果带风险提示时也记着，
+    这时不算对，`mismatch` 是 `matched_unusable`。没对上、或者没按所有步骤判，为 None。
     """
 
     route_signals: List[str] = field(default_factory=list)
@@ -859,11 +861,15 @@ class BenchmarkRunner:
                 pipeline_result.step_logs[matched_step - 1] if matched_step else final_log
             )
             _answered, flagged, _degraded, flag_reasons = self._risk_signals(pipeline_result)
+            # 前面某一步对上了也要客服用得上：带风险提示的结果（has_risk），客服的可信校验
+            # 整份不用（backend/app/core/evidence.py），这时算对就是把「客户没拿到」记成「拿到了」
+            usable = matched_step is not None and not flagged and not degraded
             return BenchmarkItemResult(
                 item_id=item["id"],
                 category=item["category"],
                 query=item["query"],
-                correct=matched_step is not None,
+                correct=usable,
+                mismatch="matched_unusable" if matched_step is not None and not usable else "",
                 predicted_sql=matched_log.final_sql or matched_log.sql,
                 error=execution.get("error"),
                 repair_used=bool(final_log.repair_attempts),
@@ -881,19 +887,34 @@ class BenchmarkRunner:
             )
 
         predicted_rows = list(execution.get("rows") or [])
-        correct = result_matches(gold_rows, predicted_rows) or matched_step is not None
-        mismatch = "" if correct else explain_mismatch(gold_rows, predicted_rows)
         recall_hit, retrieval_hit, retrieved_count = self._score_recall(
             item, pipeline_result
         )
         answered, flagged, degraded, flag_reasons = self._risk_signals(pipeline_result)
+        final_correct = result_matches(gold_rows, predicted_rows)
+        # 只在前面某一步对上时才看风险提示（理由同上）；最后一步对上的判法和评测集一样
+        earlier = (
+            matched_step
+            if matched_step is not None and matched_step != len(pipeline_result.step_logs)
+            else None
+        )
+        correct = final_correct or (earlier is not None and not flagged and not degraded)
+        if correct:
+            mismatch = ""
+        elif earlier is not None:
+            mismatch = "matched_unusable"
+        else:
+            mismatch = explain_mismatch(gold_rows, predicted_rows)
+        shown_log = (
+            pipeline_result.step_logs[earlier - 1] if earlier is not None and correct else final_log
+        )
 
         return BenchmarkItemResult(
             item_id=item["id"],
             category=item["category"],
             query=item["query"],
             correct=correct,
-            predicted_sql=final_log.final_sql or final_log.sql,
+            predicted_sql=shown_log.final_sql or shown_log.sql,
             repair_used=bool(final_log.repair_attempts),
             recall_hit=recall_hit,
             retrieval_recall_hit=retrieval_hit,

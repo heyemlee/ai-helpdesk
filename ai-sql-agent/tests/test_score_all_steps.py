@@ -16,11 +16,12 @@ from ai_sql_agent.pipeline.objects import DatabaseConfig, StepExecutionLog
 from benchmark.runner import BenchmarkRunner
 
 
-def _log(database, rows, *, success=True, sql="SELECT 1"):
+def _log(database, rows, *, success=True, sql="SELECT 1", findings=()):
     return StepExecutionLog(
         database=database, cot_step=None, local_schema="", sql=sql if success else "",
         execution_request={},
         execution_result={"success": success, "rows": rows, "row_count": len(rows)},
+        validation={"findings": [{"anomaly": name} for name in findings]},
     )
 
 
@@ -73,15 +74,34 @@ class ScoreAllStepsTest(unittest.TestCase):
 
     def test_answer_in_an_earlier_step_counts_when_the_last_step_queried_elsewhere(self):
         # c02 的形状：工序在前一步，最后一步查了配送状态
-        logs = [_log("erp_db", [{"order_no": "J1", "order_status": "已签单"}]),
-                _log("svc_db", [{"order_no": "J1", "delivery_status": "待配送"}])]
+        logs = [_log("erp_db", [{"order_no": "J1", "order_status": "已签单"}],
+                     sql="SELECT order_status FROM orders"),
+                _log("svc_db", [{"order_no": "J1", "delivery_status": "待配送"}],
+                     sql="SELECT delivery_status FROM delivery")]
         item = self._score(logs, all_steps=True)
         self.assertTrue(item.correct)
         self.assertEqual(item.matched_step, 1)
         self.assertEqual(item.mismatch, "")
+        # 报告里给的是对上的那一步的 SQL，不是最后一步的
+        self.assertEqual(item.predicted_sql, "SELECT order_status FROM orders")
         default = self._score(logs, all_steps=False)
         self.assertFalse(default.correct)
         self.assertIsNone(default.matched_step)
+
+    def test_earlier_match_in_a_flagged_run_is_not_counted(self):
+        """
+        前面某一步对上了，但这次结果带风险提示（has_risk）：客服的可信校验整份不用，
+        客户其实没拿到答案。不能算对，单列成 matched_unusable。
+        """
+        for last in (_log("svc_db", [], success=False),
+                     _log("svc_db", [{"order_no": "J1", "delivery_status": "待配送"}])):
+            logs = [_log("erp_db", [{"order_no": "J1", "order_status": "已签单"}]),
+                    _log("prod_db", [], findings=["empty_result"]),
+                    last]
+            item = self._score(logs, all_steps=True)
+            self.assertFalse(item.correct)
+            self.assertEqual(item.mismatch, "matched_unusable")
+            self.assertEqual(item.matched_step, 1)
 
     def test_no_step_matching_is_still_wrong(self):
         logs = [_log("erp_db", [{"order_no": "J1", "order_status": "生产中"}]),
