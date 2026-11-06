@@ -1,0 +1,695 @@
+{
+  "files": {
+    ".stage6/evaluation/2026-11-06/fix-c6167a8/backend-full-01.log": {
+      "bytes": 6275,
+      "sha256": "7ebb1d3ae05291ad1ae315e9c30d0259bda74fb0de78911ba4e0007f44c60ad6"
+    },
+    ".stage6/evaluation/2026-11-06/fix-c6167a8/backend-full-02.log": {
+      "bytes": 6365,
+      "sha256": "198eaf68600717dd5b8a63e2f6963368d3582b5e061f37d47e74ab283d61d5a4"
+    },
+    ".stage6/evaluation/2026-11-06/fix-c6167a8/capture.json": {
+      "bytes": 1344,
+      "sha256": "19a508a5f9d9d8844e9c314f9e7e7dba40c0489cbc49ea6dc0fe6fb9e0b2e567"
+    },
+    ".stage6/evaluation/2026-11-06/fix-c6167a8/diagnosis.json": {
+      "bytes": 39062,
+      "sha256": "e8d4e00c0859b5e6609393e1cea97d6c2674802ca4aa38cfcfb5c7af165d2db9"
+    },
+    ".stage6/evaluation/2026-11-06/fix-c6167a8/frontend-full-01.log": {
+      "bytes": 9460,
+      "sha256": "89508030371bc9349b522d7986da424226786e4d75a7edd3d023b6f98ae95299"
+    },
+    ".stage6/evaluation/2026-11-06/fix-c6167a8/initial-sql-01.log": {
+      "bytes": 120825,
+      "sha256": "8c7b20aef659707f2f0bc26432ae644d29c1e4650c9e9ae69c893eea20fa5982"
+    },
+    ".stage6/evaluation/2026-11-06/fix-c6167a8/record-key-facts-snapshot.py": {
+      "bytes": 1533,
+      "sha256": "1f2303c3e67488a0b68746619d062c19030cc76e457a50aa70a1f017554f9a1c"
+    },
+    ".stage6/evaluation/2026-11-06/fix-c6167a8/root-verification.json": {
+      "bytes": 2233,
+      "sha256": "6ed15eb28d1bc634c955d87c585addd46a2ec9737396e0b00ee63d9d43e45157"
+    },
+    ".stage6/evaluation/2026-11-06/fix-c6167a8/run-frontend.py": {
+      "bytes": 1729,
+      "sha256": "872373338b68c592e46f5c2b0f7e0a4a9b0500ca01817e0aefb99f46575d15d4"
+    },
+    ".stage6/evaluation/2026-11-06/fix-c6167a8/snapshot-generation.log": {
+      "bytes": 69,
+      "sha256": "9e40a1fcfebd247b49af6d294c28bd00601fa7b884a53294adf26e154e311953"
+    },
+    ".stage6/evaluation/2026-11-06/fix-c6167a8/sources/agent_runs.json": {
+      "bytes": 277026,
+      "sha256": "4bb98988d3416cbb0d1c3f94d4ecc65b0d61861f45904e8cd8652a92e77b5d88"
+    },
+    ".stage6/evaluation/2026-11-06/fix-c6167a8/sources/development-images-001.json": {
+      "bytes": 81143,
+      "sha256": "7915f6a9448283c4288e09e49424cfe13ec5d212e1a04b5f931eac1e7118c3cf"
+    },
+    ".stage6/evaluation/2026-11-06/fix-c6167a8/sources/development-images-002.json": {
+      "bytes": 81335,
+      "sha256": "444f05f0ca5cbadc19833149362b3b6ea64880201aa7eec938778b07b390eff4"
+    },
+    ".stage6/evaluation/2026-11-06/fix-c6167a8/sources/development-images-003.json": {
+      "bytes": 81197,
+      "sha256": "42a1b68302d221163013cabf28198f9e9d22d99e0d319ad6ba8f353fe313ff27"
+    },
+    ".stage6/evaluation/2026-11-06/fix-c6167a8/sources/development-images-004.json": {
+      "bytes": 81127,
+      "sha256": "57a74a3ea51262aa8828f59c531c22c038e9ee5e9f0bbed9c0f67f3d6e805b40"
+    },
+    ".stage6/evaluation/2026-11-06/fix-c6167a8/sources/development-images-005.json": {
+      "bytes": 81532,
+      "sha256": "9c0f468affc74e4b65fe585db8dbbbb96914c2af85e90e97ed355772bf5c727d"
+    },
+    ".stage6/evaluation/2026-11-06/fix-c6167a8/sources/development-orders-004.json": {
+      "bytes": 25930,
+      "sha256": "d2d59072df222f4afb0049a75ee0e1e4a694639e7d8e2b42c3eb3fe3dc55b68f"
+    },
+    ".stage6/evaluation/2026-11-06/fix-c6167a8/sources/development-orders-011.json": {
+      "bytes": 24913,
+      "sha256": "b6aebc85524a0e9320b505f6c65ad4a879f78404b4919b7c56383c35bb66e71e"
+    },
+    ".stage6/evaluation/2026-11-06/fix-c6167a8/sources/development-orders-012.json": {
+      "bytes": 16794,
+      "sha256": "1e24987a17ca4f6b44cb0974fb2d263cc0f20578c83a31de80fe411c8f94a50c"
+    },
+    ".stage6/evaluation/2026-11-06/fix-c6167a8/sources/selected-sql-audit.json": {
+      "bytes": 25492,
+      "sha256": "c93c689fdf0d94f48911c80a1d2e2572e5d382cd8a5f0dabe368c6fb586820ff"
+    },
+    ".stage6/evaluation/2026-11-06/fix-c6167a8/sources/turn_events.json": {
+      "bytes": 392238,
+      "sha256": "b70fe84eb028279478dc0c64c94cefe46b852fbada1f83bd3d01600044167785"
+    },
+    ".stage6/evaluation/2026-11-06/fix-c6167a8/sql-full-01.log": {
+      "bytes": 270399,
+      "sha256": "b95678fea496b84cbb5d2fb77bbac02c72fc2d143fa273177e0302bbeb623350"
+    },
+    ".stage6/evaluation/2026-11-06/fix-c6167a8/sql-full-02.log": {
+      "bytes": 269059,
+      "sha256": "f685fdac12cde38dbde42310f9efdc885a64499e4c6a7c20cddb66fc500aa129"
+    },
+    ".stage6/evaluation/2026-11-06/fix-c6167a8/sql-full-03.log": {
+      "bytes": 267449,
+      "sha256": "f48e6477edd065e0b3415ef1f2e04adc6e73175bd10efd36a4da708f947d9413"
+    },
+    ".stage6/evaluation/2026-11-06/fix-c6167a8/targeted-backend-01.log": {
+      "bytes": 4297,
+      "sha256": "5440014786ddec0c680979b6e5837dd4d9230b1fa012e54fba1a1ee729a04157"
+    },
+    ".stage6/evaluation/2026-11-06/fix-c6167a8/targeted-backend-02.log": {
+      "bytes": 4145,
+      "sha256": "814535387415347747806fc4fe38a6d1bcc7fe7b5fdfb5cdad16e213b2d6cbe7"
+    },
+    ".stage6/evaluation/2026-11-06/fix-c6167a8/tested-files.json": {
+      "bytes": 1786,
+      "sha256": "03d89537b95895849789519ef372efe22e16307ed62566f0d9760a0dae5b92c1"
+    },
+    ".stage6/evaluation/2026-11-06/operations-ingress-readiness-475b66b/after.stderr.log": {
+      "bytes": 5418,
+      "sha256": "33e7061ee4cb6d3d483923486d3fc99bf31eabef5afa1461c2d4b9ccf16620d9"
+    },
+    ".stage6/evaluation/2026-11-06/operations-ingress-readiness-475b66b/after.stdout.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    ".stage6/evaluation/2026-11-06/operations-ingress-readiness-475b66b/before.json": {
+      "bytes": 610,
+      "sha256": "85588620bc2a4ca766b87457611ea7e91efa42dc9616fc15703f3c726f87ceec"
+    },
+    ".stage6/evaluation/2026-11-06/operations-ingress-readiness-475b66b/before.stderr.log": {
+      "bytes": 17992,
+      "sha256": "0af1364616f6249467e085597ad1c3b6b819f2090b551a8de7f4189616258867"
+    },
+    ".stage6/evaluation/2026-11-06/operations-ingress-readiness-475b66b/before.stdout.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    ".stage6/evaluation/2026-11-06/operations-ingress-readiness-475b66b/evidence-index.json": {
+      "bytes": 1852,
+      "sha256": "e050df9cb1af2d8b9d2682debd3174d1a258387a0d3c4049a302a4c6077ba413"
+    },
+    ".stage6/evaluation/2026-11-06/operations-ingress-readiness-475b66b/final-before.stderr.log": {
+      "bytes": 22130,
+      "sha256": "1089a74ba02f46efaa442167a585027f5b2f582d2ed54cc162c1fc98bb5de8ae"
+    },
+    ".stage6/evaluation/2026-11-06/operations-ingress-readiness-475b66b/final-before.stdout.log": {
+      "bytes": 64,
+      "sha256": "d585a7b9e63c7662b34c4ad65b02e45d040953d4e4e79455686d5d4d426b2dbc"
+    },
+    ".stage6/evaluation/2026-11-06/operations-ingress-readiness-475b66b/fix.patch": {
+      "bytes": 24585,
+      "sha256": "61e68a3ba6a6ca6b081f12c0854e105035d82033f2da8828ecdf914aac7b4880"
+    },
+    ".stage6/evaluation/2026-11-06/operations-ingress-readiness-475b66b/handoff.json": {
+      "bytes": 2053,
+      "sha256": "5ba3a46ea4a3ed2ce15dd5365ea25fbc1c2d7736bb9e4f5137911804c5d581ff"
+    },
+    ".stage6/evaluation/2026-11-06/operations-ingress-readiness-475b66b/release.after.py": {
+      "bytes": 11824,
+      "sha256": "3a3951b389ac33ad25aff07f5e6dcb62fb03bbe3686d0af576bda66ce4a00086"
+    },
+    ".stage6/evaluation/2026-11-06/operations-ingress-readiness-475b66b/release.before.py": {
+      "bytes": 8156,
+      "sha256": "ed9e7ae5ba9c675814677757c3bcf2e7187da085a9f46592b3c7344684310791"
+    },
+    ".stage6/evaluation/2026-11-06/operations-ingress-readiness-475b66b/test_operations.final.py": {
+      "bytes": 27992,
+      "sha256": "1c1a97e1ed506a6ff5de6864c6aa75b5db6912121a67ce770c235af3a9a1912b"
+    },
+    ".stage6/evaluation/2026-11-06/operations-ingress-readiness-475b66b/validation.json": {
+      "bytes": 2337,
+      "sha256": "fa1a4d5b4693ea22f01830622e8e8bc905aadc2435a02739d17435f78a1b29fb"
+    },
+    ".stage6/validation/entity-empty-boundary-review-69f366c/adapter-changes.json": {
+      "bytes": 1592,
+      "sha256": "d8ea33d9a25f12e520e4110e93d62de13b0abdfbef525b0405f8582d5cf9843a"
+    },
+    ".stage6/validation/entity-empty-boundary-review-69f366c/adapter.diff": {
+      "bytes": 25825,
+      "sha256": "ddfca487e7ca1f0418f108a244a546584ec289fb2b1d693e6f88e322aab87595"
+    },
+    ".stage6/validation/entity-empty-boundary-review-69f366c/boundary-33/execution.json": {
+      "bytes": 447,
+      "sha256": "583f825ff906cf46c11c41e6c60d74e5ea6166ad5ea1ed4a3bc30eb27012f1ce"
+    },
+    ".stage6/validation/entity-empty-boundary-review-69f366c/boundary-33/fixtures.json": {
+      "bytes": 8691,
+      "sha256": "5d4de91ae877abf01c81b6848896a129e8f978a810c0865932fae90913630550"
+    },
+    ".stage6/validation/entity-empty-boundary-review-69f366c/boundary-33/input-identity.json": {
+      "bytes": 401,
+      "sha256": "97cee6566d9e8997bfbe3274e7b235f043b0904c41c965559b6512582b658283"
+    },
+    ".stage6/validation/entity-empty-boundary-review-69f366c/boundary-33/probe.py": {
+      "bytes": 17717,
+      "sha256": "ba95af9ff8b9110de2b2b6e23a973dfdbe4e6cf15042b6063fff665ceaa50ae2"
+    },
+    ".stage6/validation/entity-empty-boundary-review-69f366c/boundary-33/result-69f366c.json": {
+      "bytes": 487280,
+      "sha256": "7c1e01597037c65ded84778a31cc4b59b7852b6cdeadad2d09ae5867e894f782"
+    },
+    ".stage6/validation/entity-empty-boundary-review-69f366c/boundary-33/run.log": {
+      "bytes": 180,
+      "sha256": "e6160f6e5a16d2898bd1f74f9552d66f6a89fa74cff888fa81bb980ea2ceb800"
+    },
+    ".stage6/validation/entity-empty-boundary-review-69f366c/candidate-execution-02.json": {
+      "bytes": 341,
+      "sha256": "5eb54e507af5dfe50d2d82da783098de81b13ecd8565aa66e2efa9c74c2c3c19"
+    },
+    ".stage6/validation/entity-empty-boundary-review-69f366c/candidate-execution.json": {
+      "bytes": 355,
+      "sha256": "acb0ea154b2f4089b5f2dbd6223b565c0e8f967a3d4e58560ce4c187946a4f24"
+    },
+    ".stage6/validation/entity-empty-boundary-review-69f366c/candidate-observations-69f366c.json": {
+      "bytes": 208182,
+      "sha256": "4e62c3698881e2a5d5e1ccc20a4bc1aff2b0a7c0d0bc90c980bb3785f376d79e"
+    },
+    ".stage6/validation/entity-empty-boundary-review-69f366c/candidate-run-02.log": {
+      "bytes": 653,
+      "sha256": "198fd83a1b1bbd22f730060e8055491b9bd7c62d7b02cfd13daf010ae78598b7"
+    },
+    ".stage6/validation/entity-empty-boundary-review-69f366c/candidate-run.log": {
+      "bytes": 1904,
+      "sha256": "f17414066effa49cc1c68ac523e2954260452c63408435d652c0ea692e507125"
+    },
+    ".stage6/validation/entity-empty-boundary-review-69f366c/candidate-source.tar": {
+      "bytes": 3461120,
+      "sha256": "dde5580ec408fda8c50bea78e9b948492da1501b41bedbf7ca8103016e97d716"
+    },
+    ".stage6/validation/entity-empty-boundary-review-69f366c/candidate_observation.py": {
+      "bytes": 13952,
+      "sha256": "20dcd5bf8982b3adecb40154c0f0124e8f9b7f05a63f2b474723564a64d88175"
+    },
+    ".stage6/validation/entity-empty-boundary-review-69f366c/evidence-index.json": {
+      "bytes": 4073,
+      "sha256": "050ab4c4a593ef04bf918cc7ed4eccbea3dd36e602955ec2ef18c72a5542fb82"
+    },
+    ".stage6/validation/entity-empty-boundary-review-69f366c/freeze-before-new-source.json": {
+      "bytes": 12216,
+      "sha256": "8ab2f6cca10fb0d480f8d159dbcb2585fc70a34c22bd6827d44c9f44240b1360"
+    },
+    ".stage6/validation/entity-empty-boundary-review-69f366c/frozen-inputs/adapter-contract.json": {
+      "bytes": 3095,
+      "sha256": "c660c376671859836119014fc5959fcd06d37f3421fcd7c4d9b1b1ffebee1aeb"
+    },
+    ".stage6/validation/entity-empty-boundary-review-69f366c/frozen-inputs/controlled-client-fixtures.json": {
+      "bytes": 828,
+      "sha256": "2b97c81d4e66e3029b4e91607d7592fa99f6563562a596fa6f3b138214fd3247"
+    },
+    ".stage6/validation/entity-empty-boundary-review-69f366c/frozen-inputs/entrypoints.json": {
+      "bytes": 2927,
+      "sha256": "12434ca32f2e48d90b7cac4c2bbe33d62ef174a30beaa61efe3fc29f1420e7bc"
+    },
+    ".stage6/validation/entity-empty-boundary-review-69f366c/frozen-inputs/fixtures.json": {
+      "bytes": 48389,
+      "sha256": "53b12445f4bdf0be3377f89bc104c7f1527e094a0fe852a9bec6a50232a5b8a6"
+    },
+    ".stage6/validation/entity-empty-boundary-review-69f366c/frozen-inputs/legacy-confirmed-type-gap.json": {
+      "bytes": 3336,
+      "sha256": "208ddfc96227bdd7d32dcebcbad1cf2fcfa30d45513d61433081980c6f1c80d7"
+    },
+    ".stage6/validation/entity-empty-boundary-review-69f366c/frozen-inputs/legacy-observations-c6167a8.json": {
+      "bytes": 88574,
+      "sha256": "2e05f9a66063abb360da1f420c753a4b18d6f424e3eb11928d8e764c7ff7e2eb"
+    },
+    ".stage6/validation/entity-empty-boundary-review-69f366c/frozen-inputs/legacy-run.log": {
+      "bytes": 411,
+      "sha256": "5486a8759362443d3fb04b28fb09bc40116b9072723c70234cdd8a7677773159"
+    },
+    ".stage6/validation/entity-empty-boundary-review-69f366c/frozen-inputs/legacy_observation.py": {
+      "bytes": 12705,
+      "sha256": "eb14fc5c00caf72d0fafc7999122a09c2757b1adb0062b12256db7ecd6b83f04"
+    },
+    ".stage6/validation/entity-empty-boundary-review-69f366c/frozen-inputs/plan.json": {
+      "bytes": 3542,
+      "sha256": "40442c41b5cce1d6c285c544c90b35743af99b6edfd02d706ae6a2f31ed798ef"
+    },
+    ".stage6/validation/entity-empty-boundary-review-69f366c/frozen-inputs/reference-schema.json": {
+      "bytes": 1054,
+      "sha256": "3f5a2c2365b27731dee69b4a1535d065f64577c2febef6fba5271b1945422039"
+    },
+    ".stage6/validation/entity-empty-boundary-review-69f366c/minimal-counterexample.json": {
+      "bytes": 3770,
+      "sha256": "9111ff4df65e0589c7daac260150736499f218917d4c85b97a0b53e6b403c24e"
+    },
+    ".stage6/validation/entity-empty-boundary-review-69f366c/review-report.json": {
+      "bytes": 7143,
+      "sha256": "f59ba791a9d5d93ec65241f78dd249b1a6974ab2d66ffe13350ee091d3299fdf"
+    },
+    ".stage6/validation/entity-empty-boundary-review-69f366c/root-verification.json": {
+      "bytes": 1057,
+      "sha256": "f35a8d4cab41c9e57f7220f9d7ef4a7e00bfc63b26639193a1e0b43c0362e6a5"
+    },
+    ".stage6/validation/entity-empty-boundary-review-69f366c/source-39/execution.json": {
+      "bytes": 444,
+      "sha256": "b07e6c8f463ec7a6b8a94bcf1e28a3645e7a5f0933baff5f7c30dcece604c0d1"
+    },
+    ".stage6/validation/entity-empty-boundary-review-69f366c/source-39/probe.py": {
+      "bytes": 21835,
+      "sha256": "a9195d29867eb2a0006b46d60644dd0fc425f2921ddca23402b8fe664a1114af"
+    },
+    ".stage6/validation/entity-empty-boundary-review-69f366c/source-39/result-69f366c.json": {
+      "bytes": 403020,
+      "sha256": "48c40f107c71c1d4bc2ffc6e6a1e735b8d99000fb768e3733f52c9676fc5e853"
+    },
+    ".stage6/validation/entity-empty-boundary-review-69f366c/source-39/run.log": {
+      "bytes": 1204,
+      "sha256": "0b933be2e16f54006df78b2c582e9f6bdfb1acfed06c37f9eee8e3e4afae8e3e"
+    },
+    ".stage6/validation/entity-empty-boundary-review-69f366c/source-39/source-identity.json": {
+      "bytes": 1204,
+      "sha256": "54eed6ddebe97d9a0c06039c1aa7d1d62ed1b570cb9499eaa75fd098dddfd31b"
+    },
+    ".stage6/validation/entity-empty-boundary-review-69f366c/source-identity.json": {
+      "bytes": 32773,
+      "sha256": "c9d73a65a0329a96786a1647503bf6fbf81e0f2d1ef405ad5bf4cb122bba5ea6"
+    },
+    ".stage6/validation/entity-empty-boundary-review-69f366c/trajectory-counterexamples.json": {
+      "bytes": 41671,
+      "sha256": "62675074b6c20aca6edff35b6889c4987f1e44dceceb8b4205d6c5bfb7efc7e2"
+    },
+    ".stage6/validation/entity-empty-boundary-review-69f366c/trajectory_counterexample.py": {
+      "bytes": 4281,
+      "sha256": "3d44600aab1819bdc2c0681d030e0d22489d025fcd172b843c772b1cf05ad4b1"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/adapter-contract.json": {
+      "bytes": 3095,
+      "sha256": "c660c376671859836119014fc5959fcd06d37f3421fcd7c4d9b1b1ffebee1aeb"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/controlled-client-fixtures.json": {
+      "bytes": 828,
+      "sha256": "2b97c81d4e66e3029b4e91607d7592fa99f6563562a596fa6f3b138214fd3247"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/development-reference.json": {
+      "bytes": 6816,
+      "sha256": "11b219ef860257882d94aa36f4cf7ba30240a89d79332be9c3195a71e3c241f8"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/entrypoints.json": {
+      "bytes": 2927,
+      "sha256": "12434ca32f2e48d90b7cac4c2bbe33d62ef174a30beaa61efe3fc29f1420e7bc"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/evidence-index.json": {
+      "bytes": 8980,
+      "sha256": "2fb418339eb6a14b19c9580a104f50cbb4a248ecc145dad0f68318c6f71de13b"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/fixtures.json": {
+      "bytes": 48389,
+      "sha256": "53b12445f4bdf0be3377f89bc104c7f1527e094a0fe852a9bec6a50232a5b8a6"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/integrity.json": {
+      "bytes": 478,
+      "sha256": "66a7b7e64ecfb70595c74cad6fb2552e231dee5c65677f39f845a496b019d260"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/legacy-confirmed-type-gap.json": {
+      "bytes": 3336,
+      "sha256": "208ddfc96227bdd7d32dcebcbad1cf2fcfa30d45513d61433081980c6f1c80d7"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/legacy-observations-c6167a8.json": {
+      "bytes": 88574,
+      "sha256": "2e05f9a66063abb360da1f420c753a4b18d6f424e3eb11928d8e764c7ff7e2eb"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/legacy-run.log": {
+      "bytes": 411,
+      "sha256": "5486a8759362443d3fb04b28fb09bc40116b9072723c70234cdd8a7677773159"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/legacy_observation.py": {
+      "bytes": 12705,
+      "sha256": "eb14fc5c00caf72d0fafc7999122a09c2757b1adb0062b12256db7ecd6b83f04"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/plan.json": {
+      "bytes": 3542,
+      "sha256": "40442c41b5cce1d6c285c544c90b35743af99b6edfd02d706ae6a2f31ed798ef"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/protected-development-inputs.json": {
+      "bytes": 594,
+      "sha256": "ce229062ec038405618b7a3dba2fe33573b94ed16ba76ca3e7710657b5d988d9"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/reference-schema.json": {
+      "bytes": 1054,
+      "sha256": "3f5a2c2365b27731dee69b4a1535d065f64577c2febef6fba5271b1945422039"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/reference-source-identity.json": {
+      "bytes": 4553,
+      "sha256": "6ce195071ef708b2291aa6bd5af4510bd3fb02f31322c66e6ab1114cd83026fc"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/reference-source.tar": {
+      "bytes": 522240,
+      "sha256": "0bb9ec9df3b15680a0d2b9046caf7fd5af16e5e0c60c3fafcb8b9b07e603291b"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/reference-source/ai-sql-agent/src/ai_sql_agent/api/result_summary.py": {
+      "bytes": 15661,
+      "sha256": "895f30b7a648f92b5900b703393867f91e512e693d9ad4662dc3a2462f7ef6a3"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/reference-source/ai-sql-agent/src/ai_sql_agent/core/model_text.py": {
+      "bytes": 1253,
+      "sha256": "c261d4537b42cab90c7102cd43b5eda8dc227c1ce3b08f1cc96d541687b21103"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/reference-source/ai-sql-agent/src/ai_sql_agent/core/run_context.py": {
+      "bytes": 9306,
+      "sha256": "26dc4186778d04a79a64b1973e23475c4282ae11e81256fc6ca03ac37a0f31f0"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/reference-source/ai-sql-agent/src/ai_sql_agent/generation/projection.py": {
+      "bytes": 4361,
+      "sha256": "a99c3281f1c317ea15e05303b6d9083fdc5ef03b373f36352f18ead074a01d0c"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/reference-source/ai-sql-agent/src/ai_sql_agent/validation/objects.py": {
+      "bytes": 4095,
+      "sha256": "e2d36d7cdee756d1ed0d6c6c2cb9112a4f25684f379a58bed422f0d6903d6d72"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/reference-source/ai-sql-agent/src/ai_sql_agent/validation/self_check.py": {
+      "bytes": 9240,
+      "sha256": "b103058a117831a596aeaa5f7facd43981d8e563b09765b16fd6d73340dc876c"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/reference-source/ai-sql-agent/src/ai_sql_agent/validation/validator.py": {
+      "bytes": 5552,
+      "sha256": "4e30198925f2a7281e9944dace1aac03cf19e0e25f8165a69a2656e6ce18cd06"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/reference-source/backend/app/agents/turn_prep.py": {
+      "bytes": 22114,
+      "sha256": "90320f9f09622983d4c3a6c7f52f6bcfc190b6d4fe26bf3ab1ed1cc1c562879c"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/reference-source/backend/app/core/__init__.py": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/reference-source/backend/app/core/actor.py": {
+      "bytes": 4234,
+      "sha256": "5b073b9a060c5bb7f7ae4c4632ed111d3d52ad68389545099201040d37589c75"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/reference-source/backend/app/core/admission.py": {
+      "bytes": 14718,
+      "sha256": "15171c096fa3614c02e213f601314693d5281c5f04264348a7dce0b072c18713"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/reference-source/backend/app/core/answer_policy.py": {
+      "bytes": 48612,
+      "sha256": "2ab3aaaa3b934267962fdd4383aa8dd2562dbc41d9362c0e98e74d9383b59095"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/reference-source/backend/app/core/auth.py": {
+      "bytes": 6090,
+      "sha256": "21f601aeb1232c6a8d58f3f5e0c49210c2bc48ca0e53e8f4e87fa3ad884fc3c8"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/reference-source/backend/app/core/browser_guard.py": {
+      "bytes": 4908,
+      "sha256": "4f2bf09613f113898ed787598a6fcd20545def58a383d366fccf855c8d1cfe46"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/reference-source/backend/app/core/business_facts.py": {
+      "bytes": 22313,
+      "sha256": "8e1149202452052cdc8e62bb46a1b0e1d10187cf49b0e29b88bfa98ece54626a"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/reference-source/backend/app/core/embedder.py": {
+      "bytes": 12745,
+      "sha256": "03f77bb5d130e4adccae13d3d11639a11891210ba622c3b685880873ff45fdd2"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/reference-source/backend/app/core/evidence.py": {
+      "bytes": 20254,
+      "sha256": "11c2aec9935e5943c52c2b311300c5904ebbdecd2f2e004e58d8a7724ede8cf8"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/reference-source/backend/app/core/intent_recognizer.py": {
+      "bytes": 42466,
+      "sha256": "08bdc6c2509aa283a2e43f4cd080f6a9bb3a4d617356cd2f73cbe9328d962b8d"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/reference-source/backend/app/core/lexical.py": {
+      "bytes": 5073,
+      "sha256": "5c7e8370a011d37cb8c3ebb01f01ea33603473e36c983ff9d0588b77317deb76"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/reference-source/backend/app/core/llm_guard.py": {
+      "bytes": 22373,
+      "sha256": "a8591d85cd2b5ccef987b3432004573df6ae7986e408976bb91822d20022eac2"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/reference-source/backend/app/core/llm_utils.py": {
+      "bytes": 11973,
+      "sha256": "219242d72d496557e5626f09512cc8f220e53f15ad1bc9cd05a58cc6d3b6cb17"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/reference-source/backend/app/core/metrics.py": {
+      "bytes": 13909,
+      "sha256": "dbdea03c4db712544756d8de53fa6e3269b47022ced8c904697148c618069ccf"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/reference-source/backend/app/core/model_runtime.py": {
+      "bytes": 17440,
+      "sha256": "7c6c6ab9c6acd7378e71c126b813c2eb2de56e32863bbf0ec0313ee30b6f4ad2"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/reference-source/backend/app/core/model_settings.py": {
+      "bytes": 19382,
+      "sha256": "1989bba4adc225ba8231f30b5680ec53f12eda20b0de56beee11f0bba52ea62e"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/reference-source/backend/app/core/openai_compat.py": {
+      "bytes": 34593,
+      "sha256": "7acfc88c7322eb2838c0b5d5f161ba860e8c2df4105736140790af7d4c5b7e63"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/reference-source/backend/app/core/openai_responses.py": {
+      "bytes": 11730,
+      "sha256": "d882c99f355a308238998e40e9281d5e7af22e40a074b908fd3ff9614d2c1503"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/reference-source/backend/app/core/policy_scope.py": {
+      "bytes": 9874,
+      "sha256": "5d6ced840dd2988a3667c62e2aa5bbc720a15635a1361ce97815741101f12e05"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/reference-source/backend/app/core/preflight.py": {
+      "bytes": 16940,
+      "sha256": "73a079cc3a6bcf8402a8e3454856daf869c7ee5c2c5224533cfae24b608ab069"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/reference-source/backend/app/core/redaction.py": {
+      "bytes": 1540,
+      "sha256": "20dc3ec4f6c688efbbabfac86c1c75928c2355c541fc3a5a7b6a26ea38ef5aef"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/reference-source/backend/app/core/request_context.py": {
+      "bytes": 3346,
+      "sha256": "59be9c5d56c25e46c7372cdd6ae20d302575ccb897f0797e3d51341d6ca2b0b3"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/reference-source/backend/app/core/reranker.py": {
+      "bytes": 4152,
+      "sha256": "c344f926e0d2ba1a296506e689e8bc393aea386bb395777240c61c616026f0e4"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/reference-source/backend/app/core/shared_state.py": {
+      "bytes": 10143,
+      "sha256": "00a1a4ebe7b989afe95bb592f72e6d1fe028ca1e42341e7c62412da3c9446821"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/reference-source/backend/app/core/skill_loader.py": {
+      "bytes": 13651,
+      "sha256": "f89093ee47844a275e5f40d30b37feeeab5214c624ce43b3c554bbe0d443a75e"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/reference-source/backend/app/core/sql_sources.py": {
+      "bytes": 2963,
+      "sha256": "4fe3b2bca1b77dac28bdf038bf5d8dbbaddd7de53151107ad7093def7d8eca2e"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/reference-source/backend/app/core/staff_auth.py": {
+      "bytes": 20672,
+      "sha256": "67073873ad65a4fc52e5c844c60bf6491b3c64d13342b3c7bbd605fb7687f3a2"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/reference-source/backend/app/core/staff_maintenance.py": {
+      "bytes": 2034,
+      "sha256": "3a53c4142d8bf6ead2a9270cb85808d109edaa58b642ec37b25f652051072ff9"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/reference-source/backend/app/core/staff_schema.py": {
+      "bytes": 1841,
+      "sha256": "98d128bda106e273025b4d62a76ea9393df71211e15d87a1259ce15b6f76a6c7"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/reference-source/backend/app/core/telemetry.py": {
+      "bytes": 4402,
+      "sha256": "718a8c12b558ec537892b27c28c450896b83ca855a8eb3aee162e44b37612f84"
+    },
+    ".stage6/validation/entity-key-empty-scope-plan-c6167a8/reference-source/backend/app/core/text_lang.py": {
+      "bytes": 1632,
+      "sha256": "dee0928efc35b23fc39b6f2c179fc5435108e4b9adeab2c35b4c89153796b933"
+    },
+    ".stage6/validation/independent-policy-69f366c-49faeb1f/REPORT.md": {
+      "bytes": 4862,
+      "sha256": "d926561092bb94295a6ad3b175f48563e1a268fbbf2415a08746c5fcb4fc66b6"
+    },
+    ".stage6/validation/independent-policy-69f366c-49faeb1f/artifact-sha256.json": {
+      "bytes": 3716,
+      "sha256": "69e42eb46ff0699f1de126ae4234d76d9a9e0cdd0f5575ef1fb200842681b2db"
+    },
+    ".stage6/validation/independent-policy-69f366c-49faeb1f/execution/loader-69-adaptation.json": {
+      "bytes": 618,
+      "sha256": "4f27a22d9f7e05eadbc35a2abc0c712c92e6fa10da8ccb247f4ebfc81d9af41d"
+    },
+    ".stage6/validation/independent-policy-69f366c-49faeb1f/execution/loader-69.diff": {
+      "bytes": 1018,
+      "sha256": "9178d1cd4ba8fd6c92839f1276e30764a5f566b29266a42db789429845c69dce"
+    },
+    ".stage6/validation/independent-policy-69f366c-49faeb1f/execution/manifest.json": {
+      "bytes": 803,
+      "sha256": "7c07e3ef38156ea949a4b8736294a533a669a114de55887f3fb957a403e10495"
+    },
+    ".stage6/validation/independent-policy-69f366c-49faeb1f/execution/original-23-adapted-run.json": {
+      "bytes": 393,
+      "sha256": "659bb23e70b947e432a31a7369101ba055c87c62858b8bc9f2b253b0528953b0"
+    },
+    ".stage6/validation/independent-policy-69f366c-49faeb1f/execution/original-23-adapted-run.log": {
+      "bytes": 291,
+      "sha256": "0cd19fbf628c3ccfa1539ef01c5c9d099a7207b10ad7c31efa4cbd967bb20bfc"
+    },
+    ".stage6/validation/independent-policy-69f366c-49faeb1f/execution/original-23-run.json": {
+      "bytes": 401,
+      "sha256": "18cec2495140b070d4ae3d870920b33013b2ae790aa265adffea149a8a275604"
+    },
+    ".stage6/validation/independent-policy-69f366c-49faeb1f/execution/original-23-run.log": {
+      "bytes": 1676,
+      "sha256": "9fad7ca13f1da48019b492d24aac93a2707f33d4184b85d1a10e48932fd133ef"
+    },
+    ".stage6/validation/independent-policy-69f366c-49faeb1f/execution/probe-results-69f366ce70ca.json": {
+      "bytes": 10996,
+      "sha256": "be1f8f14ebc2dfbfb9a9e1e1a8bd5278da8b6afebebe628efff3a80b0548e674"
+    },
+    ".stage6/validation/independent-policy-69f366c-49faeb1f/execution/probes-69-loader.py": {
+      "bytes": 15627,
+      "sha256": "3d1ec9dfda45ea7ccccd51f8b1e9bb35c02d4b7198c2b77aa2b72f04987101df"
+    },
+    ".stage6/validation/independent-policy-69f366c-49faeb1f/execution/probes-adapted-v2.py": {
+      "bytes": 15607,
+      "sha256": "c7440659a45a5068c6920d8de48cd0e469ff23108f823411a98e115ed32e2ec9"
+    },
+    ".stage6/validation/independent-policy-69f366c-49faeb1f/execution/probes.py": {
+      "bytes": 15416,
+      "sha256": "8f87f4d431c6bcc01f792a26910667b5def419d667aab030aeb0ccbcb8b957d0"
+    },
+    ".stage6/validation/independent-policy-69f366c-49faeb1f/execution/provenance.json": {
+      "bytes": 1233,
+      "sha256": "0def0cfc8844657a9206d32fc4026b9ded52bf85f6e3d434b0a8fbb947a86fc4"
+    },
+    ".stage6/validation/independent-policy-69f366c-49faeb1f/execution/resume-6-run.json": {
+      "bytes": 329,
+      "sha256": "0098f34c63b1e61419e2b1deda75a150556fdde77e9d346714a9231124df23c2"
+    },
+    ".stage6/validation/independent-policy-69f366c-49faeb1f/execution/resume-6-run.log": {
+      "bytes": 174,
+      "sha256": "ff0aad98bd4b96e1e92c82908685f3804320815ab184c032326ff78cbb14f0b5"
+    },
+    ".stage6/validation/independent-policy-69f366c-49faeb1f/execution/resume-reproduction/cases.json": {
+      "bytes": 1690,
+      "sha256": "6e64e2fb7d9995df5d010474e3efa15f3464d8ad6c94cd95b4494c17a570608e"
+    },
+    ".stage6/validation/independent-policy-69f366c-49faeb1f/execution/resume-reproduction/replay-lock.json": {
+      "bytes": 537,
+      "sha256": "60476777d6e819d302b0c0de82c31a53f540ff75dea8d257afca197499e2a541"
+    },
+    ".stage6/validation/independent-policy-69f366c-49faeb1f/execution/resume-reproduction/results-69f366ce70ca.json": {
+      "bytes": 18302,
+      "sha256": "9644040a7f9a2909806ea9f08b48b56ace23ecde4d3d7baee4e7235a937de589"
+    },
+    ".stage6/validation/independent-policy-69f366c-49faeb1f/execution/resume-reproduction/resume_probe.py": {
+      "bytes": 9880,
+      "sha256": "6e943b4a30d736991eaf58c010fad87967f71f51133fe37f31dc779872b6caea"
+    },
+    ".stage6/validation/independent-policy-69f366c-49faeb1f/execution/source/backend/app/agents/agent_orchestrator.py": {
+      "bytes": 116655,
+      "sha256": "b52ae071bf885c6ca0ca2366b62087b2634bf11e1cb4bf40a7f2693d2100dcb7"
+    },
+    ".stage6/validation/independent-policy-69f366c-49faeb1f/execution/source/backend/app/core/answer_policy.py": {
+      "bytes": 48612,
+      "sha256": "2ab3aaaa3b934267962fdd4383aa8dd2562dbc41d9362c0e98e74d9383b59095"
+    },
+    ".stage6/validation/independent-policy-69f366c-49faeb1f/execution/source/backend/app/core/intent_recognizer.py": {
+      "bytes": 42466,
+      "sha256": "08bdc6c2509aa283a2e43f4cd080f6a9bb3a4d617356cd2f73cbe9328d962b8d"
+    },
+    ".stage6/validation/independent-policy-69f366c-49faeb1f/execution/source/backend/app/core/policy_scope.py": {
+      "bytes": 9874,
+      "sha256": "5d6ced840dd2988a3667c62e2aa5bbc720a15635a1361ce97815741101f12e05"
+    },
+    ".stage6/validation/independent-policy-69f366c-49faeb1f/execution/source/backend/app/runs/checkpoint.py": {
+      "bytes": 3491,
+      "sha256": "f8077cb65b48795597f48aa335a041ad0cde643eb39fefebcfab2e2d06607251"
+    },
+    ".stage6/validation/independent-policy-69f366c-49faeb1f/execution/source/backend/app/tickets/draft_decision.py": {
+      "bytes": 6021,
+      "sha256": "ef4936ca32ee6910cd8c10a97f3d91fd3312d6d95be9168db290424c3905c7c2"
+    },
+    ".stage6/validation/independent-policy-69f366c-49faeb1f/execution/support-source-manifest.json": {
+      "bytes": 605,
+      "sha256": "eb3b199326d45e4c441d18ffd8536de615c666b817d2c4b24d2953aeb9abd50e"
+    },
+    ".stage6/validation/independent-policy-69f366c-49faeb1f/execution/support-source/backend/app/agents/turn_prep.py": {
+      "bytes": 22116,
+      "sha256": "7fa8f0602e2467d653616e891d9811a056e513aa18020a97734e5f7fec2f15b5"
+    },
+    ".stage6/validation/independent-policy-69f366c-49faeb1f/execution/support-source/backend/app/api/main.py": {
+      "bytes": 161069,
+      "sha256": "aec3f319a244719183cd3330ef6e652da7a256c1b6794196a8ddc68276a3bbcc"
+    },
+    ".stage6/validation/independent-policy-69f366c-49faeb1f/execution/support-source/backend/app/core/business_facts.py": {
+      "bytes": 23283,
+      "sha256": "0b7ab6cb1d33ef1cb8287099f2e66ce25e03d112799c794c6bf8b88babe88e4b"
+    },
+    ".stage6/validation/independent-policy-69f366c-49faeb1f/execution/support-source/backend/app/core/evidence.py": {
+      "bytes": 20254,
+      "sha256": "11c2aec9935e5943c52c2b311300c5904ebbdecd2f2e004e58d8a7724ede8cf8"
+    },
+    ".stage6/validation/independent-policy-69f366c-49faeb1f/execution/support-source/backend/app/tools/turn_tools.py": {
+      "bytes": 38231,
+      "sha256": "80c7754296d0b5b77782a5253cc06d7f5e3cf47526fb6ae2c6ac542ebed9a154"
+    },
+    ".stage6/validation/independent-policy-69f366c-49faeb1f/execution/verification.json": {
+      "bytes": 1674,
+      "sha256": "e1960d39465056f502fa2717cf323df5edfe43688debb290a000f5ec19ac81be"
+    },
+    ".stage6/validation/independent-policy-69f366c-49faeb1f/provenance.json": {
+      "bytes": 1233,
+      "sha256": "0def0cfc8844657a9206d32fc4026b9ded52bf85f6e3d434b0a8fbb947a86fc4"
+    },
+    ".stage6/validation/independent-policy-69f366c-49faeb1f/root-verification.json": {
+      "bytes": 797,
+      "sha256": "0622ad48f70347102c2c8dcd4190d961a67e04a2b338cc64301a00b7f44f488b"
+    },
+    ".stage6/validation/operations-ingress-readiness-ad06003/root-operations.log": {
+      "bytes": 5418,
+      "sha256": "4f57326e23f8288b28c96f9d46627eb7d6e721249070c63e909871393763827a"
+    },
+    ".stage6/validation/operations-ingress-readiness-ad06003/root-verification.json": {
+      "bytes": 875,
+      "sha256": "fdc0e1ba1a83cd09aa17190ecc3910969e361166ab9be3eb08ecf88aa6afebef"
+    },
+    ".stage6/validation/operations-ingress-readiness-ad06003/source.tar": {
+      "bytes": 11765760,
+      "sha256": "fdc29e389851c89be4f1595f7841645d37521569bdc9145f0c089fa38af02ef3"
+    }
+  },
+  "kind": "stage6_local_fix_and_scope_counterexample_index",
+  "path_root": "repository_root",
+  "private_raw_evidence_not_shipped_by_git": true
+}
