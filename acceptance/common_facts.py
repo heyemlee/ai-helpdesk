@@ -32,6 +32,10 @@ def common_score(scenario, visible, corpus=None):
         return {"status": "review_required", "fact_correct": None,
                 "reason": "Policy meaning, safe abstention and procedures need independent human adjudication", "contract_checked": False}
     errors, claims = [], []
+    # Metadata is checked by the separate release contract scorer. Apply this
+    # identical normalization to either product's text for common facts.
+    visible = re.sub(r"(?m)^数据时点 \d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)\s*$", "", visible)
+    visible = visible.replace("以上为可核对的资料。涉及补件、责任、金额或交期承诺，请由员工按适用政策审核后处理。", "")
     entities = set(re.findall(r"SO-2026-[A-Z]?\d+|Hinge BX-\d+-24X?", visible))
     allowed_entities = set(scenario["truth"]["allowed_entities"])
     if entities - allowed_entities:
@@ -56,6 +60,8 @@ def common_score(scenario, visible, corpus=None):
                 from acceptance.oracle import UNITS
                 for database, tables in corpus["records"].items():
                     for table, rows in tables.items():
+                        if field == "quantity" and (("订购数量" in match[0] and table != "order_item") or ("补件数量" in match[0] and table != "replacement_part")):
+                            continue
                         for row in rows:
                             entity = row.get("material_name") if material else row.get("order_no")
                             if entity in entities and field in row:

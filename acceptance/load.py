@@ -62,6 +62,7 @@ def consultation(employee, profile, index, scenarios=None):
             policies = [e for e in evidence if e.get("source") != "business_query" and e.get("policy_revision")]
             reviews = [f for r in case.get("image_reviews", []) for f in r.get("result", {}).get("fields", [])]
             record.update(scenario_id=scenario["id"], group=scenario["group"], case_ids=observed["case_ids"],
+                          observed=observed,
                           runs=[{"run_id": r["run_id"], "status": r["status"], "error": r.get("error"),
                                  "case_rejection": (r.get("result") or {}).get("case_rejection"),
                                  "service_unavailable": (r.get("result") or {}).get("service_unavailable")} for r in observed["runs"]],
@@ -204,6 +205,9 @@ def main():
               "authenticated_accounts": 50, "login_rate_limits_unchanged": True, "forwarded_addresses_spoofed": False,
               "weekly_assumption": "3000 consultations / (5 days * 8 hours * 60 minutes) = 1.25/minute",
               "provenance": read(args.stack / "provenance.json"), "profiles": {}, "real_provider_sample": None, "release_eligible": False}
+    if provenance.get("execution") == "immutable_containers":
+        report.update(execution="immutable_containers", artifacts=provenance["artifacts"],
+                      config_sha256=provenance["config_sha256"], source_revision=provenance["artifacts"]["revision"])
     try:
         for name, config in PROFILES.items():
             if args.profile and name not in args.profile:

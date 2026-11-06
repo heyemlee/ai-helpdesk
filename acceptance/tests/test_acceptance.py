@@ -20,6 +20,11 @@ from acceptance.gateway import create_app
 from acceptance.generate import image_gold, validate
 from acceptance.oracle import score, summarize
 from acceptance.runtime import parent_run, request_ids
+from acceptance.cost_plan import plan
+from acceptance.comparison import compare
+from acceptance.usage_evidence import check_attribution, validate_recording
+from acceptance import baseline
+from unittest.mock import patch
 
 LIMITS = {"authorization": "test-only", "requests": 7, "scenarios": 2, "max_output_tokens": 2048, "model": "gpt-6.1-sol"}
 BODY = {"model": "gpt-6.1-sol", "max_output_tokens": 2048, "input": "synthetic"}
@@ -110,8 +115,100 @@ class BudgetTests(unittest.TestCase):
         self.assertEqual(row["usage"]["input_tokens"], 111)
         self.assertEqual(row["response_model"], "supplier-alias")
 
+    def test_cost_plan_requires_measurements_and_never_authorizes_spend(self):
+        empty = plan(None)
+        self.assertEqual(empty["status"], "insufficient_calibration")
+        self.assertIsNone(empty["proposed_request_cap_for_review"])
+        measured = plan({"attempts": [{"scenario": "s1", "usage": {"input_tokens": 10, "output_tokens": 2}},
+                                       {"scenario": "s1", "usage": None}, {"scenario": "unknown/background", "usage": None}]})
+        self.assertFalse(measured["authorized"])
+        self.assertIsNone(measured["estimated_cost"])
+        self.assertEqual(measured["calibration_actual_http_attempts"], 3)
+        self.assertEqual(measured["unknown_usage_attempts"], 2)
+        self.assertEqual(measured["observed_calls_per_scenario"], {"s1": 2})
+        self.assertIsNone(empty["known_usage_tokens"]["input_tokens"])
+        self.assertIsNone(measured["usage"]["input_tokens"]["total"])
+        self.assertEqual(measured["usage"]["input_tokens"]["known_sum"], 10)
+
+    def test_release_ledger_rejects_mock_receipts_forged_counts_and_run_reassignment(self):
+        limits = {**LIMITS, "scope": "release_and_baseline", "confirmed": True, "id": "unit-budget-001",
+                  "user_approval_reference": "unit-test-only-never-real", "corpus_sha256": "test-corpus",
+                  "supplier_base_url": "https://supplier.invalid/v1"}
+        ledger = Ledger(self.path.parent / "release-test.sqlite", limits)
+        ledger.register_scenario("round-1:one")
+        ledger.bind_run("helpdesk", "run-one", "round-1:one")
+        attempt = ledger.reserve("sql", "responses", BODY, run_id="sql-one", parent_run_id="run-one")
+        ledger.finish(attempt, status=200, model="gpt-6.1-sol", receipt={"transport": "supplier_http",
+                      "supplier_base_url": limits["supplier_base_url"], "endpoint": "responses", "requested_model": "gpt-6.1-sol",
+                      "response_id": "test-fixture-only", "response_sha256": "a" * 64})
+        recorded = ledger.report()
+        self.assertEqual(validate_recording(recorded, "test-corpus"), {1})
+        self.assertEqual(check_attribution(recorded, {"round-1:one": {"run-one"}}, {"round-1"}), {"round-1:one": 1})
+        for alteration in ("count", "model", "simulation", "unknown", "correlation", "empty", "cap"):
+            changed = copy.deepcopy(recorded)
+            if alteration == "count": changed["reserved_requests"] += 1
+            if alteration == "model": changed["limits"]["model"] = "other-model"
+            if alteration == "simulation": changed["attempts"][0]["receipt"]["transport"] = "mock_http"
+            if alteration == "unknown": changed["unknown_usage_requests"] = 0
+            if alteration == "correlation": changed["attempts"][0]["scenario"] = "round-1:two"
+            if alteration == "empty": changed["attempts"] = []
+            if alteration == "cap": changed["limits"]["requests"] = 0
+            with self.assertRaises(ValueError, msg=alteration): validate_recording(changed, "test-corpus")
+        with self.assertRaises(ValueError): check_attribution(recorded, {"round-1:one": {"some-other-run"}}, {"round-1"})
+        with self.assertRaises(ValueError): check_attribution(recorded, {"round-1:one": {"run-one"}}, {"baseline"})
+
 
 class MethodTests(unittest.TestCase):
+    def test_baseline_preserves_conversation_context_and_counts_execution_failure(self):
+        _, development, _ = dataset()
+        corpus = {**development, "scenarios": [next(s for s in development["scenarios"] if s["group"] == "cross_message" and s["subtype"] == kind)
+                                                 for kind in ("supplement", "reference", "multiple_cases")]}
+        submitted = []
+        def respond(request):
+            if request.url.path == "/openapi.json":
+                return httpx.Response(200, json={"paths": {"/chat": {}}, "components": {"schemas": {"ChatRequest": {"properties": {"message": {}, "conv_id": {}}}}}})
+            if request.url.path == "/knowledge/add": return httpx.Response(200, json={})
+            if request.url.path == "/chat":
+                submitted.append(json.loads(request.content))
+                return httpx.Response(202, json={"run_id": "fixture-" + str(len(submitted))})
+            failed = len(submitted) > len(corpus["scenarios"][0]["steps"])
+            return httpx.Response(200, json={"status": "failed" if failed else "succeeded", "result": {"response": "unmeasured fixture wording"}})
+        original_client = httpx.Client
+        def client(**kwargs): return original_client(**kwargs, transport=httpx.MockTransport(respond))
+        with tempfile.TemporaryDirectory() as tmp, patch("acceptance.baseline.httpx.Client", client), patch("acceptance.baseline.time.sleep"):
+            stack = types.SimpleNamespace(cfg={"api": "https://fixture.invalid", "gateway_token": "fake", "manifest_sha256": "test"}, corpus=corpus,
+                provenance={"config_sha256": "test", "artifacts": {}}, provider="simulated")
+            result = baseline.run(stack, Path(tmp) / "baseline")
+            self.assertEqual([r["status"] for r in result["results"]], ["measured", "measured_failure", "unsupported"])
+            self.assertFalse(result["results"][1]["fact_correct"])
+            self.assertEqual(result["coverage"]["measured"], 2)
+            n = len(corpus["scenarios"][0]["steps"])
+            self.assertGreater(n, 1)
+            self.assertEqual(len({r["conv_id"] for r in submitted[:n]}), 1)
+            self.assertNotEqual(submitted[0]["conv_id"], submitted[-1]["conv_id"])
+
+    def test_bundle_preserves_raw_bytes_and_rejects_tampering_and_traversal(self):
+        from acceptance.bundle import pack, receive
+        import zipfile
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            artifacts = {"revision": "frozen", "images": {}}
+            write(root / "raw.json", {"synthetic": True})
+            write(root / "assembled.json", {"artifacts": artifacts, "proof": {"evidence_file": "raw.json", "evidence_sha256": sha((root / "raw.json").read_bytes())}})
+            write(root / "manifest.json", artifacts)
+            # This isolates archive mechanics; the real gate separately rejects
+            # incomplete reports and is never bypassed by the CLI.
+            with patch("acceptance.bundle.require", return_value={"artifacts": artifacts}):
+                packaged = pack(root / "assembled.json", root / "manifest.json", root / "bundle.zip")
+                receive(root / "bundle.zip", packaged["sha256"], root / "received", "frozen")
+            self.assertEqual((root / "received/report.json").read_bytes(), (root / "assembled.json").read_bytes())
+            self.assertEqual((root / "received/raw.json").read_bytes(), (root / "raw.json").read_bytes())
+            with self.assertRaisesRegex(ValueError, "SHA-256"):
+                receive(root / "bundle.zip", "0" * 64, root / "bad", "frozen")
+            with zipfile.ZipFile(root / "unsafe.zip", "w") as archive: archive.writestr("../escape.json", "{}")
+            with self.assertRaisesRegex(ValueError, "Unsafe archive"):
+                receive(root / "unsafe.zip", sha((root / "unsafe.zip").read_bytes()), root / "escaped", "frozen")
+
     def test_evidence_bytes_presence_and_artifact_identity(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -283,11 +380,12 @@ class MethodTests(unittest.TestCase):
                   "budget": {"authorized": True, "exceeded": False}}
         for name in ("recovery_local", "recovery_s3"):
             report[name] = {**component, "nonempty_sql_audit": True, "nonempty_image_extractions": True, "case_count": 200, "rpo_seconds": 1, "rto_seconds": 1}
-        self.assertTrue(verify(report)["passed"])
+        self.assertIn("persistent_supplier_usage_evidence_missing", verify(report)["failures"])
+        self.assertIn("load_evidence_not_separated", verify(report)["failures"])
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "report.json"
             write(path, report)
-            with self.assertRaisesRegex(ValueError, "Evidence file missing"):
+            with self.assertRaisesRegex(ValueError, "Unified release acceptance failed"):
                 require(path)
         changed = copy.deepcopy(report)
         changed["rounds"][0]["artifacts"] = {**artifacts, "revision": "another-candidate"}
@@ -295,6 +393,9 @@ class MethodTests(unittest.TestCase):
         changed = copy.deepcopy(report)
         changed["invariants"]["trials"]["worker_restart"]["total"] = 0
         self.assertIn("invariant_trial_denominators_missing_or_nonzero", verify(changed)["failures"])
+        report["common_comparison"] = compare(report["rounds"], report["baseline"])
+        report["common_comparison"]["baseline"]["correct"] += 1
+        self.assertIn("common_comparison_totals_mismatch", verify(report)["failures"])
 
     def test_safe_unanswered_cannot_count_as_order_answer(self):
         _, dev, _ = dataset()

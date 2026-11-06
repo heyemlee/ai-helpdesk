@@ -34,6 +34,7 @@ class Ledger:
                     PRIMARY KEY(service,run_id), FOREIGN KEY(scenario) REFERENCES scenarios(id));
                 CREATE TABLE IF NOT EXISTS request_runs(attempt INTEGER PRIMARY KEY, run_id TEXT,
                     parent_run_id TEXT);
+                CREATE TABLE IF NOT EXISTS receipts(attempt INTEGER PRIMARY KEY, value TEXT NOT NULL);
             """)
             encoded = canonical(limits).decode()
             conn.execute("INSERT OR IGNORE INTO budget VALUES(1,?)", (encoded,))
@@ -88,27 +89,33 @@ class Ledger:
             conn.execute("INSERT INTO request_runs VALUES(?,?,?)", (cursor.lastrowid, run_id, parent_run_id))
             return cursor.lastrowid
 
-    def finish(self, attempt, *, status=None, usage=None, model=None, error=None, first_byte_ms=None):
+    def finish(self, attempt, *, status=None, usage=None, model=None, error=None, first_byte_ms=None, receipt=None):
         with self.connect() as conn:
             changed = conn.execute("UPDATE attempts SET finished=?,status=?,usage=?,response_model=?,error=?,first_byte_ms=? WHERE id=? AND finished IS NULL",
                                    (time.time(), status, json.dumps(usage) if usage is not None else None, model, error, first_byte_ms, attempt)).rowcount
             if changed != 1:
                 raise ValueError("Attempt missing or already completed")
+            if receipt is not None:
+                conn.execute("INSERT INTO receipts VALUES(?,?)", (attempt, json.dumps(receipt)))
 
     def report(self):
         with self.connect() as conn:
+            conn.execute("BEGIN")
             rows = [dict(r) for r in conn.execute("SELECT a.*,r.run_id,r.parent_run_id FROM attempts a LEFT JOIN request_runs r ON r.attempt=a.id ORDER BY a.id")]
-            correlations = {(r["service"], r["run_id"]): r["scenario"] for r in conn.execute("SELECT * FROM correlations")}
+            links = [dict(r) for r in conn.execute("SELECT * FROM correlations ORDER BY service,run_id")]
+            correlations = {(r["service"], r["run_id"]): r["scenario"] for r in links}
+            receipts = {r["attempt"]: json.loads(r["value"]) for r in conn.execute("SELECT * FROM receipts")}
             scenarios = [r[0] for r in conn.execute("SELECT id FROM scenarios ORDER BY id")]
         for row in rows:
             row["usage"] = json.loads(row["usage"]) if row["usage"] is not None else None
+            row["receipt"] = receipts.get(row["id"])
             own = correlations.get((row["service"], row["run_id"]))
             parent = correlations.get(("helpdesk", row["parent_run_id"]))
             if own and parent and own != parent:
                 raise ValueError("Conflicting Run evidence")
             row["scenario"] = own or parent or "unknown/background"
-        return {"limits": self.limits, "reserved_requests": len(rows), "remaining_requests": self.limits["requests"] - len(rows),
-                "admitted_scenarios": scenarios,
+        return {"kind": "persistent_provider_ledger", "format": 1, "limits": self.limits, "reserved_requests": len(rows), "remaining_requests": self.limits["requests"] - len(rows),
+                "admitted_scenarios": scenarios, "correlations": links,
                 "unknown_usage_requests": sum(r["usage"] is None for r in rows), "attempts": rows,
                 "billing": {"actual_invoice": None, "rates": None, "estimated_usd": None,
                             "reason": "No verified supplier tariff or invoice supplied; unknown is not zero"}}

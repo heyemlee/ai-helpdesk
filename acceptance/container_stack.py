@@ -28,10 +28,11 @@ CONFIGURATION = {"model": "gpt-6.1-sol", "api_mode": "responses", "max_output_to
                  "http_retries": 0, "reasoning_effort": "low", "helpdesk_embedding": "local-hash-256",
                  "sql_embedding": "local-hash", "sql_rerank": "local-lexical", "replicas": 1,
                  "worker_concurrency": 4, "redispatch_seconds": 30, "cross_session_memory": False, "fixture_quantity_unit": "pcs"}
+CONFIGURATION["degrade_backlog"] = [20, 40, 80, 160]
 
 
 class ContainerStack:
-    def __init__(self, manifest, *, split="release", provider="disabled", budget=None, baseline=False, delay=.05):
+    def __init__(self, manifest, *, split="release", provider="disabled", budget=None, baseline=False, delay=.8):
         if provider not in {"disabled", "simulated", "real"}:
             raise ValueError("Unknown provider mode")
         self.manifest = read(manifest) if isinstance(manifest, (str, Path)) else manifest
@@ -46,6 +47,7 @@ class ContainerStack:
         if baseline and not self.manifest["revision"].startswith("5310da9"):
             raise ValueError("Baseline must be built from commit 5310da9")
         self.provider, self.baseline, self.split = provider, baseline, split
+        self.delay = delay
         self.root = Path(tempfile.mkdtemp(prefix="aihd-stage6-images-", dir="/private/tmp"))
         self.name = "aihd-stage6-images-" + uuid.uuid4().hex[:10]
         self.ports = {k: port() for k in ("pg", "redis", "api", "sql", "gateway", "frontend")}
@@ -85,6 +87,7 @@ class ContainerStack:
                        "AI_HELPDESK_PUBLIC_ORIGIN": self.origin, "CORS_ALLOW_ORIGINS": self.origin,
                        "AI_HELPDESK_RUN_MODE": "queued", "AI_HELPDESK_RUN_MAX_ATTEMPTS": "1", "AI_HELPDESK_RUN_REDISPATCH_S": "30",
                        "AI_HELPDESK_WORKER_CONCURRENCY": "4", "AI_HELPDESK_AGENT_REPLICAS": "1", "AI_HELPDESK_RUN_DRAIN_S": "2",
+                       "AI_HELPDESK_DEGRADE_BACKLOG": "20,40,80,160",
                        "AI_HELPDESK_ATTACHMENT_STORAGE": "off" if baseline else "local", "AI_HELPDESK_ATTACHMENT_DIR": "/state/objects",
                        "AI_HELPDESK_MODEL_SETTINGS_PATH": "/state/config/model_settings.json", "AI_HELPDESK_FRONTEND_DIST": "/nonexistent",
                        "ENABLE_CROSS_SESSION_MEMORY": "false", "EMBEDDING_DIM": "256", "AI_HELPDESK_EVENT_LOG": "full",
@@ -126,7 +129,7 @@ class ContainerStack:
             "sql": {"image": self.manifest["images"]["sql"], "environment": sql_env, "volumes": [helper_mount, str(self.root / "state") + ":/state", str(self.root / "business") + ":/business:ro", str(self.root / "semantic") + ":/semantic:ro"], "ports": published("sql", 8000), "command": ["python", "-m", "acceptance.runtime", "ai_sql_agent.api.app:app", "8000"], "healthcheck": health("health")},
             "api": {**backend, "environment": {**backend_env, "AI_HELPDESK_ROLE": "api"}, "ports": published("api", 8000)},
             "worker": {**backend, "environment": {**backend_env, "AI_HELPDESK_ROLE": "worker"}},
-            "frontend": {"image": self.manifest["images"]["frontend"], "environment": {"API_UPSTREAM": "api:8000", "CONSOLE_PUBLIC_HOST": "127.0.0.1"}, "ports": published("frontend", 80)}
+            "frontend": {"image": self.manifest["images"]["frontend"], "environment": {"API_UPSTREAM": "api:8000", "CONSOLE_PUBLIC_HOST": "employees.invalid"}, "ports": published("frontend", 80)}
         }}
         write(self.root / "compose.json", self.spec, private=True)
 
@@ -155,7 +158,10 @@ class ContainerStack:
         self.provenance = {**CONFIGURATION, "execution": "immutable_containers", "artifacts": {"revision": self.manifest["revision"], "images": observed},
                            "config_sha256": sha(CONFIGURATION), "manifest_sha256": self.cfg["manifest_sha256"], "harness_sha256": self.harness_sha,
                            "stack_id": self.name, "fresh_database": True, "fresh_caches": True, "provider_mode": self.provider,
-                           "real_provider": self.provider == "real", "production_touched": False, "ports": self.ports}
+                           "real_provider": self.provider == "real", "production_touched": False, "ports": self.ports,
+                           "simulated_delay_seconds": self.delay if self.provider == "simulated" else None}
+        info = __import__("json").loads(subprocess.check_output(["docker", "info", "--format", "{{json .}}" ]))
+        self.provenance["docker_resources"] = {k: info.get(k) for k in ("NCPU", "MemTotal", "Architecture", "OSType", "ServerVersion")}
         write(self.root / "provenance.json", self.provenance)
 
     def close(self):
@@ -184,11 +190,12 @@ if __name__ == "__main__":
     parser.add_argument("--provider", choices=("disabled", "simulated", "real"), default="disabled")
     parser.add_argument("--budget", type=Path)
     parser.add_argument("--split", choices=("development", "release"), default="development")
+    parser.add_argument("--simulated-delay", type=float, default=.8)
     args = parser.parse_args()
     if args.bootstrap:
         asyncio.run(bootstrap(args.baseline))
     else:
-        stack = ContainerStack(args.manifest, split=args.split, provider=args.provider, budget=args.budget, baseline=args.baseline)
+        stack = ContainerStack(args.manifest, split=args.split, provider=args.provider, budget=args.budget, baseline=args.baseline, delay=args.simulated_delay)
         try:
             stack.start()
             print(stack.root, flush=True)

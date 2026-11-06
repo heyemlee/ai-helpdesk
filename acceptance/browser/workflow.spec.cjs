@@ -6,7 +6,7 @@ const provenance = JSON.parse(fs.readFileSync(process.env.ACCEPTANCE_STACK + '/p
 const out = process.env.ACCEPTANCE_BROWSER_OUTPUT
 
 test('real employee browser: waiting, approval, more material, upload outage and recovery', async ({ page, browser }) => {
-  if (provenance.real_provider) throw new Error('This browser failure-path test requires the provider-disabled stack')
+  if (provenance.real_provider && process.env.ACCEPTANCE_REAL_BROWSER !== '1') throw new Error('Real browser calls need a separate release budget')
   fs.mkdirSync(out, { recursive: true })
   await page.addInitScript(() => localStorage.setItem('helpdesk.lang', 'zh'))
   await page.goto('/')
@@ -41,13 +41,13 @@ test('real employee browser: waiting, approval, more material, upload outage and
   expect(second.case_id).toBe(first.case_id)
 
   // An actual client connection failure, then a successful real upload. No
-  // synthetic image/model response or injected employee identity is installed.
+  // injected employee identity is installed. External model mode is recorded.
   let failed = false
   await page.route('**/api/attachments', async route => {
     if (route.request().method() === 'POST' && !failed) { failed = true; return route.abort('connectionfailed') }
     return route.continue()
   })
-  const image = path.resolve(__dirname, '../data/v1/images/development-images-001.png')
+  const image = path.resolve(process.env.ACCEPTANCE_CORPUS_DIR, 'images/development-images-001.png')
   await work.locator('input[type=file]').setInputFiles(image)
   await expect(work.getByText('上传失败，文件已保留，可重试。')).toBeVisible()
   await work.getByRole('button', { name: '重试上传' }).click()
@@ -65,8 +65,20 @@ test('real employee browser: waiting, approval, more material, upload outage and
   expect(submitResponse.status()).toBe(202)
   await expect.poll(async () => (await getCase()).image_reviews.length, { timeout: 90000 }).toBe(1)
   const withImage = await getCase()
-  expect(withImage.image_reviews[0].result.query_outcome).toBe('extraction_failed')
-  expect(Object.values(withImage.facts).some(f => f.source === 'verified_image')).toBe(false)
+  if (provenance.provider_mode === 'disabled') {
+    expect(withImage.image_reviews[0].result.query_outcome).toBe('extraction_failed')
+    expect(Object.values(withImage.facts).some(f => f.source === 'verified_image')).toBe(false)
+  } else {
+    const corpus = JSON.parse(fs.readFileSync(path.join(process.env.ACCEPTANCE_CORPUS_DIR, 'development.json')))
+    const truth = corpus.scenarios.find(s => s.id === 'development-images-001').truth.image_fields
+    const fields = withImage.image_reviews[0].result.fields
+    expect(fields).toHaveLength(5)
+    for (const field of fields) {
+      expect(field.outcome).toBe('matched')
+      expect(field.value).toBe(truth[field.field].value)
+    }
+    await expect.poll(async () => (await getCase()).drafts.some(d => d.valid && d.body.includes('图片已核实')), { timeout: 90000 }).toBe(true)
+  }
   await page.reload()
   await page.getByRole('button', { name: '进入跨消息工单' }).click()
   await work.getByLabel('选择问题').selectOption(selected)
@@ -76,9 +88,9 @@ test('real employee browser: waiting, approval, more material, upload outage and
   expect((await anonymous.request.get(cfg.origin + '/api/attachments/' + attachment + '/content')).status()).toBe(401)
   await anonymous.close()
   await page.screenshot({ path: out + '/browser-failure-path.png', fullPage: true })
-  fs.writeFileSync(out + '/recording.json', JSON.stringify({ kind: 'provider_disabled_browser_workflow', passed: true,
+  fs.writeFileSync(out + '/recording.json', JSON.stringify({ kind: provenance.provider_mode + '_browser_workflow', passed: true,
     employee_login: true, role: 'admin', upload: true, multiple_turns: true, approval: true,
-    failure_recovery: true, real_provider: false, release_eligible: false, provenance,
-    checks: ['HttpOnly session', 'pending order retained', 'internal approval', 'new material invalidates old draft', 'failed upload retried', 'model failure not promoted to image fact', 'anonymous image denied'],
-    first, second, withImage }, null, 2))
+    failure_recovery: true, real_provider: provenance.real_provider, model_quality_claim: provenance.real_provider, release_eligible: false, provenance,
+    checks: ['HttpOnly session', 'pending order retained', 'internal approval', 'new material invalidates old draft', 'failed upload retried', provenance.provider_mode === 'disabled' ? 'model failure not promoted to image fact' : 'five image fields verified against authored records', 'anonymous image denied'],
+    first, second, withImage: await getCase() }, null, 2))
 })

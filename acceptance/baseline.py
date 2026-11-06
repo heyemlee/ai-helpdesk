@@ -26,8 +26,10 @@ def run(stack, directory, *, limit=None, ledger=None):
             sid = scenario["id"]
             recording = {"id": sid, "source_revision": "5310da9", "artifacts": stack.provenance["artifacts"],
                          "config_sha256": result["config_sha256"], "manifest_sha256": result["manifest_sha256"],
-                         "real_provider": stack.provider == "real", "capability_evidence": capabilities}
-            if scenario["group"] in {"cross_message", "images"}:
+                         "real_provider": stack.provider == "real", "capability_evidence": capabilities, "run_ids": []}
+            unsupported = scenario["group"] == "images" or (scenario["group"] == "cross_message" and scenario["subtype"] not in {"supplement", "reference"})
+            recording["case_contract_supported"] = False
+            if unsupported:
                 recording.update(status="unsupported", reason="The baseline API has no explicit Case/version/approval contract" if scenario["group"] == "cross_message" else "The baseline ChatRequest has no attachment/image field or upload workflow", fact_correct=None)
             elif limit is not None and measured >= limit:
                 recording.update(status="unmeasured", reason="Explicit offline smoke limit", fact_correct=None)
@@ -39,15 +41,19 @@ def run(stack, directory, *, limit=None, ledger=None):
                     ledger.register_scenario(sid)
                 started = time.monotonic()
                 replies = []
+                conv_id = "baseline-" + uuid.uuid4().hex
                 try:
                     for step in scenario["steps"]:
                         prompt = step["message"]
                         if step.get("policy_scope"):
                             prompt += "\n适用条件：" + __import__("json").dumps(step["policy_scope"], ensure_ascii=False)
-                        response = client.post("/chat", json={"message": prompt, "user_id": "baseline-employee", "conv_id": "baseline-" + uuid.uuid4().hex}, headers={"Idempotency-Key": uuid.uuid4().hex})
+                        response = client.post("/chat", json={"message": prompt, "user_id": "baseline-employee", "conv_id": conv_id}, headers={"Idempotency-Key": uuid.uuid4().hex})
+                        recording["last_http_status"] = response.status_code
                         response.raise_for_status()
                         body = response.json()
                         run_id = body.get("run_id") or (body.get("run") or {}).get("run_id")
+                        if run_id:
+                            recording["run_ids"].append(run_id)
                         if ledger and run_id:
                             ledger.bind_run("helpdesk", run_id, sid)
                         deadline = time.monotonic() + 300
@@ -58,21 +64,31 @@ def run(stack, directory, *, limit=None, ledger=None):
                             state = current.json()
                             if state["status"] in {"succeeded", "failed", "dead", "cancelled"}:
                                 body = state.get("result") or {}
+                                recording["terminal_run"] = state
+                                if state["status"] != "succeeded":
+                                    raise RuntimeError("Baseline Run ended as " + state["status"])
                                 break
+                        else:
+                            if response.status_code == 202:
+                                raise TimeoutError("Baseline Run polling deadline exceeded")
                         replies.append(body)
+                        if body.get("service_unavailable") or not body.get("response"):
+                            raise RuntimeError("Baseline returned no available answer")
                     visible = replies[-1].get("response", "") if replies else ""
                     adjudication = common_score(scenario, visible, corpus)
                     recording.update(status="measured", visible=visible, responses=replies, adjudication=adjudication, fact_correct=adjudication["fact_correct"])
                 except Exception as exc:
-                    recording.update(status="unmeasured", reason=str(exc), responses=replies, fact_correct=None)
+                    recording.update(status="measured_failure", reason=str(exc), responses=replies, fact_correct=False,
+                                     adjudication={"status": "execution_failed", "fact_correct": False, "contract_checked": False})
                 recording["elapsed_seconds"] = time.monotonic() - started
             path = directory / (sid + ".json")
             write(path, recording)
             result["results"].append({"id": sid, "status": recording["status"], "reason": recording.get("reason"), "fact_correct": recording["fact_correct"],
                                       "evidence_file": str(path.relative_to(directory.parent)), "evidence_sha256": sha(path.read_bytes())})
-        eligible = [r for r in result["results"] if r["status"] == "measured"]
+        eligible = [r for r in result["results"] if r["status"] in {"measured", "measured_failure"}]
         result["coverage"] = {"measured": len(eligible), "unsupported": sum(r["status"] == "unsupported" for r in result["results"]),
-                              "unmeasured": sum(r["status"] == "unmeasured" for r in result["results"]), "review_required": sum(r["fact_correct"] is None for r in eligible)}
+                              "unmeasured": sum(r["status"] == "unmeasured" for r in result["results"]), "execution_failures": sum(r["status"] == "measured_failure" for r in result["results"]),
+                              "review_required": sum(r["fact_correct"] is None for r in eligible)}
         if stack.provider == "real" and eligible and result["coverage"]["review_required"] == 0:
             result["common_fact_accuracy"] = sum(r["fact_correct"] is True for r in eligible) / len(eligible)
     write(directory / "summary.json", result)

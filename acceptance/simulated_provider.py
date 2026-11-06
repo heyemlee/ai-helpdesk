@@ -50,30 +50,34 @@ def content(body, service, image_fixture):
             value = {"document_type": "order", "fields": [{"field": key, "value": item["value"], "unit": item.get("unit"), "kind": item.get("kind", "unknown"), "readability": "clear", "location": "authored load fixture"} for key, item in image_fixture.items()]}
         elif "route" in fields:
             current = prompt.split("当前问题：")[-1]
-            value.update(route="database_query" if re.search(r"SO-2026-\d+", current) else "data_qa", confidence=1, reason="Explicit infrastructure fixture")
+            value.update(route="database_query" if re.search(r"SO-2026-[A-Z]?\d+", current) else "data_qa", confidence=1, reason="Explicit infrastructure fixture")
         elif "intent" in fields:
             values = fields["intent"].get("enum", [])
             current = prompt.split("用户消息:")[-1]
-            chosen = "order_status" if re.search(r"SO-2026-\d+", current) else "query"
+            chosen = "order_status" if re.search(r"SO-2026-[A-Z]?\d+", current) else "query"
             value.update(intent=chosen, confidence=1, reasoning="Explicit infrastructure fixture")
         elif "order" in fields and "sufficient" in fields:
             value.update(order=[0, 1, 2], sufficient=True, missing="")
         return json.dumps(value, ensure_ascii=False), "schema:" + body["text"]["format"].get("name", "unknown")
     if service == "sql":
         if "字段解析助手" in prompt:
+            if "电话" in prompt or "手机号" in prompt:
+                return "解析结果：订单号，联系电话\n映射术语：orders，order_no，phone", "sql_keywords"
             return "解析结果：订单号，合同金额，订单状态，型号，数量\n映射术语：订单，订单明细，交付日期", "sql_keywords"
         if "语义一致性审阅助手" in prompt:
             return "结论：一致\n理由：基础设施模拟供应商，不作模型语义质量断言。", "sql_self_check"
         if "SQL审阅助手" in prompt:
             return "复述：按指定订单号查询订单主表与明细的状态、金额、型号、数量和日期。", "sql_paraphrase"
         section = prompt.split("# 用户Query")[-1].split("# Schema")[0] if "# 用户Query" in prompt else prompt.split("# 当前步骤CoT")[-1].split("# Schema")[0]
-        found = re.findall(r"SO-2026-\d+", section)
+        found = re.findall(r"SO-2026-[A-Z]?\d+", section)
         order = found[0] if found else image_fixture["order_ref"]["value"]
         if "SQL生成助手" in prompt or "SQL修复" in prompt:
-            if "phone" in section or "手机号" in section:
+            if "phone" in section or "电话" in section or "手机号" in section:
                 return f"SELECT order_no,phone FROM orders WHERE order_no='{order}'", "sql_code"
             return f"SELECT o.order_no,o.contract_amount,o.order_status,o.delivery_date,i.model,i.quantity AS ordered_qty FROM orders o JOIN order_item i ON o.order_no=i.order_no WHERE o.order_no='{order}'", "sql_code"
         if "CoT" in prompt or "四元组" in prompt:
+            if "手机号" in section or "电话" in section or "phone" in section:
+                return f"步骤1：\n(数据库：erp_db，\n处理对象：orders，\n操作指令：按订单号 {order} 查询手机号原值，保留NULL，\n输出目标：orders.order_no，orders.phone，\n预期输出量级：一条)\n", "sql_plan"
             return f"步骤1：\n(数据库：erp_db，\n处理对象：orders，order_item，\n操作指令：按订单号 {order} 联结订单和明细，逐条输出，\n输出目标：orders.order_no，orders.contract_amount，orders.order_status，orders.delivery_date，order_item.model，order_item.quantity，\n预期输出量级：一条)\n", "sql_plan"
         return "基础设施测试已取得业务记录。", "sql_other"
     if "改写" in prompt:

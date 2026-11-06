@@ -10,6 +10,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "acceptance" / "data" / "v2"
 GROUPS = {"orders": 60, "policies": 50, "cross_message": 50, "images": 40}
+BASELINE_REVISION = "5310da9e6ed6dcc2d5a8ee3ec92ea2c0a729ba3d"
 
 
 def canonical(value):

@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import base64
 import hmac
+import hashlib
 import json
 import os
 import time
@@ -43,7 +44,8 @@ def release_ledger(approval):
             or approval.get("model") != "gpt-6.1-sol" or approval.get("max_output_tokens") != 2048
             or type(approval.get("requests")) is not int or approval["requests"] <= 0
             or type(approval.get("scenarios")) is not int or approval["scenarios"] <= 0
-            or approval.get("corpus_sha256") != sha((DATA / "manifest.json").read_bytes())):
+            or approval.get("corpus_sha256") != sha((DATA / "manifest.json").read_bytes())
+            or urlsplit(approval.get("supplier_base_url", "")).scheme != "https"):
         raise ValueError("A distinct, explicit release-and-baseline budget is required")
     return Ledger(ROOT / ".stage6" / (approval["id"] + ".sqlite"), approval)
 
@@ -99,6 +101,8 @@ def create_app(ledger, token, upstream=None, transport=None):
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from None
         started = time.monotonic()
+        receipt = {"transport": "mock_http" if transport is not None else "supplier_http",
+                   "supplier_base_url": upstream["base_url"].rstrip("/"), "endpoint": "responses", "requested_model": body.get("model")}
         client = httpx.AsyncClient(timeout=httpx.Timeout(150, connect=20), follow_redirects=False,
                                    transport=transport, trust_env=False)
         try:
@@ -106,7 +110,7 @@ def create_app(ledger, token, upstream=None, transport=None):
                 headers={"Authorization": "Bearer " + upstream["api_key"], "Content-Type": "application/json"})
             response = await client.send(upstream_request, stream=True)
         except Exception as exc:
-            ledger.finish(attempt, error=type(exc).__name__)
+            ledger.finish(attempt, error=type(exc).__name__, receipt={**receipt, "response_sha256": None})
             await client.aclose()
             raise HTTPException(502, "Supplier request failed; attempt remains charged to budget") from None
         if "text/event-stream" not in response.headers.get("content-type", ""):
@@ -116,14 +120,17 @@ def create_app(ledger, token, upstream=None, transport=None):
             except ValueError:
                 data = {}
             ledger.finish(attempt, status=response.status_code, usage=data.get("usage"), model=data.get("model"),
-                          first_byte_ms=(time.monotonic() - started) * 1000)
+                          first_byte_ms=(time.monotonic() - started) * 1000,
+                          receipt={**receipt, "response_sha256": hashlib.sha256(raw).hexdigest(), "response_id": data.get("id")})
             await response.aclose()
             await client.aclose()
             return Response(raw, status_code=response.status_code, media_type="application/json")
         async def stream():
             usage, model, error, first_byte, pending = None, None, None, None, b""
+            digest, response_id = hashlib.sha256(), None
             try:
                 async for chunk in response.aiter_bytes():
+                    digest.update(chunk)
                     if first_byte is None:
                         first_byte = (time.monotonic() - started) * 1000
                     pending += chunk
@@ -135,6 +142,7 @@ def create_app(ledger, token, upstream=None, transport=None):
                                 value = event.get("response", event)
                                 usage = value.get("usage") or usage
                                 model = value.get("model") or model
+                                response_id = value.get("id") or response_id
                             except (ValueError, AttributeError):
                                 pass
                     yield chunk
@@ -142,7 +150,8 @@ def create_app(ledger, token, upstream=None, transport=None):
                 error = type(exc).__name__
                 raise
             finally:
-                ledger.finish(attempt, status=response.status_code, usage=usage, model=model, error=error, first_byte_ms=first_byte)
+                ledger.finish(attempt, status=response.status_code, usage=usage, model=model, error=error, first_byte_ms=first_byte,
+                              receipt={**receipt, "response_sha256": digest.hexdigest(), "response_id": response_id})
                 await response.aclose()
                 await client.aclose()
         return StreamingResponse(stream(), status_code=response.status_code, media_type="text/event-stream")
@@ -168,6 +177,8 @@ def main():
         if saved["provider"] != "openai" or urlsplit(saved["base_url"]).scheme != "https":
             raise ValueError("An existing HTTPS OpenAI-compatible supplier connection is required")
         upstream = {"base_url": saved["base_url"], "api_key": saved["api_key"]}
+        if args.release_budget and upstream["base_url"].rstrip("/") != ledger.limits["supplier_base_url"].rstrip("/"):
+            raise ValueError("Saved supplier differs from the approved destination")
         expected = cfg["manifest_sha256"]
         from acceptance.common import DATA, sha
         if expected != sha((DATA / "manifest.json").read_bytes()) or len(manifest["calibration_scenarios"]) != 12:

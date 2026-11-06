@@ -190,7 +190,7 @@ def test_null_field_is_distinct_from_zero_rows_and_query_failure():
     assert missing[0]["query_hash"] == cells[0]["query_hash"]
     assert missing[0]["entity_keys"] == {"order_ref": "SO-Ab"}
     body = render_draft([], {"attempted": True, "evidence": cells, "evidence_payload": raw})
-    assert "phone: 未登记（NULL）" in body and "订单 SO-Ab" in body
+    assert "电话: 未登记" in body and "订单 SO-Ab" in body and "NULL" not in body
     assert "未找到记录" not in body and "查询失败" not in body
     for change in ("failure", "zero_rows", "stale", "truncated"):
         changed = copy.deepcopy(raw)

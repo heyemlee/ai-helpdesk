@@ -123,6 +123,7 @@ _LABELS = {
     "expected_model": ("应收型号", "Expected model"), "received_model": ("实收型号", "Received model"),
     "delivery_date": ("配送日期", "Delivery date"), "ship_date": ("发货日期", "Ship date"),
     "date": ("日期", "Date"), "order_date": ("订单日期", "Order date"), "lead_time": ("交期", "Lead time"),
+    "phone": ("电话", "Phone"),
 }
 
 
@@ -158,7 +159,7 @@ def render_cells(cells, language="zh"):
         for cell in group:
             if cell["field"] in first["entity_keys"]:
                 continue
-            value = ("Not registered (NULL)" if language == "en" else "未登记（NULL）") if cell.get("null_observation") else display(cell['value'])
+            value = ("Not registered" if language == "en" else "未登记") if cell.get("null_observation") else display(cell['value'])
             lines.append(f"- {label(cell['field'], language)}: {value}"
                          f"{(' ' + display(cell['unit'])) if cell.get('unit') else ''}")
     return "\n".join(lines)

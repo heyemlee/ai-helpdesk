@@ -18,7 +18,7 @@ LABELS = {"订单": "order_no", "订单号": "order_no", "型号": "model", "订
     "配送状态": "delivery_status", "配送日期": "delivery_date", "交付日期": "delivery_date",
     "数量": "quantity", "补件数量": "quantity", "补件状态": "part_status", "单价": "unit_price",
     "物料名称": "material_name", "现有库存": "on_hand_qty", "已占用库存": "allocated_qty",
-    "订购数量": "quantity", "ordered_qty": "quantity", "order_ref": "order_no"}
+    "订购数量": "quantity", "ordered_qty": "quantity", "order_ref": "order_no", "电话": "phone", "Phone": "phone"}
 UNITS = {"contract_amount": "USD", "unit_price": "USD", "subtotal": "USD", "quantity": "pcs",
          "on_hand_qty": "pcs", "allocated_qty": "pcs", "safety_stock": "pcs", "purchased_qty": "pcs", "received_qty": "pcs"}
 SAFE_LINES = {
@@ -217,7 +217,7 @@ def score(scenario, observed, corpus):
                 if unit and not value.endswith(unit):
                     continue
                 plain = value[:-len(unit)] if unit else value
-                if (c["value"] is None and plain == "未登记（NULL）") or (c["value"] is not None and equivalent(plain, c["value"])):
+                if (c["value"] is None and plain in {"未登记", "Not registered"}) or (c["value"] is not None and equivalent(plain, c["value"])):
                     matching.append(c)
             if not matching:
                 errors.append("unsupported_visible_claim:" + name)

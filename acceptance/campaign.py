@@ -10,6 +10,9 @@ import shutil
 from acceptance import baseline
 from acceptance.common import DATA, read, sha, write
 from acceptance.container_stack import CONFIGURATION, ContainerStack
+from acceptance.common_facts import common_score
+from acceptance.comparison import compare
+from acceptance.usage_evidence import export_budget
 from acceptance.gate import verify
 from acceptance.gateway import release_ledger
 from acceptance.oracle import score, summarize
@@ -44,9 +47,11 @@ def round_(stack, output, number, limit=None, ledger=None):
             actor = operator if any(step["kind"] in {"action", "reject_old_approval"} for step in scenario["steps"]) else employee
             observed = execute(actor, scenario, DATA, ledger, timeout=600)
             computed = score(scenario, observed, stack.corpus)
+            body = next((d["body"] for d in observed.get("case", {}).get("drafts", []) if d.get("valid")), "")
+            common = common_score(scenario, body, stack.corpus) if body and observed["completed"] else {"status": "execution_failed", "fact_correct": False, "contract_checked": False}
             path = directory / (scenario["id"] + ".json")
-            write(path, {"id": scenario["id"], **stack.provenance, "observed": observed})
-            results.append({**computed, "evidence_file": str(path.relative_to(output)), "evidence_sha256": sha(path.read_bytes())})
+            write(path, {"id": scenario["id"], **stack.provenance, "observed": observed, "common_score": common})
+            results.append({**computed, "common_score": common, "evidence_file": str(path.relative_to(output)), "evidence_sha256": sha(path.read_bytes())})
             write(directory / "summary.json", {**stack.provenance, "results": results, "summary": summarize(stack.corpus["scenarios"], results)})
             print(f"round {number}: {len(results)}/200 observed; provider={stack.provider}", flush=True)
     finally:
@@ -59,10 +64,12 @@ def assemble(output, artifacts, rounds, comparison=None, ledger=None, components
     report = {"schema_version": 1, "kind": "release_acceptance", "manifest_sha256": sha((DATA / "manifest.json").read_bytes()),
               "artifacts": artifacts, "config_sha256": sha(CONFIGURATION), "rounds": rounds, "baseline": comparison or {},
               "quality_claim": bool(rounds) and all(r["real_provider"] for r in rounds),
-              "budget": {"authorized": ledger is not None, "exceeded": False, "recording": ledger.report() if ledger else None}}
+              "budget": export_budget(output, ledger) if ledger else {"authorized": False, "exceeded": False}}
+    if comparison:
+        report["common_comparison"] = compare(rounds, comparison)
     for item in components:
         name, source = item.split("=", 1)
-        if name not in {"invariants", "browser", "load", "recovery_local", "recovery_s3", "rollback"}:
+        if name not in {"invariants", "browser", "load", "load_real", "recovery_local", "recovery_s3", "rollback"}:
             raise ValueError("Unknown component " + name)
         data = read(source)
         if data.get("artifacts") != artifacts or data.get("execution") != "immutable_containers":
