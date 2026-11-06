@@ -394,3 +394,128 @@ async def test_intent_cases_run_concurrently_and_keep_order():
     # 保序：predicted 是回显的用例内容，错位会直接把准确率打下来
     assert metrics["accuracy"] == 1.0
     assert [c["message"] for c in metrics["cases"]] == [c.message for c in cases]
+
+
+# ── 转人工率 ──────────────────────────────────────────────────────────────────
+#
+# 判分维度看不出转人工变多了：一条守着边界、把客户转给人的回答，judge 照样给及格。
+# 所以转人工率单独记、单独比，方向和分数相反——升了才算退化。
+
+class _HandoffOrchestrator:
+    """消息以"人"开头的转人工，以"断"开头的模拟模型服务不可用，其余正常作答。"""
+
+    async def run(self, req):
+        result = _orch_result()
+        result.handoff = req.message.startswith("人")
+        result.service_unavailable = req.message.startswith("断")
+        return result
+
+
+def handoff_evaluator(baseline_path, model="model-a") -> EndToEndEvaluator:
+    evaluator = dialog_evaluator(baseline_path, _HandoffOrchestrator(), concurrency=4)
+    evaluator._model = model
+    return evaluator
+
+
+def dialog(handoffs: int, answered: int, unavailable: int = 0) -> list[dict]:
+    return ([{"question": f"人{i}"} for i in range(handoffs)]
+            + [{"question": f"答{i}"} for i in range(answered)]
+            + [{"question": f"断{i}"} for i in range(unavailable)])
+
+
+async def test_report_records_the_handoff_rate_outside_the_judge_averages(baseline_path):
+    evaluator = handoff_evaluator(baseline_path)
+
+    report = await evaluator.run(dialog_cases=[{"turns": ["人", "答"]}, *dialog(1, 1, unavailable=1)])
+
+    # 服务不可用那一轮没人判断过要不要人，不进分母
+    assert (report.handoffs, report.handoff_turns, report.handoff_rate) == (2, 4, 0.5)
+    assert "handoff_rate" not in report.avg_scores
+    stored = json.loads(baseline_path.read_text(encoding="utf-8"))
+    assert (stored["handoffs"], stored["handoff_turns"], stored["handoff_rate"]) == (2, 4, 0.5)
+
+
+async def test_no_dialog_turns_means_no_handoff_rate(baseline_path):
+    evaluator = make_evaluator(baseline_path)
+    stub_intent_metrics(evaluator, 0.9)
+
+    report = await evaluator.run(intent_cases=CASES)
+
+    assert report.handoff_rate is None and report.handoff_turns == 0
+
+
+async def test_handoff_rate_rise_beyond_tolerance_is_a_regression(baseline_path):
+    await handoff_evaluator(baseline_path).run(dialog_cases=dialog(12, 4))     # 75%
+
+    report = await handoff_evaluator(baseline_path).run(dialog_cases=dialog(14, 2))  # 87.5%
+
+    assert report.regressions == [
+        "handoff_rate: 75.0% (12/16) → 87.5% (14/16) (相对基线 unknown 上升 12.5 个百分点)"
+    ]
+    assert report.avg_scores == {k: 0.9 for k in JUDGE_DIMENSIONS}, "判分没变，退化只来自转人工率"
+
+
+@pytest.mark.parametrize("handoffs", [13, 8], ids=["one-more-turn", "fewer-handoffs"])
+async def test_handoff_rate_within_tolerance_or_falling_is_not_a_regression(baseline_path, handoffs):
+    await handoff_evaluator(baseline_path).run(dialog_cases=dialog(12, 4))     # 75%
+
+    report = await handoff_evaluator(baseline_path).run(dialog_cases=dialog(handoffs, 16 - handoffs))
+
+    assert report.regressions == []
+
+
+async def test_handoff_tolerance_is_absolute_so_a_zero_baseline_still_compares(baseline_path):
+    await handoff_evaluator(baseline_path).run(dialog_cases=dialog(0, 10))
+
+    exactly = await handoff_evaluator(baseline_path).run(dialog_cases=dialog(1, 9))    # 正好 10 个百分点
+    over = await handoff_evaluator(baseline_path).run(dialog_cases=dialog(2, 8))
+
+    assert exactly.regressions == []
+    assert len(over.regressions) == 1 and over.regressions[0].startswith("handoff_rate: 0.0% (0/10)")
+
+
+async def test_handoff_regression_names_both_models_across_models(baseline_path):
+    await handoff_evaluator(baseline_path, model="model-a").run(dialog_cases=dialog(2, 8))
+
+    report = await handoff_evaluator(baseline_path, model="model-b").run(dialog_cases=dialog(8, 2))
+
+    assert report.regressions[0].endswith("上升 60.0 个百分点；基线是 model-a 跑的，本次是 model-b)")
+    assert report.recommendations[0].startswith("基线是 model-a 跑的，本次是 model-b")
+
+
+def _legacy_baseline(results: list[dict]) -> dict:
+    """加转人工率字段之前存的基线。"""
+    return {
+        "timestamp": "2026-09-01T00:00:00", "total": len(results), "passed": len(results),
+        "pass_rate": 1.0, "avg_scores": {k: 0.9 for k in JUDGE_DIMENSIONS},
+        "regressions": [], "recommendations": [], "results": results, "release": "old",
+    }
+
+
+async def test_a_baseline_without_handoff_data_compares_without_a_spurious_regression(baseline_path):
+    # 更早的格式：每轮的 metadata 里也没有 handoff，补算不出来
+    baseline_path.write_text(json.dumps(_legacy_baseline([
+        {"test_id": f"dialog_{i}", "passed": True, "scores": {}, "metadata": {"question": "q"}}
+        for i in range(4)
+    ])), encoding="utf-8")
+    evaluator = handoff_evaluator(baseline_path)
+    assert evaluator.baseline.handoff_rate is None
+
+    report = await evaluator.run(dialog_cases=dialog(4, 0))                    # 100% 转人工
+
+    assert report.regressions == []
+    assert report.handoff_rate == 1.0
+
+
+async def test_a_baseline_saved_before_the_field_gets_its_rate_from_its_results(baseline_path):
+    # 2026-11-06 那份基线就是这样：没有 handoff_rate 字段，但每轮 metadata 里记着 handoff
+    baseline_path.write_text(json.dumps(_legacy_baseline([
+        {"test_id": "intent_recognition", "passed": True, "scores": {}, "metadata": {"total": 90}},
+        *[{"test_id": f"dialog_{i}", "passed": True, "scores": {},
+           "metadata": {"handoff": i < 3, "service_unavailable": False}} for i in range(4)],
+    ])), encoding="utf-8")
+    evaluator = handoff_evaluator(baseline_path)
+
+    assert (evaluator.baseline.handoffs, evaluator.baseline.handoff_turns) == (3, 4)
+    report = await evaluator.run(dialog_cases=dialog(3, 1))
+    assert report.regressions == []

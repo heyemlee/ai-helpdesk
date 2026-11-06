@@ -128,6 +128,28 @@ class EvalReport:
     incomplete:       bool = False
     incomplete_reason: str = ""
     planned:          int = 0            # 本来要跑的测试项数（意图评测算 1 项，对话每轮 1 项）
+    # 对话轮次里转了人工的比例：规则转人工（客户明说要人）和 Agent 自己声明要人都算。
+    # 不进 avg_scores——它不是判分维度，judge 照样会给一条转人工的回答打及格，所以分数
+    # 看不出转人工变多了；回归检测单独看它，方向和分数相反（升了才算退化）。
+    # 模型服务不可用的那几轮不算在内：那一轮没人判断过要不要人，handoff 本来就是 False。
+    # None = 没有可算的对话轮次（只跑了意图评测，或者报告是加这个字段之前存的、
+    # 结果里也没有 handoff 可以补算）
+    handoff_rate:     float | None = None
+    handoffs:         int = 0            # 转人工的轮次数
+    handoff_turns:    int = 0            # 分母：算进来的对话轮次数
+
+
+def _handoff_counts(results: list[EvalResult]) -> tuple[int, int]:
+    """(转人工的轮次数, 算进来的对话轮次数)。只看对话轮次，模型服务不可用的轮次不算。"""
+    turns = [
+        r for r in results
+        if "handoff" in r.metadata and not r.metadata.get("service_unavailable")
+    ]
+    return sum(1 for r in turns if r.metadata.get("handoff")), len(turns)
+
+
+def _rate(count: int, total: int) -> float | None:
+    return round(count / total, 4) if total else None
 
 
 # ── LLM-as-Judge ─────────────────────────────────────────────────────────────
@@ -355,6 +377,10 @@ class EndToEndEvaluator:
     PASS_THRESHOLD = 0.75
     # 相对基线跌幅超过该比例判定为回归
     REGRESSION_TOLERANCE = 0.05
+    # 转人工率比基线高出多少（绝对值，0.10 = 10 个百分点）才算退化。用绝对值不用相对值：
+    # 基线可能是 0，相对涨幅没法算；16 轮对话里一轮是 6.25 个百分点，这条线容得下一轮的抖动、
+    # 多两轮就报
+    HANDOFF_RATE_TOLERANCE = 0.10
 
     def __init__(
         self,
@@ -492,6 +518,8 @@ class EndToEndEvaluator:
 
         passed_count = sum(1 for r in results if r.passed)
         pass_rate    = passed_count / len(results) if results else 0.0
+        handoffs, handoff_turns = _handoff_counts(results)
+        handoff_rate = _rate(handoffs, handoff_turns)
 
         incomplete = abort.tripped()
         if incomplete:
@@ -507,7 +535,7 @@ class EndToEndEvaluator:
                          abort.reason, planned, len(results))
         else:
             # 4. 回归检测：始终对比磁盘上的基线，而不是本进程上一次的结果
-            regressions = self._detect_regressions(avg_scores)
+            regressions = self._detect_regressions(avg_scores, handoff_rate, handoffs, handoff_turns)
 
             # 5. 优化建议。基线是另一个模型跑的话，这一条排最前：上面的"退化"先打个折扣
             recommendations = self._recommendations(avg_scores, intent_metrics)
@@ -533,6 +561,9 @@ class EndToEndEvaluator:
             incomplete=incomplete,
             incomplete_reason=abort.reason if incomplete else "",
             planned=planned,
+            handoff_rate=handoff_rate,
+            handoffs=handoffs,
+            handoff_turns=handoff_turns,
             model=self._model,
             baseline_model=self._baseline.model if self._baseline else "",
         )
@@ -684,12 +715,21 @@ class EndToEndEvaluator:
         lines = [f"{m['role']}: {m['content']}" for m in history[-8:]]
         return "[评测多轮历史]\n" + "\n".join(lines)
 
-    def _detect_regressions(self, current: dict[str, float]) -> list[str]:
+    def _detect_regressions(
+        self,
+        current: dict[str, float],
+        handoff_rate: float | None = None,
+        handoffs: int = 0,
+        handoff_turns: int = 0,
+    ) -> list[str]:
         """
-        与**存档基线**对比，找出跌幅超过 REGRESSION_TOLERANCE 的指标。
+        与**存档基线**对比，找出跌幅超过 REGRESSION_TOLERANCE 的指标，
+        以及比基线高出 HANDOFF_RATE_TOLERANCE 以上的转人工率。
 
         对比对象刻意是磁盘上的基线而不是上一次运行：连续多次小幅劣化时，
         "跟上一次比"每次都在容差内，累计跌幅却已经很大。
+        两边有一边算不出转人工率（基线是加这个字段之前存的、结果里也补算不出来，
+        或者这次没跑对话）就不比这一项。
         """
         if self._baseline is None:
             return []
@@ -707,6 +747,17 @@ class EndToEndEvaluator:
                         f"{metric}: {base[metric]:.3f} → {value:.3f} "
                         f"(相对基线 {label} 退化 {abs(delta):.1%}{suffix})"
                     )
+        base_rate = self._baseline.handoff_rate
+        if handoff_rate is not None and base_rate is not None:
+            rise = handoff_rate - base_rate
+            # 先取整再比：0.85 - 0.75 这类差在浮点里会是 0.09999… 或 0.10000…1
+            if round(rise, 6) > self.HANDOFF_RATE_TOLERANCE:
+                base = self._baseline
+                regressions.append(
+                    f"handoff_rate: {base_rate:.1%} ({base.handoffs}/{base.handoff_turns}) → "
+                    f"{handoff_rate:.1%} ({handoffs}/{handoff_turns}) "
+                    f"(相对基线 {label} 上升 {rise * 100:.1f} 个百分点{suffix})"
+                )
         return regressions
 
     def _other_model_note(self) -> str:
@@ -781,7 +832,7 @@ class EndToEndEvaluator:
 
     @staticmethod
     def _report_from_dict(data: dict[str, Any]) -> EvalReport:
-        return EvalReport(
+        report = EvalReport(
             timestamp=data.get("timestamp", ""),
             total=int(data.get("total", 0)),
             passed=int(data.get("passed", 0)),
@@ -809,6 +860,17 @@ class EndToEndEvaluator:
                 for r in data.get("results", [])
             ],
         )
+        if "handoff_rate" in data:
+            rate = data.get("handoff_rate")
+            report.handoff_rate = None if rate is None else float(rate)
+            report.handoffs = int(data.get("handoffs", 0))
+            report.handoff_turns = int(data.get("handoff_turns", 0))
+        else:
+            # 加这个字段之前存的报告：每一轮的 metadata 里本来就记着 handoff，从结果里补算。
+            # 结果里也没有的（更早的格式）就是 None，回归检测不比这一项
+            report.handoffs, report.handoff_turns = _handoff_counts(report.results)
+            report.handoff_rate = _rate(report.handoffs, report.handoff_turns)
+        return report
 
 
 # ── 内置测试用例（开箱即用）──────────────────────────────────────────────────
