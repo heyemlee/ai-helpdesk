@@ -79,8 +79,8 @@ JSON Schema 验证结构，不能独自完成全部业务信任判断；`trust-n
 | 跨 transport 的归一与信任判定 | [Helpdesk · evidence.py](https://github.com/heyemlee/ai-helpdesk/blob/9366654d90fed74d2fadfac4ea6b81845470e592/backend/app/core/evidence.py) |
 | 外层超时推导与启动断言 | [Helpdesk · preflight.py](https://github.com/heyemlee/ai-helpdesk/blob/9366654d90fed74d2fadfac4ea6b81845470e592/backend/app/core/preflight.py) |
 | 浏览器 SSE 转发、工具注册、结果注入 | [Helpdesk · api/main.py](https://github.com/heyemlee/ai-helpdesk/blob/9366654d90fed74d2fadfac4ea6b81845470e592/backend/app/api/main.py) |
-| Card、`/a2a` 路由、Task / artifact / 终态与流式开关 | [SQL Agent · a2a/server.py](https://github.com/heyemlee/ai-sql-agent/blob/1472e2ce5571de91253f796f2e10442fce99dfd2/src/ai_sql_agent/a2a/server.py) |
-| 结果摘要及执行状态映射 | [SQL Agent · result_summary.py](https://github.com/heyemlee/ai-sql-agent/blob/1472e2ce5571de91253f796f2e10442fce99dfd2/src/ai_sql_agent/api/result_summary.py) |
+| Card、`/a2a` 路由、Task / artifact / 终态与流式开关 | [SQL Agent · a2a/server.py](https://github.com/heyemlee/ai-helpdesk/blob/1472e2ce5571de91253f796f2e10442fce99dfd2/src/ai_sql_agent/a2a/server.py) |
+| 结果摘要及执行状态映射 | [SQL Agent · result_summary.py](https://github.com/heyemlee/ai-helpdesk/blob/1472e2ce5571de91253f796f2e10442fce99dfd2/src/ai_sql_agent/api/result_summary.py) |
 | 结构约束与共享样本 | [artifact schema](../schema/artifact-data-part.schema.json) · [fixture 清单](../fixtures/index.json) |
 
 部分模块开头仍保留早期“尚未实现”的历史注释。本文依据当前函数分支与测试，不以旧注释作为当前实现状态。
