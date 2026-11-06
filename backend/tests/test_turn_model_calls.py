@@ -521,3 +521,37 @@ async def test_every_model_call_in_a_chat_turn_says_what_it_was_for(monkeypatch)
     assert summary_at < kinds.index("turn_completed") < profile_at
     totals = recorded[kinds.index("turn_completed")]["data"]["totals"]
     assert totals["model_calls"] == len(purposes) - 1               # 画像那一次在结算之后
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_responses_failure_keeps_usage_and_records_error(streaming):
+    import httpx
+    from test_openai_responses import wire_response
+
+    from app.core.openai_compat import AsyncOpenAICompat
+    from app.core.openai_responses import ResponsesOutputError
+
+    final = wire_response(status="incomplete", incomplete_details={"reason": "max_output_tokens"})
+    def handle(_):
+        if streaming:
+            return httpx.Response(200, headers={"content-type": "text/event-stream"},
+                                  text="data: " + json.dumps({"type": "response.incomplete", "response": final}) + "\n\n")
+        return httpx.Response(200, json=final)
+
+    turn, store = _turn()
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as http:
+        sdk = AsyncOpenAICompat(api_key="test", api_mode="responses", http_client=http, max_retries=0)
+        client = GuardedLLMClient(sdk, LLMGuard("test", provider="openai"))
+        with bind(turn), pytest.raises(ResponsesOutputError):
+            if streaming:
+                async with client.messages.stream(model="gpt-6.1-sol", max_tokens=64, messages=[]) as stream:
+                    await stream.get_final_message()
+            else:
+                await client.messages.create(model="gpt-6.1-sol", max_tokens=64, messages=[])
+    [call] = await _model_calls(store, turn)
+    assert call["data"]["status"] == "error"
+    assert call["data"]["usage"]["input_tokens"] == 12
+    assert call["data"]["usage"]["cache_read_tokens"] == 3
+    assert call["data"]["stop_reason"] == "max_tokens"
+    assert call["data"]["reason"] == "incomplete:max_output_tokens"
+    assert "encrypted_content" not in json.dumps(call)

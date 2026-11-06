@@ -342,6 +342,7 @@ export interface SqlModelStatus {
   reason: string
   source: 'page' | 'server' | string
   provider: 'anthropic' | 'openai'
+  api_mode?: 'chat' | 'responses'
   chat_model: string
   coder_model: string
   key_configured: boolean
@@ -361,6 +362,7 @@ export interface SqlModelStatus {
 /** 保存 / 测试 / 读模型清单的请求体。api_key 留空 = 接着用现有的那把 */
 export interface SqlModelBody {
   provider: 'anthropic' | 'openai'
+  api_mode?: 'chat' | 'responses'
   base_url: string
   api_key: string
   chat_model: string

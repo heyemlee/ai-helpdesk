@@ -11,6 +11,7 @@ export const SQL_PROVIDERS: SqlProvider[] = ['anthropic', 'openai']
 
 export interface SqlModelForm {
   provider: SqlProvider
+  apiMode?: 'chat' | 'responses'
   baseUrl: string
   chatModel: string
   coderModel: string
@@ -42,6 +43,7 @@ export function prefill(status: Partial<SqlModelStatus> | null | undefined, prov
   const entry = known(status, provider)
   return {
     provider,
+    apiMode: status?.api_mode ?? 'chat',
     baseUrl: entry?.base_url || '',
     chatModel: entry?.chat_model || '',
     coderModel: entry?.coder_model || '',
@@ -78,6 +80,7 @@ export function requestBody(form: SqlModelForm, apiKey: string): SqlModelBody {
   const text = (value: unknown) => String(value ?? '').trim()
   return {
     provider: form.provider,
+    api_mode: form.apiMode ?? 'chat',
     base_url: text(form.baseUrl),
     api_key: text(apiKey),
     chat_model: text(form.chatModel),

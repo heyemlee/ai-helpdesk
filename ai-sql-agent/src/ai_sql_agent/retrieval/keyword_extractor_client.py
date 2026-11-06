@@ -25,6 +25,7 @@ class AliyunKeywordExtractorConfig:
     model: str = ""
     """用于关键词抽取的大模型名称，为空时取 Settings。"""
 
+    api_mode: str = ""
     provider: str = ""
     """openai（OpenAI 兼容）或 anthropic（Messages），为空时取 Settings。"""
 

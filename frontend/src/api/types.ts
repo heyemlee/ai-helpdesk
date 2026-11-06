@@ -662,6 +662,7 @@ export type ModelEditReason = '' | 'disabled' | 'read_only_instance' | 'not_loca
 export interface ChatModelStatus {
   source: ModelSource
   provider: ModelProvider
+  api_mode?: 'chat' | 'responses'
   base_url: string
   model: string
   key_set: boolean
@@ -713,7 +714,7 @@ export interface ModelStatus {
 }
 
 export interface ModelCheck {
-  check: 'chat' | 'structured' | 'embedding'
+  check: 'chat' | 'structured' | 'embedding' | 'tools' | 'tool_roundtrip' | 'stream'
   outcome: string
   status: number | null
   /** 服务商自己的那句报错，已去掉 Key */
@@ -731,6 +732,7 @@ export interface ModelTestResult {
 
 export interface ChatConnectionBody {
   provider: ModelProvider
+  api_mode?: 'chat' | 'responses'
   base_url: string
   /** 留空 = 沿用现在这一把（只在协议和主机都没换时允许） */
   api_key: string

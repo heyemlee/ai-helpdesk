@@ -353,6 +353,7 @@ class ModelTransport:
         api_key: str = "",
         timeout: Optional[float] = None,
         provider: str = "openai",
+        api_mode: str = "chat",
         retry_policy: Optional[RetryPolicy] = None,
         client: Optional[httpx.Client] = None,
         sleeper: Callable[[float], None] = time.sleep,
@@ -362,6 +363,11 @@ class ModelTransport:
         self.component = component
         self.api_key = api_key
         self.provider = provider or "openai"
+        # Only generation clients opt into Responses. Embedding/rerank transports
+        # must not inherit the generation protocol from the global settings.
+        self.api_mode = api_mode if self.provider == "openai" else "chat"
+        if self.api_mode not in ("chat", "responses"):
+            raise ValueError("Unknown OpenAI API mode")
         """`openai` 走 Bearer + chat/completions，`anthropic` 走 x-api-key + messages。
         Embedding / Rerank 只有 OpenAI 兼容协议，因此保持默认值。"""
         self.anthropic_version = settings.anthropic_version
@@ -419,13 +425,14 @@ class ModelTransport:
             temperature=temperature,
             stream=False,
             provider=self.provider,
+            api_mode=self.api_mode,
             max_tokens=max_tokens or self._output_budget(model),
             reasoning_effort=get_settings().reasoning_effort,
             response_schema=response_schema,
             schema_name=schema_name,
         )
         result = self.post_chat(url, payload, model=model)
-        return extract_chat_content(result, component=self.component, model=model)
+        return extract_chat_content(result, component=self.component, model=model, api_mode=self.api_mode)
 
     def chat_stream(
         self,
@@ -443,9 +450,13 @@ class ModelTransport:
             temperature=temperature,
             stream=True,
             provider=self.provider,
+            api_mode=self.api_mode,
             max_tokens=max_tokens or self._output_budget(model),
             reasoning_effort=get_settings().reasoning_effort,
         )
+        if self.api_mode == "responses":
+            yield from self.stream_sse(url, payload, model=model)
+            return
         for _ in range(_MAX_PARAMETER_ADJUSTMENTS + 1):
             adapt_known_parameters(payload, url, model)
             emitted = 0
@@ -472,6 +483,8 @@ class ModelTransport:
         不一定认 `reasoning_effort` 和 `response_format`。为每个模型手写一张能力表
         跟不上模型更新，所以按服务端的原话来。
         """
+        if self.api_mode == "responses":
+            return self.post_json(url, payload, model=model)
         for _ in range(_MAX_PARAMETER_ADJUSTMENTS + 1):
             adapt_known_parameters(payload, url, model)
             try:
@@ -540,6 +553,15 @@ class ModelTransport:
                         model=model,
                         status_code=response.status_code,
                     ) from exc
+
+                if self.api_mode == "responses" and "input" in payload:
+                    from .responses import text as response_text
+
+                    try:
+                        response_text(result, component=self.component, model=model)
+                    except ModelResponseError:
+                        self._record_usage(result, model)
+                        raise
 
             except httpx.TimeoutException as exc:
                 error: ModelCallError = ModelTimeoutError(
@@ -659,7 +681,13 @@ class ModelTransport:
                             model=model,
                             api_key=self.api_key,
                         )
-                    for chunk in _iter_sse_content(response.iter_lines()):
+                    if self.api_mode == "responses":
+                        from .responses import stream_text
+
+                        chunks = stream_text(response.iter_lines(), lambda result: self._record_usage(result, model))
+                    else:
+                        chunks = _iter_sse_content(response.iter_lines())
+                    for chunk in chunks:
                         # 流式调用能在片段之间停下：退出 with 就关掉了这条连接
                         check_cancelled()
                         emitted += 1
@@ -934,11 +962,15 @@ class ModelTransport:
         completion_tokens = int(
             usage.get("completion_tokens") or usage.get("output_tokens") or 0
         )
+        cache_read_tokens = int((usage.get("input_tokens_details") or {}).get("cached_tokens") or 0)
+        reasoning_tokens = int((usage.get("output_tokens_details") or {}).get("reasoning_tokens") or 0)
         record_usage(
             component=self.component,
             model=model,
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
+            cache_read_tokens=cache_read_tokens,
+            reasoning_tokens=reasoning_tokens,
         )
         MODEL_TOKENS.inc(prompt_tokens, component=self.component, kind="prompt")
         MODEL_TOKENS.inc(
@@ -947,6 +979,8 @@ class ModelTransport:
         return {
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
+            "cache_read_tokens": cache_read_tokens,
+            "reasoning_tokens": reasoning_tokens,
         }
 
 
@@ -1106,6 +1140,7 @@ def build_chat_payload(
     temperature: float = 0.0,
     stream: bool = False,
     provider: str = "openai",
+    api_mode: str = "chat",
     max_tokens: int = 0,
     reasoning_effort: str = "",
     response_schema: Optional[Dict[str, Any]] = None,
@@ -1119,6 +1154,13 @@ def build_chat_payload(
     Anthropic Messages：system 要提到顶层字段，`max_tokens` 必填，
     且 Claude 5 起不能带 `temperature`。`reasoning_effort` 和 `response_schema` 不用。
     """
+    if provider == "openai" and api_mode == "responses":
+        from .responses import payload
+
+        return payload(messages, model=model, max_tokens=max_tokens or get_settings().max_completion_tokens,
+                       effort=reasoning_effort, stream=stream, schema=response_schema, name=schema_name)
+    if api_mode not in ("chat", "responses"):
+        raise ValueError("Unknown OpenAI API mode")
     if provider == "anthropic":
         system_parts = [
             str(m.get("content", ""))
@@ -1154,7 +1196,7 @@ def build_chat_payload(
     return payload
 
 
-def extract_chat_content(result: Dict[str, Any], *, component: str, model: str) -> str:
+def extract_chat_content(result: Dict[str, Any], *, component: str, model: str, api_mode: str = "chat") -> str:
     """
     从对话响应里取出文本内容（兼容 OpenAI 与 Anthropic 两种返回体）。
 
@@ -1162,6 +1204,10 @@ def extract_chat_content(result: Dict[str, Any], *, component: str, model: str) 
     时抛 `ModelResponseError`，不把半截内容交出去：半条 SQL 会被当成完整的去执行，
     半份规划会被解析成少了几步的规划。推理模型把上限全用在推理上时正文是空的，也走这里。
     """
+    if api_mode == "responses":
+        from .responses import text
+
+        return text(result, component=component, model=model)
     if isinstance(result, dict) and result.get("choices"):
         choice = result["choices"][0] if isinstance(result["choices"][0], dict) else {}
         message = choice.get("message") if isinstance(choice.get("message"), dict) else {}

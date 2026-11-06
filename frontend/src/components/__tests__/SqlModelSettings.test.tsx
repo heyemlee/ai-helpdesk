@@ -185,3 +185,20 @@ describe('SQL Agent 的模型连接', () => {
       model: 'text-embedding-3-small', dimensions: 1024 })
   })
 })
+
+it('SQL protocol changes are sent to both the probe and save endpoints', async () => {
+  const current = withKey()
+  const calls = serve({
+    'GET /sql-api/admin/model': () => json({ ...current, api_mode: 'chat' }),
+    'POST /sql-api/admin/model/models': () => json({ ok: true, models: [current.chat_model], total: 1 }),
+    'POST /sql-api/admin/model/test': () => json(OK_REPORT),
+    'PUT /sql-api/admin/model': () => json({ saved: true, warnings: [], status: { ...current, api_mode: 'responses' } }),
+  })
+  show()
+  const card = within((await screen.findByRole('heading', { name: 'Model connection' })).closest('section')!)
+  await userEvent.click(card.getByText('Connection settings'))
+  await userEvent.selectOptions(card.getByLabelText('OpenAI API'), 'responses')
+  await userEvent.click(card.getByRole('button', { name: 'Save' }))
+  await waitFor(() => expect(calls.find((c) => c.method === 'PUT')?.body).toMatchObject({ api_mode: 'responses' }))
+  expect(calls.find((c) => c.path.endsWith('/test'))?.body).toMatchObject({ api_mode: 'responses' })
+})

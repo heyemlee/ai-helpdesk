@@ -31,12 +31,15 @@ def usage_of(message: Any) -> dict[str, int] | None:
     usage = _get(message, "usage") if message is not None else None
     if usage is None:
         return None
-    return {
+    result = {
         "input_tokens": int(_get(usage, "input_tokens") or 0),
         "output_tokens": int(_get(usage, "output_tokens") or 0),
         "cache_read_tokens": int(_get(usage, "cache_read_input_tokens") or 0),
         "cache_write_tokens": int(_get(usage, "cache_creation_input_tokens") or 0),
     }
+    if _get(usage, "reasoning_tokens") is not None:
+        result["reasoning_tokens"] = int(_get(usage, "reasoning_tokens"))
+    return result
 
 
 def output_of(message: Any) -> Any:

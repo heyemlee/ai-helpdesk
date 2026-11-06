@@ -63,6 +63,7 @@ def chat_config_from(store: dict[str, Any]) -> dict[str, Any]:
         values = page["values"]
         return {
             "provider": values["provider"],
+            "api_mode": values.get("api_mode", "chat"),
             "api_key": values["api_key"],
             "model": values["model"],
             "base_url": values["base_url"],
@@ -96,10 +97,11 @@ def embedder_from(store: dict[str, Any]) -> tuple[Embedder, dict[str, str]]:
     return Embedder.from_env(), {"source": "env", "saved_at": "", "saved_by": ""}
 
 
-def chat_identity(cfg: dict[str, Any]) -> tuple[str, str, str, str]:
+def chat_identity(cfg: dict[str, Any]) -> tuple[str, str, str, str, str]:
     """判断两份对话连接是不是同一份。Key 只比摘要，不留在内存里多一份明文。"""
     digest = hashlib.sha256((cfg.get("api_key") or "").encode("utf-8")).hexdigest()
-    return (cfg.get("provider", ""), ms.origin_of(cfg.get("base_url") or ""), cfg.get("model", ""), digest)
+    return (cfg.get("provider", ""), (cfg.get("base_url") or "").rstrip("/"),
+            cfg.get("model", ""), cfg.get("api_mode", "chat"), digest)
 
 
 # ── 向量切换任务 ──────────────────────────────────────────────────────────────
@@ -156,7 +158,8 @@ class ModelRuntime:
 
     def apply_chat(self, cfg: dict[str, Any]) -> None:
         """换用另一份对话连接：一个新客户端，交给每个组件。"""
-        client = create_llm_client(cfg["api_key"], cfg.get("base_url") or None, provider=cfg["provider"])
+        client = create_llm_client(cfg["api_key"], cfg.get("base_url") or None, provider=cfg["provider"],
+                                   api_mode=cfg.get("api_mode", "chat"))
         for component in self._components:
             component.reconfigure_llm(client, cfg["model"])
         self._llm_info.update(provider=cfg["provider"], model=cfg["model"])

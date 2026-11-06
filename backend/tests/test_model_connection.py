@@ -890,3 +890,75 @@ async def test_an_unreadable_settings_file_does_not_flip_the_running_instances_t
 
     assert customer.chat["source"] == "page" and customer.chat["model"] == "gpt-6-luna"
     assert components[0].calls == []
+
+
+async def test_protocol_is_saved_applied_and_restored_without_reading_global_mode(settings_file, store, monkeypatch):
+    from app.core.model_runtime import chat_identity
+    from app.core.openai_responses import _ResponsesMessages
+
+    monkeypatch.setenv("OPENAI_API_MODE", "chat")
+    component = _Component()
+    runtime = _runtime(settings_file, store, components=[component])
+    body = {"provider": "openai", "base_url": "https://relay.example/v1", "api_key": KEY,
+            "model": "gpt-6.1-sol", "api_mode": "responses"}
+    async with _client(runtime, monkeypatch) as client:
+        result = await client.put("/admin/model/chat", json=body)
+        assert result.status_code == 200
+        assert result.json()["chat"]["api_mode"] == "responses"
+        assert KEY not in result.text
+    cfg = chat_config_from(ms.load_store(settings_file))
+    assert cfg["api_mode"] == "responses"
+    actual = component.calls[-1][0]
+    assert isinstance(actual.unguarded.messages, _ResponsesMessages)
+    await actual.close()
+    assert chat_identity(cfg) != chat_identity({**cfg, "api_mode": "chat"})
+    assert chat_identity(cfg) != chat_identity({**cfg, "base_url": "https://relay.example/another/v1"})
+    assert model_admin.chat_candidate({k: v for k, v in body.items() if k != "api_mode"}, runtime)["api_mode"] == "responses"
+    with pytest.raises(ms.ModelSettingsError):
+        model_admin.chat_candidate({**body, "api_mode": "automatic"}, runtime)
+
+
+def test_old_saved_connection_keeps_chat_even_if_environment_is_responses(settings_file, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_MODE", "responses")
+    ms.save_section(settings_file, "chat", {"provider": "openai", "base_url": "https://relay.example/v1",
+                                            "api_key": KEY, "model": "gpt-6-luna"})
+    assert chat_config_from(ms.load_store(settings_file))["api_mode"] == "chat"
+
+
+@pytest.mark.parametrize("reject_tools", [False, True])
+async def test_responses_diagnostics_use_selected_protocol_and_verify_tools(monkeypatch, reject_tools):
+    from test_openai_responses import wire_response
+    calls = []
+    def handle(req):
+        assert req.url.path == "/v1/responses"
+        data = json.loads(req.content)
+        calls.append(data)
+        result = wire_response()
+        if data.get("text"):
+            result["output"][0]["content"][0]["text"] = '{"queries":["test"]}'
+        elif isinstance(data.get("tool_choice"), dict):
+            if not reject_tools:
+                result["output"] = [{"type": "reasoning", "id": "rs", "summary": [], "encrypted_content": "opaque"},
+                    {"type": "function_call", "id": "fc", "call_id": "call_1", "name": "connection_probe", "arguments": "{}"}]
+        else:
+            result["output"][0]["content"][0]["text"] = "OK"
+        if data.get("stream"):
+            return httpx.Response(200, headers={"content-type": "text/event-stream"}, text=
+                'data: {"type":"response.output_text.delta","delta":"OK"}\n\n' +
+                'data: ' + json.dumps({"type": "response.completed", "response": result}) + '\n\n')
+        return httpx.Response(200, json=result)
+
+    # Route the real production probe client through an offline HTTP peer.
+    original = model_admin.AsyncOpenAICompat
+    monkeypatch.setattr(model_admin, "AsyncOpenAICompat", lambda **kw: original(
+        **kw, http_client=httpx.AsyncClient(transport=httpx.MockTransport(handle))))
+    result = await model_admin.probe_chat({"provider": "openai", "api_mode": "responses", "base_url": "https://relay.example/v1",
+        "api_key": KEY, "model": "gpt-6.1-sol", "warnings": []})
+    assert result["ok"] is not reject_tools
+    assert len(calls) == (3 if reject_tools else 5)
+    assert result["endpoint"] == "https://relay.example/v1/responses"
+    assert [c["check"] for c in result["checks"]] == ["chat", "structured", "tools", "tool_roundtrip", "stream"]
+    if reject_tools:
+        assert result["checks"][-1]["outcome"] == "skipped"
+    else:
+        assert any(i.get("encrypted_content") == "opaque" for i in calls[3]["input"])

@@ -326,7 +326,7 @@ class StoreTest(unittest.TestCase):
     def test_what_was_saved_is_what_is_loaded(self):
         save_store(str(self.path), self.values(), saved_by="ops")
         loaded = load_store(str(self.path))
-        self.assertEqual(loaded["values"], self.values())
+        self.assertEqual(loaded["values"], {**self.values(), "openai_api_mode": "chat"})
         self.assertEqual(loaded["saved_by"], "ops")
         self.assertTrue(loaded["saved_at"])
 
@@ -364,7 +364,7 @@ class StoreTest(unittest.TestCase):
         values = self.values(openai_api_key="sk-smuggled", openai_base_url="https://evil.invalid",
                              embedding_api_key="sk-nope", chat_url="https://evil.invalid/x")
         self.path.write_text(json.dumps({"values": values}), encoding="utf-8")
-        self.assertEqual(load_store(str(self.path))["values"], self.values())
+        self.assertEqual(load_store(str(self.path))["values"], {**self.values(), "openai_api_mode": "chat"})
 
     def test_clearing_removes_the_file_and_says_whether_there_was_one(self):
         save_store(str(self.path), self.values())
@@ -643,6 +643,7 @@ class LocalOnlyWithoutAuthTest(_Environment):
         self.assertEqual(status.json(), {
             "editable": False, "reason": "local_only", "source": "page", "provider": "anthropic",
             "chat_model": "claude-sonnet-5", "coder_model": "claude-sonnet-5", "key_configured": True,
+            "api_mode": "chat",
             "embedding": {
                 "source": "server", "backend": "local", "model": "local_hash", "dimensions": 1024,
                 "key_configured": False, "fallback": "",

@@ -61,6 +61,10 @@ const OUTCOME_TEXT: Record<string, Key> = {
   connection_failed: 'ms.outcome.connection_failed',
   server_error: 'ms.outcome.server_error',
   empty_response: 'ms.outcome.empty_response',
+  empty_output: 'ms.outcome.empty_response',
+  invalid_structured_output: 'ms.outcome.not_structured',
+  refusal: 'ms.outcome.refusal',
+  incomplete: 'ms.outcome.incomplete',
   not_structured: 'ms.outcome.not_structured',
   not_api_response: 'ms.outcome.not_api_response',
   dim_mismatch: 'ms.outcome.dim_mismatch',
@@ -71,6 +75,9 @@ const OUTCOME_TEXT: Record<string, Key> = {
 
 const CHECK_TEXT: Record<string, Key> = {
   chat: 'ms.check.chat',
+  tools: 'ms.check.tools',
+  tool_roundtrip: 'ms.check.toolRoundtrip',
+  stream: 'ms.check.stream',
   structured: 'ms.check.structured',
   embedding: 'ms.check.embedding',
 }
@@ -389,7 +396,7 @@ function ChatCard({ base, data, llm }: { base: string; data: ModelStatus; llm: H
   const queryClient = useQueryClient()
   const current = data.chat
   const [draft, setDraft] = useState<ChatModelBody>(() => ({
-    provider: current.provider, base_url: current.base_url, api_key: '', model: current.model,
+    provider: current.provider, api_mode: current.api_mode ?? 'chat', base_url: current.base_url, api_key: '', model: current.model,
   }))
   const [target, setTarget] = useState<ListTarget>(() => ({
     provider: current.provider, base_url: current.base_url, api_key: '', stamp: 0,
@@ -402,7 +409,7 @@ function ChatCard({ base, data, llm }: { base: string; data: ModelStatus; llm: H
   const keepKey = canKeep(draft.provider, draft.base_url)
   const hasKey = keepKey || draft.api_key.trim() !== ''
   const list = useModelList(base, 'chat', target, data.editable && (!!target.api_key || canKeep(target.provider, target.base_url)))
-  const changed = draft.provider !== current.provider || !sameUrl(draft.base_url, current.base_url)
+  const changed = draft.provider !== current.provider || draft.api_mode !== (current.api_mode ?? 'chat') || !sameUrl(draft.base_url, current.base_url)
     || draft.model.trim() !== current.model || draft.api_key.trim() !== ''
   const newHost = draft.provider !== current.provider || !sameHost(draft.base_url, current.base_url)
 
@@ -415,7 +422,7 @@ function ChatCard({ base, data, llm }: { base: string; data: ModelStatus; llm: H
   ))
   const changeProvider = (provider: ModelProvider) => {
     const next = provider === current.provider
-      ? { ...draft, provider, base_url: current.base_url, model: current.model }
+      ? { ...draft, provider, api_mode: current.api_mode ?? 'chat', base_url: current.base_url, model: current.model }
       : { ...draft, provider, base_url: data.defaults.chat[provider].base_url, model: data.defaults.chat[provider].model }
     set(next); settle(next)
   }
@@ -509,6 +516,14 @@ function ChatCard({ base, data, llm }: { base: string; data: ModelStatus; llm: H
                   <option value="anthropic">Anthropic</option>
                 </select>
               </label>
+              {draft.provider === 'openai' && <label className="field-row">
+                <span>{t('ms.apiMode')}</span>
+                <select className="field" value={draft.api_mode ?? 'chat'} disabled={!!a.busy}
+                        onChange={(e) => set({ api_mode: e.target.value as 'chat' | 'responses' })}>
+                  <option value="chat">Chat Completions</option>
+                  <option value="responses">Responses</option>
+                </select>
+              </label>}
               <label className="field-row">
                 <span>{t('ms.baseUrl')}</span>
                 <input className="field mono" value={draft.base_url} spellCheck={false} disabled={!!a.busy}

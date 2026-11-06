@@ -44,6 +44,7 @@ OFFICIAL_BASE_URL = {
 
 OVERRIDABLE = (
     "model_provider",
+    "openai_api_mode",
     "anthropic_api_key",
     "anthropic_base_url",
     "openai_api_key",
@@ -278,7 +279,11 @@ def _chat_section(document: Dict[str, Any]) -> Dict[str, Any]:
     # 只认「这家协议的地址 + 这家协议的 Key」成对出现的配置：缺一样就会拿文件里的地址
     # 去配环境变量里的 Key（或者反过来），那正是这个模块要挡的事。另一家协议的字段不读——
     # Embedding / Rerank 回落用的是服务端配的 OpenAI 兼容凭证，不该被这个文件改掉。
-    selected = ("model_provider", key_field(provider), url_field(provider), "chat_model", "coder_model")
+    mode = cleaned.get("openai_api_mode", "chat")
+    if mode not in ("chat", "responses"):
+        return {"problem": "OpenAI API mode must be chat or responses"}
+    cleaned["openai_api_mode"] = mode
+    selected = ("model_provider", "openai_api_mode", key_field(provider), url_field(provider), "chat_model", "coder_model")
     if not cleaned.get(key_field(provider)) or not cleaned.get(url_field(provider)):
         return {"problem": "不完整：接口地址和 Key 要成对出现"}
     return {

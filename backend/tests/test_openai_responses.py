@@ -6,7 +6,7 @@ from openai import APIConnectionError, AsyncOpenAI
 from pydantic import BaseModel
 
 from app.core.openai_compat import AsyncOpenAICompat, GatewayResponseError
-from app.core.openai_responses import _input, _ResponsesMessages
+from app.core.openai_responses import ResponsesOutputError, _input, _ResponsesMessages
 
 
 class Answer(BaseModel):
@@ -69,11 +69,13 @@ async def test_tool_roundtrip_and_usage():
 
 async def test_structured_output_uses_sdk_parse():
     parsed = Answer(value=3)
-    fake = client(response([], output_parsed=parsed))
+    item = NS(type="message", content=[NS(type="output_text", text='{"value":3}')])
+    item.model_dump = lambda **_: {"type": "message", "role": "assistant", "content": []}
+    fake = client(response([item]))
     result = await _ResponsesMessages(fake).parse(model="gpt-6.1-sol", max_tokens=100,
                                                   messages=[], output_format=Answer)
     assert result.parsed_output == parsed
-    assert fake.responses.calls[0]["text_format"] is Answer
+    assert fake.responses.calls[0]["text"]["format"]["strict"] is True
 
 
 class Stream:
@@ -159,3 +161,184 @@ async def test_real_sdk_decodes_response_and_replays_reasoning():
     assert calls[0]["store"] is False
     assert replay[0]["encrypted_content"] == "opaque"
     assert replay[1]["id"] == "fc_1"
+
+
+def wire_response(output=None, **overrides):
+    return {
+        "id": "resp_test", "object": "response", "created_at": 1, "status": "completed",
+        "model": "gpt-6.1-sol", "error": None, "incomplete_details": None,
+        "output": output if output is not None else [{"type": "message", "id": "msg_1", "role": "assistant",
+            "status": "completed", "content": [{"type": "output_text", "text": "ok", "annotations": []}]}],
+        "usage": {"input_tokens": 12, "output_tokens": 7, "total_tokens": 19,
+                  "input_tokens_details": {"cached_tokens": 3},
+                  "output_tokens_details": {"reasoning_tokens": 2}}, **overrides,
+    }
+
+
+@pytest.mark.parametrize("overrides,reason", [
+    ({"output": []}, "empty_output"),
+    ({"output": [{"type": "reasoning", "id": "rs", "summary": [], "encrypted_content": "opaque"}]}, "empty_output"),
+    ({"output": [{"type": "message", "id": "msg", "role": "assistant", "status": "incomplete",
+                   "content": [{"type": "output_text", "text": "partial"}]}]}, "incomplete_message"),
+    ({"output": [{"type": "function_call", "name": "lookup", "arguments": "{}"}]}, "invalid_tool_call"),
+    ({"status": None}, "invalid_status"),
+    ({"status": "in_progress"}, "in_progress"),
+    ({"status": "cancelled"}, "cancelled"),
+    ({"status": "failed", "error": {"code": "server_error", "message": "secret upstream text"}}, "failed"),
+    ({"status": "incomplete", "incomplete_details": {"reason": "max_output_tokens"}}, "incomplete:max_output_tokens"),
+    ({"status": "incomplete", "incomplete_details": {"reason": "content_filter"}}, "incomplete:content_filter"),
+    ({"output": [{"type": "message", "id": "msg", "role": "assistant", "content": [
+        {"type": "refusal", "refusal": "refused"}]}]}, "refusal"),
+])
+async def test_unusable_output_fails_closed_but_retains_usage(overrides, reason):
+    async with httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda _: httpx.Response(200, json=wire_response(**overrides)))) as http:
+        sdk = AsyncOpenAI(api_key="test", base_url="https://example.test/v1", http_client=http, max_retries=0)
+        with pytest.raises(ResponsesOutputError) as caught:
+            await _ResponsesMessages(sdk).create(model="gpt-6.1-sol", max_tokens=64, messages=[])
+    assert caught.value.reason == reason
+    assert caught.value.response_message.usage.output_tokens == 7
+    assert caught.value.response_message.usage.cache_read_input_tokens == 3
+    assert caught.value.response_message.usage.reasoning_tokens == 2
+    assert "secret upstream" not in str(caught.value)
+
+
+async def test_three_turn_reasoning_and_parallel_tool_replay():
+    import json
+    requests = []
+    outputs = [
+        [{"type": "reasoning", "id": "rs_1", "summary": [], "encrypted_content": "first"},
+         {"type": "function_call", "id": "fc_1", "call_id": "c1", "name": "lookup", "arguments": "{}"},
+         {"type": "function_call", "id": "fc_2", "call_id": "c2", "name": "lookup", "arguments": "{bad"}],
+        [{"type": "reasoning", "id": "rs_2", "summary": [], "encrypted_content": "second"},
+         {"type": "function_call", "id": "fc_3", "call_id": "c3", "name": "lookup", "arguments": "{}"}],
+        wire_response()["output"],
+    ]
+
+    def handle(req):
+        assert req.url.path == "/v1/responses"
+        requests.append(json.loads(req.content))
+        return httpx.Response(200, json=wire_response(outputs[len(requests)-1]))
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as http:
+        sdk = AsyncOpenAI(api_key="test", base_url="https://example.test/v1", http_client=http)
+        adapter = _ResponsesMessages(sdk)
+        history = [{"role": "user", "content": "lookup"}]
+        for turn in range(3):
+            result = await adapter.create(model="gpt-6.1-sol", max_tokens=64, messages=history,
+                                          output_config={"effort": "low"})
+            if turn == 0:
+                assert result.content[2].parse_error
+            history.append({"role": "assistant", "content": result.content})
+            calls = [b for b in result.content if getattr(b, "type", "") == "tool_use"]
+            if calls:
+                history.append({"role": "user", "content": [{"type": "tool_result", "tool_use_id": b.id,
+                    "content": "invalid" if b.parse_error else "1", "is_error": bool(b.parse_error)} for b in calls]})
+    replay = requests[2]["input"]
+    assert [i["encrypted_content"] for i in replay if i.get("type") == "reasoning"] == ["first", "second"]
+    assert [i["call_id"] for i in replay if i.get("type") == "function_call_output"] == ["c1", "c2", "c3"]
+    assert next(i for i in replay if i.get("id") == "fc_2")["arguments"] == "{bad"
+    assert all(r["include"] == ["reasoning.encrypted_content"] and r["store"] is False for r in requests)
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+@pytest.mark.parametrize("failure", ["429", "timeout", "400"])
+async def test_transport_errors_use_guard_and_never_change_protocol(failure, streaming):
+    from openai import APITimeoutError, BadRequestError
+
+    from app.core.llm_guard import GuardedLLMClient, LLMGuard, LLMUnavailableError
+    requests = []
+
+    def handle(req):
+        requests.append(req.url.path)
+        if failure == "timeout":
+            raise httpx.ReadTimeout("timeout", request=req)
+        status = int(failure)
+        return httpx.Response(status, headers={"retry-after": "60"}, json={"error": {
+            "message": "limited" if status == 429 else "responses unsupported", "type": "rate_limit_error"}})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as http:
+        compat = AsyncOpenAICompat(api_key="test", api_mode="responses", base_url="https://example.test/v1",
+                                   http_client=http, max_retries=0)
+        wrapped = GuardedLLMClient(compat, LLMGuard("test", provider="openai"))
+        expected = {"429": LLMUnavailableError, "400": BadRequestError, "timeout": APITimeoutError}[failure]
+        with pytest.raises(expected):
+            if streaming:
+                async with wrapped.messages.stream(model="gpt-6.1-sol", max_tokens=64, messages=[]) as stream:
+                    await stream.get_final_message()
+            else:
+                await wrapped.messages.create(model="gpt-6.1-sol", max_tokens=64, messages=[])
+    assert requests == ["/v1/responses"]
+
+
+@pytest.mark.parametrize("terminal", ["response.completed", "response.incomplete", "response.failed", "missing"])
+async def test_real_sdk_sse_terminal_status_and_usage(terminal):
+    import json
+    final = wire_response()
+    if terminal in ("response.incomplete", "response.failed"):
+        final.update(status=terminal.split(".")[1], incomplete_details={"reason": "max_output_tokens"})
+    events = [{"type": "response.output_text.delta", "delta": "ok", "item_id": "msg_1", "output_index": 0,
+               "content_index": 0, "sequence_number": 0}]
+    if terminal != "missing":
+        events.append({"type": terminal, "response": final, "sequence_number": 1})
+    raw = "".join("data: " + json.dumps(event) + "\n\n" for event in events)
+    async with httpx.AsyncClient(transport=httpx.MockTransport(lambda _: httpx.Response(
+            200, headers={"content-type": "text/event-stream"}, text=raw))) as http:
+        adapter = _ResponsesMessages(AsyncOpenAI(api_key="test", base_url="https://example.test/v1", http_client=http))
+        async with adapter.stream(model="gpt-6.1-sol", max_tokens=64, messages=[]) as stream:
+            if terminal == "response.completed":
+                assert [v async for v in stream.text_stream] == ["ok"]
+                assert (await stream.get_final_message()).usage.output_tokens == 7
+                assert (await stream.get_final_message()).usage.output_tokens == 7
+            else:
+                with pytest.raises(GatewayResponseError):
+                    await stream.get_final_message()
+
+
+@pytest.mark.parametrize("body,overrides,valid", [
+    ('{"value":3}', {}, True), ('{"value":"bad"}', {}, False),
+    ('{"value":3}', {"status": "incomplete", "incomplete_details": {"reason": "max_output_tokens"}}, False),
+])
+async def test_structured_http_validates_status_and_schema(body, overrides, valid):
+    import json
+    requests = []
+    result = wire_response(**overrides)
+    result["output"][0]["content"][0]["text"] = body
+
+    def handle(req):
+        requests.append(json.loads(req.content))
+        return httpx.Response(200, json=result)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as http:
+        adapter = _ResponsesMessages(AsyncOpenAI(api_key="test", base_url="https://example.test/v1", http_client=http))
+        if valid:
+            msg = await adapter.parse(model="gpt-6.1-sol", max_tokens=64, messages=[], output_format=Answer)
+            assert msg.parsed_output.value == 3
+        else:
+            with pytest.raises(ResponsesOutputError):
+                await adapter.parse(model="gpt-6.1-sol", max_tokens=64, messages=[], output_format=Answer)
+    assert requests[0]["text"]["format"]["schema"]["additionalProperties"] is False
+    assert len(requests) == 1
+
+
+async def test_contradictory_terminal_event_is_not_success():
+    final = response([])
+    item = NS(type="message", content=[NS(type="output_text", text="ok")])
+    item.model_dump = lambda **_: {"type": "message", "role": "assistant", "content": []}
+    final.output = [item]
+    messages = _ResponsesMessages(client(Stream([NS(type="response.failed", response=final)])))
+    with pytest.raises(ResponsesOutputError, match="invalid_terminal_event"):
+        async with messages.stream(model="gpt-6.1-sol", max_tokens=64, messages=[]) as stream:
+            await stream.get_final_message()
+
+
+def test_chat_schema_fallback_cache_does_not_contaminate_responses(monkeypatch):
+    from app.core import openai_compat
+
+    fake = client(response([]))
+    model = "gpt-6.1-sol"
+    legacy = openai_compat._Messages(fake)
+    strict = _ResponsesMessages(fake)
+    monkeypatch.setattr(openai_compat, "_SCHEMA_NOT_ENFORCED", {(legacy._root, model)})
+    assert not openai_compat.schema_enforced_for(NS(messages=legacy), model)
+    assert openai_compat.schema_enforced_for(NS(messages=strict), model)

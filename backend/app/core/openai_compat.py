@@ -419,7 +419,7 @@ def schema_enforced_for(client: Any, model: str) -> bool:
     messages = getattr(client, "messages", None)
     if not isinstance(messages, _Messages):
         return True
-    return (messages._root, model) not in _SCHEMA_NOT_ENFORCED
+    return messages.schema_enforced(model)
 
 
 class _Messages:
@@ -428,6 +428,9 @@ class _Messages:
     def __init__(self, client: AsyncOpenAI):
         self._client = client
         self._root = str(getattr(client, "base_url", "") or "")
+
+    def schema_enforced(self, model: str) -> bool:
+        return (self._root, model) not in _SCHEMA_NOT_ENFORCED
 
     def _params(
         self,
@@ -738,3 +741,6 @@ class AsyncOpenAICompat:
             self.messages = _Messages(self._client)
         else:
             raise ValueError(f"Unknown OpenAI API mode: {api_mode}")
+
+    async def close(self) -> None:
+        await self._client.close()

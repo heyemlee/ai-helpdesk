@@ -3,7 +3,7 @@
 
     GET    /admin/model                    两组连接的现状（不含 Key）、能不能改、向量切换的进度
     POST   /admin/model/chat/models        这个对话连接有哪些模型（给页面的下拉框），不保存
-    POST   /admin/model/chat/test          用提交的对话连接发两条极短的请求（普通 + 结构化输出），不保存
+    POST   /admin/model/chat/test          测普通和结构化输出；Responses 再测工具往返与流，不保存
     PUT    /admin/model/chat               保存并立刻生效（不用重启）
     DELETE /admin/model/chat               丢掉页面保存的那一组，回到 `.env`
     POST   /admin/model/embedding/models   这个向量连接有哪些向量模型，不保存
@@ -178,6 +178,7 @@ def describe(runtime: ModelRuntime, request: Request) -> dict[str, Any]:
         "chat": {
             "source": chat.get("source", "env"),
             "provider": chat["provider"],
+            "api_mode": chat.get("api_mode", "chat"),
             "base_url": chat_base,
             "model": chat["model"],
             "key_set": bool(chat.get("api_key")),
@@ -234,7 +235,8 @@ def chat_connection(body: dict[str, Any], runtime: ModelRuntime) -> dict[str, An
 def chat_candidate(body: dict[str, Any], runtime: ModelRuntime) -> dict[str, Any]:
     """页面提交的对话连接 → 一份完整的候选（连接 + 模型名）。"""
     connection = chat_connection(body, runtime)
-    return {**connection, "model": ms.clean_model_name(body.get("model"))}
+    return {**connection, "model": ms.clean_model_name(body.get("model")),
+            "api_mode": ms.clean_api_mode(body.get("api_mode", runtime.chat.get("api_mode", "chat")))}
 
 
 def embedding_connection(body: dict[str, Any], runtime: ModelRuntime) -> dict[str, Any]:
@@ -288,6 +290,10 @@ def _provider_message(ex: BaseException) -> str:
 
 def outcome_of(ex: BaseException) -> tuple[str, int | None]:
     """一次失败 → (结果代号, HTTP 状态)。代号是页面配文案用的，和 llm_guard 的口径一致。"""
+    from app.core.openai_responses import ResponsesOutputError
+
+    if isinstance(ex, ResponsesOutputError):
+        return ex.reason.split(":")[0], 200
     if isinstance(ex, GatewayResponseError):
         return "not_api_response", 200
     if isinstance(ex, ValidationError):
@@ -338,12 +344,13 @@ def _probe_client(candidate: dict[str, Any]) -> Any:
     """测试用的客户端：不套凭证保护（测试失败不能把正在用的连接记成"已被拒绝"），不重试。"""
     kwargs = {"api_key": candidate["api_key"], "base_url": candidate["base_url"],
               "timeout": PROBE_TIMEOUT_S, "max_retries": 0}
-    return AsyncOpenAICompat(**kwargs) if candidate["provider"] == "openai" else AsyncAnthropic(**kwargs)
+    return (AsyncOpenAICompat(**kwargs, api_mode=candidate.get("api_mode", "chat"))
+            if candidate["provider"] == "openai" else AsyncAnthropic(**kwargs))
 
 
 async def probe_chat(candidate: dict[str, Any]) -> dict[str, Any]:
     """
-    两条极短的真实请求：一条普通对话，一条结构化输出。
+    普通对话和结构化输出；Responses 另测工具往返和流，最多五条请求。
 
     只测第一条不够：这个服务里意图识别、改写、重排、判分全靠结构化输出，有的兼容网关
     普通对话通、结构化输出不认——那样保存之后回答还能出来，但那四处会全部静默降级。
@@ -400,7 +407,52 @@ async def probe_chat(candidate: dict[str, Any]) -> dict[str, Any]:
         checks.append({"check": "structured", "outcome": "skipped", "status": None, "detail": "",
                        "latency_ms": 0})
 
-    return {"ok": all(c["outcome"] == "ok" for c in checks), "checks": checks, "warnings": warnings}
+    if candidate["provider"] == "openai" and candidate.get("api_mode") == "responses":
+        await _probe_responses_features(client, candidate, checks)
+
+    close = getattr(client, "close", None)
+    if close is not None:
+        await close()
+    return {"ok": all(c["outcome"] == "ok" for c in checks), "checks": checks, "warnings": warnings,
+            "api_mode": candidate.get("api_mode", "chat"),
+            "endpoint": f"{ms.api_root(candidate['base_url'])}/" +
+                        ("responses" if candidate.get("api_mode") == "responses" else "chat/completions")
+                        if candidate["provider"] == "openai" else candidate["base_url"] + "/v1/messages"}
+
+
+async def _probe_responses_features(client: Any, candidate: dict[str, Any], checks: list[dict[str, Any]]) -> None:
+    """Synthetic tool only: never touch business tools, data or the live guard."""
+    history = [{"role": "user", "content": "Call connection_probe. Then reply with its result only."}]
+    specs = [{"name": "connection_probe", "description": "Return a synthetic connection-test result.",
+              "input_schema": {"type": "object", "properties": {}, "additionalProperties": False}}]
+    params = {"model": candidate["model"], "max_tokens": 1024, "output_config": {"effort": "low"}}
+    for check in ("tools", "tool_roundtrip", "stream"):
+        if any(c["outcome"] != "ok" for c in checks):
+            checks.append({"check": check, "outcome": "skipped", "status": None, "detail": "", "latency_ms": 0})
+            continue
+        started = time.monotonic()
+        try:
+            if check == "stream":
+                async with client.messages.stream(**params, messages=[{"role": "user", "content": "Reply OK only."}]) as stream:
+                    text = "".join([part async for part in stream.text_stream])
+                    extract_structured_text(await stream.get_final_message())
+                    if not text.strip():
+                        raise GatewayResponseError("Responses stream returned no text deltas")
+            else:
+                result = await client.messages.create(**params, messages=history, tools=specs,
+                    tool_choice={"type": "tool", "name": "connection_probe"} if check == "tools" else {"type": "none"})
+                if check == "tools":
+                    calls = [b for b in result.content if getattr(b, "type", "") == "tool_use"]
+                    if len(calls) != 1 or calls[0].name != "connection_probe" or calls[0].parse_error:
+                        raise GatewayResponseError("Responses endpoint did not honor the required tool call")
+                    history.extend([{"role": "assistant", "content": result.content}, {"role": "user", "content": [
+                        {"type": "tool_result", "tool_use_id": calls[0].id, "content": "OK"}]}])
+                elif extract_structured_text(result).strip().upper() != "OK":
+                    raise GatewayResponseError("Responses endpoint did not return the tool result")
+            checks.append({"check": check, "outcome": "ok", "status": 200, "detail": "",
+                           "latency_ms": round((time.monotonic() - started) * 1000)})
+        except Exception as ex:  # noqa: BLE001
+            checks.append(_failure(check, ex, candidate["api_key"], started))
 
 
 async def probe_embedding(candidate: dict[str, Any]) -> dict[str, Any]:

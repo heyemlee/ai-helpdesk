@@ -1,8 +1,11 @@
 """Explicit Responses API adapter for the existing messages interface."""
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator
 from typing import Any
+
+from openai.lib._pydantic import to_strict_json_schema
 
 from app.core.openai_compat import (
     GatewayResponseError,
@@ -19,6 +22,17 @@ from app.core.openai_compat import (
     _tool_use_block,
     _Usage,
 )
+
+
+class ResponsesOutputError(GatewayResponseError):
+    """A billed response that is unusable; keep usage without exposing partial output."""
+
+    def __init__(self, reason: str, message: _Message):
+        super().__init__(f"Responses output rejected: {reason}")
+        self.reason = reason
+        if message.stop_reason == "end_turn":
+            message.stop_reason = reason.split(":")[0]
+        self.response_message = message
 
 
 def _input(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -47,7 +61,6 @@ def _input(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 flush()
                 items.append(_block_get(block, "item"))
             elif kind == "tool_use":
-                import json
                 flush()
                 raw = _block_get(block, "raw_arguments")
                 items.append({"type": "function_call", "call_id": _block_get(block, "id"),
@@ -79,12 +92,18 @@ def _input(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 class _ResponsesMessages(_Messages):
+    def schema_enforced(self, model: str) -> bool:
+        # Responses never downgrades its strict schema. A legacy Chat rejection
+        # on the same root/model must not contaminate this protocol's diagnostics.
+        return True
+
     def _params(self, *, model: str, messages: list[dict[str, Any]], max_tokens: int,
                 system: Any = None, output_config: dict[str, Any] | None = None,
                 tools: list[Any] | None = None, tool_choice: dict[str, Any] | None = None,
                 **_ignored: Any) -> dict[str, Any]:
         params: dict[str, Any] = {"model": model, "input": _input(messages),
-                                  "max_output_tokens": max_tokens, "store": False}
+                                  "max_output_tokens": max_tokens, "store": False,
+                                  "include": ["reasoning.encrypted_content"]}
         instructions = _flatten_text(system)
         if instructions:
             params["instructions"] = instructions
@@ -104,26 +123,39 @@ class _ResponsesMessages(_Messages):
         return params
 
     def _convert(self, response: Any, params: dict[str, Any], parsed: Any = None) -> _Message:
-        if isinstance(response, str):
+        if isinstance(response, str) or not hasattr(response, "output"):
             raise GatewayResponseError("Responses endpoint returned non-JSON content")
         status = getattr(response, "status", None)
-        if status in ("failed", "cancelled"):
-            raise GatewayResponseError(f"Responses request ended with status {status}")
         usage = getattr(response, "usage", None)
         details = getattr(response, "incomplete_details", None)
-        if status == "incomplete" and getattr(details, "reason", None) != "max_output_tokens":
-            raise GatewayResponseError("Responses request ended incomplete")
         reason = "max_tokens" if getattr(details, "reason", None) == "max_output_tokens" else "end_turn"
         result = _Message("", reason, _Usage(getattr(usage, "input_tokens", 0) or 0,
                           getattr(usage, "output_tokens", 0) or 0), getattr(response, "model", params["model"]),
                           parsed_output=parsed)
+        if usage is None:
+            result.usage = None
+        else:
+            result.usage.cache_read_input_tokens = getattr(
+                getattr(usage, "input_tokens_details", None), "cached_tokens", 0) or 0
+            result.usage.reasoning_tokens = getattr(
+                getattr(usage, "output_tokens_details", None), "reasoning_tokens", 0) or 0
         result.content = []
+        if status != "completed":
+            result.stop_reason = reason if status == "incomplete" else (status or "invalid_status")
+            raise ResponsesOutputError(
+                f"incomplete:{getattr(details, 'reason', None)}" if status == "incomplete"
+                else (status or "invalid_status"), result)
         for item in getattr(response, "output", None) or []:
             kind = getattr(item, "type", None)
+            if getattr(item, "status", None) in ("incomplete", "in_progress"):
+                raise ResponsesOutputError(f"incomplete_{kind}", result)
             if kind == "reasoning":
                 # Preserve opaque reasoning items for the next tool round.
                 result.content.append({"type": "responses_item", "item": item.model_dump(exclude_none=True)})
             elif kind == "function_call":
+                if not getattr(item, "call_id", None) or not getattr(item, "name", None) or not isinstance(
+                        getattr(item, "arguments", None), str):
+                    raise ResponsesOutputError("invalid_tool_call", result)
                 call = _tool_use_block(item.call_id, item.name, item.arguments)
                 call.responses_item = item.model_dump(exclude_none=True)
                 result.content.append(call)
@@ -135,13 +167,16 @@ class _ResponsesMessages(_Messages):
                     if getattr(block, "type", None) == "output_text":
                         parts.append(block.text)
                     elif getattr(block, "type", None) == "refusal":
-                        parts.append(block.refusal)
                         result.stop_reason = "refusal"
+                        raise ResponsesOutputError("refusal", result)
                 text = _TextBlock("".join(parts))
                 text.responses_item = raw_item
                 result.content.append(text)
-        if not result.content:
-            result.content = [_TextBlock("")]
+            else:
+                raise ResponsesOutputError("unsupported_output_item", result)
+        if not any(_block_get(b, "type") == "tool_use" or
+                   (_block_get(b, "type") == "text" and _block_text(b).strip()) for b in result.content):
+            raise ResponsesOutputError("empty_output", result)
         return result
 
     async def create(self, **kwargs: Any) -> _Message:
@@ -150,8 +185,17 @@ class _ResponsesMessages(_Messages):
 
     async def parse(self, *, output_format: type, **kwargs: Any) -> _Message:
         params = self._params(**kwargs)
-        response = await self._client.responses.parse(**params, text_format=output_format)
-        return self._convert(response, params, getattr(response, "output_parsed", None))
+        # Validate status before parsing: a syntactically valid prefix is still a
+        # truncated response, and SDK parse failures can otherwise lose its usage.
+        params["text"] = {"format": {"type": "json_schema", "name": output_format.__name__,
+                                     "strict": True, "schema": to_strict_json_schema(output_format)}}
+        result = self._convert(await self._client.responses.create(**params), params)
+        try:
+            result.parsed_output = output_format.model_validate_json(
+                "".join(_block_text(b) for b in result.content if _is_text_block(b)))
+        except ValueError as ex:
+            raise ResponsesOutputError("invalid_structured_output", result) from ex
+        return result
 
     def stream(self, **kwargs: Any) -> _ResponsesStream:
         return _ResponsesStream(self, self._params(**kwargs))
@@ -177,13 +221,21 @@ class _ResponsesStream:
         return self._iterate()
 
     async def _iterate(self) -> AsyncIterator[str]:
+        if self.drained:
+            return
         async for event in self.stream:
             kind = getattr(event, "type", "")
             if kind == "response.output_text.delta":
                 yield event.delta
-            elif kind in ("response.completed", "response.incomplete"):
+            elif kind in ("response.completed", "response.incomplete", "response.failed"):
                 self.response = event.response
-            elif kind in ("response.failed", "error"):
+                self.drained = True
+                # Terminal status is authoritative, including final reasoning items.
+                final = self.messages._convert(self.response, self.params)
+                if kind != "response.completed":
+                    raise ResponsesOutputError("invalid_terminal_event", final)
+                return
+            elif kind == "error":
                 raise GatewayResponseError(f"Responses stream failed: {kind}")
         self.drained = True
         if self.response is None:
