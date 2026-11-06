@@ -88,6 +88,29 @@ from .token_budget import PromptBudgetManager, columns_in_prompt
 # 回填给下一步 SQL 生成 Prompt 的上一步结果行数上限
 _MAX_BACKFILL_ROWS = 50
 
+# 规划里「排除前面那些记录」的说法（见 `_dependent_step_outcome`）。前面 0 行时，
+# 只看那些记录的答案是没有，排除那些记录的答案是其余全部，两者必须分开。
+_EXCLUSION_WORDS = re.compile(
+    r"排除|剔除|除去|去掉|去除|过滤掉|排掉|不在|不属于|不包含|不含|之外|以外|非上|"
+    r"除了|不是|未出现|没有出现|没出现|标出|标注|是否属于|是否在|!=|<>|"
+    r"NOT\s+IN|NOT\s+EXISTS|NOT\s+LIKE|EXCEPT|LEFT\s+JOIN",
+    re.I,
+)
+
+# 回指前面结果的说法（见 `_step_dependencies`）
+_BACK_REFERENCE = re.compile(
+    r"这些|那些|上述|前述|此前|该(?:列表|批|些|组|取值|编号|单号|工程号|订单)|对应的"
+)
+
+# 规划明说「只取前面那些值」的说法：前面 0 行时只有这种步骤能直接答「没有」。
+# 认不出来的不算——默认是没执行，不是「没有记录」。
+_INCLUSION_WORDS = re.compile(
+    r"落在[^；;。]{0,20}(?:列表|范围|取值)内|在(?:该|这些|上述)[^；;。]{0,12}(?:列表|取值|范围)(?:之)?内|"
+    r"筛选(?:出)?(?:这些|该|上述|对应)|只(?:看|保留|取|查)(?:这些|该|上述)|属于(?:这些|该|上述)|"
+    r"\bIN\s*\(",
+    re.I,
+)
+
 _MAX_BACKFILL_LITERALS = 50
 """单列最多拼进 IN 条件的取值数，防止 Prompt 被长结果集撑爆。"""
 
@@ -548,7 +571,26 @@ class Text2SQLPipeline:
         access: SchemaAccessFilter,
         user_id: str,
     ) -> List[StepExecutionLog]:
-        """按计划逐步执行；每一步拿上一步的结果回填（见 `_serialize_step_result`）。"""
+        """
+        按计划逐步执行；每一步拿上一步的结果回填（见 `_serialize_step_result`）。
+
+        **要用前面某一步取值的步骤，那一步没交出取值时不生成、不执行。** 跨库计划里，
+        后一步可能拿前一步查出来的关联键当字面量筛选（规划提示词规则 4）。被依赖的那一步
+        0 行或者没查成，这些取值就不存在——以前照样生成，模型手里没有单号，写出
+        `WHERE order_no IN (order_no)`，把整张表查了出来（2026-11-06 客服问法评测 c18：
+        问一张单，返回了 936 条别家的配送记录）。
+
+        只拦**真用到**前面结果的步骤（`_step_dependencies`）；不依赖前面的步骤照常跑
+        （规则 3 也允许按库拆出彼此独立的步骤）。拦下时分三种（`_dependent_step_outcome`）：
+
+        - 依赖的步骤查到 0 行、规划**明说**只取这些值（`_INCLUSION_WORDS`）：答案就是没有，
+          记成执行成功、0 行（契约 §4.6.1 的 no_data，客服会据实说没有记录）；
+        - 依赖的步骤查到 0 行、其它说法（排除、标注，或者认不出来）：答案可能是其余全部，
+          没有取值写不出来，记成没执行——默认按这一种，不把「其余全部」说成「没有」；
+        - 依赖的步骤没查成：取值未知，记成没执行。
+
+        后两种让整次查询成为 partial_success：只有成功的那几步能当依据。
+        """
         retrieval_result = prepared.retrieval_result
         schema_stores = {
             database: LocalSchemaStore.from_schema_graph(graph)
@@ -557,24 +599,139 @@ class Text2SQLPipeline:
 
         step_logs: List[StepExecutionLog] = []
         previous_results = ""
+        # 每一步交出了什么：rows / empty / failed，供后面依赖它的步骤判断
+        outcomes: Dict[int, str] = {}
 
         for cot_step in cot_result.steps:
-            step_log, execution_result = self._run_step(
-                query,
-                prepared.effective_query,
-                cot_step,
-                cot_result,
-                step_index=len(step_logs) + 1,
-                schema_stores=schema_stores,
-                previous_results=previous_results,
-                access=access,
-                user_id=user_id,
+            step_index = len(step_logs) + 1
+            held = self._dependent_step_outcome(cot_step, step_index=step_index, outcomes=outcomes)
+            if held is not None:
+                step_logs.append(held)
+                # 回填清空：这一步本该交出的取值没有，后面的步骤不能拿到更早那一步的
+                # 取值、当成「上一步结果」抄进 IN 列表（依赖说法没认出来时就会这样）
+                previous_results = ""
+            else:
+                step_log, execution_result = self._run_step(
+                    query,
+                    prepared.effective_query,
+                    cot_step,
+                    cot_result,
+                    step_index=step_index,
+                    schema_stores=schema_stores,
+                    previous_results=previous_results,
+                    access=access,
+                    user_id=user_id,
+                )
+                step_logs.append(step_log)
+                if execution_result is not None:
+                    previous_results = self._serialize_step_result(execution_result)
+            execution = step_logs[-1].execution_result or {}
+            outcomes[step_index] = (
+                "failed" if not execution.get("success")
+                else "rows" if execution.get("rows") else "empty"
             )
-            step_logs.append(step_log)
-            if execution_result is not None:
-                previous_results = self._serialize_step_result(execution_result)
 
         return step_logs
+
+    @staticmethod
+    def _step_dependencies(cot_step, *, step_index: int, loose: bool = True) -> set:
+        """
+        这一步的规划文字里引用了前面哪几步的结果。
+
+        规划写依赖的说法不止一种：「先读取上一步结果中的…」「把步骤1输出的…取值当作字面量
+        列表」「前一步」。认「上一步 / 前一步」（指紧挨着的那一步）和「步骤 N / 第 N 步」；
+        都没提到就是不依赖前面的步骤。
+        """
+        text = " ".join(
+            str(getattr(cot_step, name, "") or "")
+            for name in ("processing_objects", "operation_instruction", "output_target")
+        )
+        steps = {
+            int(a or b)
+            for a, b in re.findall(r"步骤\s*(\d+)|第\s*(\d+)\s*步", text)
+            if 0 < int(a or b) < step_index
+        }
+        if step_index > 1 and (
+            re.search(r"上一步|前一步|上一个步骤|上步|前面(?:查到|得到|输出|的结果)", text)
+            # 「用这些工程号找订单」这类回指也算依赖紧挨着的那一步（loose）。认宽一点是故意的：
+            # 只有那一步没交出取值时才有影响，误认的代价是一个独立步骤被记成没执行
+            # （部分成功），漏认的代价是没有筛选条件、把整张表当答案（c18）。
+            # 只靠回指认出来的依赖不够确定，不能据此直接答「没有记录」（见 _dependent_step_outcome）
+            or (loose and _BACK_REFERENCE.search(text))
+        ):
+            steps.add(step_index - 1)
+        return steps
+
+    def _dependent_step_outcome(
+        self, cot_step, *, step_index: int, outcomes: Dict[int, str]
+    ) -> Optional[StepExecutionLog]:
+        """依赖的步骤没交出取值时，这一步的日志（不生成、不执行）；照常执行时返回 None。"""
+        dependencies = self._step_dependencies(cot_step, step_index=step_index)
+        failed = sorted(n for n in dependencies if outcomes.get(n) == "failed")
+        empty = sorted(n for n in dependencies if outcomes.get(n) == "empty")
+        if not failed and not empty:
+            return None
+
+        # 「答案就是没有」只在规划明说「只取这些值」时才成立；说法认不出来一律按没执行算
+        # （宁可报部分成功，也不把「其余全部」说成「没有记录」）。排除的说法优先：
+        # 「筛选不在这些 job_no 里的工单」两种词都有，按排除算
+        plan_text = " ".join(
+            str(getattr(cot_step, name, "") or "")
+            for name in ("processing_objects", "operation_instruction", "output_target")
+        )
+        # 依赖是只靠「这些 / 对应的」这类回指认出来的，就不确定这一步真用了前一步的取值：
+        # 可能是个独立步骤碰巧用了这些词。那样答「没有」是错的，只能记成没执行
+        explicit = self._step_dependencies(cot_step, step_index=step_index, loose=False)
+        keeps_only_those = (
+            set(empty) <= explicit
+            and not _EXCLUSION_WORDS.search(plan_text)
+            and bool(_INCLUSION_WORDS.search(cot_step.operation_instruction or ""))
+        )
+        if failed:
+            reason = f"第 {'、'.join(map(str, failed))} 步没有查成"
+            message = f"{reason}，这一步要用它的取值，取值不知道，所以没有执行。"
+            success = False
+        elif keeps_only_those:
+            reason = f"第 {'、'.join(map(str, empty))} 步查到 0 行"
+            message = ""
+            success = True
+        else:
+            reason = f"第 {'、'.join(map(str, empty))} 步查到 0 行"
+            message = (
+                f"{reason}。这一步要用那些取值，但看不出是只取这些值，还是排除它们或只拿来标注："
+                "只取这些值的话答案是没有，排除或标注的话答案是符合其它条件的全部记录。"
+                "没有取值写不出这一步（条件只会被丢掉或者写成和字段自己比较），所以没有执行。"
+            )
+            success = False
+
+        log_event(
+            _logger,
+            logging.INFO,
+            "pipeline.dependent_step_held",
+            step=step_index,
+            database=cot_step.database,
+            reason=reason,
+            answered_empty=success,
+        )
+        return StepExecutionLog(
+            database=cot_step.database,
+            cot_step=cot_step,
+            local_schema="",
+            sql="",
+            execution_request={},
+            execution_result={
+                "database": cot_step.database,
+                "sql": "",
+                "success": success,
+                "columns": [],
+                "rows": [],
+                "row_count": 0,
+                "truncated": False,
+                # 只看那些记录、那些记录一条都没有：答案就是没有，不算出错
+                "error": message or None,
+                "held_reason": f"{reason}，这一步要用它的取值，没有生成 SQL",
+            },
+        )
 
     def _run_step(
         self,
@@ -716,7 +873,9 @@ class Text2SQLPipeline:
                     error=execution_result.error,
                 )
             else:
-                execution_result = self.mcp_router.execute(execution_request)
+                execution_result = self._execute_unless_self_comparison(
+                    execution_request["database"], execution_request["sql"], step_dialect
+                )
                 SQL_EXECUTIONS.inc(
                     database=sql_cot_step.database,
                     status="ok" if execution_result.success else "error",
@@ -746,8 +905,8 @@ class Text2SQLPipeline:
                         error_message=execution_result.error or "",
                         local_schema=local_schema,
                         sql_dialect=step_dialect,
-                        execute=lambda database, sql: self.mcp_router.execute(
-                            {"database": database, "sql": sql}
+                        execute=lambda database, sql: self._execute_unless_self_comparison(
+                            database, sql, step_dialect
                         ),
                     )
                     repair_attempts = [
@@ -1257,8 +1416,9 @@ class Text2SQLPipeline:
             if denied:
                 return []
 
-            execution_result = self.mcp_router.execute(
-                {"database": database, "sql": sql}
+            # 历史里存着的 SQL 也可能是修复之前写下的不筛选条件，同一道检查拦下就放弃重放
+            execution_result = self._execute_unless_self_comparison(
+                database, sql, self.dialects.get(database, "sqlite")
             )
             SQL_EXECUTIONS.inc(
                 database=database,
@@ -1601,6 +1761,31 @@ class Text2SQLPipeline:
 
         return next(iter(schema_stores.values()), None)
 
+    def _execute_unless_self_comparison(self, database: str, sql: str, dialect: str):
+        """
+        执行一条生成的 SQL；筛选条件里有「字段和它自己比较」的就不执行，当成一次执行失败。
+
+        这种条件恒为真，执行了也不报错，只会悄悄把整张表查出来（见
+        `ai_sql_agent.generation.self_comparison`）。当成失败交给修复回路，比一个
+        行数正常、内容全错的结果好：修复带着这句报错重写，修不好用户也看得见。
+        首次生成和每一次修复都走这里。
+        """
+        from ai_sql_agent.generation.self_comparison import find_self_comparisons
+
+        found = find_self_comparisons(sql, dialect)
+        if found:
+            return MCPExecutionResult(
+                database=database,
+                sql=sql,
+                success=False,
+                error=(
+                    f"筛选条件把字段和它自己比较：{'；'.join(found)}。这种条件不是按取值筛选——"
+                    "IN / = 恒为真，会把整张表查出来；NOT IN / != 恒为假，一行都查不出来——"
+                    "所以没有执行。改成用具体取值（字面量）的筛选条件。"
+                ),
+            )
+        return self.mcp_router.execute({"database": database, "sql": sql})
+
     @staticmethod
     def _serialize_step_result(execution_result) -> str:
         """
@@ -1611,6 +1796,9 @@ class Text2SQLPipeline:
         自己又去写跨库子查询或 JOIN。把答案以「直接抄这一行」的形式摆出来，
         比多写几句「请改写为字面量」的指令有效得多——模型跟随格式示例
         远强于跟随文字指令。
+
+        没有行时返回空串。规划里认得出依赖这一步的步骤不会执行（见 `_run_steps`）；
+        认不出的照常生成，拿到的是空回填，不是更早那一步的取值。
         """
         if not execution_result.success or not execution_result.rows:
             return ""

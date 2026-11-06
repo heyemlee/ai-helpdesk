@@ -85,6 +85,13 @@ class ResultSummary:
     selected_databases: List[str] = field(default_factory=list)
     tables: List[str] = field(default_factory=list)
     sqls: List[Dict[str, str]] = field(default_factory=list)
+    audit_sqls: List[Dict[str, str]] = field(default_factory=list)
+    """
+    写进审计的步骤列表，模型不可用时按它重放。和 `sqls` 的区别：没生成 SQL 就答了「没有」
+    的步骤（依赖的步骤 0 行，见 `Text2SQLPipeline._dependent_step_outcome`）按原位置留一项、
+    sql 为空。少了它，审计里就是一份砍掉后半截的计划，重放时只跑前几步、当成完整答案；
+    留着空项，`audit.store._parse_steps` 会整条放弃重放。
+    """
     denied_tables: List[str] = field(default_factory=list)
     failed_steps: int = 0
     repaired_steps: int = 0
@@ -177,10 +184,15 @@ def summarize_result(result) -> ResultSummary:
     step_logs: List[StepLogResponse] = []
     selected: List[str] = []
     tables: List[str] = []
+    audit_sqls: List[Dict[str, str]] = []
     if result.pipeline_result is not None:
         selected = list(result.pipeline_result.selected_databases)
         for log in result.pipeline_result.step_logs:
             execution = log.execution_result
+            if log.final_sql or log.sql:
+                audit_sqls.append({"database": log.database, "sql": log.final_sql or log.sql})
+            elif execution.get("held_reason") and execution.get("success"):
+                audit_sqls.append({"database": log.database, "sql": ""})
             truncated = bool(execution.get("truncated"))
             row_limit = execution.get("row_limit")
             step_logs.append(StepLogResponse(
@@ -223,6 +235,7 @@ def summarize_result(result) -> ResultSummary:
         queried_database=result.queried_database,
         step_logs=step_logs, selected_databases=selected, tables=tables,
         sqls=[{"database": s.database, "sql": s.final_sql} for s in step_logs if s.final_sql],
+        audit_sqls=audit_sqls,
         denied_tables=sorted({t for s in step_logs if not s.success and s.error and "没有访问权限" in s.error
                               for t in parse_denied_tables(s.error)}),
         failed_steps=failed, repaired_steps=repaired,
@@ -261,7 +274,7 @@ def apply_summary_to_audit(summary: ResultSummary, audit: AuditRecord) -> None:
     audit.route = summary.route
     audit.databases = summary.selected_databases
     audit.tables = summary.tables
-    audit.sqls = summary.sqls
+    audit.sqls = summary.audit_sqls
     audit.denied_tables = summary.denied_tables
     audit.success = summary.failed_steps == 0 and not summary.degraded
     audit.degraded = summary.degraded
