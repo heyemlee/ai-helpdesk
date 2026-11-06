@@ -8,6 +8,15 @@ import { useT } from '@/i18n'
 import type { Key } from '@/i18n/catalog'
 
 /**
+ * 一条消息最多多少字，和后端 `MAX_MESSAGE_CHARS`（backend/app/api/main.py）是同一个数，超过的
+ * 后端直接 422。按字符数算（表情算一个），和后端的 len 一致；`.length` 会把表情算成两个。
+ *
+ * 不用 textarea 的 maxLength：粘贴一大段时浏览器会悄悄截掉尾巴，员工发出去的是半截话自己还不知道。
+ * 这里照收，超了就说超了多少、先不让发。
+ */
+export const MAX_MESSAGE_CHARS = 4000
+
+/**
  * 示例问题：知识问答、订单查询两类各有代表。按钮上是一行短标签，点一下把完整问题
  * 填进输入框，不直接发——订单那条带着占位的单号，本来就得先改成真的，所以填进去后
  * 把占位选中，直接打单号就替换掉。
@@ -107,9 +116,12 @@ export function ChatPanel({ messages, busy, onSend, onInspect, explain, restorin
     grow()
   }
 
+  // 发出去的是去掉首尾空白的那段，按它数
+  const over = [...draft.trim()].length - MAX_MESSAGE_CHARS
+
   const submit = () => {
     const text = draft.trim()
-    if (!text || busy || restoring) return
+    if (!text || busy || restoring || over > 0) return
     followLatest.current = true
     setAwayFromBottom(false)
     onSend(text)
@@ -175,11 +187,15 @@ export function ChatPanel({ messages, busy, onSend, onInspect, explain, restorin
           />
           <div className="composer-bar">
             <span className="composer-keyboard">{busy ? t('cw.busy') : t('cw.keyboard')}</span>
-            <button className="send" type="submit" disabled={busy || restoring || !draft.trim()} aria-label={t('cw.send')}>
+            <button className="send" type="submit" disabled={busy || restoring || !draft.trim() || over > 0} aria-label={t('cw.send')}>
               <Icon name="send" size={18} />
             </button>
           </div>
         </form>
+        {/* 放在输入框下面而不是按钮旁边：按钮旁那行快捷键提示在窄屏和开着检查器时是藏起来的 */}
+        {over > 0 && (
+          <p className="composer-limit" role="status">{t('cw.tooLong', { n: over, max: MAX_MESSAGE_CHARS })}</p>
+        )}
         {empty && (
           <div className="suggestions starters" role="group" aria-label={t('cw.examples')}>
             {samples.map((sample) => (
