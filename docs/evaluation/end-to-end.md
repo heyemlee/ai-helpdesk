@@ -65,4 +65,4 @@ Baselines saved before these fields existed get their rate from their own result
 
 - One run. The judge is the model under test, and LLM-judge scores are not calibrated against people.
 - 90 intent messages and 16 turns, all in Chinese and written by the same author.
-- No live order data and only six knowledge documents: this measures routing, policy and answer quality, not retrieval depth or the A2A path. Retrieval has its own records, and ai-sql-agent measures its side in its [own repository](https://github.com/heyemlee/ai-sql-agent).
+- No live order data and only six knowledge documents: this measures routing, policy and answer quality, not retrieval depth or the A2A path. Retrieval has its own records, and ai-sql-agent measures its side with [its own benchmark](../../ai-sql-agent/benchmark/README.md).
