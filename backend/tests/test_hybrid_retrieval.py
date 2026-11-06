@@ -535,7 +535,7 @@ async def test_self_correct_can_be_turned_off():
     assert calls["rerank"] == 1
 
 
-async def test_empty_recall_fails_without_burning_a_correction_round():
+async def test_successful_empty_recall_is_not_a_failure_or_correction_round():
     manager, calls = _search_manager([True])
 
     async def _empty(params, context):
@@ -543,7 +543,8 @@ async def test_empty_recall_fails_without_burning_a_correction_round():
 
     manager._tools["kb"].handler = _empty
     result = await manager.search_with_rewrite("kb", "补件流程", top_k=3)
-    assert result.success is False
+    assert result.success is True and result.lookup_status == "empty"
+    assert result.data == [] and result.error is None
     assert calls["rerank"] == 0
 
 

@@ -29,7 +29,15 @@
       "reranked": false,
       "corrected": false,
       "evidence_ok": null,
-      "degraded": true
+      "degraded": true,
+      "policy_lookup": false,
+      "lookup_status": "unavailable",
+      "lookup_scope": {
+        "product": "",
+        "region": "",
+        "audience": "",
+        "as_of": null
+      }
     },
     "business_data": {
       "enabled": true,
@@ -160,6 +168,7 @@
           "entity_keys": {
             "order_ref": "SO-1"
           },
+          "column_metadata": {},
           "trace_id": "t-1",
           "run_id": "",
           "observed_at": "2026-11-06T00:00:00+00:00"
@@ -185,6 +194,7 @@
           "entity_keys": {
             "order_ref": "SO-1"
           },
+          "column_metadata": {},
           "trace_id": "t-1",
           "run_id": "",
           "observed_at": "2026-11-06T00:00:00+00:00"
@@ -210,6 +220,7 @@
           "entity_keys": {
             "order_ref": "SO-1"
           },
+          "column_metadata": {},
           "trace_id": "t-1",
           "run_id": "",
           "observed_at": "2026-11-06T00:00:00+00:00"

@@ -25,7 +25,9 @@
       "reranked": false,
       "corrected": false,
       "evidence_ok": null,
-      "degraded": true
+      "degraded": true,
+      "policy_lookup": false,
+      "lookup_status": "unavailable"
     },
     "business_data": {
       "enabled": true,

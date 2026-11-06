@@ -346,6 +346,7 @@
      "step_keys": [
       "as_of",
       "as_of_source",
+      "column_metadata",
       "column_units",
       "database",
       "error",
@@ -876,6 +877,7 @@
      "step_keys": [
       "as_of",
       "as_of_source",
+      "column_metadata",
       "column_units",
       "database",
       "error",
@@ -992,6 +994,7 @@
      "step_keys": [
       "as_of",
       "as_of_source",
+      "column_metadata",
       "column_units",
       "database",
       "error",
@@ -1081,6 +1084,7 @@
      "step_keys": [
       "as_of",
       "as_of_source",
+      "column_metadata",
       "column_units",
       "database",
       "error",
@@ -1150,6 +1154,7 @@
    "step_keys": [
     "as_of",
     "as_of_source",
+    "column_metadata",
     "column_units",
     "database",
     "error",
@@ -1215,6 +1220,7 @@
    "step_keys": [
     "as_of",
     "as_of_source",
+    "column_metadata",
     "column_units",
     "database",
     "error",

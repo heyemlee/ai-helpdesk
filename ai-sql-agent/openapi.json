@@ -741,6 +741,17 @@
             ],
             "title": "As Of Source"
           },
+          "column_metadata": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "default": {},
+            "title": "Column Metadata",
+            "type": "object"
+          },
           "column_units": {
             "additionalProperties": {
               "type": "string"
