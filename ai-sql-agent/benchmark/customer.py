@@ -15,8 +15,11 @@
   记下生产入口会怎么判（`route`），但流水线照样跑、照样按标准答案打分。
 - **不进门禁。** 报告里单独一行（`customer`），不并进单库准确率，`gate.py` 和
   `thresholds.json` 不读它。
+- **每一步都比。** 客服拿到的是每一步的结果，客户问法又常被拆成 订单 → 生产 → 配送
+  几步；答案在前面某一步时，只比最后一步会把答对的题记成错（2026-11-06 那一轮的 c02、c03）。
+  所以任何一步和标准答案对上就算对（`score_all_steps`），`matched_step` 记是第几步。
 
-判分与评测集相同（`runner.result_matches`）。没有模型凭证时走 Mock，只能验证这一类
+对上的口径与评测集相同（`runner.result_matches`）。没有模型凭证时走 Mock，只能验证这一类
 能跑通、能单独出一行，分数没有意义。
 """
 from __future__ import annotations
@@ -123,6 +126,7 @@ def customer_runner(
             dataset_path=CUSTOMER_CASES,
             access_check=access_check,
             router=production_router(),
+            score_all_steps=True,
         )
         try:
             yield runner
@@ -142,9 +146,18 @@ def customer_summary(report: BenchmarkReport) -> List[str]:
         return []
     correct = sum(1 for item in items if item.correct)
     lines = [
-        f"客服转来的问法（{CUSTOMER_CATEGORY}，单独一行，不计入门禁）："
+        f"客服转来的问法（{CUSTOMER_CATEGORY}，单独一行，不计入门禁，每一步都比）："
         f"{correct}/{len(items)} = {correct / len(items):.2%}"
     ]
+    earlier = [
+        item for item in items
+        if item.correct and item.matched_step and item.matched_step < len(item.steps or [None])
+    ]
+    if earlier:
+        lines.append(
+            f"  其中 {len(earlier)} 道答案在前面的步骤（{'、'.join(item.item_id for item in earlier)}），"
+            "只比最后一步会记成错"
+        )
 
     wrong = [item for item in items if not item.correct]
     if wrong:

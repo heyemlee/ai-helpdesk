@@ -496,7 +496,12 @@ It differs from the evaluation set in three ways:
   It is not folded into single-database accuracy, and `gate.py` and `thresholds.json`
   never read it.
 
-Judging is the same as for the evaluation set. The report also says why each wrong
+It is scored on **every step**, not just the last one. The helpdesk receives the rows of
+all steps, and a customer question is often planned as orders → production → delivery;
+when the answer sits in an earlier step, last-step-only scoring marks a right answer
+wrong. An item counts as correct when any successful step matches the gold result under
+the evaluation set's rule, and `matched_step` records which step (the 150 evaluation
+cases and the gate still compare the last step only). The report also says why each wrong
 answer is wrong (`mismatch`): empty result, wrong row count, wrong values, or right
 values with too many columns. Only the first three can be repeated to a customer as a
 wrong fact, so the line counts silent errors with wrong values or row counts

@@ -214,6 +214,12 @@ class BenchmarkItemResult:
     这一项只记录，不改判分：流水线照样跑、照样按标准答案打分。
     """
 
+    matched_step: Optional[int] = None
+    """
+    按所有步骤判分时（`score_all_steps`），和标准答案对上的是第几步（从 1 数）；
+    最后一步就对上了也记最后一步。没对上、或者没按所有步骤判，为 None。
+    """
+
     route_signals: List[str] = field(default_factory=list)
     """路由的依据。模型判的带 `model_classifier`；没有它就是规则判的（没配模型，或模型调用失败退回了规则）。"""
 
@@ -418,6 +424,7 @@ class BenchmarkReport:
                     "silent_error": item.silent_error,
                     "flag_reasons": item.flag_reasons,
                     "mismatch": item.mismatch,
+                    "matched_step": item.matched_step,
                     "route": item.route,
                     "route_signals": item.route_signals,
                     "steps": item.steps,
@@ -608,6 +615,7 @@ class BenchmarkRunner:
         enable_repair: Optional[bool] = None,
         access_check: Optional[Callable[[], List[Dict[str, Any]]]] = None,
         router=None,
+        score_all_steps: bool = False,
     ):
         """
         enable_repair 显式传 False 时关闭回溯回路，用于测「回溯增益」：
@@ -618,9 +626,15 @@ class BenchmarkRunner:
 
         router（`ai_sql_agent.pipeline.DynamicIntentRouter`）给了的话，每一题先问一遍生产入口
         会不会查库，记进 `route`；不给就不看（150 条评测集不看）。只记录，不改判分。
+
+        score_all_steps 为 True 时，任何一步执行成功、结果和标准答案对得上（同一条
+        `result_matches`），这一题就算对，`matched_step` 记是第几步。给客服转来的问法用：
+        客服拿到的是每一步的结果，客户问法又常被拆成 订单 → 生产 → 配送 几步，答案在前面
+        某一步时，只比最后一步会把答对的题记成错。默认 False：150 条评测集和门禁只比最后一步。
         """
         self.access_check = access_check or model_access_blocks
         self.router = router
+        self.score_all_steps = score_all_steps
         if pipeline is None:
             from ai_sql_agent.pipeline import Text2SQLPipeline
             from ai_sql_agent.pipeline.objects import PipelineConfig
@@ -833,30 +847,41 @@ class BenchmarkRunner:
 
         final_log = pipeline_result.step_logs[-1]
         execution = final_log.execution_result
+        matched_step = (
+            self._matching_step(gold_rows, pipeline_result) if self.score_all_steps else None
+        )
 
         if not execution.get("success"):
             recall_hit, retrieval_hit, retrieved_count = self._score_recall(
                 item, pipeline_result
             )
+            matched_log = (
+                pipeline_result.step_logs[matched_step - 1] if matched_step else final_log
+            )
+            _answered, flagged, _degraded, flag_reasons = self._risk_signals(pipeline_result)
             return BenchmarkItemResult(
                 item_id=item["id"],
                 category=item["category"],
                 query=item["query"],
-                correct=False,
-                predicted_sql=final_log.final_sql or final_log.sql,
+                correct=matched_step is not None,
+                predicted_sql=matched_log.final_sql or matched_log.sql,
                 error=execution.get("error"),
                 repair_used=bool(final_log.repair_attempts),
                 recall_hit=recall_hit,
                 retrieval_recall_hit=retrieval_hit,
                 retrieved_columns=retrieved_count,
+                flagged=flagged,
                 degraded=degraded,
                 degrade_reason=degrade_reason,
+                flag_reasons=flag_reasons,
+                steps=self._step_trace(pipeline_result),
+                matched_step=matched_step,
                 route=route,
                 route_signals=route_signals,
             )
 
         predicted_rows = list(execution.get("rows") or [])
-        correct = result_matches(gold_rows, predicted_rows)
+        correct = result_matches(gold_rows, predicted_rows) or matched_step is not None
         mismatch = "" if correct else explain_mismatch(gold_rows, predicted_rows)
         recall_hit, retrieval_hit, retrieved_count = self._score_recall(
             item, pipeline_result
@@ -880,9 +905,24 @@ class BenchmarkRunner:
             flag_reasons=flag_reasons,
             steps=self._step_trace(pipeline_result),
             mismatch=mismatch,
+            matched_step=matched_step,
             route=route,
             route_signals=route_signals,
         )
+
+    @staticmethod
+    def _matching_step(gold_rows, pipeline_result) -> Optional[int]:
+        """和标准答案对得上的那一步（从 1 数）：先看最后一步，再从前往后看；都对不上是 None。"""
+        logs = list(getattr(pipeline_result, "step_logs", None) or [])
+        # 标准答案是空的时候只看最后一步：前面随便哪一步 0 行都会「对上」
+        order = [len(logs)] + (list(range(1, len(logs))) if gold_rows else [])
+        for number in order:
+            execution = logs[number - 1].execution_result or {}
+            if execution.get("success") and result_matches(
+                gold_rows, list(execution.get("rows") or [])
+            ):
+                return number
+        return None
 
 
 def run_holdout_recall(
