@@ -88,13 +88,6 @@ from .token_budget import PromptBudgetManager, columns_in_prompt
 # 回填给下一步 SQL 生成 Prompt 的上一步结果行数上限
 _MAX_BACKFILL_ROWS = 50
 
-# 上一步执行成功、但一行都没有时回填给下一步的话（见 `_serialize_step_result`）
-_EMPTY_BACKFILL = (
-    "上一步执行成功，返回 0 行：没有可以回填的取值。\n"
-    "本步骤如果要按上一步的结果筛选，结果必然是空的，在 WHERE 里写 1 = 0。\n"
-    "不要拿字段自己当条件（例如 order_no IN (order_no)）：那等于不筛选，会把整张表查出来。"
-)
-
 _MAX_BACKFILL_LITERALS = 50
 """单列最多拼进 IN 条件的取值数，防止 Prompt 被长结果集撑爆。"""
 
@@ -555,7 +548,17 @@ class Text2SQLPipeline:
         access: SchemaAccessFilter,
         user_id: str,
     ) -> List[StepExecutionLog]:
-        """按计划逐步执行；每一步拿上一步的结果回填（见 `_serialize_step_result`）。"""
+        """
+        按计划逐步执行；每一步拿上一步的结果回填（见 `_serialize_step_result`）。
+
+        **上一步没有交出取值，后面的步骤就不执行。** 多步计划按设计是一条链：前一步把
+        关联键查出来，后一步拿这些取值当字面量筛选（规划提示词规则 4）。上一步 0 行、
+        执行失败或者没有执行，后一步要用的取值就不存在——以前它照样生成，手里没有单号，
+        写出 `WHERE order_no IN (order_no)` 这种不筛选的条件，把整张表查了出来
+        （2026-11-06 客服问法评测 c18：问一张单，返回了 936 条别家的配送记录）。
+        现在后面的步骤记成「没有执行」并写明原因，整次查询是部分成功（契约 §4.6.1
+        的 partial_success：只有成功的那几步能当依据）。
+        """
         retrieval_result = prepared.retrieval_result
         schema_stores = {
             database: LocalSchemaStore.from_schema_graph(graph)
@@ -564,8 +567,16 @@ class Text2SQLPipeline:
 
         step_logs: List[StepExecutionLog] = []
         previous_results = ""
+        nothing_to_pass_on = ""
 
         for cot_step in cot_result.steps:
+            if nothing_to_pass_on:
+                step_logs.append(
+                    self._chain_stopped_step(
+                        cot_step, step_index=len(step_logs) + 1, reason=nothing_to_pass_on
+                    )
+                )
+                continue
             step_log, execution_result = self._run_step(
                 query,
                 prepared.effective_query,
@@ -580,8 +591,53 @@ class Text2SQLPipeline:
             step_logs.append(step_log)
             if execution_result is not None:
                 previous_results = self._serialize_step_result(execution_result)
+            nothing_to_pass_on = self._nothing_to_pass_on(
+                step_log, step_index=len(step_logs)
+            )
 
         return step_logs
+
+    @staticmethod
+    def _nothing_to_pass_on(step_log: StepExecutionLog, *, step_index: int) -> str:
+        """这一步没有交出可以往下传的取值时，返回给人看的原因；交出了就是空串。"""
+        execution = step_log.execution_result or {}
+        if not execution.get("success"):
+            return f"第 {step_index} 步没有查成"
+        if not execution.get("rows"):
+            return f"第 {step_index} 步查到 0 行"
+        return ""
+
+    def _chain_stopped_step(self, cot_step, *, step_index: int, reason: str) -> StepExecutionLog:
+        """上一步没有交出取值时，这一步的日志：没有生成 SQL、没有执行，写明为什么。"""
+        message = (
+            f"{reason}，没有可以传给这一步的取值。这一步要用上一步的结果当筛选条件，"
+            "所以没有执行：没有上一步的取值就查不出属于它的记录，硬查只会去掉筛选、查出不相干的数据。"
+        )
+        log_event(
+            _logger,
+            logging.INFO,
+            "pipeline.chain_stopped",
+            step=step_index,
+            database=cot_step.database,
+            reason=reason,
+        )
+        return StepExecutionLog(
+            database=cot_step.database,
+            cot_step=cot_step,
+            local_schema="",
+            sql="",
+            execution_request={},
+            execution_result={
+                "database": cot_step.database,
+                "sql": "",
+                "success": False,
+                "columns": [],
+                "rows": [],
+                "row_count": 0,
+                "truncated": False,
+                "error": message,
+            },
+        )
 
     def _run_step(
         self,
@@ -1266,8 +1322,9 @@ class Text2SQLPipeline:
             if denied:
                 return []
 
-            execution_result = self.mcp_router.execute(
-                {"database": database, "sql": sql}
+            # 历史里存着的 SQL 也可能是修复之前写下的不筛选条件，同一道检查拦下就放弃重放
+            execution_result = self._execute_unless_self_comparison(
+                database, sql, self.dialects.get(database, "sqlite")
             )
             SQL_EXECUTIONS.inc(
                 database=database,
@@ -1629,8 +1686,7 @@ class Text2SQLPipeline:
                 success=False,
                 error=(
                     f"筛选条件把字段和它自己比较，恒为真：{'；'.join(found)}。等于不筛选，"
-                    "会把整张表查出来，所以没有执行。按上一步结果筛选、而上一步没有取值时，"
-                    "这一步的结果应该是空的：WHERE 写 1 = 0。"
+                    "会把整张表查出来，所以没有执行。改成用具体取值（字面量）的筛选条件。"
                 ),
             )
         return self.mcp_router.execute({"database": database, "sql": sql})
@@ -1646,13 +1702,8 @@ class Text2SQLPipeline:
         比多写几句「请改写为字面量」的指令有效得多——模型跟随格式示例
         远强于跟随文字指令。
 
-        上一步执行成功但一行都没有时，要**明说**没有可回填的值。以前这里返回空串，和
-        「没有上一步」长得一样：下一步的 Prompt 里没有「上一步结果」这一节，规划却写着
-        「用上一步结果里的单号筛选」，模型手里没有单号，就写出了 `order_no IN (order_no)`，
-        把整张表查了出来（见 `ai_sql_agent.generation.self_comparison`）。
+        没有行时返回空串；这时后面的步骤根本不会执行（见 `_run_steps`）。
         """
-        if execution_result.success and not execution_result.rows:
-            return _EMPTY_BACKFILL
         if not execution_result.success or not execution_result.rows:
             return ""
 

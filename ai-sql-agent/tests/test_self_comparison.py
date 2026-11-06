@@ -5,13 +5,20 @@
 三步。这张单刚签、生产库里没有，第 2 步返回 0 行；以前空结果的回填是空串，和「没有上一步」
 一样，第 3 步手里没有单号，写出 `WHERE order_no IN (order_no)`，把配送表 936 行全查了出来。
 
-两道防线：回填明说「上一步 0 行」；执行前拦下这种恒为真的条件，当成执行失败交给修复。
+两道防线：上一步没有交出取值，后面的步骤就不生成、不执行；执行前（首次、每次修复、
+降级重放）拦下这种恒为真的条件，当成执行失败。
 """
+import os
+import tempfile
 import unittest
+from unittest import mock
 
+from ai_sql_agent.core import reload_settings
 from ai_sql_agent.execution.objects import MCPExecutionResult
+from ai_sql_agent.generation.coder_client import CoderModelClient
 from ai_sql_agent.generation.self_comparison import find_self_comparisons
 from ai_sql_agent.pipeline import Text2SQLPipeline
+from ai_sql_agent.planning.objects import CotPlanningResult, CotPlanningStep
 
 
 class FindSelfComparisonsTest(unittest.TestCase):
@@ -39,25 +46,69 @@ class FindSelfComparisonsTest(unittest.TestCase):
         self.assertEqual(find_self_comparisons("not sql ((", "sqlite"), [])
 
 
-class EmptyBackfillTest(unittest.TestCase):
-    @staticmethod
-    def _result(success, rows):
-        class FakeResult:
-            pass
+class EmptyEarlierStepStopsTheChainTest(unittest.TestCase):
+    """
+    c18 的形状离线重放：两步计划，第 1 步 0 行，生成器在第 2 步把筛选条件丢掉
+    （「条件被吞掉」——不是字段自比较，那道检查拦不住）。第 2 步必须不生成、不执行。
+    """
 
-        result = FakeResult()
-        result.success, result.rows, result.columns = success, rows, ["order_no"]
-        return result
+    PLAN = [
+        ("erp_db", "sales_order.order_no，sales_order.job_no",
+         "在sales_order表中筛选order_no为'SO-NOPE'的订单，输出job_no", "sales_order.job_no"),
+        ("mes_db", "work_order.job_no，work_order.workshop",
+         "先读取上一步结果中的job_no列表；再筛选这些job_no的工单；最后输出workshop", "work_order.workshop"),
+    ]
+    STEP_SQL = {
+        "erp_db": "SELECT job_no FROM sales_order WHERE order_no = 'SO-NOPE';",
+        # 手里没有工程号：把条件整个丢了
+        "mes_db": "SELECT job_no, workshop FROM work_order;",
+    }
 
-    def test_successful_empty_step_says_so(self):
-        text = Text2SQLPipeline._serialize_step_result(self._result(True, []))
-        # 不能是空串：空串和「没有上一步」一样，下一步的 Prompt 里就没有这一节了
-        self.assertIn("返回 0 行", text)
-        self.assertIn("1 = 0", text)
-        self.assertIn("order_no IN (order_no)", text)
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self._cwd = os.getcwd()
+        self._env = mock.patch.dict(os.environ, {"AI_SQL_PGVECTOR_DSN": ""})
+        self._env.start()
+        os.chdir(self._tmp.name)
+        self.addCleanup(self._restore)
+        reload_settings()
 
-    def test_failed_step_still_backfills_nothing(self):
-        self.assertEqual(Text2SQLPipeline._serialize_step_result(self._result(False, [])), "")
+    def _restore(self):
+        os.chdir(self._cwd)
+        self._env.stop()
+        reload_settings()
+        self._tmp.cleanup()
+
+    def _plan(self, pipeline_self, prepared):
+        steps = [
+            CotPlanningStep(step_no=index, database=database, processing_objects=objects,
+                            operation_instruction=instruction, output_target=target,
+                            expected_cardinality="数条")
+            for index, (database, objects, instruction, target) in enumerate(self.PLAN, start=1)
+        ]
+        return CotPlanningResult(user_query="q", prompt="", raw_output="", steps=steps)
+
+    def test_second_step_is_not_generated_or_executed(self):
+        generated = []
+
+        def generate_sql(client_self, prompt):
+            database = "mes_db" if "work_order" in prompt and "sales_order" not in prompt else "erp_db"
+            generated.append(database)
+            return self.STEP_SQL[database]
+
+        pipeline = Text2SQLPipeline()
+        with mock.patch.object(Text2SQLPipeline, "_plan", lambda pipe, prepared: self._plan(pipe, prepared)), \
+             mock.patch.object(CoderModelClient, "generate_sql", generate_sql):
+            result = pipeline.run("SO-NOPE 这单的工单在哪个车间")
+
+        self.assertEqual(generated, ["erp_db"])
+        first, second = result.step_logs
+        self.assertTrue(first.execution_result["success"])
+        self.assertEqual(first.execution_result["row_count"], 0)
+        self.assertFalse(second.execution_result["success"])
+        self.assertEqual(second.sql, "")
+        self.assertEqual(second.execution_result["rows"], [])
+        self.assertIn("第 1 步查到 0 行", second.execution_result["error"])
 
 
 class SelfComparisonIsNotExecutedTest(unittest.TestCase):
