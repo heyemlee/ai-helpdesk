@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "kind": "real_development_revalidation",
+  "candidate_revision": "6090071d35d72ed7af65ae7288420d7dc132e90f",
+  "helper_revision": "9dc2b79e0a8a423347f22beddc7cacd12a19ad97",
+  "scenario_id": "development-images-001",
+  "fact_correct": false,
+  "extraction_fields_correct": 5,
+  "verification_fields_correct": 5,
+  "image_fields_total": 5,
+  "invariant_violations": [
+    "unauthorized_or_duplicate_handoff"
+  ],
+  "side_effects": {
+    "handoff": 1,
+    "notification": 0
+  },
+  "elapsed_seconds": 104.75585520779714,
+  "actual_supplier_requests": 12,
+  "http_successes": 12,
+  "input_tokens": 63237,
+  "output_tokens": 1793,
+  "unknown_usage_requests": 0,
+  "unattributed_requests": 0,
+  "stage6_total_supplier_requests_to_date": 52,
+  "stage6_total_input_tokens_to_date": 271528,
+  "stage6_total_output_tokens_to_date": 7596,
+  "supplier_tariff_verified": false,
+  "verified_usd_cost": null,
+  "temporary_stack_closed": true,
+  "release_eligible": false,
+  "verification": "Parent independently rescored the raw record; field success and handoff invariant failure are preserved separately.",
+  "limitation": "This is one development scenario. It proves neither formal quality acceptance nor successful completion of the whole scenario."
+}
