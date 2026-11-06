@@ -1,5 +1,6 @@
 {
   "recording_sha256": "5db4018cebcd6f39010f2920bc8e59fbf78c10e49c2e789019f9555c75086fd0",
+  "case_issue_type": "general",
   "original_score": {
     "business_resolved": false,
     "elapsed_seconds": 104.75585520779714,

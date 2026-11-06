@@ -115,7 +115,7 @@ export interface ChatResponse {
   handoff_reason: string
   /** Case commit review; answer_confidence/policy_violations still describe the original model answer. */
   handoff_review?: {
-    basis: 'direct' | 'answer_quality' | 'uncertain_routing'
+    basis: 'direct' | 'answer_quality' | 'uncertain_routing' | 'unresolved_answer'
     outcome: 'retained' | 'replaced_by_verified_draft'
     model_answer_sha256: string
     draft_sha256: string

@@ -769,8 +769,10 @@ class CaseService:
         message_id, next_run = "verified_" + run.run_id, new_run_id()
         snapshot = {**run.case_context["snapshot"], "facts": facts, "pending_fields": c["pending_fields"],
                     "status": c["status"], "review_materials": []}
+        from app.tickets.draft_decision import complete_order_image_review
         context = {**run.case_context, "message_id": message_id, "expected_case_version": c["version"],
-                   "snapshot": snapshot, "materials_reviewed": True}
+                   "snapshot": snapshot, "materials_reviewed": True,
+                   "image_review_complete": complete_order_image_review(reviews)}
         content = "图片核对已完成；请按已确认事实和待补字段继续处理。"
         seq = await conn.fetchval(f"INSERT INTO conversation_log(conv_id,user_id,role,content,created_at)"
                                   f" VALUES($1,$2,'system',$3,{_NOW}) RETURNING seq", run.conv_id, run.user_id, content)
