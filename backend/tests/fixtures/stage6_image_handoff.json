@@ -1,0 +1,319 @@
+{
+  "recording_sha256": "5db4018cebcd6f39010f2920bc8e59fbf78c10e49c2e789019f9555c75086fd0",
+  "original_score": {
+    "business_resolved": false,
+    "elapsed_seconds": 104.75585520779714,
+    "errors": [],
+    "fact_correct": false,
+    "group": "images",
+    "id": "development-images-001",
+    "image_fields": [
+      {
+        "expected_outcome": "matched",
+        "extraction_passed": true,
+        "field": "date",
+        "passed": true,
+        "verification_passed": true
+      },
+      {
+        "expected_outcome": "matched",
+        "extraction_passed": true,
+        "field": "model",
+        "passed": true,
+        "verification_passed": true
+      },
+      {
+        "expected_outcome": "matched",
+        "extraction_passed": true,
+        "field": "order_ref",
+        "passed": true,
+        "verification_passed": true
+      },
+      {
+        "expected_outcome": "matched",
+        "extraction_passed": true,
+        "field": "quantity",
+        "passed": true,
+        "verification_passed": true
+      },
+      {
+        "expected_outcome": "matched",
+        "extraction_passed": true,
+        "field": "status",
+        "passed": true,
+        "verification_passed": true
+      }
+    ],
+    "invariant_violations": [
+      "unauthorized_or_duplicate_handoff"
+    ],
+    "run_count": 2,
+    "run_terminal": true,
+    "subtype": "order"
+  },
+  "original_side_effects": {
+    "actions": [
+      {
+        "action_key": "handoff:tk_97498d18fd4f",
+        "case_id": "tk_97498d18fd4f",
+        "kind": "handoff"
+      }
+    ],
+    "handoff": 1,
+    "notification": 0,
+    "notifications": []
+  },
+  "request_message": "逐项检查附件的单号、型号、数量、日期和状态，跟系统记录比对后标记不能核实的项目。",
+  "image_review": {
+    "attachment_id": "at_09b4772628014580b67a90d701e56772",
+    "document_type": "order",
+    "extractor_version": "order-image-v1:gpt-6.1-sol",
+    "fields": [
+      {
+        "db_value": "SO-2026-11039",
+        "field": "order_ref",
+        "kind": "order",
+        "location": "Upper left, under Order number",
+        "outcome": "matched",
+        "readability": "clear",
+        "source": {
+          "as_of": "2026-11-06T18:07:35.140Z",
+          "as_of_source": "query_time",
+          "column": "order_ref",
+          "database": "erp_db",
+          "observed_at": "2026-11-06T18:07:35.140000+00:00",
+          "order_ref": "SO-2026-11039",
+          "row_index": 0,
+          "run_id": "c458105976334eb3b9e172580f38b9c6",
+          "source_records": [
+            {
+              "database": "erp_db",
+              "key_columns": [
+                "order_no"
+              ],
+              "keys": [
+                "SO-2026-11039"
+              ],
+              "table": "orders",
+              "truncated": false
+            }
+          ],
+          "trace_id": "9e37616a761e45e5",
+          "unit": null
+        },
+        "unit": null,
+        "value": "SO-2026-11039"
+      },
+      {
+        "db_value": "BX-11039-24",
+        "field": "model",
+        "kind": "ordered",
+        "location": "Left, under Cabinet model",
+        "outcome": "matched",
+        "readability": "clear",
+        "source": {
+          "as_of": "2026-11-06T18:07:35.140Z",
+          "as_of_source": "query_time",
+          "column": "model",
+          "database": "erp_db",
+          "observed_at": "2026-11-06T18:07:35.140000+00:00",
+          "order_ref": "SO-2026-11039",
+          "row_index": 0,
+          "run_id": "c458105976334eb3b9e172580f38b9c6",
+          "source_records": [
+            {
+              "database": "erp_db",
+              "key_columns": [
+                "order_no"
+              ],
+              "keys": [
+                "SO-2026-11039"
+              ],
+              "table": "orders",
+              "truncated": false
+            }
+          ],
+          "trace_id": "9e37616a761e45e5",
+          "unit": null
+        },
+        "unit": null,
+        "value": "BX-11039-24"
+      },
+      {
+        "db_value": "5",
+        "field": "quantity",
+        "kind": "ordered",
+        "location": "Left middle, under Ordered quantity (pcs)",
+        "outcome": "matched",
+        "readability": "clear",
+        "source": {
+          "as_of": "2026-11-06T18:07:35.140Z",
+          "as_of_source": "query_time",
+          "column": "ordered_qty",
+          "database": "erp_db",
+          "observed_at": "2026-11-06T18:07:35.140000+00:00",
+          "order_ref": "SO-2026-11039",
+          "row_index": 0,
+          "run_id": "c458105976334eb3b9e172580f38b9c6",
+          "source_records": [
+            {
+              "database": "erp_db",
+              "key_columns": [
+                "order_no"
+              ],
+              "keys": [
+                "SO-2026-11039"
+              ],
+              "table": "orders",
+              "truncated": false
+            }
+          ],
+          "trace_id": "9e37616a761e45e5",
+          "unit": "pcs"
+        },
+        "unit": "pcs",
+        "value": "5"
+      },
+      {
+        "db_value": "2026-11-22",
+        "field": "date",
+        "kind": "delivery",
+        "location": "Left middle, under Planned delivery date",
+        "outcome": "matched",
+        "readability": "clear",
+        "source": {
+          "as_of": "2026-11-06T18:07:35.140Z",
+          "as_of_source": "query_time",
+          "column": "delivery_date",
+          "database": "erp_db",
+          "observed_at": "2026-11-06T18:07:35.140000+00:00",
+          "order_ref": "SO-2026-11039",
+          "row_index": 0,
+          "run_id": "c458105976334eb3b9e172580f38b9c6",
+          "source_records": [
+            {
+              "database": "erp_db",
+              "key_columns": [
+                "order_no"
+              ],
+              "keys": [
+                "SO-2026-11039"
+              ],
+              "table": "orders",
+              "truncated": false
+            }
+          ],
+          "trace_id": "9e37616a761e45e5",
+          "unit": null
+        },
+        "unit": null,
+        "value": "2026-11-22"
+      },
+      {
+        "db_value": "已交付",
+        "field": "status",
+        "kind": "order",
+        "location": "Lower left, under Order status",
+        "outcome": "matched",
+        "readability": "clear",
+        "source": {
+          "as_of": "2026-11-06T18:07:35.140Z",
+          "as_of_source": "query_time",
+          "column": "order_status",
+          "database": "erp_db",
+          "observed_at": "2026-11-06T18:07:35.140000+00:00",
+          "order_ref": "SO-2026-11039",
+          "row_index": 0,
+          "run_id": "c458105976334eb3b9e172580f38b9c6",
+          "source_records": [
+            {
+              "database": "erp_db",
+              "key_columns": [
+                "order_no"
+              ],
+              "keys": [
+                "SO-2026-11039"
+              ],
+              "table": "orders",
+              "truncated": false
+            }
+          ],
+          "trace_id": "9e37616a761e45e5",
+          "unit": null
+        },
+        "unit": null,
+        "value": "已交付"
+      }
+    ],
+    "query_outcome": "checked",
+    "sha256": "25feb041b561ccf0a8fb99c08e6d25c5ee4babb7059daff2202f2d39169feedf"
+  },
+  "original_result": {
+    "agent_type": "order",
+    "agent_types": [
+      "order"
+    ],
+    "answer_confidence": 0.15,
+    "answer_usage": {},
+    "business_data": {
+      "attempted": true,
+      "enabled": true,
+      "outcome": "not_applicable"
+    },
+    "case_applied": true,
+    "case_id": "tk_97498d18fd4f",
+    "case_status": "in_progress",
+    "case_version": 3,
+    "control_version": 1,
+    "conv_id": "fd33e192-aece-43cc-917b-4a2226f9f7e2",
+    "draft_id": "dr_01a1b20b9880ce4833a3a82f0851d6c7",
+    "escalated": true,
+    "handoff": true,
+    "handoff_reason": "Agent 自评置信度 0.15 低于 0.7，其中答案策略拦截 2 处无依据承诺",
+    "intent": "order",
+    "intent_group": "order",
+    "knowledge": {
+      "attempted": true,
+      "corrected": false,
+      "degraded": false,
+      "evidence_ok": null,
+      "mode": "rewrite_rerank",
+      "reranked": false
+    },
+    "knowledge_sources": [],
+    "knowledge_used": false,
+    "latency_ms": 9053.707045968622,
+    "needs_clarification": false,
+    "policy_violations": [
+      {
+        "evidence": "2026-11-22",
+        "reason": "无依据的时效承诺：'2026-11-22' 未出现在本轮知识库检索结果或 Skill SOP 中，且句子使用了承诺性表述。",
+        "rule": "lead_time_commitment",
+        "sentence": "| 日期 | 2026-11-22 | delivery_date：2026-11-22 | 字段一致，但实际送货情况待核实 |"
+      },
+      {
+        "evidence": "2026-11-06",
+        "reason": "无依据的时效承诺：'2026-11-06' 未出现在本轮知识库检索结果或 Skill SOP 中，且句子使用了承诺性表述。",
+        "rule": "lead_time_commitment",
+        "sentence": "**需要进一步核实的事项：**所提供 ERP 记录的查询时间为 **2026-11-06**，早于记录中的送货日期 **2026-11-22**，但状态已标为“已交付”。"
+      }
+    ],
+    "primary_agent": "order",
+    "request_id": "11cd9a9bd09e",
+    "response": "图片已核实 [I1] · 日期: 2026-11-22  · 2026-11-06T18:07:35.140Z\n\n图片已核实 [I2] · 型号: BX-11039-24  · 2026-11-06T18:07:35.140Z\n\n图片已核实 [I3] · 状态: 已交付  · 2026-11-06T18:07:35.140Z\n\n图片已核实 [I4] · 数量: 5 pcs · 2026-11-06T18:07:35.140Z\n\n图片已核实 [I5] · 订单: SO-2026-11039  · 2026-11-06T18:07:35.140Z\n\n以上为可核对的资料。涉及补件、责任、金额或交期承诺，请由员工按适用政策审核后处理。",
+    "routing_confidence": 1.0,
+    "routing_reason": "intent=order, group=order, primary=order, supporting=none, scores=[order=1.00, general=0.10, technical=0.00, billing=0.00]",
+    "run": {
+      "attempt": 1,
+      "run_id": "01a1b20b9880ce4833a3a82f0851d6c7"
+    },
+    "service_unavailable": false,
+    "supporting_agents": [],
+    "ticket_id": "tk_97498d18fd4f",
+    "ticket_notification": "not_configured",
+    "trajectory": [],
+    "turn_id": "01a1b20c0d065a65fd15c38996",
+    "unavailable_reason": ""
+  },
+  "model_answer_replay": "Only the verbatim policy-violation sentence excerpts survive in this recording; no full intermediate answer is invented."
+}

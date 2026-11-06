@@ -439,7 +439,8 @@ export function MessageBubble({ message, onInspect, explain, routingConfig, base
   // 两处的署名得对得上。
   const fallback = fallbackAgent(routing, result, routingConfig)
   const agent = agentIdentity(fallback ?? routing.primary_agent, t)
-  const cut = result?.policy_violations?.[0]
+  const cut = result?.handoff_review?.outcome === 'replaced_by_verified_draft'
+    ? undefined : result?.policy_violations?.[0]
   const sources = meta?.knowledge_sources ?? []
   const data = meta?.business_data
 

@@ -14,6 +14,7 @@ from app.runs.checkpoint import encode_result
 from app.runs.memo import bind_run
 from app.runs.records import SUCCEEDED
 from app.runs.worker import RetryRun, RunContext, RunOutcome
+from app.tickets.draft_decision import handoff_review
 
 FIELD_LABELS = {
     "order_ref": "订单号", "model": "缺件型号", "quantity": "缺件数量",
@@ -78,12 +79,25 @@ class CaseExecutor:
                         proposal["knowledge_sources"] = selected["knowledge"]["sources"]
                         proposal["business_data"] = selected["business_data"]
                         proposal["response"] = render_draft(proposal["knowledge_sources"], proposal["business_data"], snapshot.get("facts"), language=snapshot.get("language", "zh"))
+                        if result.handoff:
+                            proposal["handoff_review"] = handoff_review(prepared.request, result, proposal["response"])
                     if not await ctx.commit({"case_proposal": proposal}):
                         raise RetryRun("Case proposal lost its lease")
                 # No model delta, ticket, notification or history has been published yet.
                 payload, applied = await self.service.complete(run, proposal)
+                review = dict(payload.get("handoff_review") or {})
+                original_reason = review.pop("original_handoff_reason", "")
                 turn.emit("turn_completed", {"case_applied": applied, "case_id": payload["case_id"],
-                                             "case_version": payload["case_version"]}, {"response": payload["response"]})
+                                             "case_version": payload["case_version"],
+                                             **{k: payload[k] for k in ("agent_type", "agent_types", "handoff", "escalated",
+                                                "needs_clarification", "answer_confidence", "service_unavailable",
+                                                "unavailable_reason", "latency_ms") if k in payload},
+                                             "primary": payload.get("primary_agent", ""),
+                                             "supporting": payload.get("supporting_agents", []),
+                                             **({"handoff_review": review} if review else {})},
+                          {"response": payload["response"], "handoff_reason": payload.get("handoff_reason", ""),
+                           "original_handoff_reason": original_reason,
+                           "policy_violations": payload.get("policy_violations", [])})
                 return RunOutcome(SUCCEEDED, ("result", payload), result=payload, persisted=True)
         except Exception as exc:
             turn.emit("turn_failed", {"error_type": type(exc).__name__})

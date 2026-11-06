@@ -636,6 +636,9 @@ class CaseService:
                 reason = "draft_evidence_stale"
             if result.get("material_access_changed") or material_access_error:
                 reason = "material_access_changed"
+            if not reason and not dead:
+                from app.tickets.draft_decision import reconcile_handoff
+                result = reconcile_handoff(result, ctx)
             payload = {**{k: v for k, v in result.items() if k != "material_reviews"}, "case_id": c["case_id"], "ticket_id": c["case_id"],
                        "turn_id": r["turn_id"],
                        "case_version": c["version"], "control_version": c["control_version"],

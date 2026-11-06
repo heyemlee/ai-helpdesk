@@ -206,7 +206,8 @@ export function TurnExplanation({ message, routingConfig, onInspect }: {
 
   // 5. 回答检查
   const cuts = result.policy_violations ?? []
-  rows.push(['lm.check', unavailable ? t('lm.check.none') : cuts.length
+  const replaced = result.handoff_review?.outcome === 'replaced_by_verified_draft'
+  rows.push(['lm.check', unavailable ? t('lm.check.none') : replaced ? t('lm.check.replaced') : cuts.length
     ? t('lm.check.cut', {
         n: cuts.length,
         rule: [...new Set(cuts.map((c) => t(`policy.${c.rule}` as Key)))].join(', '),
@@ -232,7 +233,7 @@ export function TurnExplanation({ message, routingConfig, onInspect }: {
       {th !== undefined && <> {t('lm.handoff.threshold', { v: num(th) })}</>}
     </>])
   } else {
-    rows.push(['lm.handoff', t('lm.handoff.none', { conf: confText })])
+    rows.push(['lm.handoff', t(replaced ? 'lm.handoff.reconciled' : 'lm.handoff.none', { conf: confText })])
   }
 
   // 7. 排队模式（后端 app/runs/）：这一轮处理了几次、是不是按提交点收的尾、按哪一档降级。

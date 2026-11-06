@@ -251,6 +251,14 @@ def _result(evs, turn_id, conv_id, routing, started) -> dict[str, Any]:
         trajectory=_trajectory(evs) if loop else [],
         answer_usage=_answer_usage(evs) if loop else {},
     )
+    if "case_applied" in data:
+        # A Case transaction may replace the intermediate answer and its handoff
+        # decision. Restoring the turn must use the committed result too.
+        result.update(handoff_reason=body.get("handoff_reason", ""),
+                      policy_violations=body.get("policy_violations", []))
+        if data.get("handoff_review"):
+            result["handoff_review"] = {**data["handoff_review"],
+                                        "original_handoff_reason": body.get("original_handoff_reason", "")}
     return result
 
 

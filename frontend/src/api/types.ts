@@ -113,6 +113,15 @@ export interface ChatResponse {
   intent_latency_ms: number
   handoff: boolean
   handoff_reason: string
+  /** Case commit review; answer_confidence/policy_violations still describe the original model answer. */
+  handoff_review?: {
+    basis: 'direct' | 'answer_quality' | 'uncertain_routing'
+    outcome: 'retained' | 'replaced_by_verified_draft'
+    model_answer_sha256: string
+    draft_sha256: string
+    original_handoff_reason: string
+    original_answer_confidence: number
+  }
   needs_clarification: boolean
   answer_confidence: number
   policy_violations: PolicyViolation[]
