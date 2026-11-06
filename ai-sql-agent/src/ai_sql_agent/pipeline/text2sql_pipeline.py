@@ -97,6 +97,11 @@ _EXCLUSION_WORDS = re.compile(
     re.I,
 )
 
+# 回指前面结果的说法（见 `_step_dependencies`）
+_BACK_REFERENCE = re.compile(
+    r"这些|那些|上述|前述|以上|此前|该(?:列表|批|些|组|取值|编号|单号|工程号|订单)|对应的"
+)
+
 # 规划明说「只取前面那些值」的说法：前面 0 行时只有这种步骤能直接答「没有」。
 # 认不出来的不算——默认是没执行，不是「没有记录」。
 _INCLUSION_WORDS = re.compile(
@@ -646,8 +651,12 @@ class Text2SQLPipeline:
             for a, b in re.findall(r"步骤\s*(\d+)|第\s*(\d+)\s*步", text)
             if 0 < int(a or b) < step_index
         }
-        if step_index > 1 and re.search(
-            r"上一步|前一步|上一个步骤|上步|前面(?:查到|得到|输出|的结果)|上述(?:结果|取值|列表)", text
+        if step_index > 1 and (
+            re.search(r"上一步|前一步|上一个步骤|上步|前面(?:查到|得到|输出|的结果)", text)
+            # 「用这些工程号找订单」这类回指也算依赖紧挨着的那一步。认宽一点是故意的：
+            # 只有那一步没交出取值时才有影响，误认的代价是一个独立步骤被记成没执行
+            # （部分成功），漏认的代价是没有筛选条件、把整张表当答案（c18）
+            or _BACK_REFERENCE.search(text)
         ):
             steps.add(step_index - 1)
         return steps

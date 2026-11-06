@@ -205,27 +205,18 @@ class DependentStepTest(_OfflinePipeline, unittest.TestCase):
         self.assertFalse(second.execution_result["success"])
         self.assertIn("第 1 步没有查成", second.execution_result["error"])
 
-    def test_held_step_clears_the_backfill_for_later_steps(self):
-        """
-        1 空 → 2 独立有行 → 3 依赖 1（拦下）→ 4 依赖 3、说法认不出来。第 4 步生成时不能看到
-        第 2 步的取值被当成「上一步结果」：模型会照抄进 IN 列表，筛错单号。
-        """
-        plan = [
+    def _four_steps(self, last_instruction, replies):
+        """1 空 → 2 独立有行 → 3 依赖 1（答「没有」）→ 4 用 last_instruction。"""
+        self.plan = [
             self.FIRST,
             self.INDEPENDENT,
             ("mes_db", "work_order.job_no，work_order.workshop",
              "先把步骤1输出的job_no取值当作字面量列表，筛选job_no落在该列表内的工单，输出job_no",
              "work_order.job_no"),
-            ("erp_db", "sales_order.job_no，sales_order.order_no",
-             "用这些工程号找订单，输出order_no", "sales_order.order_no"),
+            ("erp_db", "sales_order.job_no，sales_order.order_no", last_instruction, "sales_order.order_no"),
         ]
-        self.plan = plan
         prompts = []
-        replies = iter([
-            "SELECT job_no FROM sales_order WHERE order_no = 'SO-NOPE';",
-            "SELECT job_no, workshop FROM work_order WHERE work_status = 'finished';",
-            "SELECT order_no FROM sales_order;",
-        ])
+        replies = iter(replies)
 
         def generate_sql(client_self, prompt):
             prompts.append(prompt)
@@ -234,8 +225,34 @@ class DependentStepTest(_OfflinePipeline, unittest.TestCase):
         with mock.patch.object(Text2SQLPipeline, "_plan", lambda pipe, prepared: self._plan(pipe, prepared)), \
              mock.patch.object(CoderModelClient, "generate_sql", generate_sql):
             result = Text2SQLPipeline().run("SO-NOPE 这单的工单在哪个车间")
+        return prompts, result
 
-        self.assertEqual(len(prompts), 3)  # 第 3 步没生成
+    FIRST_TWO = [
+        "SELECT job_no FROM sales_order WHERE order_no = 'SO-NOPE';",
+        "SELECT job_no, workshop FROM work_order WHERE work_status = 'finished';",
+    ]
+
+    def test_loose_back_reference_after_a_held_step_is_held(self):
+        """
+        「用这些工程号找订单」回指第 3 步，第 3 步没交出取值。不能照常生成——模型手里没有
+        工程号，会把条件丢掉、把整张订单表当答案，状态还是 success。
+        """
+        prompts, result = self._four_steps(
+            "用这些工程号找订单，输出order_no", self.FIRST_TWO + ["SELECT order_no FROM sales_order;"]
+        )
+        self.assertEqual(len(prompts), 2)  # 第 3、4 步都没生成
+        fourth = result.step_logs[3]
+        self.assertFalse(fourth.execution_result["success"])
+        self.assertEqual(fourth.execution_result["rows"], [])
+        self.assertEqual(self._summary(result).execution_status, "partial_success")
+
+    def test_independent_step_after_a_held_step_gets_no_stale_backfill(self):
+        """独立的第 4 步照常跑，但「上一步结果」里不能是第 2 步的取值（会被当成 IN 字面量抄走）。"""
+        prompts, result = self._four_steps(
+            "在sales_order表中筛选order_no为'SO-0001'的订单，输出order_no",
+            self.FIRST_TWO + ["SELECT order_no FROM sales_order WHERE order_no = 'SO-0001';"],
+        )
+        self.assertEqual(len(prompts), 3)  # 第 3 步没生成，第 4 步生成了
         self.assertTrue(result.step_logs[1].execution_result["rows"])  # 第 2 步有取值可回填
         self.assertNotIn("# 上一步结果", prompts[2])  # 第 4 步看不到它
 
