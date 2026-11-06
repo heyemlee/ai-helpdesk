@@ -1,0 +1,13 @@
+{
+  "source": "Development v3 SQL semantic/erp_db.yaml, orders.delivery_date, lines 113-123; actual source configuration, not an acceptance answer",
+  "database": "erp_db",
+  "table": "orders",
+  "column": "delivery_date",
+  "metadata": {
+    "label_zh": "交付日期",
+    "label_en": "Delivery date",
+    "description": "交付日期。迁移自原配送记录的计划送货日期。没有送货计划时为空；不是安装日期。实际送达日期在 svc_db.delivery.delivered_date。",
+    "semantic_role": "time",
+    "business_usage": "迁移自原配送记录的计划送货日期。没有送货计划时为空；不是安装日期。实际送达日期在 svc_db.delivery.delivered_date。 日期为 YYYY-MM-DD 文本；本地时间相关查询使用 DATE('now','localtime')。"
+  }
+}

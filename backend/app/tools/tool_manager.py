@@ -87,6 +87,7 @@ class ToolResult:
     reranked:       bool = False   # 是否经过重排
     corrected:      bool = False   # 是否触发过检索自纠错（补检一轮）
     evidence_ok:    bool | None = None  # 证据充分性判定；None = 未判定
+    lookup_status: str = ""  # found / empty / unavailable; empty requires successful retrieval
     # 排队模式下这一轮是重跑，结果取自上一遍记下的（app/runs/memo.py），这一次没有真的调用
     replayed:       bool = False
 
@@ -111,6 +112,12 @@ class RewrittenQueries(list):
     def __init__(self, queries=(), failed: bool = False):
         super().__init__(queries)
         self.failed = failed
+
+
+class RecalledCandidates(list):
+    def __init__(self, items=(), *, healthy=False):
+        super().__init__(items)
+        self.healthy = healthy
 
 
 # 重排 + 证据充分性判定的返回形状，由结构化输出在服务端约束。
@@ -512,12 +519,13 @@ class ToolManager:
             return ToolResult(success=True, data=recalled.get("data"), tool_name=tool_name, cached=True,
                               reranked=bool(recalled.get("reranked")),
                               corrected=bool(recalled.get("corrected")),
-                              evidence_ok=recalled.get("evidence_ok"), replayed=True)
+                              evidence_ok=recalled.get("evidence_ok"), lookup_status=recalled.get("lookup_status", ""), replayed=True)
         result = await self._search_with_rewrite(tool_name, query, top_k, context,
                                                  self_correct=self_correct)
         if result.success:
             await scope.remember(key, {"data": result.data, "reranked": result.reranked,
-                                       "corrected": result.corrected, "evidence_ok": result.evidence_ok})
+                                       "corrected": result.corrected, "evidence_ok": result.evidence_ok,
+                                       "lookup_status": result.lookup_status})
         return result
 
     async def _search_with_rewrite(
@@ -546,7 +554,10 @@ class ToolManager:
         queries, rewrite_failed = await self._rewritten(query)
         candidates = await self._recall(tool_name, queries, top_k, context)
         if not candidates:
-            return ToolResult(success=False, data=[], tool_name=tool_name, error="所有子查询均无结果")
+            healthy = bool(getattr(candidates, "healthy", False))
+            return ToolResult(success=healthy, data=[], tool_name=tool_name,
+                              lookup_status="empty" if healthy else "unavailable",
+                              error=None if healthy else "未能完成知识检索")
 
         outcome = await self._rerank(query, candidates, top_k)
         # **模型调用失败不是"模型判断证据不足"。** 改写或重排没调成的时候，这一轮
@@ -612,7 +623,11 @@ class ToolManager:
         for r in results:
             if isinstance(r, ToolResult) and r.success and isinstance(r.data, list):
                 rows.extend(r.data)
-        return self._merge_unique(rows)
+        healthy = bool(results) and all(
+            isinstance(r, ToolResult) and r.success and isinstance(r.data, list)
+            and not any(isinstance(item, dict) and item.get("fallback") for item in r.data)
+            for r in results)
+        return RecalledCandidates(self._merge_unique(rows), healthy=healthy)
 
     @staticmethod
     def _identity(item: Any) -> str:

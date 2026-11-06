@@ -212,6 +212,20 @@ class SemanticLayer:
         meta = self._column_meta(database, table, column)
         return str(meta.get("unit") or "").strip()
 
+    def column_description(self, database: str, table: str, column: str) -> dict:
+        """Return configured meaning verbatim, never infer it from a field name.
+
+        Drop an oversized/invalid description as a whole: clipping could remove
+        a qualification such as 'not the actual delivery date'.
+        """
+        meta = self._column_meta(database, table, column)
+        keys = ("label", "label_zh", "label_en", "description", "business_usage", "semantic_role")
+        result = {key: meta[key] for key in keys if meta.get(key)}
+        if (not result.get("description") or any(not isinstance(v, str) or not v.strip() or len(v) > 2000
+                                                  or "\x00" in v for v in result.values())):
+            return {}
+        return result
+
     def primary_key_columns(self, database: str, table: str) -> List[str]:
         """
         主键列（契约 §4.6.6 的 `key_columns`）。没有声明就返回空列表。

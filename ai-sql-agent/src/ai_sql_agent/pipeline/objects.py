@@ -141,6 +141,9 @@ class StepExecutionLog:
     调用方据此禁止补币种符号，尤其禁止回退到它自己的全局常量。
     """
 
+    column_metadata: Dict[str, Dict[str, str]] = field(default_factory=dict)
+    """Current source field descriptions bound to final_sql and configuration revision."""
+
     source_records: List[Dict[str, Any]] = field(default_factory=list)
     """
     来源记录标识（契约 §4.6.6）：这批数字是从哪几条业务记录读出来的。

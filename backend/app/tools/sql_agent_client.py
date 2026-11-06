@@ -145,6 +145,9 @@ def should_query_business_data(message: str, intent=None, entities=None) -> bool
     """
     if not (message or "").strip():
         return False
+    from app.core.policy_scope import policy_only_query
+    if policy_only_query(message, entities):
+        return False
     intent_value = getattr(intent, "value", intent)
     if intent_value in data_intents():
         return True

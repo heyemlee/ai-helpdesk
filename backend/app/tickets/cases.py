@@ -742,6 +742,8 @@ class CaseService:
         for field, items in by_field.items():
             values = {i["db_value"] for _, i in items if i["outcome"] == "matched"}
             confirmed = len(values) == 1 and all(i["outcome"] == "matched" for _, i in items)
+            meanings = {((i.get("source") or {}).get("column_metadata") or {}).get("schema_revision") for _, i in items}
+            confirmed = confirmed and len(meanings) <= 1
             value = next(iter(values)) if confirmed else None
             old = facts.get(field)
             if old and old.get("value") != value:

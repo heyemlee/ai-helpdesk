@@ -86,7 +86,7 @@ a different, entirely evidence-rendered draft. Other handoff reasons remain.
             or len(images) != sum(f.get("source") == "verified_image" for f in facts.values())
             or any(facts[field].get("evidence_id") != current_review + ":" + field for field in ORDER_IMAGE_FIELDS)):
         return result
-    if response != render_draft(knowledge, business, facts, language=snapshot.get("language", "zh")):
+    if response != render_draft(knowledge, business, facts, language=snapshot.get("language", "zh"), knowledge_state=knowledge_state):
         return result
     return {**result, "handoff": False, "escalated": False, "handoff_reason": "",
             "handoff_review": {**review, "outcome": "replaced_by_verified_draft"}}

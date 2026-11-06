@@ -207,5 +207,5 @@ def test_null_field_is_distinct_from_zero_rows_and_query_failure():
         assert not verified_nulls(changed), change
     empty = render_draft([], {"attempted": True, "evidence_issues": ["no_data"]})
     failed = render_draft([], {"attempted": True, "evidence_issues": ["failed"]})
-    assert "未找到记录" in empty and "未登记" not in empty
+    assert "不能据此认定没有记录" in empty and "未登记" not in empty
     assert "查询失败" in failed and "未登记" not in failed

@@ -16,6 +16,8 @@
 """
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any, Dict, List, Optional, Sequence
 
 # 保留单位的包装：对一列金额求和、取均值、取极值，结果还是那个币种。
@@ -27,7 +29,7 @@ MAX_SOURCE_KEYS = 50
 """单张表最多回传多少条主键。溯源要的是「能查回去」，不是把结果集抄一遍。"""
 
 
-def _output_column_sources(sql: str, dialect: str, *, direct_only=False) -> Dict[str, "tuple"]:
+def _output_column_sources(sql: str, dialect: str, *, direct_only=False, strict=False) -> Dict[str, "tuple"]:
     """
     输出列名 → (表名, 原始列名)。
 
@@ -49,34 +51,94 @@ def _output_column_sources(sql: str, dialect: str, *, direct_only=False) -> Dict
         return {}
     if root is None:
         return {}
+    if strict and any(t.db or t.catalog for t in tree.find_all(exp.Table)):
+        # A configured database need not mean the schema/catalog in a qualified
+        # SQL name. Without an explicit mapping the meaning stays unknown.
+        return {}
+
+    projections = root.expression.selects if hasattr(root.expression, "selects") else []
+    if strict and (dialect not in {"sqlite", "postgres", "postgresql"}
+                   or any(not isinstance(source, exp.Table) or not isinstance(source.this, exp.Identifier)
+                          or (source.args.get("alias") and source.args["alias"].args.get("columns"))
+                          for source in root.sources.values())
+                   or any(isinstance(p, exp.Star) or (isinstance(p, exp.Column) and p.name == "*") for p in projections)):
+        # No schema expansion is available here. A star can shadow a direct
+        # output, and a derived source can shadow a physical table's name.
+        return {}
+
+    from ai_sql_agent.auth.identifiers import referenced_name
+
+    def canonical(identifier):
+        return referenced_name(identifier.name, quoted=bool(identifier.args.get("quoted")), dialect=dialect)
 
     # 别名 -> 真实表名，取最外层作用域即可：输出列是它选出来的
     sources: Dict[str, str] = {}
     for alias, source in root.sources.items():
         if isinstance(source, exp.Table) and source.name:
-            sources[(alias or source.name).lower()] = source.name.lower()
-            sources.setdefault(source.name.lower(), source.name.lower())
+            if strict:
+                alias_node = source.args.get("alias")
+                name = canonical(alias_node.this if alias_node else source.this)
+                if name in sources:
+                    return {}
+                sources[name] = canonical(source.this)
+            else:
+                sources[(alias or source.name).lower()] = source.name.lower()
+                sources.setdefault(source.name.lower(), source.name.lower())
 
-    single_table = sources and len(set(sources.values())) == 1
+    single_table = sources and len(set(sources.values())) == 1 and (not strict or len(root.sources) == 1)
     only_table = next(iter(sources.values())) if single_table else ""
 
     mapping: Dict[str, tuple] = {}
-    for projection in root.expression.selects if hasattr(root.expression, "selects") else []:
+    seen = set()
+    for projection in projections:
         output_name = projection.alias_or_name
+        if strict and dialect in {"postgres", "postgresql"}:
+            output_id = projection.args.get("alias") if isinstance(projection, exp.Alias) else projection.args.get("this")
+            if isinstance(output_id, exp.Identifier):
+                output_name = canonical(output_id)
         if not output_name or output_name == "*":
             continue
+        if strict and output_name in seen:
+            mapping.pop(output_name, None)
+            continue
+        seen.add(output_name)
         direct = projection.this if isinstance(projection, exp.Alias) else projection
         if direct_only and not isinstance(direct, exp.Column):
             continue
         column = _unwrap_single_column(projection, exp)
         if column is None:
             continue
-        qualifier = (column.table or "").lower()
+        qualifier = canonical(column.args["table"]) if strict and column.table else (column.table or "").lower()
         table = sources.get(qualifier) if qualifier else only_table
         if not table:
             continue
-        mapping[output_name] = (table, column.name)
+        mapping[output_name] = (table, canonical(column.this) if strict else column.name)
     return mapping
+
+
+def column_metadata(semantic: Any, *, database: str, sql: str, dialect: str, columns: Sequence[str]) -> dict:
+    """Bind current configured meaning to a direct result column and exact SQL.
+
+    Expressions, stars, CTEs, duplicate aliases and ambiguous joins have no
+    description. A content revision identifies the description used in this run.
+    """
+    lookup = getattr(semantic, "column_description", None)
+    if not callable(lookup):
+        return {}
+    mapping = _output_column_sources(sql, dialect, direct_only=True, strict=True)
+    result = {}
+    for field in columns:
+        if field not in mapping or columns.count(field) != 1:
+            continue
+        table, column = mapping[field]
+        meaning = lookup(database, table, column)
+        if not meaning:
+            continue
+        source = {"database": database, "table": table, "column": column, **meaning}
+        revision = hashlib.sha256(json.dumps(source, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+        result[field] = {**source, "output_field": field, "schema_revision": revision,
+                         "query_hash": hashlib.sha256(sql.encode()).hexdigest()}
+    return result
 
 
 def _unwrap_single_column(node, exp):

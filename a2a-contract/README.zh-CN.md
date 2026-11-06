@@ -6,7 +6,7 @@
 
 它规定 AI Helpdesk 怎样通过 A2A 把数据问题委派给 AI SQL Agent、每个阶段怎样经 SSE 流回来，以及结果满足什么条件才能用来回答：一份协议文档、五个 JSON Schema、34 个 golden fixture 和一个自检脚本，和两个 Agent 在同一套 CI 里一起测。
 
-[![Contract](https://img.shields.io/badge/Contract-v1.14-6E56CF?style=flat-square)](a2a-streaming-contract.md)
+[![Contract](https://img.shields.io/badge/Contract-v1.15-6E56CF?style=flat-square)](a2a-streaming-contract.md)
 [![A2A](https://img.shields.io/badge/A2A_0.2-JSON--RPC_2.0_%2B_SSE-0D9488?style=flat-square)](docs/a2a-integration.md)
 [![JSON Schema](https://img.shields.io/badge/JSON_Schema-2020--12-0A7CFF?style=flat-square)](schema/)
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)](tools/check_contract.py)
@@ -30,12 +30,12 @@
 - **送达不等于成功。** `completed` 只说明载荷送到了；`execution_status`（5 个取值）说明查询跑成了没有，风险、降级或截断仍可能让结果不能用。字段缺失或类型不对一律按不可信处理：字符串 `"false"` 不是布尔值。
 - **交给机器检查。** 5 个 JSON Schema（Draft 2020-12）和 34 个 golden fixture，分 6 组，其中 7 个能通过 schema，但不是可以直接采信的证据。`tools/check_contract.py` 确认每个反例真的被拒、每个链接和 `§` 引用都存在、每一处写着版本号的地方都一致；它是每个 PR 都要过的必需检查 `A2A contract`。
 - **超时按实测定。** 82 次审计过的模型调用里，查库平均 17.7 秒，最慢一次 68.3 秒，所以客户端静默 20 秒或总长 90 秒就放弃，进度事件就是心跳。被取消的运行在下一个检查点停下：6 次实测取消用时 0.07–2.7 秒。
-- **像对外 API 一样管版本。** 两个 Agent 都在代码里声明自己实现的版本 `v1.14`，任何一边和契约对不上 CI 就失败；找不到契约时契约测试失败而不是跳过。发布过的 tag 不改契约内容：`a2a-contract/v1.11` 存在的唯一理由，就是修正 `v1.10` 里带错的版本号。
+- **像对外 API 一样管版本。** 两个 Agent 都在代码里声明自己实现的版本 `v1.15`，任何一边和契约对不上 CI 就失败；找不到契约时契约测试失败而不是跳过。发布过的 tag 不改契约内容：`a2a-contract/v1.11` 存在的唯一理由，就是修正 `v1.10` 里带错的版本号。
 
 ## 系统架构
 
 <p align="center">
-  <img src="docs/architecture.svg" width="960" alt="A2A Contract 架构：客服 Agent ai-helpdesk 读取 ai-sql-agent 的 Agent Card，用 message/stream 调用 POST /a2a。SQL Agent 的循环一边调用模型、在四个业务库上执行只读 SQL，一边经 JSON-RPC 2.0 和 SSE 依次流回 task、每个阶段一条 status-update、一个带 data part 的 artifact 和恰好一个终态事件。客服的 A2A 客户端静默 20 秒或总长 90 秒就放弃，用 assess() 判断 data part，再把进度和回答流给控制台。a2a-contract 目录（v1.14）用契约文档、五个 JSON Schema、34 个 golden fixture 和自检脚本定义链路上的每一帧，两个 Agent 的测试在同一套 CI 里读同一个提交上的它。光点按这个顺序依次流过每条连线" />
+  <img src="docs/architecture.svg" width="960" alt="A2A Contract 架构：客服 Agent ai-helpdesk 读取 ai-sql-agent 的 Agent Card，用 message/stream 调用 POST /a2a。SQL Agent 的循环一边调用模型、在四个业务库上执行只读 SQL，一边经 JSON-RPC 2.0 和 SSE 依次流回 task、每个阶段一条 status-update、一个带 data part 的 artifact 和恰好一个终态事件。客服的 A2A 客户端静默 20 秒或总长 90 秒就放弃，用 assess() 判断 data part，再把进度和回答流给控制台。a2a-contract 目录（v1.15）用契约文档、五个 JSON Schema、34 个 golden fixture 和自检脚本定义链路上的每一帧，两个 Agent 的测试在同一套 CI 里读同一个提交上的它。光点按这个顺序依次流过每条连线" />
 </p>
 
 [AI Helpdesk](../README.zh-CN.md) 负责对话与编排，[AI SQL Agent](../ai-sql-agent/README.zh-CN.md) 负责查询业务数据，本目录定义两者之间的接口；三者在同一个仓库里，这里本身不部署任何服务。遇到订单类问题，客服读取 Agent Card 并打开 `message/stream`；SQL Agent 的循环一边调用模型、执行只读 SQL，一边每个阶段流回一条 status-update，最后是一个 artifact 和一个终态事件，客服先判断 data part，专家才能使用。知识类问题不会离开客服。蓝色表示请求和数据，青绿色表示协议事件，橙色表示模型调用，紫色表示契约。
@@ -133,6 +133,7 @@ git tag -a a2a-contract/vX.Y && git push origin a2a-contract/vX.Y  # 发版 PR �
 
 | 版本 | 变更 |
 | --- | --- |
+| `v1.15` | 可选的来源字段说明，绑定直接结果列、实际查询及语义配置内容修订 |
 | `v1.14` | 三承载者提供原始查询完成时间和逐字段结构化证据；消费端核对实际执行行、状态、完整性和来源 |
 | `v1.13` | 调用方断开后，运行在下一个检查点取消；新增传输终态 `canceled`，带 schema 和 5 个用例；429 改用 `-32029` |
 | `v1.12` | `execution_status` 改为必填；缺这个字段的 `dp-trust-01` 改判到 B 组 |

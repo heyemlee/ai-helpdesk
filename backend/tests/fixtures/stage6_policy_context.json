@@ -1,0 +1,900 @@
+{
+  "provenance": {
+    "business_commit": "000e2b73c15c19e0cdf56be29314132f51f274ca",
+    "source": ".stage6/evaluation/2026-11-06/development-v3-000e2b7-calibration-clients/turn_events.json",
+    "kind": "recorded development events; no acceptance answers"
+  },
+  "records": [
+    {
+      "scenario": "policies-001",
+      "turn_id": "01a1b2502c223e51492e5316d6",
+      "message": "请查Cedar-01 cabinets的配送费用政策，说明所选日期和适用范围内的处理时限及有效版本，并提供引用。",
+      "snapshot": {
+        "facts": {},
+        "status": "open",
+        "case_id": "tk_c4eb49ced3b0",
+        "language": "zh",
+        "messages": [
+          {
+            "role": "user",
+            "content": "请查Cedar-01 cabinets的配送费用政策，说明所选日期和适用范围内的处理时限及有效版本，并提供引用。"
+          }
+        ],
+        "materials": [],
+        "issue_type": "general",
+        "order_refs": [],
+        "control_mode": "assistant",
+        "customer_ref": "",
+        "policy_scope": {
+          "as_of": "2026-11-05T20:00:01Z",
+          "region": "CA",
+          "product": "Cedar-01 cabinets",
+          "audience": "employee"
+        },
+        "input_receipt": {
+          "case_id": "tk_c4eb49ced3b0",
+          "operation": "created",
+          "message_id": "acc_c3a854915ba24dcd95b3079737c39641"
+        },
+        "pending_fields": [],
+        "review_materials": []
+      },
+      "model_answer": "现有检索资料可确认以下内容，但**尚不能确认该版本在所选日期及范围内有效**：\n\n| 核查项 | 查询结果 |\n|---|---|\n| 所选日期 | 2026年11月5日（查询基准：20:00:01 UTC） |\n| 所选范围 | 地区 CA；产品 Cedar-01 cabinets；员工适用口径 |\n| 检索到的版本 | 《Cedar-01 cabinets 配送费用 2026-B》 |\n| 处理时限 | **4个工作日内办结**；原文未说明起算节点 |\n| 所需材料 | 订单号及现场记录 |\n\n**引用依据：**  \n[1]《Cedar-01 cabinets 配送费用 2026-B》：“办理配送费用适用产品 Cedar-01 cabinets。操作说明：处理时限为 4 个工作日内办结。须提供订单号及现场记录。”\n\n**有效性与范围限制：**该条资料未提供生效日期、失效日期、地区及适用对象说明，因此仅凭标题中的“2026-B”，无法认定它在上述日期对 CA 地区、员工口径有效。资料也未列出具体配送收费标准。此外，本轮业务证据存在一致性风险，需要人工核验有效版本及适用范围后才能作为正式办理依据。\n\n我将此事项转交人工核验；若需同时办理具体订单的配送费用事项，请补充订单号及现场记录。\n[[handoff:yes]]",
+      "violations": [
+        {
+          "rule": "lead_time_commitment",
+          "label": "无依据的时效承诺",
+          "reason": "无依据的时效承诺：'2026年11月5日' 未出现在本轮知识库检索结果或 Skill SOP 中，且句子使用了承诺性表述。",
+          "evidence": "2026年11月5日",
+          "sentence": "| 所选日期 | 2026年11月5日（查询基准：20:00:01 UTC） |"
+        }
+      ],
+      "final": {
+        "response": "政策摘录 [P1]：Cedar-01 cabinets 配送费用 2026-B（版本 2026-B；产品 Cedar-01 cabinets；区域 CA；受众 employee；适用时点 2026-11-05T20:00:01+00:00）\n> 办理配送费用适用产品 Cedar-01 cabinets。操作说明：处理时限为 4 个工作日内办结。须提供订单号及现场记录。\n\n以上为可核对的资料。涉及补件、责任、金额或交期承诺，请由员工按适用政策审核后处理。",
+        "handoff_reason": "Agent 自评置信度 0.40 低于 0.7，其中答案策略拦截 1 处无依据承诺",
+        "policy_violations": [
+          {
+            "rule": "lead_time_commitment",
+            "reason": "无依据的时效承诺：'2026年11月5日' 未出现在本轮知识库检索结果或 Skill SOP 中，且句子使用了承诺性表述。",
+            "evidence": "2026年11月5日",
+            "sentence": "| 所选日期 | 2026年11月5日（查询基准：20:00:01 UTC） |"
+          }
+        ],
+        "original_handoff_reason": "Agent 自评置信度 0.40 低于 0.7，其中答案策略拦截 1 处无依据承诺"
+      },
+      "sources": [
+        {
+          "score": 0.4274,
+          "doc_id": "doc_e4d44dfc97d7cf3b7cc0",
+          "passage": 0,
+          "chunk_id": "c944cd65ec42c8ed5fdb419796441b5d",
+          "retrieval": "hybrid",
+          "policy_as_of": "2026-11-05T20:00:01+00:00",
+          "policy_revision": "e4d44dfc97d7cf3b7cc0cb5839f75f8e82ee830cd02ec74a1b65da6c73b18bc3",
+          "title": "Cedar-01 cabinets 配送费用 2026-B",
+          "policy": {
+            "region": "CA",
+            "status": "published",
+            "product": "Cedar-01 cabinets",
+            "version": "2026-B",
+            "audience": "employee",
+            "expires_at": null,
+            "effective_at": "2026-11-05T20:00:00Z"
+          },
+          "content": "办理配送费用适用产品 Cedar-01 cabinets。操作说明：处理时限为 4 个工作日内办结。须提供订单号及现场记录。",
+          "excerpt": "办理配送费用适用产品 Cedar-01 cabinets。操作说明：处理时限为 4 个工作日内办结。须提供订单号及现场记录。",
+          "doc_title": "Cedar-01 cabinets 配送费用 2026-B",
+          "policy_scope": {
+            "as_of": "2026-11-05T20:00:01Z",
+            "region": "CA",
+            "product": "Cedar-01 cabinets",
+            "audience": "employee"
+          }
+        }
+      ],
+      "knowledge_trace": {
+        "mode": "rewrite_rerank",
+        "sources": [
+          {
+            "score": 0.4274,
+            "doc_id": "doc_e4d44dfc97d7cf3b7cc0",
+            "passage": 0,
+            "chunk_id": "c944cd65ec42c8ed5fdb419796441b5d",
+            "retrieval": "hybrid",
+            "policy_as_of": "2026-11-05T20:00:01+00:00",
+            "policy_revision": "e4d44dfc97d7cf3b7cc0cb5839f75f8e82ee830cd02ec74a1b65da6c73b18bc3"
+          }
+        ],
+        "degraded": false,
+        "reranked": false,
+        "attempted": true,
+        "corrected": true,
+        "evidence_ok": false
+      },
+      "sql_response": {
+        "as_of": "2026-11-06T19:23:13.445000+00:00",
+        "route": "database_query",
+        "steps": [
+          {
+            "sql": "SELECT\n    NULL AS delivery_fee_policy,\n    NULL AS processing_time,\n    NULL AS applicability_scope,\n    NULL AS effective_version,\n    NULL AS policy_reference;",
+            "rows": [
+              {
+                "processing_time": null,
+                "policy_reference": null,
+                "effective_version": null,
+                "applicability_scope": null,
+                "delivery_fee_policy": null
+              }
+            ],
+            "as_of": "2026-11-06T19:23:13.445Z",
+            "error": null,
+            "success": true,
+            "database": "erp_db",
+            "final_sql": "SELECT\n    NULL AS delivery_fee_policy,\n    NULL AS processing_time,\n    NULL AS applicability_scope,\n    NULL AS effective_version,\n    NULL AS policy_reference;",
+            "row_count": 1,
+            "row_limit": 1000,
+            "truncated": false,
+            "observed_at": "2026-11-06T19:23:13.445Z",
+            "as_of_source": "query_time",
+            "column_units": {},
+            "risk_findings": [
+              {
+                "detail": "SQL 实际行为与问题不一致：SQL仅返回全为NULL的一行数据，未查询Cedar-01 cabinets的配送费用政策，也未提供所选日期和适用范围内的处理时限、有效版本及引用。（复述：该SQL不读取任何表、不进行筛选或分组，仅输出一行数据，包含delivery_fee_policy、processing_time、applicability_scope、effective_version和policy_reference五列，且值均为NULL。）",
+                "anomaly": "semantic_mismatch",
+                "severity": "block"
+              }
+            ],
+            "source_records": [],
+            "repair_attempts": []
+          }
+        ],
+        "answer": "已完成数据库查询。查询结果：[{\"database\": \"erp_db\", \"sql\": \"SELECT\\n    NULL AS delivery_fee_policy,\\n    NULL AS processing_time,\\n    NULL AS applicability_scope,\\n    NULL AS effective_version,\\n    NULL AS policy_reference;\", \"success\": true, \"columns\": [\"delivery_fee_policy\", \"processing_time\", \"applicability_scope\", \"effective_version\", \"policy_reference\"], \"rows\": [{\"delivery_fee_policy\": null, \"processing_time\": null, \"applicability_scope\": null, \"effective_version\": null, \"policy_reference\": null}], \"row_count\": 1, \"error\": null, \"truncated\": false, \"row_limit\": 1000, \"as_of\": \"2026-11-06T19:23:13.445Z\", \"as_of_source\": \"query_time\"}]",
+        "run_id": "82404f2309e543a0a4972b7d4f11f3b1",
+        "currency": null,
+        "degraded": false,
+        "evidence": [],
+        "has_risk": true,
+        "trace_id": "d18e74a19ebe4330",
+        "observed_at": "2026-11-06T19:23:13.445000+00:00",
+        "as_of_source": "query_time",
+        "degrade_reason": "",
+        "execution_status": "success",
+        "queried_database": true,
+        "result_truncated": false,
+        "selected_databases": [
+          "svc_db",
+          "erp_db",
+          "wms_db"
+        ]
+      }
+    },
+    {
+      "scenario": "policies-002",
+      "turn_id": "01a1b250b33aa5cd799f2f048a",
+      "message": "请查Cedar-02 cabinets的配送费用政策，说明所选日期和适用范围内的处理时限及有效版本，并提供引用。",
+      "snapshot": {
+        "facts": {},
+        "status": "open",
+        "case_id": "tk_aa8688d1cc5f",
+        "language": "zh",
+        "messages": [
+          {
+            "role": "user",
+            "content": "请查Cedar-02 cabinets的配送费用政策，说明所选日期和适用范围内的处理时限及有效版本，并提供引用。"
+          }
+        ],
+        "materials": [],
+        "issue_type": "general",
+        "order_refs": [],
+        "control_mode": "assistant",
+        "customer_ref": "",
+        "policy_scope": {
+          "as_of": "2026-11-05T19:59:59Z",
+          "region": "CA",
+          "product": "Cedar-02 cabinets",
+          "audience": "employee"
+        },
+        "input_receipt": {
+          "case_id": "tk_aa8688d1cc5f",
+          "operation": "created",
+          "message_id": "acc_0bd5961cef4a43f7824ba2fa4d337e1c"
+        },
+        "pending_fields": [],
+        "review_materials": []
+      },
+      "model_answer": "目前检索到的资料不足以确认 **Cedar-02 cabinets 在所选日期及适用范围内的有效配送费用政策**，需要转交人工核实。\n\n本次核查范围为：\n- **所选日期**：2026 年 11 月 5 日 19:59:59（UTC）\n- **地区**：CA\n- **产品**：Cedar-02 cabinets\n- **适用对象**：员工\n\n**已检索到的内容及引用：**\n> “办理配送费用适用产品 Cedar-02 cabinets。操作说明：旧版处理时限为 32 个工作日内办结。”  \n> ——《Cedar-02 cabinets 配送费用 2026-A》\n\n**目前可以确认与不能确认的事项：**\n- 该资料明确提及 Cedar-02 cabinets，但未明确地区 CA 和员工范围的适用性。\n- “32 个工作日内办结”被标注为**旧版处理时限**，不能据此认定它在所选日期仍然有效；该时限也不等于配送到货时限。\n- 标题虽包含“2026-A”，但资料未提供生效日期、失效日期或版本替代关系，因此无法确认有效版本。\n- 资料未列出具体收费标准、费用计算方式或减免条件。\n\n此外，本轮业务证据显示无可用数据且存在一致性风险。因此，需要人工核实该日期及范围内的正式政策版本、处理时限和收费条款，不能将上述旧版时限作为当前承诺。\n[[handoff:yes]]",
+      "violations": [
+        {
+          "rule": "lead_time_commitment",
+          "label": "无依据的时效承诺",
+          "reason": "无依据的时效承诺：'2026 年 11 月 5 日' 未出现在本轮知识库检索结果或 Skill SOP 中，且句子使用了承诺性表述。",
+          "evidence": "2026 年 11 月 5 日",
+          "sentence": "- **所选日期**：2026 年 11 月 5 日 19:59:59（UTC）"
+        }
+      ],
+      "final": {
+        "response": "查询成功，未找到记录。\n\n政策摘录 [P1]：Cedar-02 cabinets 配送费用 2026-A（版本 2026-A；产品 Cedar-02 cabinets；区域 CA；受众 employee；适用时点 2026-11-05T19:59:59+00:00）\n> 办理配送费用适用产品 Cedar-02 cabinets。操作说明：旧版处理时限为 32 个工作日内办结。\n\n以上为可核对的资料。涉及补件、责任、金额或交期承诺，请由员工按适用政策审核后处理。",
+        "handoff_reason": "Agent 自评置信度 0.40 低于 0.7，其中答案策略拦截 1 处无依据承诺",
+        "policy_violations": [
+          {
+            "rule": "lead_time_commitment",
+            "reason": "无依据的时效承诺：'2026 年 11 月 5 日' 未出现在本轮知识库检索结果或 Skill SOP 中，且句子使用了承诺性表述。",
+            "evidence": "2026 年 11 月 5 日",
+            "sentence": "- **所选日期**：2026 年 11 月 5 日 19:59:59（UTC）"
+          }
+        ],
+        "original_handoff_reason": "Agent 自评置信度 0.40 低于 0.7，其中答案策略拦截 1 处无依据承诺"
+      },
+      "sources": [
+        {
+          "score": 0.4232,
+          "doc_id": "doc_82443877bea0205fe47f",
+          "passage": 0,
+          "chunk_id": "ad8683d51f819733d56f971faf5b130b",
+          "retrieval": "hybrid",
+          "policy_as_of": "2026-11-05T19:59:59+00:00",
+          "policy_revision": "82443877bea0205fe47fba94b5f24b58d1ed038ed6af5406daa17890f53097d2",
+          "title": "Cedar-02 cabinets 配送费用 2026-A",
+          "policy": {
+            "region": "CA",
+            "status": "published",
+            "product": "Cedar-02 cabinets",
+            "version": "2026-A",
+            "audience": "employee",
+            "expires_at": "2026-11-05T20:00:00Z",
+            "effective_at": "2026-01-01T00:00:00Z"
+          },
+          "content": "办理配送费用适用产品 Cedar-02 cabinets。操作说明：旧版处理时限为 32 个工作日内办结。",
+          "excerpt": "办理配送费用适用产品 Cedar-02 cabinets。操作说明：旧版处理时限为 32 个工作日内办结。",
+          "doc_title": "Cedar-02 cabinets 配送费用 2026-A",
+          "policy_scope": {
+            "as_of": "2026-11-05T19:59:59Z",
+            "region": "CA",
+            "product": "Cedar-02 cabinets",
+            "audience": "employee"
+          }
+        }
+      ],
+      "knowledge_trace": {
+        "mode": "rewrite_rerank",
+        "sources": [
+          {
+            "score": 0.4232,
+            "doc_id": "doc_82443877bea0205fe47f",
+            "passage": 0,
+            "chunk_id": "ad8683d51f819733d56f971faf5b130b",
+            "retrieval": "hybrid",
+            "policy_as_of": "2026-11-05T19:59:59+00:00",
+            "policy_revision": "82443877bea0205fe47fba94b5f24b58d1ed038ed6af5406daa17890f53097d2"
+          }
+        ],
+        "degraded": false,
+        "reranked": false,
+        "attempted": true,
+        "corrected": true,
+        "evidence_ok": false
+      },
+      "sql_response": {
+        "as_of": "2026-11-06T19:23:41.765000+00:00",
+        "route": "database_query",
+        "steps": [
+          {
+            "sql": "SELECT NULL WHERE 1 = 0;",
+            "rows": [],
+            "as_of": "2026-11-06T19:23:41.765Z",
+            "error": null,
+            "success": true,
+            "database": "svc_db",
+            "final_sql": "SELECT NULL WHERE 1 = 0;",
+            "row_count": 0,
+            "row_limit": 1000,
+            "truncated": false,
+            "observed_at": "2026-11-06T19:23:41.765Z",
+            "as_of_source": "query_time",
+            "column_units": {},
+            "risk_findings": [
+              {
+                "detail": "查询返回 0 行。可能确实没有符合条件的数据，也可能是过滤条件写错。",
+                "anomaly": "empty_result",
+                "severity": "warn"
+              }
+            ],
+            "source_records": [],
+            "repair_attempts": []
+          }
+        ],
+        "answer": "已完成数据库查询。查询结果：[{\"database\": \"svc_db\", \"sql\": \"SELECT NULL WHERE 1 = 0;\", \"success\": true, \"columns\": [], \"rows\": [], \"row_count\": 0, \"error\": null, \"truncated\": false, \"row_limit\": 1000, \"as_of\": \"2026-11-06T19:23:41.765Z\", \"as_of_source\": \"query_time\"}]",
+        "run_id": "36464857b11d440b950e93948b2f5a42",
+        "currency": null,
+        "degraded": false,
+        "evidence": [],
+        "has_risk": true,
+        "trace_id": "ca01fdfb87dc4558",
+        "observed_at": "2026-11-06T19:23:41.765000+00:00",
+        "as_of_source": "query_time",
+        "degrade_reason": "",
+        "execution_status": "no_data",
+        "queried_database": true,
+        "result_truncated": false,
+        "selected_databases": [
+          "svc_db",
+          "erp_db",
+          "wms_db"
+        ]
+      }
+    },
+    {
+      "scenario": "policies-004",
+      "turn_id": "01a1b250bfad1790df94c65452",
+      "message": "请查Cedar-04 cabinets的配送费用政策，说明所选日期和适用范围内的处理时限及有效版本，并提供引用。",
+      "snapshot": {
+        "facts": {},
+        "status": "open",
+        "case_id": "tk_878d0c8ab27f",
+        "language": "zh",
+        "messages": [
+          {
+            "role": "user",
+            "content": "请查Cedar-04 cabinets的配送费用政策，说明所选日期和适用范围内的处理时限及有效版本，并提供引用。"
+          }
+        ],
+        "materials": [],
+        "issue_type": "general",
+        "order_refs": [],
+        "control_mode": "assistant",
+        "customer_ref": "",
+        "policy_scope": {
+          "as_of": "2026-11-05T20:00:01Z",
+          "region": "CA",
+          "product": "Cedar-04 cabinets",
+          "audience": "employee"
+        },
+        "input_receipt": {
+          "case_id": "tk_878d0c8ab27f",
+          "operation": "created",
+          "message_id": "acc_26759c71d8944c139cd32ff45c1c4dbe"
+        },
+        "pending_fields": [],
+        "review_materials": []
+      },
+      "model_answer": "目前未取得可核实的配送政策记录，因此无法确认 **Cedar-04 cabinets 的配送费用、处理时限或有效版本**，也无法提供可靠引用。\n\n本次需要核查的条件为：\n- **适用日期**：2026 年 11 月 5 日（查询时间点为 20:00:01 UTC）\n- **地区**：CA（需确认指加拿大还是美国加利福尼亚州）\n- **产品**：Cedar-04 cabinets\n- **适用对象**：员工口径\n\n我将此事项转交人工核查，需确认该日期及范围内有效的政策版本、费用标准、处理时限及其起算条件，并提供原文出处、条款位置和生效日期。当前工单已创建，但这不代表配送政策已核实或配送安排已完成。\n\n如还需核对某笔订单实际适用的配送费用，请补充**订单号或柜号**。\n[[handoff:yes]]",
+      "violations": [
+        {
+          "rule": "lead_time_commitment",
+          "label": "无依据的时效承诺",
+          "reason": "无依据的时效承诺：'2026 年 11 月 5 日' 未出现在本轮知识库检索结果或 Skill SOP 中，且句子使用了承诺性表述。",
+          "evidence": "2026 年 11 月 5 日",
+          "sentence": "- **适用日期**：2026 年 11 月 5 日（查询时间点为 20:00:01 UTC）"
+        }
+      ],
+      "final": {
+        "response": "查询成功，未找到记录。\n\n以上为可核对的资料。涉及补件、责任、金额或交期承诺，请由员工按适用政策审核后处理。",
+        "handoff_reason": "Agent 自评置信度 0.40 低于 0.7，其中答案策略拦截 1 处无依据承诺",
+        "policy_violations": [
+          {
+            "rule": "lead_time_commitment",
+            "reason": "无依据的时效承诺：'2026 年 11 月 5 日' 未出现在本轮知识库检索结果或 Skill SOP 中，且句子使用了承诺性表述。",
+            "evidence": "2026 年 11 月 5 日",
+            "sentence": "- **适用日期**：2026 年 11 月 5 日（查询时间点为 20:00:01 UTC）"
+          }
+        ],
+        "original_handoff_reason": "Agent 自评置信度 0.40 低于 0.7，其中答案策略拦截 1 处无依据承诺"
+      },
+      "sources": [],
+      "knowledge_trace": {
+        "mode": "rewrite_rerank",
+        "sources": [],
+        "degraded": false,
+        "reranked": false,
+        "attempted": true,
+        "corrected": false,
+        "evidence_ok": null
+      },
+      "sql_response": {
+        "as_of": "2026-11-06T19:23:44.145000+00:00",
+        "route": "database_query",
+        "steps": [
+          {
+            "sql": "SELECT NULL AS unavailable_policy_data WHERE 0;",
+            "rows": [],
+            "as_of": "2026-11-06T19:23:44.145Z",
+            "error": null,
+            "success": true,
+            "database": "erp_db",
+            "final_sql": "SELECT NULL AS unavailable_policy_data WHERE 0;",
+            "row_count": 0,
+            "row_limit": 1000,
+            "truncated": false,
+            "observed_at": "2026-11-06T19:23:44.145Z",
+            "as_of_source": "query_time",
+            "column_units": {},
+            "risk_findings": [
+              {
+                "detail": "查询返回 0 行。可能确实没有符合条件的数据，也可能是过滤条件写错。",
+                "anomaly": "empty_result",
+                "severity": "warn"
+              }
+            ],
+            "source_records": [],
+            "repair_attempts": []
+          }
+        ],
+        "answer": "已完成数据库查询。查询结果：[{\"database\": \"erp_db\", \"sql\": \"SELECT NULL AS unavailable_policy_data WHERE 0;\", \"success\": true, \"columns\": [], \"rows\": [], \"row_count\": 0, \"error\": null, \"truncated\": false, \"row_limit\": 1000, \"as_of\": \"2026-11-06T19:23:44.145Z\", \"as_of_source\": \"query_time\"}]",
+        "run_id": "75f7c46e15c54cf3bdc4af57f862edcb",
+        "currency": null,
+        "degraded": false,
+        "evidence": [],
+        "has_risk": true,
+        "trace_id": "90feba58414c4d4c",
+        "observed_at": "2026-11-06T19:23:44.145000+00:00",
+        "as_of_source": "query_time",
+        "degrade_reason": "",
+        "execution_status": "no_data",
+        "queried_database": true,
+        "result_truncated": false,
+        "selected_databases": [
+          "svc_db",
+          "erp_db",
+          "wms_db"
+        ]
+      }
+    },
+    {
+      "scenario": "images-001",
+      "turn_id": "01a1b251e25d56e70b54a42df1",
+      "message": "图片核对已完成；请按已确认事实和待补字段继续处理。",
+      "snapshot": {
+        "facts": {
+          "date": {
+            "unit": null,
+            "value": "2026-11-22",
+            "sha256": "25feb041b561ccf0a8fb99c08e6d25c5ee4babb7059daff2202f2d39169feedf",
+            "source": "verified_image",
+            "db_value": "2026-11-22",
+            "message_id": "acc_4adccc725fb54b018e54179db6c6ac00",
+            "evidence_id": "01a1b25140ef59310da7640b8ce7dbb5:date",
+            "attachment_id": "at_b2b56a17556d432889ed3c12e2b79600",
+            "business_source": {
+              "unit": null,
+              "as_of": "2026-11-06T19:24:22.186Z",
+              "column": "delivery_date",
+              "run_id": "2776a1aab0f0454493affae6d9545cae",
+              "database": "erp_db",
+              "trace_id": "3c052867a6ab4e31",
+              "order_ref": "SO-2026-11039",
+              "row_index": 0,
+              "observed_at": "2026-11-06T19:24:22.186000+00:00",
+              "as_of_source": "query_time",
+              "source_records": [
+                {
+                  "keys": [
+                    "SO-2026-11039"
+                  ],
+                  "table": "orders",
+                  "database": "erp_db",
+                  "truncated": false,
+                  "key_columns": [
+                    "order_no"
+                  ]
+                }
+              ]
+            },
+            "candidate_value": "2026-11-22"
+          },
+          "model": {
+            "unit": null,
+            "value": "BX-11039-24",
+            "sha256": "25feb041b561ccf0a8fb99c08e6d25c5ee4babb7059daff2202f2d39169feedf",
+            "source": "verified_image",
+            "db_value": "BX-11039-24",
+            "message_id": "acc_4adccc725fb54b018e54179db6c6ac00",
+            "evidence_id": "01a1b25140ef59310da7640b8ce7dbb5:model",
+            "attachment_id": "at_b2b56a17556d432889ed3c12e2b79600",
+            "business_source": {
+              "unit": null,
+              "as_of": "2026-11-06T19:24:22.186Z",
+              "column": "model",
+              "run_id": "2776a1aab0f0454493affae6d9545cae",
+              "database": "erp_db",
+              "trace_id": "3c052867a6ab4e31",
+              "order_ref": "SO-2026-11039",
+              "row_index": 0,
+              "observed_at": "2026-11-06T19:24:22.186000+00:00",
+              "as_of_source": "query_time",
+              "source_records": [
+                {
+                  "keys": [
+                    "SO-2026-11039"
+                  ],
+                  "table": "orders",
+                  "database": "erp_db",
+                  "truncated": false,
+                  "key_columns": [
+                    "order_no"
+                  ]
+                }
+              ]
+            },
+            "candidate_value": "BX-11039-24"
+          },
+          "status": {
+            "unit": null,
+            "value": "已交付",
+            "sha256": "25feb041b561ccf0a8fb99c08e6d25c5ee4babb7059daff2202f2d39169feedf",
+            "source": "verified_image",
+            "db_value": "已交付",
+            "message_id": "acc_4adccc725fb54b018e54179db6c6ac00",
+            "evidence_id": "01a1b25140ef59310da7640b8ce7dbb5:status",
+            "attachment_id": "at_b2b56a17556d432889ed3c12e2b79600",
+            "business_source": {
+              "unit": null,
+              "as_of": "2026-11-06T19:24:22.186Z",
+              "column": "order_status",
+              "run_id": "2776a1aab0f0454493affae6d9545cae",
+              "database": "erp_db",
+              "trace_id": "3c052867a6ab4e31",
+              "order_ref": "SO-2026-11039",
+              "row_index": 0,
+              "observed_at": "2026-11-06T19:24:22.186000+00:00",
+              "as_of_source": "query_time",
+              "source_records": [
+                {
+                  "keys": [
+                    "SO-2026-11039"
+                  ],
+                  "table": "orders",
+                  "database": "erp_db",
+                  "truncated": false,
+                  "key_columns": [
+                    "order_no"
+                  ]
+                }
+              ]
+            },
+            "candidate_value": "已交付"
+          },
+          "quantity": {
+            "unit": "pcs",
+            "value": "5",
+            "sha256": "25feb041b561ccf0a8fb99c08e6d25c5ee4babb7059daff2202f2d39169feedf",
+            "source": "verified_image",
+            "db_value": "5",
+            "message_id": "acc_4adccc725fb54b018e54179db6c6ac00",
+            "evidence_id": "01a1b25140ef59310da7640b8ce7dbb5:quantity",
+            "attachment_id": "at_b2b56a17556d432889ed3c12e2b79600",
+            "business_source": {
+              "unit": "pcs",
+              "as_of": "2026-11-06T19:24:22.186Z",
+              "column": "ordered_qty",
+              "run_id": "2776a1aab0f0454493affae6d9545cae",
+              "database": "erp_db",
+              "trace_id": "3c052867a6ab4e31",
+              "order_ref": "SO-2026-11039",
+              "row_index": 0,
+              "observed_at": "2026-11-06T19:24:22.186000+00:00",
+              "as_of_source": "query_time",
+              "source_records": [
+                {
+                  "keys": [
+                    "SO-2026-11039"
+                  ],
+                  "table": "orders",
+                  "database": "erp_db",
+                  "truncated": false,
+                  "key_columns": [
+                    "order_no"
+                  ]
+                }
+              ]
+            },
+            "candidate_value": "5"
+          },
+          "order_ref": {
+            "unit": null,
+            "value": "SO-2026-11039",
+            "sha256": "25feb041b561ccf0a8fb99c08e6d25c5ee4babb7059daff2202f2d39169feedf",
+            "source": "verified_image",
+            "db_value": "SO-2026-11039",
+            "message_id": "acc_4adccc725fb54b018e54179db6c6ac00",
+            "evidence_id": "01a1b25140ef59310da7640b8ce7dbb5:order_ref",
+            "attachment_id": "at_b2b56a17556d432889ed3c12e2b79600",
+            "business_source": {
+              "unit": null,
+              "as_of": "2026-11-06T19:24:22.186Z",
+              "column": "order_ref",
+              "run_id": "2776a1aab0f0454493affae6d9545cae",
+              "database": "erp_db",
+              "trace_id": "3c052867a6ab4e31",
+              "order_ref": "SO-2026-11039",
+              "row_index": 0,
+              "observed_at": "2026-11-06T19:24:22.186000+00:00",
+              "as_of_source": "query_time",
+              "source_records": [
+                {
+                  "keys": [
+                    "SO-2026-11039"
+                  ],
+                  "table": "orders",
+                  "database": "erp_db",
+                  "truncated": false,
+                  "key_columns": [
+                    "order_no"
+                  ]
+                }
+              ]
+            },
+            "candidate_value": "SO-2026-11039"
+          }
+        },
+        "status": "in_progress",
+        "case_id": "tk_690f0eed86dd",
+        "language": "zh",
+        "messages": [
+          {
+            "role": "user",
+            "content": "逐项检查附件的单号、型号、数量、日期和状态，跟系统记录比对后标记不能核实的项目。"
+          }
+        ],
+        "materials": [
+          {
+            "sha256": "25feb041b561ccf0a8fb99c08e6d25c5ee4babb7059daff2202f2d39169feedf",
+            "message_id": "acc_4adccc725fb54b018e54179db6c6ac00",
+            "attachment_id": "at_b2b56a17556d432889ed3c12e2b79600"
+          }
+        ],
+        "issue_type": "general",
+        "order_refs": [
+          "SO-2026-11039"
+        ],
+        "control_mode": "assistant",
+        "customer_ref": "",
+        "policy_scope": {},
+        "input_receipt": {
+          "case_id": "tk_690f0eed86dd",
+          "operation": "created",
+          "message_id": "acc_4adccc725fb54b018e54179db6c6ac00"
+        },
+        "pending_fields": [],
+        "review_materials": []
+      },
+      "model_answer": "订单 **SO-2026-11039** 的图片核对结果如下。依据为附件已核验字段及本轮提供的 ERP 订单记录（数据时点：2026-11-06）。\n\n| 核对项目 | 附件内容 | 系统记录 | 核对结果 |\n|---|---|---|---|\n| 单号 | SO-2026-11039 | SO-2026-11039 | 一致 |\n| 型号 | BX-11039-24 | BX-11039-24 | 一致 |\n| 数量 | 5 pcs | 5 pcs | 一致；此为订购数量，不代表实际签收数量 |\n| 配送日期 | 2026-11-22 | 2026-11-22 | 字段一致，但不能据此确认实际配送日期 |\n| 订单状态 | 已交付 | 已交付 | 字段一致，但实际交付情况仍需核实 |\n\n**待核实事项：**系统在 2026-11-06 的数据中标记“已交付”，配送日期却为之后的 2026-11-22，存在时间逻辑疑点。两项虽然与图片一致，但目前不能据此认定货物已经交付，也不能将该日期作为到货承诺。\n\n**下一步转人工核查：**\n- 核对配送日期是否为计划日期，或是否存在录入错误；\n- 调取物流交付记录及签收凭证，确认实际交付时间、型号和数量。\n\n当前材料没有列出待补字段，暂不需要您重复提供订单号或图片；如核查后仍缺签收材料，再请您补充。\n[[handoff:yes]]",
+      "violations": [],
+      "final": {
+        "response": "订单 SO-2026-11039 · 型号 BX-11039-24 [1]\n数据时点 2026-11-06T19:24:58.712Z\n- 订购数量: 5 pcs\n- 配送日期: 2026-11-22\n- 订单状态: 已交付\n\n图片已核实 [I1] · 日期: 2026-11-22  · 2026-11-06T19:24:22.186Z\n\n图片已核实 [I2] · 型号: BX-11039-24  · 2026-11-06T19:24:22.186Z\n\n图片已核实 [I3] · 状态: 已交付  · 2026-11-06T19:24:22.186Z\n\n图片已核实 [I4] · 数量: 5 pcs · 2026-11-06T19:24:22.186Z\n\n图片已核实 [I5] · 订单: SO-2026-11039  · 2026-11-06T19:24:22.186Z\n\n以上为可核对的资料。涉及补件、责任、金额或交期承诺，请由员工按适用政策审核后处理。",
+        "handoff_reason": "Agent 自评置信度 0.65 低于 0.7",
+        "policy_violations": [],
+        "original_handoff_reason": "Agent 自评置信度 0.65 低于 0.7"
+      },
+      "sources": [],
+      "sql_response": {
+        "as_of": "2026-11-06T19:24:58.712000+00:00",
+        "route": "database_query",
+        "steps": [
+          {
+            "sql": "SELECT\n    orders.order_no AS order_ref,\n    order_item.model AS model,\n    order_item.quantity AS ordered_qty,\n    orders.delivery_date AS delivery_date,\n    orders.order_status AS order_status\nFROM orders\nJOIN order_item ON orders.order_no = order_item.order_no\nWHERE orders.order_no = 'SO-2026-11039';",
+            "rows": [
+              {
+                "model": "BX-11039-24",
+                "order_ref": "SO-2026-11039",
+                "ordered_qty": 5,
+                "order_status": "已交付",
+                "delivery_date": "2026-11-22"
+              }
+            ],
+            "as_of": "2026-11-06T19:24:58.712Z",
+            "error": null,
+            "success": true,
+            "database": "erp_db",
+            "final_sql": "SELECT\n    orders.order_no AS order_ref,\n    order_item.model AS model,\n    order_item.quantity AS ordered_qty,\n    orders.delivery_date AS delivery_date,\n    orders.order_status AS order_status\nFROM orders\nJOIN order_item ON orders.order_no = order_item.order_no\nWHERE orders.order_no = 'SO-2026-11039';",
+            "row_count": 1,
+            "row_limit": 1000,
+            "truncated": false,
+            "observed_at": "2026-11-06T19:24:58.712Z",
+            "as_of_source": "query_time",
+            "column_units": {
+              "ordered_qty": "pcs"
+            },
+            "risk_findings": [],
+            "source_records": [
+              {
+                "keys": [
+                  "SO-2026-11039"
+                ],
+                "table": "orders",
+                "database": "erp_db",
+                "truncated": false,
+                "key_columns": [
+                  "order_no"
+                ]
+              }
+            ],
+            "repair_attempts": []
+          }
+        ],
+        "answer": "已完成数据库查询。查询结果：[{\"database\": \"erp_db\", \"sql\": \"SELECT\\n    orders.order_no AS order_ref,\\n    order_item.model AS model,\\n    order_item.quantity AS ordered_qty,\\n    orders.delivery_date AS delivery_date,\\n    orders.order_status AS order_status\\nFROM orders\\nJOIN order_item ON orders.order_no = order_item.order_no\\nWHERE orders.order_no = 'SO-2026-11039';\", \"success\": true, \"columns\": [\"order_ref\", \"model\", \"ordered_qty\", \"delivery_date\", \"order_status\"], \"rows\": [{\"order_ref\": \"SO-2026-11039\", \"model\": \"BX-11039-24\", \"ordered_qty\": 5, \"delivery_date\": \"2026-11-22\", \"order_status\": \"已交付\"}], \"row_count\": 1, \"error\": null, \"truncated\": false, \"row_limit\": 1000, \"as_of\": \"2026-11-06T19:24:58.712Z\", \"as_of_source\": \"query_time\"}]",
+        "run_id": "213b900ba713400590e62b0aaf10b317",
+        "currency": null,
+        "degraded": false,
+        "evidence": [
+          {
+            "unit": null,
+            "as_of": "2026-11-06T19:24:58.712Z",
+            "field": "order_ref",
+            "value": "SO-2026-11039",
+            "entity": {
+              "kind": "query_row",
+              "row_index": 0,
+              "query_hash": "b9078a7d7b9d41a9edea4eb09341c177b439baa76644b3eaa774ad1dc726901c"
+            },
+            "issues": [],
+            "database": "erp_db",
+            "row_index": 0,
+            "query_hash": "b9078a7d7b9d41a9edea4eb09341c177b439baa76644b3eaa774ad1dc726901c",
+            "step_index": 0,
+            "evidence_id": "ev_5df098c932ac0dc861fdebcde8757b9efdb632a2c611a329e9463e4b1a26cd36",
+            "as_of_source": "query_time",
+            "source_records": [
+              {
+                "keys": [
+                  "SO-2026-11039"
+                ],
+                "table": "orders",
+                "database": "erp_db",
+                "truncated": false,
+                "key_columns": [
+                  "order_no"
+                ]
+              }
+            ]
+          },
+          {
+            "unit": null,
+            "as_of": "2026-11-06T19:24:58.712Z",
+            "field": "model",
+            "value": "BX-11039-24",
+            "entity": {
+              "kind": "query_row",
+              "row_index": 0,
+              "query_hash": "b9078a7d7b9d41a9edea4eb09341c177b439baa76644b3eaa774ad1dc726901c"
+            },
+            "issues": [],
+            "database": "erp_db",
+            "row_index": 0,
+            "query_hash": "b9078a7d7b9d41a9edea4eb09341c177b439baa76644b3eaa774ad1dc726901c",
+            "step_index": 0,
+            "evidence_id": "ev_defc02d94d56ae518ed689ed3bcf7bab8ab0b6987144e1ef73669274f5259512",
+            "as_of_source": "query_time",
+            "source_records": [
+              {
+                "keys": [
+                  "SO-2026-11039"
+                ],
+                "table": "orders",
+                "database": "erp_db",
+                "truncated": false,
+                "key_columns": [
+                  "order_no"
+                ]
+              }
+            ]
+          },
+          {
+            "unit": "pcs",
+            "as_of": "2026-11-06T19:24:58.712Z",
+            "field": "ordered_qty",
+            "value": 5,
+            "entity": {
+              "kind": "query_row",
+              "row_index": 0,
+              "query_hash": "b9078a7d7b9d41a9edea4eb09341c177b439baa76644b3eaa774ad1dc726901c"
+            },
+            "issues": [],
+            "database": "erp_db",
+            "row_index": 0,
+            "query_hash": "b9078a7d7b9d41a9edea4eb09341c177b439baa76644b3eaa774ad1dc726901c",
+            "step_index": 0,
+            "evidence_id": "ev_68da4881a1ffe22b78705bb8ef15cdac45ac20f44a647e9341f708d69bc9b1ed",
+            "as_of_source": "query_time",
+            "source_records": [
+              {
+                "keys": [
+                  "SO-2026-11039"
+                ],
+                "table": "orders",
+                "database": "erp_db",
+                "truncated": false,
+                "key_columns": [
+                  "order_no"
+                ]
+              }
+            ]
+          },
+          {
+            "unit": null,
+            "as_of": "2026-11-06T19:24:58.712Z",
+            "field": "delivery_date",
+            "value": "2026-11-22",
+            "entity": {
+              "kind": "query_row",
+              "row_index": 0,
+              "query_hash": "b9078a7d7b9d41a9edea4eb09341c177b439baa76644b3eaa774ad1dc726901c"
+            },
+            "issues": [],
+            "database": "erp_db",
+            "row_index": 0,
+            "query_hash": "b9078a7d7b9d41a9edea4eb09341c177b439baa76644b3eaa774ad1dc726901c",
+            "step_index": 0,
+            "evidence_id": "ev_9c1cf87874246d625c9cc5d859abe5df549280651bbfc4b43d52c661f0ee3f32",
+            "as_of_source": "query_time",
+            "source_records": [
+              {
+                "keys": [
+                  "SO-2026-11039"
+                ],
+                "table": "orders",
+                "database": "erp_db",
+                "truncated": false,
+                "key_columns": [
+                  "order_no"
+                ]
+              }
+            ]
+          },
+          {
+            "unit": null,
+            "as_of": "2026-11-06T19:24:58.712Z",
+            "field": "order_status",
+            "value": "已交付",
+            "entity": {
+              "kind": "query_row",
+              "row_index": 0,
+              "query_hash": "b9078a7d7b9d41a9edea4eb09341c177b439baa76644b3eaa774ad1dc726901c"
+            },
+            "issues": [],
+            "database": "erp_db",
+            "row_index": 0,
+            "query_hash": "b9078a7d7b9d41a9edea4eb09341c177b439baa76644b3eaa774ad1dc726901c",
+            "step_index": 0,
+            "evidence_id": "ev_7d3521cccf20ef86bd99bee7645be44a894d50917e9c9bf74a137b000a7da402",
+            "as_of_source": "query_time",
+            "source_records": [
+              {
+                "keys": [
+                  "SO-2026-11039"
+                ],
+                "table": "orders",
+                "database": "erp_db",
+                "truncated": false,
+                "key_columns": [
+                  "order_no"
+                ]
+              }
+            ]
+          }
+        ],
+        "has_risk": false,
+        "trace_id": "fd996e64be134ac6",
+        "observed_at": "2026-11-06T19:24:58.712000+00:00",
+        "as_of_source": "query_time",
+        "degrade_reason": "",
+        "execution_status": "success",
+        "queried_database": true,
+        "result_truncated": false,
+        "selected_databases": [
+          "erp_db",
+          "prod_db",
+          "svc_db"
+        ]
+      },
+      "knowledge_trace": {
+        "mode": "rewrite_rerank",
+        "sources": [],
+        "degraded": false,
+        "reranked": false,
+        "attempted": true,
+        "corrected": false,
+        "evidence_ok": null
+      }
+    }
+  ]
+}

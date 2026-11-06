@@ -23,6 +23,7 @@ OrderDataQueryTool）也用它。
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 from collections.abc import Awaitable, Callable
@@ -34,6 +35,7 @@ from pydantic import BaseModel, Field
 from app.agents.tool_loop import LoopTool, ToolOutcome, TurnContext
 from app.core import evidence
 from app.core.evidence import assess
+from app.core.policy_scope import asks_for_policy, current_scope, policy_only_query, policy_source_metadata
 from app.core.preflight import outer_tool_timeout_s
 from app.tools.knowledge_base import document_excerpt, should_use_knowledge
 from app.tools.tool_manager import PASSAGE_CHARS
@@ -183,6 +185,8 @@ async def knowledge_lookup(
     `trace` 的字段见 `Prefetch.knowledge_context`。
     """
     info = trace
+    info["policy_lookup"] = asks_for_policy(query)
+    info["lookup_scope"] = current_scope().model_dump(mode="json")
     try:
         if fast_path:
             result = await tool_manager.call(
@@ -192,10 +196,18 @@ async def knowledge_lookup(
             result = await tool_manager.search_with_rewrite(
                 "knowledge_search", query, top_k=top_k
             )
-        if not result.success or not isinstance(result.data, list) or not result.data:
+        if not result.success or not isinstance(result.data, list):
+            info.update(lookup_status="unavailable", degraded=True)
+            return "政策检索未能完成，不能据此判断政策是否已发布或存在。" if info["policy_lookup"] else "", False
+        if not result.data:
+            info["lookup_status"] = "empty"
+            return ("本次未检索到符合所选范围和时点的已发布政策；不能引用草稿、已失效或其他范围的条款。"
+                    if info["policy_lookup"] else ""), False
+        if any(isinstance(item, dict) and item.get("fallback") for item in result.data):
+            info.update(lookup_status="unavailable", degraded=True)
             return "", False
         info.update(reranked=result.reranked, corrected=result.corrected,
-                    evidence_ok=result.evidence_ok)
+                    evidence_ok=result.evidence_ok, lookup_status="found")
 
         parts = ["[知识库检索结果]"]
         sources: list[dict[str, Any]] = []
@@ -208,13 +220,17 @@ async def knowledge_lookup(
             score = item.get("score", "")
             if not content:
                 continue
-            if item.get("fallback") or not item.get("policy_revision"):
+            applicability = policy_source_metadata(item)
+            if item.get("fallback") or not applicability:
                 info["degraded"] = True
                 continue
             used = True
             # 只走了关键词一路的结果没有向量分（score 是 None），不给模型看一行"相关度: None"
             relevance = f"   相关度: {score}\n" if isinstance(score, (int, float)) else ""
             parts.append(f"{i}. 标题: {title}\n{relevance}   内容: {content[:PASSAGE_CHARS]}")
+            if applicability:
+                parts.append("   本条引用的已校验适用元数据（按查询时点判定，不按今天判定）："
+                             + json.dumps(applicability, ensure_ascii=False))
             if item.get("fallback"):
                 info["degraded"] = True
                 continue
@@ -235,13 +251,27 @@ async def knowledge_lookup(
             })
 
         if not used:
+            info.update(lookup_status="unavailable", degraded=True)
             return "", False
         info["sources"] = await label_sources(sources) if label_sources else sources
         parts.append("请优先依据以上知识库内容回答；如果知识库内容不足，再结合通用客服能力说明。")
         return "\n".join(parts), True
     except Exception as ex:
+        info.update(lookup_status="unavailable", degraded=True)
         logger.warning(f"构建知识库上下文失败: {ex}")
         return "", False
+
+
+def knowledge_grounding(text, trace):
+    """Applicability dates explain selection; they cannot ground a delivery promise."""
+    sources = trace.get("sources") or []
+    return "\n\n".join(str(s.get("content") or s.get("excerpt") or "") for s in sources) if sources else text
+
+
+def business_grounding(text, trace):
+    """Field descriptions explain meaning; numbers inside them are not facts."""
+    from app.core.business_facts import render_cells
+    return render_cells(trace["evidence"], include_metadata=False) if trace.get("evidence") else text
 
 
 def currency_note(data: dict, configured: str = "") -> str:
@@ -423,7 +453,7 @@ async def delegate_order_query(
         info.update(outcome="evidence" if cells else "unverified", evidence=cells, evidence_issues=issues,
                     evidence_payload=data, has_risk=verdict.has_risk, degraded=verdict.degraded,
                     reasons=list(verdict.reasons))
-        text = render_cells(cells)
+        text = render_cells(cells, model_context=True)
         if issues:
             text += "\n业务证据限制：" + ", ".join(issues)
         return text, bool(cells)
@@ -455,8 +485,10 @@ class OrderDataQueryArgs(BaseModel):
 def knowledge_outcome(text: str, used: bool, trace: dict[str, Any]) -> ToolOutcome:
     """一次知识库检索 → 交给模型的结果。检索到的片段和规则预取一样算出处。"""
     if used and text:
-        return ToolOutcome(content=text, evidence=text, trace=trace, outcome="found")
-    return ToolOutcome(content="知识库里没有找到相关内容。", trace=trace, outcome="empty")
+        return ToolOutcome(content=text, evidence=knowledge_grounding(text, trace), trace=trace, outcome="found")
+    unavailable = trace.get("lookup_status") == "unavailable"
+    return ToolOutcome(content=text or ("知识检索未能完成。" if unavailable else "知识库里没有找到相关内容。"),
+                       trace=trace, outcome="unavailable" if unavailable else "empty", is_error=unavailable)
 
 
 _ORDER_FAILED = frozenset({"unavailable", "failed", "error"})
@@ -482,7 +514,7 @@ def order_outcome(text: str, is_evidence: bool, trace: dict[str, Any]) -> ToolOu
     else:
         content = _ORDER_NO_TEXT.get(outcome, "业务系统没有返回数据。")
     return ToolOutcome(content=content, is_error=outcome in _ORDER_FAILED,
-                       evidence=text if is_evidence else "", trace=trace, outcome=outcome)
+                       evidence=business_grounding(text, trace) if is_evidence else "", trace=trace, outcome=outcome)
 
 
 class KnowledgeSearchTool(LoopTool):
@@ -530,6 +562,8 @@ class OrderDataQueryTool(LoopTool):
         return ""
 
     def skip(self, turn: TurnContext) -> str:
+        if turn.policy_only:
+            return "本轮只查询政策版本、时点和适用范围，请使用政策检索；没有需要核对的业务记录。"
         # 规则预取这一轮刚委派过，下游超时、熔断或出错（outcome=unavailable）：再委派多半
         # 还要等满一次超时（SQL_AGENT_TIMEOUT_S=90 时是 92 秒），一轮会拖到三分多钟，结果
         # 还是查不到。failed 不算：那是下游答了、只是没查成，换个查询词可能就对了。
@@ -543,6 +577,9 @@ class OrderDataQueryTool(LoopTool):
                 "建议由人工跟进核实。")
 
     async def run(self, args: OrderDataQueryArgs, turn: TurnContext) -> ToolOutcome:
+        if turn.policy_only or policy_only_query(args.query):
+            return ToolOutcome(content="此问题只需查询适用的已发布政策。", outcome="not_applicable",
+                               trace={"attempted": False, "outcome": "not_applicable"})
         trace: dict[str, Any] = {"enabled": True}
         raw: dict[str, Any] = {}
         text, is_evidence = await delegate_order_query(

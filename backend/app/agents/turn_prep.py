@@ -132,6 +132,9 @@ async def prepare_turn(
     这一轮有没有查库，推断出来的也不能当事实显示。
     """
     from app.core.business_facts import language_of
+    from app.core.policy_scope import policy_reference_times
+    from app.tools.turn_tools import business_grounding, knowledge_grounding
+    reference_times = policy_reference_times((case_context or {}).get("policy_scope"))
     response_language = (case_context or {}).get("language") or language_of(message)
     prefetch = deps.prefetch
     recorder = events()
@@ -153,7 +156,7 @@ async def prepare_turn(
         history = case_context.get("messages", [])[-6:-1]
         memory_text = _case_memory(case_context)
         recorder.emit("memory_loaded", {"source": "case", "chars": len(memory_text)},
-                      {"text": memory_text, "recent": history})
+                      {"text": memory_text, "recent": history, "reference_times": reference_times})
         facts = case_context.get("facts") or {}
         refs = case_context.get("order_refs") or [facts.get("order_ref", {}).get("value", "")]
         issue = {"order": "订单问题", "missing_parts": "缺件问题", "wrong_item": "错货问题"}.get(case_context.get("issue_type"), "")
@@ -231,6 +234,9 @@ async def prepare_turn(
         message, user_id=user_id, conv_id=conv_id, request_id=request_id, memory_text=memory_text,
         history=history, intent_result=intent_result, knowledge_text=knowledge_text,
         order_text=order_text, order_is_evidence=order_is_evidence,
+        knowledge_evidence=knowledge_grounding(knowledge_text, knowledge_trace) if knowledge_used else "",
+        order_evidence=business_grounding(order_text, data_trace) if order_is_evidence else "",
+        reference_times=policy_reference_times((case_context or {}).get("policy_scope"), knowledge_trace.get("sources", [])),
     )
     if deps.loop is not None:
         orch_req.turn = _turn_context(
@@ -258,6 +264,9 @@ def build_request(
     knowledge_text: str,
     order_text: str,
     order_is_evidence: bool,
+    knowledge_evidence: str | None = None,
+    order_evidence: str | None = None,
+    reference_times: dict[str, list[str]] | None = None,
 ) -> Request:
     """
     准备阶段的产物 → 编排请求。上下文是记忆、知识、业务数据三段拼起来的；出处只算检索到的
@@ -281,6 +290,7 @@ def build_request(
         conv_id=conv_id,
         request_id=request_id,
         context=full_context,
+        reference_times=reference_times or {},
         history=history,
         entities=intent_result.entities,
         intent=intent_result.intent,
@@ -295,7 +305,8 @@ def build_request(
         # 不是这里：它是指令不是证据，`order_is_evidence` 就是这个开关。
         # 见 tools/turn_tools.delegate_order_query 的说明。
         grounding_sources=[
-            t for t in (knowledge_text, order_text if order_is_evidence else "") if t
+            t for t in (knowledge_text if knowledge_evidence is None else knowledge_evidence,
+                        (order_text if order_evidence is None else order_evidence) if order_is_evidence else "") if t
         ],
     )
 
@@ -315,6 +326,7 @@ def _turn_context(
 ) -> TurnContext:
     """工具循环这一轮共用的上下文：可信身份、可用工具，轨迹和去重表从规则预取开始。"""
     from app.agents.tool_loop import TurnContext
+    from app.core.policy_scope import policy_only_query
     from app.tools.turn_tools import seed_from_prefetch
 
     intent = getattr(intent_result, "intent", None)
@@ -324,6 +336,7 @@ def _turn_context(
         tools=dict(loop.tools),
         config=loop.config,
         intent=getattr(intent, "value", intent),
+        policy_only=policy_only_query(message, intent_result.entities),
         progress_cb=progress_cb,
     )
     seed_from_prefetch(turn, message, knowledge=knowledge, order=order, order_query=order_query, latency_ms=latency_ms)

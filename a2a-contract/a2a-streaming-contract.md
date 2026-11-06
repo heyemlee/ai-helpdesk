@@ -1,6 +1,6 @@
 # A2A 流式契约：`message/stream`
 
-> 状态：**v1.14：三承载者新增从实际结果行生成的结构化 evidence 和 observed_at；缺失或自相矛盾的执行元数据不得升级为可信。**
+> 状态：**v1.15：三承载者兼容新增可选的来源字段说明 column_metadata；绑定实际 SQL、来源列及语义配置内容修订，缺失保持未知。实现及反例见文末本版说明。**
 >
 > **v1.13 是一次 §6 契约变更**：三项都改了我方承诺的行为，两侧都要跟着动 pin。
 >
@@ -1825,6 +1825,7 @@ python3 -c 'import os; print(min(32, (os.cpu_count() or 1) + 4), os.cpu_count())
 
 | 版本 | 日期 | 变更 |
 | --- | --- | --- |
+| v1.15 | 2026-11-06 | 可选步骤级 column_metadata：直接列映射、查询摘要和来源说明修订；描述用于解释字段含义，不作承诺的数字依据。两侧同步，旧载荷仍有效。 |
 | v1.14 | 2026-11-06 | 结构化逐字段证据、稳定 evidence_id、query_row 联合见证、独立 observed_at 查验时点；修正 nullable as_of_source 与截断行上限校验；同步三个承载者和消费端。 |
 | v1.13 | 2026-06-09 | **三项双边变更：断开即取消（§5.4）、`canceled` 终态（§4.2 / §4.4 / §5.1）、429 改用 `-32029`（§3.2 / §5.5）。**<br>**起因：** 服务端加了每次请求的运行记录和取消检查点（阶段边界、模型调用之间、SQL 执行中），从此**能**在调用方断开后停下，而 v1.12 §5.4 写的是"不会停"。这一条不改，服务端只能一直关着这个能力，否则就违反契约。<br>**§5.4：** 三个承载者（`message/stream`、`message/send`、直连 `/query`）都在下一个检查点停下；已经发出去的那一次模型调用打断不了，上限是模型调用超时。实测 6 次取消，停下用时 0.07–2.7s，每次都等于在途调用剩下的时间。审计照写（499），配额照计一份，§5.5 不变。服务端开关 `AI_SQL_CANCEL_ON_DISCONNECT` 默认开，关掉就回到 v1.12 的行为。<br>**§4.4：** `canceled` 只在流打开期间、被本连接以外的途径取消时发（服务端取消接口、运维、关停）；本连接自己断开时发不出去。拼写跟 A2A 0.2 规范走（`canceled`），`metadata.error` 照带，形如 `cancelled: api`；send 返回的 Task 用同一套取值。v1.12 之前同样的情况发 `failed` + `cancelled: …`。<br>**终态第一次有了 schema：** 新增 `schema/terminal-event.schema.json`（状态 ∈ `completed` / `failed` / `canceled`），以及 `fixtures/terminal-event/` 三正两反；F 组从此有 fixture。`tools/check_contract.py` 新增两条断言：终态枚举恰为这三种，F 组至少有一条用例。<br>**§3.2 / §5.5：** 限流、每日配额、流式并发准入满了，统一回 429 + `-32029`（带 `Retry-After`）。原来的 `-32001` 在 A2A 规范里是 TaskNotFoundError，§7 自己也按这个意思用它。<br>**§7：** `tasks/cancel`、`tasks/get`、`tasks/resubscribe`、断线续传仍返回 `-32004`，只把理由从"做不到"改为"暂不需要"。**§8.2：** 补一句措辞同步：运行事件日志是旁路，不在契约面上，进度事件不加 `run_id` / `seq`。<br>**不变的部分：** delta 永久不做；`progress-event.schema.json`、data part、三承载者载荷同构、`protocolVersion` `0.2` 都不变。<br>**两侧同步：** ai-sql-agent 两处 pin、ai-helpdesk 三处 pin 由 `v1.12` 改到 `v1.13`。服务端 `5f1d154` 实现三项；调用方 `5a1aa66` 不改代码，只改 pin，并补终态 schema 与 `canceled` 的消费用例。**判据仍是降级的**：本机按两侧 CI 入口复现全绿（数字见状态行）；本版推送后的 GitHub CI 结果写不进 tag。 |
 | v1.12 | 2026-05-08 | **§4.4 的最后一步做掉了，七条缺口现在是真的全关。**<br>**这是一次 §6 契约变更**，不是纯文字版：`schema/artifact-data-part.schema.json` 的 `required` 新增 `execution_status`。v1.9 特意把这条缺口的关闭判据挪到契约仓库这一侧（「提级为 `required` + 现存 fixture 补齐该字段，那一个提交就是证据」），图的是不依赖任何一侧的测试标记；但那一步一直没做，而 v1.10 / v1.11 的状态行都写着「七条**全部**关闭」——2026-05-06 先发了一版只改文字的更正（`444c242`、`d6e6087`），本版把动作补上。<br>**`dp-trust-01` 由 C 组改判到 B 组，这是本版唯一的语义分叉，值得记住。** v1.9 设计 C 组时让它**故意不带** `execution_status`，用来覆盖 §4.6.7 的推导路径（`status_source == "derived"`），并写明「如实断言，这是正确期望，不是缺陷……任何时候都不许放宽」。而同一份 CONSUMER-TESTS 里的关闭判据又要求「现存 fixture 补齐该字段」——**补了它，C 组这条覆盖就没了；不补，提级后它就是非法载荷**。两句话在同一份文档里打架，v1.9 写判据时没注意到会撞掉自己刚设计的分组。本版的取舍：**不补字段，改判到 B 组**，它从「缺字段会被静默推导」的样本变成「缺字段会被挡住」的反例，唯一的拒绝理由就是缺这个字段；C 组 `failed` 这一档由 `dp-trust-07` 接手（它本来就带着）。**文件路径没动**——两侧按字面路径读它，挪文件会红在别人仓库里（附录 B 的硬编码路径清单）。<br>**十五份 fixture 补了字段**，值按 §4.6.1 的判据逐份算（`dp-valid-02` 走对话路径 → `not_applicable`；`dp-trust-02` 一成一败 → `partial_success`；`steps == []` 的几份 → `failed`）。<br>**六个既有反例逐条重验了拒绝理由。** 多一条必填就是给每个反例多一个被拒理由，「这条反例真的在保护它声称保护的东西」会因此悄悄失效——这是 v1.11 那次更正就预判到的坑。六份都补了该字段，实测各自仍只因原来那一个理由被拒；`tools/check_contract.py` 新增一条断言把它守死（除 `dp-trust-01` 外，任何反例的拒绝理由里出现 `execution_status` 即失败），另新增「`execution_status` ∈ `required`」的断言作为本条缺口的机器判据。<br>**§4.6.7 的过渡判据对这个字段作废**（本节最后一句本来就写了「提级即作废」）。作废的是「推导出来的结论可以照常采信」，**不是推导本身**：服务端出 bug、版本错配、中间件吞字段都会让不合规载荷真的出现，那时仍要靠 `steps[]` 说清楚「查挂了」而不是崩掉或静默采信，所以两侧的推导代码都保留，只是结论一律按不可信处置。`result_truncated` 等其余 🔨/➕ 字段的过渡判据不受影响。<br>**两侧同步**：ai-helpdesk 三处 pin、ai-sql-agent 两处 pin 由 `v1.11` 改到 `v1.12`；两侧各有针对 `dp-trust-01` 的断言要跟着改判（详见两仓库本版提交）。**判据仍是降级的**——GitHub CI 至今一次没跑过（账号级 Actions 停用），本版同样只能靠「提交可复核 + 本机按各自 CI 入口复现全绿」。 |
@@ -1939,3 +1940,19 @@ v1.8 起再加一条，防的是**第五种**漂移——**契约漏掉了跑生
 `observed_at` 来自原始实际查询完成时间（多步取成功步骤的最早值；任一步缺失则为 null），重放或再次汇总不得改为当前时间；`as_of` 是数据时点。历史 snapshot 可以作为明确历史事实展示，不能称作当前状态。调用方默认查验有效期五分钟，过期需重新查询。数字字段的单位不得从邻列或部署全局币种补齐。不同记录不能拼成图片联合见证。失败、无记录、部分成功、截断、字段缺失和冲突分别展示；Helpdesk 的关键事实确认要求完整成功、可追溯且仍有效。模型生成的 answer 不作事实来源。
 
 调用方核验 evidence 与 rows 的字段、类型、值、单位、时点、来源及摘要一致，拒绝缺项、重复和畸形项。关键事实用程序渲染，政策用适用原文引用；员工材料单独标记。Case 草稿保存政策版本和业务证据，提交及批准重新检查有效性。政策范围及 as-of 只能由服务端绑定，模型不得扩大。
+
+### 来源字段说明（v1.15）
+
+`steps[].column_metadata` 为可选映射，键是实际结果列名（包括直接投影别名），值包含 `database/table/column/output_field/description/query_hash/schema_revision`，以及可选的 `label/label_zh/label_en/business_usage/semantic_role`。三个承载者共用 `StepLogResponse`；不改变 evidence 单元的身份或必填字段。旧载荷没有这个映射时保持字段含义未知。
+
+服务端只从本次查询使用的语义配置读取原样说明，不由模型生成、不按字段名称推断。仅直接、无歧义的原表列可获得说明；计算表达式、聚合、星号、CTE、歧义连接、重复别名和未经映射的 schema/catalog 限定均不下发。说明缺失、非文本或单项超过 2000 字符时整项省略，不能截掉否定条件。查询失败不下发说明。
+
+`query_hash` 是本步骤实际 `final_sql` 的 UTF-8 SHA-256。`schema_revision` 是去掉 `query_hash/schema_revision/output_field` 后该说明对象按 Python `json.dumps(ensure_ascii=False, sort_keys=True)` 编码的 UTF-8 SHA-256，标识本次实际使用的配置内容，而非全库版本。`output_field` 必须等于映射键和被解释的结果字段，防止同一查询内的说明互换。调用方核对结果列、database、查询摘要和说明摘要后才能呈现；说明与值、单位、查询行和时点一同保存在证据和图片核验来源中。不同记录的说明冲突不得擅选一个解释。
+
+说明属于字段定义数据，不是模型指令，也不是价格或交期事实。它可以解释“计划送货日期”和“实际送达日期”的差别，但不能证明某天已发生送达；说明中的示例数字、日期不进入通用承诺依据。原有时效、单位、冲突、图片完整性及人工复核规则不变。
+
+本版保守支持 SQLite 与 PostgreSQL 标识符语义；PostgreSQL 引号内的大小写保持区分。未展开的星号、派生来源或列重命名列表使本次来源映射未知；实际执行列名重复时也不得赋予说明。同一来源定义的两次查询可以有不同 `query_hash`，含义冲突比较只比较 `schema_revision`，不能把查询不同误报为定义冲突。
+
+图片核验的结构化 `business_source` 保留最初核验步骤的 `final_sql/query_hash/output_columns`，连同原有 database、step_index、row_index、column、as_of、run_id 与字段说明一起持久化。不能拿后续草稿查询替代原图片核验来源，历史记录缺失的绑定不回填。员工主草稿只显示业务名称、值及有用的配置说明；来源路径在正文中隐去，SQL 用法及摘要留在结构化证据和模型上下文，不成为正文业务断言。
+
+实现可复核入口：`ai-sql-agent/src/ai_sql_agent/pipeline/provenance.py` 的 `column_metadata`、`backend/app/core/business_facts.py` 的 `verified_column_metadata`；双边回归为 `ai-sql-agent/tests/test_column_metadata.py`、`backend/tests/test_stage6_context.py`。本机验证使用 `.claude/skills/test-backend/scripts/run.sh` 与 `run-sql-agent.sh` 的一次性副本流程。未发布 tag，完整门禁结果由本轮校准记录另行报告。

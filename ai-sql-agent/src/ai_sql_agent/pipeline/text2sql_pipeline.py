@@ -949,7 +949,7 @@ class Text2SQLPipeline:
                 final_sql = outcome.final_sql
 
         # 单位先算出来：语义自检要拿它当已知事实（见 self_check._UNIT_FACTS）
-        units, records = self._provenance(
+        units, records, metadata = self._provenance(
             database=sql_cot_step.database,
             sql=final_sql,
             execution_result=execution_result,
@@ -1006,6 +1006,7 @@ class Text2SQLPipeline:
             validation=validation_payload,
             column_units=units,
             source_records=records,
+            column_metadata=metadata,
         )
         return step_log, execution_result
 
@@ -1445,7 +1446,7 @@ class Text2SQLPipeline:
             if not execution_result.success:
                 return []
 
-            units, records = self._provenance(
+            units, records, metadata = self._provenance(
                 database=database, sql=sql, execution_result=execution_result
             )
             step_logs.append(
@@ -1459,6 +1460,7 @@ class Text2SQLPipeline:
                     final_sql=sql,
                     column_units=units,
                     source_records=records,
+                    column_metadata=metadata,
                 )
             )
             log_event(
@@ -1620,7 +1622,7 @@ class Text2SQLPipeline:
         契约把「缺失」定义成「未知」，而不是「没有」。
         """
         if not execution_result.success:
-            return {}, []
+            return {}, [], {}
 
         dialect = self._dialect_name(database)
         columns = list(execution_result.columns or [])
@@ -1639,7 +1641,9 @@ class Text2SQLPipeline:
             columns=columns,
             rows=list(execution_result.rows or []),
         )
-        return units, records
+        metadata = provenance.column_metadata(self.semantic, database=database, sql=sql,
+                                               dialect=dialect, columns=columns)
+        return units, records, metadata
 
     def _dialect_name(self, database: str) -> str:
         """这个库的执行器方言，解析 SQL 时要用。"""

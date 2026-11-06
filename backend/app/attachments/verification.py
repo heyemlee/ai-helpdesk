@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import re
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
@@ -10,6 +11,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.core.business_facts import verified_column_metadata
 from app.core.evidence import assess
 from app.core.llm_utils import structured_parse
 from app.core.openai_responses import _ResponsesMessages
@@ -149,6 +151,20 @@ def normalized(value, field):
     return text.casefold() if field == "status" else text
 
 
+def _source(step, data, step_index, row_index, column, order_ref):
+    """Retain this image check's own execution, not a later draft query's SQL."""
+    sql = step.get("final_sql")
+    sql = sql if isinstance(sql, str) else ""
+    return {"database": step["database"], "column": column, "row_index": row_index, "step_index": step_index,
+            "final_sql": sql, "query_hash": hashlib.sha256(sql.encode()).hexdigest() if sql else None,
+            "output_columns": list(step["rows"][row_index]),
+            "column_metadata": verified_column_metadata(step, column),
+            "unit": (step.get("column_units") or {}).get(column), "as_of": step["as_of"],
+            "as_of_source": step.get("as_of_source"), "observed_at": data.get("observed_at"),
+            "source_records": (step.get("source_records") or [])[:20],
+            "trace_id": data.get("trace_id", ""), "run_id": data.get("run_id", ""), "order_ref": order_ref}
+
+
 def verify(extraction: Extraction, data, order_ref, context_error="", issue_type="general"):
     """Fail closed on ambiguous rows/units/dates; never inspect data['answer']."""
     data = data or {}
@@ -222,18 +238,13 @@ def verify(extraction: Extraction, data, order_ref, context_error="", issue_type
                         if value is not None:
                             if value == normalized(candidate.value, candidate.field):
                                 matching_rows.add((step_index, row_index))
-                            values.append((value, value, {
-                                "database": step["database"], "column": column, "row_index": row_index,
-                                "unit": unit, "as_of": step["as_of"], "as_of_source": step.get("as_of_source"), "observed_at": data.get("observed_at"),
-                                "source_records": (step.get("source_records") or [])[:20],
-                                "trace_id": data.get("trace_id", ""), "run_id": data.get("run_id", ""),
-                                "order_ref": order_ref,
-                            }))
+                            values.append((value, value, _source(step, data, step_index, row_index, column, order_ref)))
             unique = {v[0] for v in values}
             # On multi-line orders, the image's model binds quantity/date/status
             # to a row. Record the possible row witnesses, then intersect below.
             witnesses.append(matching_rows)
-            if len(unique) == 1:
+            meanings = {(v[2].get("column_metadata") or {}).get("schema_revision") for v in values}
+            if len(unique) == 1 and len(meanings) <= 1:
                 item.update(db_value=values[0][1], source=values[0][2], outcome=(
                     "matched" if normalized(candidate.value, candidate.field) in unique else "conflict"))
             elif unique:
@@ -270,11 +281,13 @@ def verify(extraction: Extraction, data, order_ref, context_error="", issue_type
                                    "delivered": ("delivered_qty",)}.get(item["kind"], ())
                     if item["field"] == "date":
                         columns = {"delivery": ("delivery_date",), "ship": ("ship_date",), "order": ("order_date",)}.get(item["kind"], ())
+                    meanings = {verified_column_metadata(data["steps"][wi], c).get("schema_revision")
+                                for wi, wr in common for c in columns
+                                if normalized(data["steps"][wi]["rows"][wr].get(c), item["field"]) == normalized(item["value"], item["field"])}
+                    if len(meanings) > 1:
+                        item.update(outcome="conflict", source=None)
+                        continue
                     col = next(c for c in columns if normalized(step["rows"][ri].get(c), item["field"]) == normalized(item["value"], item["field"]))
-                    item.update(db_value=normalized(step["rows"][ri][col], item["field"]), source={
-                        "database": step["database"], "column": col, "row_index": ri,
-                        "unit": (step.get("column_units") or {}).get(col), "as_of": step["as_of"],
-                        "as_of_source": step["as_of_source"], "observed_at": data.get("observed_at"), "source_records": (step.get("source_records") or [])[:20],
-                        "trace_id": data.get("trace_id", ""), "run_id": data.get("run_id", ""), "order_ref": order_ref,
-                    })
+                    item.update(db_value=normalized(step["rows"][ri][col], item["field"]),
+                                source=_source(step, data, si, ri, col, order_ref))
     return {"document_type": extraction.document_type, "fields": reviews, "query_outcome": global_error or "checked"}

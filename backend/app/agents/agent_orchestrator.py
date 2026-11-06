@@ -241,6 +241,8 @@ class Request:
     # 本轮回答允许引用的出处（RAG 检索结果等）。AnswerPolicy 用它判断
     # 回复里的价格/时效是否"有依据"。
     grounding_sources: list[str] = field(default_factory=list)
+    # Typed query/policy metadata, never sources for delivery promises.
+    reference_times: dict[str, list[str]] = field(default_factory=dict)
     fact_evidence: dict[str, Any] | None = None
     policy_ref_validator: Any = None
     response_language: str = ""
@@ -392,7 +394,7 @@ class BaseAgent:
             business.update(evidence=cells, evidence_issues=issues)
         selected["knowledge"]["sources"] = sources
         req.fact_evidence.update(selected)
-        return render_draft(sources, business, language=language)
+        return render_draft(sources, business, language=language, knowledge_state=selected["knowledge"])
 
     async def _handle_inner(self, req: Request) -> AgentResponse:
         t0 = time.monotonic()
@@ -411,7 +413,7 @@ class BaseAgent:
             sources = list(req.grounding_sources)
             if skill_prompt:
                 sources.append(skill_prompt)
-            policy_result = self._policy.enforce(content, sources)
+            policy_result = self._policy.enforce(content, sources, reference_times=req.reference_times)
             if policy_result.blocked:
                 logger.warning(
                     "%s 回复触发答案策略拦截 %d 处: %s",
@@ -473,7 +475,7 @@ class BaseAgent:
         sources = list(req.grounding_sources)
         if skill_prompt:
             sources.append(skill_prompt)
-        guard = PolicyStreamGuard(self._policy, sources)
+        guard = PolicyStreamGuard(self._policy, sources, reference_times=req.reference_times)
 
         full: list[str] = []
         declared: bool | None = None
@@ -705,7 +707,7 @@ class BaseAgent:
         sources = list(req.grounding_sources)
         if skill_prompt:
             sources.append(skill_prompt)
-        guard = PolicyStreamGuard(self._policy, sources)
+        guard = PolicyStreamGuard(self._policy, sources, reference_times=req.reference_times)
 
         agent = self.agent_type.value
         recorder = events()
@@ -745,6 +747,9 @@ class BaseAgent:
                     yield {"type": "tool", "phase": "start", "step": event.step, "call_id": event.call_id,
                            "tool": event.name, "args": event.args, "agent": agent}
                 elif isinstance(event, ToolEnd):
+                    if event.name == "knowledge_search":
+                        from app.core.policy_scope import policy_reference_times
+                        guard.add_reference_times(policy_reference_times(sources=event.outcome.trace.get("sources", [])))
                     if event.outcome.evidence:
                         guard.add_sources([event.outcome.evidence])
                         found_evidence = True

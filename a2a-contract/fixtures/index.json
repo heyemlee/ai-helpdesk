@@ -1,7 +1,7 @@
 {
   "$comment": "跨仓库 golden fixtures 的清单。两侧 CI 都读这个文件，不要各自维护一份用例表——用例表分叉就是副本漂移的老毛病换个地方复发。字段含义见 fixtures/README.md 与 CONSUMER-TESTS.md。",
   "contract": "a2a-streaming-contract.md",
-  "contract_version": "v1.14",
+  "contract_version": "v1.15",
   "cases": [
     {
       "id": "dp-valid-01",

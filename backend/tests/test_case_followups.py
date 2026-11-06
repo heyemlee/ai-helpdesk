@@ -145,13 +145,13 @@ async def test_non_case_query_keeps_its_original_semantics():
     assert next(params["query"] for name, params in tools.calls if name == "order_data_query") == record["message"]
 
 
-async def test_case_without_an_order_does_not_gain_a_business_query_instruction():
+async def test_policy_case_without_an_order_does_not_run_a_business_query():
     record = recorded("followup")
     record["message"] = "请查配送政策。"
     record["snapshot"].update(order_refs=[], facts={}, issue_type="general")
     tools = Tools(record["sql_response"])
     await prepare(record, dependencies(tools, intent=IntentCategory.DELIVERY))
-    assert next(params["query"] for name, params in tools.calls if name == "order_data_query") == record["message"]
+    assert not any(name == "order_data_query" for name, _ in tools.calls)
 
 
 @pytest.mark.parametrize("receipt_kind", ["created", "continued", "missing", "wrong_case", "employee_fact"])

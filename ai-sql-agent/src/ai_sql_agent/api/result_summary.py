@@ -73,6 +73,9 @@ class StepLogResponse(BaseModel):
     column_units: Dict[str, str] = {}
     """结果列 → 单位标识（契约 §4.6.5）。判不出来的列不出现。"""
 
+    column_metadata: Dict[str, Dict[str, str]] = {}
+    """Optional configured field meaning, bound to the executed SQL and source."""
+
     source_records: List[Dict[str, Any]] = []
     """来源记录标识（契约 §4.6.6）。给不出来时为空，溯源退回 trace_id + final_sql。"""
 
@@ -219,6 +222,7 @@ def summarize_result(result) -> ResultSummary:
                 as_of=(execution.get("as_of") or None),
                 as_of_source=(execution.get("as_of_source") or None),
                 column_units=dict(getattr(log, "column_units", {}) or {}),
+                column_metadata=dict(getattr(log, "column_metadata", {}) or {}),
                 source_records=list(getattr(log, "source_records", []) or []),
             ))
         tables = sorted({t for ts in result.pipeline_result.selected_tables.values() for t in ts})

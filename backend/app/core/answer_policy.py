@@ -22,6 +22,7 @@ import logging
 import re
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
 from app.core.text_lang import detect_language
@@ -477,7 +478,7 @@ class AnswerPolicy:
         self.mojibake_dropped_chars = 0
         self.mojibake_events = 0
 
-    def enforce(self, answer: str, sources: Iterable[str] | None = None) -> PolicyResult:
+    def enforce(self, answer: str, sources: Iterable[str] | None = None, *, reference_times=None) -> PolicyResult:
         """扫描 answer，拦截其中无依据的价格/时效承诺。"""
         # 先做数据卫生再谈策略：关掉策略开关也不该把乱码发给客户
         answer = self._drop_mojibake(answer or "")
@@ -497,7 +498,7 @@ class AnswerPolicy:
                 rebuilt.append(chunk)
                 continue
 
-            hit = self._check_sentence(sentence, normalized_sources)
+            hit = None if self._reference_time(sentence, reference_times or {}) else self._check_sentence(sentence, normalized_sources)
             if hit is None:
                 rebuilt.append(chunk)
                 continue
@@ -530,6 +531,55 @@ class AnswerPolicy:
         }
 
     # ── 内部实现 ──────────────────────────────────────────────────────────────
+
+    def _reference_time(self, sentence, reference_times):
+        """Accept only a complete, correctly valued metadata field, not an action.
+
+        Metadata never enters grounding_sources: the same date in a delivery
+        promise must still have independent business evidence.
+        """
+        text = sentence.strip().strip("|").strip().removeprefix("- ")
+        text = re.sub(r"[*`]", "", text)
+        labels = {
+            "policy_as_of": r"所选日期|适用日期|适用时点|查询基准|查询时间点|selected date|as of|query time",
+            "policy_effective_at": r"政策生效日期|生效日期|effective date|effective at",
+            "policy_expires_at": r"政策失效日期|失效日期|expires at|expiry date",
+        }
+        for kind, names in labels.items():
+            field = re.fullmatch(rf"(?:{names})\s*[:：|]\s*(.+)", text, re.I)
+            if not field or not reference_times.get(kind):
+                continue
+            value = field[1]
+            dates = list(_LEAD_TIME_RE.finditer(value))
+            if len(dates) != 1:
+                return False
+            date = _date_of(self._normalize(dates[0][0]))
+            if date is None or date[0] is None or date[1] is None:
+                return False
+            rest = value[:dates[0].start()] + value[dates[0].end():]
+            rest = re.sub(r"\+00:00(?=\s*[|）)]*\s*$)", "Z", rest)
+            # The closed grammar permits only a clock and its metadata caption.
+            # Any promise, second date, duration, or other prose falls through.
+            if not re.fullmatch(r"(?:[\s|（）():：.,，T]|查询基准|查询时间点|为|UTC|Z|\d{2}:\d{2}(?::\d{2})?)*", rest):
+                return False
+            clocks = re.findall(r"\d{2}:\d{2}(?::\d{2})?", rest)
+            if len(clocks) > 1:
+                return False
+            for raw in reference_times[kind]:
+                try:
+                    at = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+                    if at.tzinfo is None:
+                        continue
+                    at = at.astimezone(UTC)
+                except (ValueError, AttributeError, TypeError):
+                    continue
+                if date != (at.year, at.month, at.day):
+                    continue
+                if clocks and clocks[0] != at.strftime("%H:%M:%S") and not (
+                        at.second == 0 and clocks[0] == at.strftime("%H:%M")):
+                    continue
+                return True
+        return False
 
     def _drop_mojibake(self, text: str) -> str:
         """
@@ -697,9 +747,10 @@ class PolicyStreamGuard:
     非流式输出**受同一套策略约束**，不会出现"流式能说、非流式不能说"的口径不一致。
     """
 
-    def __init__(self, policy: AnswerPolicy, sources: Iterable[str] | None = None):
+    def __init__(self, policy: AnswerPolicy, sources: Iterable[str] | None = None, *, reference_times=None):
         self._policy = policy
         self._sources = list(sources or [])
+        self._reference_times = {k: list(v) for k, v in (reference_times or {}).items()}
         self._buffer = ""
         self.violations: list[PolicyViolation] = []
 
@@ -729,6 +780,11 @@ class PolicyStreamGuard:
         """
         self._sources.extend(t for t in texts if t)
 
+    def add_reference_times(self, times: dict[str, list[str]]) -> None:
+        for kind, values in times.items():
+            known = self._reference_times.setdefault(kind, [])
+            known.extend(value for value in values if value not in known)
+
     def discard_pending(self) -> str:
         """
         丢掉缓冲区里还没凑成整句的部分，返回丢掉的内容（给调用方记日志）。
@@ -740,6 +796,6 @@ class PolicyStreamGuard:
         return pending
 
     def _check(self, sentence: str) -> str:
-        result = self._policy.enforce(sentence, self._sources)
+        result = self._policy.enforce(sentence, self._sources, reference_times=self._reference_times)
         self.violations.extend(result.violations)
         return result.text

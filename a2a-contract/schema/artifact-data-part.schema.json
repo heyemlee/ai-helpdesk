@@ -228,6 +228,13 @@
             "null"
           ],
           "format": "date-time"
+        },
+        "column_metadata": {
+          "type": "object",
+          "description": "Optional current source field meaning, keyed by direct result column. Missing means unknown.",
+          "additionalProperties": {
+            "$ref": "#/$defs/columnMetadata"
+          }
         }
       },
       "allOf": [
@@ -387,6 +394,77 @@
         }
       },
       "additionalProperties": false
+    },
+    "columnMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "database",
+        "table",
+        "column",
+        "description",
+        "schema_revision",
+        "query_hash",
+        "output_field"
+      ],
+      "properties": {
+        "database": {
+          "$ref": "database-id.schema.json"
+        },
+        "table": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "column": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "label_zh": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "label_en": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "business_usage": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "semantic_role": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "schema_revision": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "query_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "output_field": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        }
+      }
     }
   }
 }

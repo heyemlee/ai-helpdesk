@@ -1,6 +1,6 @@
 # 两侧 CI 必须跑的契约用例
 
-> 配套：`a2a-streaming-contract.md`（v1.14）、`schema/`、`fixtures/`。
+> 配套：`a2a-streaming-contract.md`（v1.15）、`schema/`、`fixtures/`。
 > 本文只说**跑什么、断言什么**，不规定用什么测试框架。
 >
 > 上面这个版本号由 `tools/check_contract.py version` 与契约状态行比对。
@@ -89,7 +89,7 @@ B 组共九条：`dp-bad-01`–`05`、`dp-bad-07`–`09`，以及 v1.12 改判�
 
 ### C 组：信任反例——**校验通过，但不可作出处**
 
-`fixtures/data-part/trust-negative/` 下的用例，**v1.14 起是七条**：`02`–`08`，包括声明成功但步骤失败的冲突载荷。
+`fixtures/data-part/trust-negative/` 下的用例，**v1.15 起是七条**：`02`–`08`，包括声明成功但步骤失败的冲突载荷。
 这一组是本文最容易被跳过、也最值钱的一组：**它们全都是合法载荷**，
 schema 拦不住，只能靠业务判据。
 

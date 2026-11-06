@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import UTC, datetime
@@ -104,6 +105,65 @@ def eligible(policy: PolicyMetadata, scope: PolicyScope, at=None) -> bool:
 
 def policy_digest(value) -> str:
     return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False, default=str).encode()).hexdigest()
+
+
+def asks_for_policy(message: str) -> bool:
+    return bool(re.search(r"政策|规定|条款|制度|policy|policies|regulations?", message or "", re.I))
+
+
+def policy_only_query(message: str, entities=None) -> bool:
+    """Conservative policy lookup gate; ambiguous or mixed requests keep SQL."""
+    text = message or ""
+    if not asks_for_policy(text):
+        return False
+    if any((entities or {}).get(key) for key in ("order_id", "item_code")):
+        return False
+    # A concrete record, inventory question, or requested business action can
+    # need SQL even when the same sentence also asks about policy.
+    if re.search(r"订单|单号|柜号|库存|生产|签收|记录|实际|付款|回款|余额|帮我办理|执行|取消|"
+                 r"配送状态|配送进度|统计|是否已|已经|有没有|到哪了|到账了吗|我的|我这|这批|这笔|本单|该单|"
+                 r"(?:帮我|替我|给我|请)(?:直接)?(?:办理|安排|申请|修改|退款|发货)|发起|"
+                 r"\b(?:SO|PO|WO)[-\d]|\b(?:orders?|stock|inventory|production|payment|balance|actual|"
+                 r"tracking|status|progress|cancel|execute|shipped|delivered|received|paid|outstanding|process my|refund me)\b|"
+                 r"\b(?:my|our|this)\s+(?:shipment|delivery|refund)\b", text, re.I):
+        return False
+    return True
+
+
+def policy_source_metadata(source):
+    """Only the retrieved revision's eligible metadata may describe its scope."""
+    try:
+        policy = metadata(source.get("policy"))
+        scope = PolicyScope.model_validate(source.get("policy_scope") or {})
+        at = PolicyMetadata.aware(datetime.fromisoformat(source["policy_as_of"].replace("Z", "+00:00")))
+        if (not source.get("policy_revision") or (scope.as_of and scope.as_of != at)
+                or not eligible(policy, scope, at)):
+            return None
+        return {"policy": policy.model_dump(mode="json"), "query_scope": scope.model_dump(mode="json"),
+                "as_of": at.isoformat(), "doc_id": source.get("doc_id"),
+                "revision": source["policy_revision"]}
+    except (ValueError, TypeError, KeyError, AttributeError):
+        return None
+
+
+def policy_reference_times(scope=None, sources=()):
+    times = {}
+    try:
+        selected = PolicyScope.model_validate(scope or {}).as_of
+        if selected:
+            times["policy_as_of"] = [selected.isoformat()]
+    except (ValueError, TypeError):
+        pass
+    for source in sources:
+        verified = policy_source_metadata(source)
+        if not verified:
+            continue
+        for key, value in {"policy_as_of": verified["as_of"],
+                           "policy_effective_at": verified["policy"]["effective_at"],
+                           "policy_expires_at": verified["policy"]["expires_at"]}.items():
+            if value and value not in times.setdefault(key, []):
+                times[key].append(value)
+    return times
 
 
 def sql_filter(scope: PolicyScope, *, postgres=False, start=1, at=None):

@@ -12,7 +12,7 @@ import json
 from typing import Any
 
 # 工具调用的经过（trace）里属于外来文字的字段：下游给的失败原因、可信校验的理由
-TRACE_TEXT_KEYS = ("reason", "reasons", "evidence_payload")
+TRACE_TEXT_KEYS = ("reason", "reasons", "evidence_payload", "lookup_scope")
 # 知识片段里属于外来文字的字段：标题和摘录。doc_id、chunk_id、分数这些留在结构里
 SOURCE_TEXT_KEYS = ("title", "doc_title", "excerpt", "content", "policy", "policy_scope")
 
