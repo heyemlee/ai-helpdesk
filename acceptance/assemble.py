@@ -8,7 +8,9 @@ from acceptance.gate import require, verify
 
 def assemble(campaign, components, budget=None):
     campaign = Path(campaign)
-    report = read(campaign / "report.json")
+    source = campaign if campaign.is_file() else campaign / "report.json"
+    campaign = source.resolve().parent
+    report = read(source)
     for item in components:
         name, source = item.split("=", 1)
         if name not in {"invariants", "browser", "load", "load_real", "recovery_local", "recovery_s3", "rollback"}:

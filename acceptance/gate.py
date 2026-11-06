@@ -8,7 +8,7 @@ from acceptance.common import DATA, GROUPS, BASELINE_REVISION, read, sha
 from acceptance.evidence import load_evidence
 from acceptance.oracle import score, summarize
 from acceptance.common_facts import common_score, adjudicate
-from acceptance.comparison import compare
+from acceptance.comparison import compare, comparable_ids
 from acceptance.usage_evidence import validate_recording, check_attribution
 from acceptance.invariant_oracle import evaluate as evaluate_invariants
 from acceptance.configuration import CONFIGURATION
@@ -119,7 +119,30 @@ def verify(report, manifest=None):
         failures.append("persistent_supplier_usage_evidence_missing")
     if baseline.get("results") and report.get("common_comparison") != compare(rounds, baseline):
         failures.append("common_comparison_totals_mismatch")
+    comparison = report.get("common_comparison", {})
+    comparisons = [comparison.get("baseline", {}), *comparison.get("candidate_rounds", [])]
+    if len(comparisons) != 4 or any(c.get("pending_or_unmeasured", 1) != 0 or c.get("accuracy") is None for c in comparisons):
+        failures.append("common_comparison_has_unmeasured_or_unreviewed_questions")
     return {"passed": not failures, "failures": sorted(set(failures))}
+
+
+def require_candidate_score(directory, scenario, claimed, data, corpus, *, common_required):
+    computed = score(scenario, data["observed"], corpus)
+    for key, value in computed.items():
+        if claimed.get(key) != value:
+            raise ValueError("Declared score differs from independent evidence: " + claimed["id"] + "/" + key)
+    body = next((d["body"] for d in data["observed"].get("case", {}).get("drafts", []) if d.get("valid")), "")
+    common = common_score(scenario, body, corpus) if body and data["observed"]["completed"] else {"status": "execution_failed", "fact_correct": False, "contract_checked": False}
+    if claimed.get("common_score") != common:
+        raise ValueError("Candidate common fact score was altered or omitted")
+    if common_required:
+        correct = common["fact_correct"]
+        if common["status"] == "review_required":
+            review = load_evidence(directory, claimed.get("review", {}))
+            correct = adjudicate(review, claimed["evidence_sha256"])
+        if claimed.get("common_fact_correct", common["fact_correct"]) != correct:
+            raise ValueError("Candidate comparison lacks the same bound independent review as baseline")
+    return computed
 
 
 def require(path, manifest=None):
@@ -138,6 +161,7 @@ def require(path, manifest=None):
     if report["budget"]["limits_sha256"] != sha(usage["limits"]) or report["budget"]["reserved_requests"] != usage["reserved_requests"]:
         raise ValueError("Budget summary differs from persistent ledger export")
     contexts = {}
+    shared_ids = comparable_ids(report["baseline"])
     for number, round_ in enumerate(report["rounds"], 1):
         checked = []
         for claimed in round_["results"]:
@@ -146,16 +170,10 @@ def require(path, manifest=None):
                 raise ValueError("Per-scenario recording has a different corpus/stack/provider")
             if data.get("id") != claimed["id"] or data.get("observed", {}).get("id") != claimed["id"]:
                 raise ValueError("Per-scenario recording identity mismatch")
-            computed = score(scenarios[claimed["id"]], data["observed"], corpus)
+            computed = require_candidate_score(directory, scenarios[claimed["id"]], claimed, data, corpus,
+                                               common_required=claimed["id"] in shared_ids)
             contexts[f"round-{number}:" + claimed["id"]] = {r["run_id"] for r in data["observed"].get("runs", [])}
-            for key, value in computed.items():
-                if claimed.get(key) != value:
-                    raise ValueError("Declared score differs from independent evidence: " + claimed["id"] + "/" + key)
             checked.append(computed)
-            body = next((d["body"] for d in data["observed"].get("case", {}).get("drafts", []) if d.get("valid")), "")
-            common = common_score(scenarios[claimed["id"]], body, corpus) if body and data["observed"]["completed"] else {"status": "execution_failed", "fact_correct": False, "contract_checked": False}
-            if claimed.get("common_score") != common:
-                raise ValueError("Candidate common fact score was altered or omitted")
         if round_.get("summary") != summarize(corpus["scenarios"], checked):
             raise ValueError("Round totals differ from recomputed evidence")
     for name in ("invariants", "browser", "load", "load_real", "recovery_local", "recovery_s3", "rollback"):

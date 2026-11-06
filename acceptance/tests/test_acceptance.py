@@ -159,6 +159,56 @@ class BudgetTests(unittest.TestCase):
 
 
 class MethodTests(unittest.TestCase):
+    def test_noncomparable_questions_keep_contract_checks_without_common_review(self):
+        from acceptance.gate import require_candidate_score
+        from acceptance.review import attach
+        _, corpus, release = dataset()
+        recording = read(Path(__file__).parent / "fixtures" / "images.json")
+        scenario = next(s for s in corpus["scenarios"] if s["id"] == recording["observed"]["id"])
+        unresolved = {"status": "review_required", "fact_correct": None, "contract_checked": False}
+        claimed = {**score(scenario, recording["observed"], corpus), "common_score": unresolved}
+        with tempfile.TemporaryDirectory() as tmp, patch("acceptance.gate.common_score", return_value=unresolved):
+            root = Path(tmp)
+            self.assertTrue(require_candidate_score(root, scenario, claimed, recording, corpus, common_required=False)["fact_correct"])
+            with self.assertRaisesRegex(ValueError, "Evidence file and SHA-256"):
+                require_candidate_score(root, scenario, claimed, recording, corpus, common_required=True)
+            damaged = copy.deepcopy(recording)
+            damaged["observed"]["case"]["drafts"][0]["valid"] = False
+            with self.assertRaisesRegex(ValueError, "Declared score differs"):
+                require_candidate_score(root, scenario, claimed, damaged, corpus, common_required=False)
+            unsupported = next(s["id"] for s in release["scenarios"] if s["group"] == "images")
+            write(root / "report.json", {"baseline": {"results": [{"id": unsupported, "status": "unsupported"}]}})
+            with self.assertRaisesRegex(ValueError, "supported by both versions"):
+                attach(root / "report.json", "round-1", unsupported, root / "absent-review.json")
+
+    def test_both_versions_require_bound_independent_review_and_pending_blocks_gate(self):
+        from acceptance.review import attach
+        from acceptance.common_facts import adjudicate
+        scenario = next(s for s in dataset()[2]["scenarios"] if s["group"] == "policies")
+        sid = scenario["id"]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write(root / "new.json", {"observed": {"completed": True, "case": {"drafts": [{"valid": True, "body": "Unit fixture requiring independent review"}]}}})
+            write(root / "old.json", {"status": "measured", "visible": "Unit fixture requiring independent review"})
+            def entry(name): return {"id": sid, "status": "measured", "fact_correct": None, "common_score": {"status": "review_required", "fact_correct": None}, "evidence_file": name + ".json", "evidence_sha256": sha((root / (name + ".json")).read_bytes())}
+            report = {"rounds": [{"results": [entry("new")]}, {"results": []}, {"results": []}], "baseline": {"results": [entry("old")]}}
+            write(root / "report.json", report)
+            review = {"status": "reviewed", "reviewed_by": "unit-test fixture, not an actual reviewer", "reviewer_type": "human", "independent_of_system_under_test": True,
+                      "rationale": "Tests review binding and symmetry only; this fixture is not a business-quality judgment", "fact_correct": True, "evidence_sha256": entry("new")["evidence_sha256"]}
+            write(root / "review.json", review)
+            first = attach(root / "report.json", "round-1", sid, root / "review.json")
+            self.assertTrue(read(first["report"])["rounds"][0]["results"][0]["common_fact_correct"])
+            review.update(reviewer_type="ai", reviewer_model="explicit-unit-test-model", evidence_sha256=entry("old")["evidence_sha256"])
+            write(root / "review.json", review)
+            second = attach(first["report"], "baseline", sid, root / "review.json")
+            checked = read(second["report"])
+            self.assertTrue(checked["baseline"]["results"][0]["fact_correct"])
+            self.assertIn("common_comparison_has_unmeasured_or_unreviewed_questions", verify(checked)["failures"])
+            for field in ("reviewer_model", "independent_of_system_under_test", "rationale"):
+                broken = {k: v for k, v in review.items() if k != field}
+                with self.assertRaises(ValueError): adjudicate(broken, review["evidence_sha256"])
+            with self.assertRaises(ValueError): adjudicate(review, "different-evidence")
+
     def test_baseline_preserves_conversation_context_and_counts_execution_failure(self):
         _, development, _ = dataset()
         corpus = {**development, "scenarios": [next(s for s in development["scenarios"] if s["group"] == "cross_message" and s["subtype"] == kind)

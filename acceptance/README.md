@@ -10,6 +10,8 @@ v1 完整保留，manifest SHA-256 为 `c918170dfc710f153d96ae1bb6b7b54230e8eb06
 
 `oracle.py` 核对原始查询行、单位、时点、引用、所有可见业务陈述、Case 状态与副作用。正确数字与错误数字同时出现不能通过。真实 API 的 `evidence_payload` 包装由保留的实际服务记录覆盖。空字段、零行、查询失败分开处理。任何无法自动证明的陈述不能自动算正确。旧版共同事实由 `common_facts.py` 按内容比较，无法自动判断时保留 `review_required`；审核须有明确归属、理由及绑定的原记录哈希。
 
+两版共同事实使用相同复核入口：`python -m acceptance.review --report 报告.json --scope round-1或baseline --scenario 题号 --review 独立复核.json`。复核须注明 evidence_sha256、status=reviewed、reviewed_by、reviewer_type（human/ai）、rationale、fact_correct 与 independent_of_system_under_test=true；AI 复核另注明 reviewer_model，不能冒充人工。入口只接收已完成的独立判断，不生成占位通过结论，也不覆盖确定性错误或执行失败。强制共同事实复核仅适用于两版共同支持的 130 题；其余 70 题仍须通过候选版正式契约评分，不因共同事实评分未知而放行。任一共同支持题仍未测或未判时，两版准确率保持缺口，完整验收被阻止。真实记录尚未到齐时不制作复核结论。
+
 ## 离线入口
 
 在仓库根目录使用已安装依赖的 Python。后台产品测试使用维护中的 `.claude/skills/test-backend/scripts/run.sh --full` 与 `run-sql-agent.sh --full`，不在真实 backend 环境直接运行 pytest。

@@ -30,7 +30,7 @@ def common_score(scenario, visible, corpus=None):
     facts = scenario["truth"]["facts"]
     if not facts or scenario["group"] == "policies":
         return {"status": "review_required", "fact_correct": None,
-                "reason": "Policy meaning, safe abstention and procedures need independent human adjudication", "contract_checked": False}
+                "reason": "Policy meaning, safe abstention and procedures need independent attributed adjudication", "contract_checked": False}
     errors, claims = [], []
     # Metadata is checked by the separate release contract scorer. Apply this
     # identical normalization to either product's text for common facts.
@@ -107,7 +107,10 @@ def adjudicate(review, evidence_sha256):
     reviewers' rationale and independent field/scope judgments with evidence.
     """
     if review.get("evidence_sha256") != evidence_sha256 or review.get("status") != "reviewed":
-        raise ValueError("Human review does not bind this evidence")
-    if not review.get("reviewed_by") or not review.get("rationale") or type(review.get("fact_correct")) is not bool:
+        raise ValueError("Independent review does not bind this evidence")
+    required_text = ["reviewed_by", "rationale"] + (["reviewer_model"] if review.get("reviewer_type") == "ai" else [])
+    if (any(not isinstance(review.get(k), str) or not review[k].strip() for k in required_text) or type(review.get("fact_correct")) is not bool
+            or review.get("reviewer_type") not in {"human", "ai"} or review.get("independent_of_system_under_test") is not True
+            ):
         raise ValueError("An attributed review and explicit rationale are required")
     return review["fact_correct"]
