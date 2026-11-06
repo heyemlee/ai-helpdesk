@@ -165,6 +165,49 @@ def _source(step, data, step_index, row_index, column, order_ref):
             "trace_id": data.get("trace_id", ""), "run_id": data.get("run_id", ""), "order_ref": order_ref}
 
 
+def enforce_review_dependencies(review):
+    """A composite order image needs a verified model on the same witnessed row.
+
+    The requirement belongs to the material, not to whichever columns SQL
+    happened to return. Recheck at adoption as well as after verification.
+    """
+    fields = review.get("fields") or []
+    known_type = review.get("document_type") in {"order", "label", "delivery", "parts"}
+    composite = any(
+            f.get("field") in {"quantity", "date", "status"} and f.get("readability") == "clear"
+            and f.get("value") for f in fields)
+    def identity(item):
+        source = item.get("source") or {}
+        sql, digest = source.get("final_sql"), source.get("query_hash")
+        outputs = source.get("output_columns")
+        if (not isinstance(source.get("database"), str) or not re.fullmatch(r"[a-z][a-z0-9_]*_db", source["database"])
+                or any(type(source.get(key)) is not int or source[key] < 0 for key in ("step_index", "row_index"))
+                or not isinstance(source.get("order_ref"), str) or not source["order_ref"]
+                or not isinstance(sql, str) or not sql.strip() or not isinstance(digest, str)
+                or digest != hashlib.sha256(sql.encode()).hexdigest()
+                or not isinstance(outputs, list) or not outputs
+                or any(not isinstance(c, str) or not c for c in outputs) or len(outputs) != len(set(outputs))
+                or not isinstance(source.get("column"), str) or source["column"] not in outputs
+                or not (source.get("trace_id") or source.get("run_id"))):
+            return None
+        return tuple(source.get(key) for key in ("database", "step_index", "row_index", "order_ref", "query_hash"))
+
+    anchors = [f for f in fields if f.get("field") in {"model", "expected_model", "received_model"}
+               and f.get("readability") == "clear" and f.get("value")
+               and f.get("outcome") == "matched" and identity(f) is not None
+               and f["source"]["column"] in COLUMNS[f["field"]]]
+    if not known_type or (composite and not anchors) or any(
+                          identity(f) is None or (composite and identity(f) not in {identity(a) for a in anchors})
+                          for f in fields if f.get("outcome") == "matched"):
+        downgraded = any(item.get("outcome") == "matched" for item in fields)
+        for item in fields:
+            if item.get("outcome") == "matched":
+                item.update(outcome="unverified", db_value=None, source=None)
+        if downgraded or review.get("query_outcome") == "checked":
+            review["query_outcome"] = "unverified"
+    return review
+
+
 def verify(extraction: Extraction, data, order_ref, context_error="", issue_type="general"):
     """Fail closed on ambiguous rows/units/dates; never inspect data['answer']."""
     data = data or {}
@@ -175,7 +218,8 @@ def verify(extraction: Extraction, data, order_ref, context_error="", issue_type
         if data.get("unavailable"):
             global_error = "unavailable"
         elif verdict.execution_status == "no_data":
-            global_error = "no_record"
+            from app.core.business_facts import verified_empty
+            global_error = "no_record" if verified_empty(data) else "unverified"
         elif verdict.execution_status == "failed":
             global_error = "failed"
         elif not fresh(data.get("observed_at")):
@@ -290,4 +334,5 @@ def verify(extraction: Extraction, data, order_ref, context_error="", issue_type
                     col = next(c for c in columns if normalized(step["rows"][ri].get(c), item["field"]) == normalized(item["value"], item["field"]))
                     item.update(db_value=normalized(step["rows"][ri][col], item["field"]),
                                 source=_source(step, data, si, ri, col, order_ref))
-    return {"document_type": extraction.document_type, "fields": reviews, "query_outcome": global_error or "checked"}
+    return enforce_review_dependencies({"document_type": extraction.document_type, "fields": reviews,
+                                        "query_outcome": global_error or "checked"})

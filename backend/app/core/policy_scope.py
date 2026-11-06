@@ -130,6 +130,30 @@ def policy_only_query(message: str, entities=None) -> bool:
     return True
 
 
+def read_only_policy_query(message: str, entities=None) -> bool:
+    """Narrower than SQL routing: only explicit information or draft requests.
+
+    An operational approval request can mention policy without needing SQL.
+    That does not authorize removing its human-action protection. Procedural
+    questions and preparing an unapproved draft remain informational tasks.
+    """
+    if not policy_only_query(message, entities):
+        return False
+    text = message or ""
+    if not re.search(r"查阅|查询|请查|说明|解释|介绍|提供|哪些|什么|如何|怎样|是否|能否|可否|"
+                     r"准备.{0,12}(?:待审核|待审批|草稿)|起草|"
+                     r"\b(?:look up|lookup|read|explain|describe|what|how|which|can|could|draft)\b", text, re.I):
+        return False
+    actions = r"审批|审核|批准|核准|同意|授权|受理|核销|报销|赔付|支付|扣款|补发|派单|提交|办理|申请|安排|修改|退款|发货"
+    # These are names of information being requested, not instructions to act.
+    residue = re.sub(rf"(?:{actions})(?:流程|步骤|条件|要求|标准|权限|规则|程序|政策|条款)", "", text)
+    residue = re.sub(r"待(?:审核|审批)的?(?:回复|答复)?草稿", "", residue)
+    residue = re.sub(r"\b(?:approval|review|refund|reimbursement|authorization)\s+"
+                     r"(?:process|procedure|steps|conditions|requirements|criteria|policy|rules)\b", "", residue, flags=re.I)
+    return not re.search(rf"{actions}|\b(?:approve\w*|authoriz\w*|submit\w*|process|issue|execute|"
+                         r"grant|reimburse\w*|pay|refund|dispatch|amend|accept)\b", residue, re.I)
+
+
 def policy_source_metadata(source):
     """Only the retrieved revision's eligible metadata may describe its scope."""
     try:

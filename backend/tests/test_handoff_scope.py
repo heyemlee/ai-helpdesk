@@ -62,9 +62,9 @@ def test_calibration_failures_were_explicit_model_decisions_not_keyword_guesses(
 def test_sql_delegation_only_requests_rows_while_preserving_the_upstream_goal(message):
     query = _case_data_query(message)
     assert query.endswith(message)
-    assert "仅获取业务库记录" in query and "只读" in query
+    assert "SQL只输出业务数据列" in query and "只读" in query
     assert "不要求 SQL 服务读取附件、比对图片、标记核对结果" in query
-    assert "这些步骤由上游根据返回的数据行与来源处理" in query
+    assert "业务操作亦由上游完成" in query
     assert "来源" in query and "字段、时间范围和口径" in query
 
 

@@ -10,6 +10,7 @@ from .shape import (
 from .objects import (
     SELF_CHECK_NOT_APPLICABLE,
     SELF_CHECK_NOT_RUN,
+    SELF_CHECK_PASSED,
     AnomalyType,
     ValidationFinding,
     ValidationOutcome,
@@ -89,7 +90,7 @@ class ResultValidator:
         if (
             self.enable_self_check
             and self.self_checker.available
-            and row_count > 0
+            and row_count >= 0
             and target.strip()
         ):
             result = self.self_checker.run(
@@ -120,6 +121,12 @@ class ResultValidator:
                         severity="warn",
                     )
                 )
+
+        # Zero rows is a normal lookup outcome only after the SQL's target
+        # actually passed semantic review. Failed/disabled review and every
+        # other finding remain risks; absence alone never repairs a bad query.
+        if row_count == 0 and self_check == SELF_CHECK_PASSED:
+            findings = [f for f in findings if f.anomaly != AnomalyType.EMPTY_RESULT]
 
         return ValidationOutcome(
             passed=(

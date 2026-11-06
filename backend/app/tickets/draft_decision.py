@@ -42,7 +42,10 @@ def handoff_review(request, result, draft):
         basis = "answer_quality" if result.policy_violations else "unresolved_answer"
     else:
         basis = "uncertain_routing"
+    from app.core.policy_scope import read_only_policy_query
     return {"basis": basis, "model_answer_sha256": digest(result.response), "draft_sha256": digest(draft),
+            "answer_handoff_declared": result.answer_handoff_declared,
+            "read_only_policy_lookup": read_only_policy_query(request.message, request.entities),
             "original_handoff_reason": result.handoff_reason, "original_answer_confidence": result.answer_confidence,
             "outcome": "retained"}
 
@@ -55,8 +58,10 @@ a different, entirely evidence-rendered draft. Other handoff reasons remain.
 """
     snapshot = context["snapshot"]
     review = result.get("handoff_review") or {}
-    if (not context.get("materials_reviewed") or context.get("image_review_complete") is not True
-            or not result.get("handoff") or review.get("basis") != "answer_quality"
+    policy_only = review.get("read_only_policy_lookup") is True and review.get("answer_handoff_declared") is False
+    if (not result.get("handoff") or review.get("basis") != "answer_quality"
+            or review.get("answer_handoff_declared") is True
+            or (not policy_only and (not context.get("materials_reviewed") or context.get("image_review_complete") is not True))
             or not result.get("policy_violations")
             or result.get("needs_clarification") or result.get("service_unavailable")
             or snapshot.get("pending_fields")):
@@ -74,10 +79,18 @@ a different, entirely evidence-rendered draft. Other handoff reasons remain.
         cells, issues = verified_cells(business.get("evidence_payload") or {})
         if issues or cells != business["evidence"]:
             return result
-    elif business and business.get("outcome") not in {"not_applicable", "disabled"}:
+    elif business and (business.get("outcome") not in {"not_applicable", "disabled", "skipped", "not_configured"}
+                       or (policy_only and business.get("attempted"))):
         return result
     if any(not r.get("policy_revision") or not (r.get("content") or r.get("excerpt")) for r in knowledge):
         return result
+    if policy_only:
+        if (not knowledge or knowledge_state.get("evidence_ok") is not True
+                or knowledge_state.get("lookup_status") != "found"
+                or response != render_draft(knowledge, business, facts, language=snapshot.get("language", "zh"), knowledge_state=knowledge_state)):
+            return result
+        return {**result, "handoff": False, "escalated": False, "handoff_reason": "",
+                "handoff_review": {**review, "outcome": "replaced_by_verified_policy_draft"}}
     images = rendered_images(facts)
     # Only the image-review continuation has established complete field coverage.
     # An ordinary request may still need human action despite having some records.

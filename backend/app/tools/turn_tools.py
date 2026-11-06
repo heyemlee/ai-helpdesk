@@ -272,8 +272,9 @@ def knowledge_grounding(text, trace):
 
 def business_grounding(text, trace):
     """Field descriptions explain meaning; numbers inside them are not facts."""
-    from app.core.business_facts import render_cells
-    return render_cells(trace["evidence"], include_metadata=False) if trace.get("evidence") else text
+    from app.core.business_facts import render_cells, verified_nulls
+    return render_cells([*trace["evidence"], *verified_nulls(trace.get("evidence_payload") or {})],
+                        include_metadata=False) if trace.get("evidence") else text
 
 
 def currency_note(data: dict, configured: str = "") -> str:
@@ -450,12 +451,24 @@ async def delegate_order_query(
                 "你说的内容已经过系统核对。",
             ]), False
 
-        from app.core.business_facts import render_cells, verified_cells
+        from app.core.business_facts import render_cells, verified_cells, verified_empty, verified_nulls
         cells, issues = verified_cells(data)
+        if verified_empty(data):
+            # Keep the existing non-value-source trace outcome. The verified
+            # negative lookup is explicit and distinct from a failed query.
+            info.update(outcome="unverified", lookup_status="empty", lookup_verified=True,
+                        evidence=[], evidence_issues=["no_data"], evidence_payload=data,
+                        has_risk=False, degraded=False, reasons=list(verdict.reasons))
+            return ("[本轮业务查询回执] 状态 no_data：本次只读查询已成功执行，在所查询的实体、字段与条件下返回零行。"
+                    "这不是查询失败，也不证明其他范围不存在记录。\n查询成功，未找到记录。"), False
         info.update(outcome="evidence" if cells else "unverified", evidence=cells, evidence_issues=issues,
                     evidence_payload=data, has_risk=verdict.has_risk, degraded=verdict.degraded,
                     reasons=list(verdict.reasons))
-        text = render_cells(cells, model_context=True)
+        text = render_cells([*cells, *verified_nulls(data)], model_context=True)
+        if cells and not issues:
+            text = ("[本轮业务查询回执] 以下是针对本次请求新执行并通过核验的业务库结果，不是历史回答。"
+                    "NULL 明确表示该字段未登记，与未返回该字段不同。仅报告所查记录及其限制，"
+                    "不自行发起查找缺失值、变更记录或业务审批；准备待审核草稿不等于执行审批。\n" + text)
         if issues:
             text += "\n业务证据限制：" + ", ".join(issues)
         return text, bool(cells)

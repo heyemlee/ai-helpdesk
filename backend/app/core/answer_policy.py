@@ -507,6 +507,7 @@ class AnswerPolicy:
                 checked_sentence = re.sub(
                     r"(?:不能|不可|不应|不要)(?:按|以|根据|依据)(?:今天|今日)的?日期"
                     r"(?:来)?(?:判断|判定)(?:其|该政策|本政策)?是否适用", "", sentence)
+            checked_sentence = self._without_reference_times(checked_sentence, reference_times or {})
             hit = None if self._reference_time(sentence, reference_times or {}) else self._check_sentence(checked_sentence, normalized_sources)
             if hit is None:
                 rebuilt.append(chunk)
@@ -541,6 +542,49 @@ class AnswerPolicy:
 
     # ── 内部实现 ──────────────────────────────────────────────────────────────
 
+    def _without_reference_times(self, sentence, reference_times):
+        """Remove only source-checked metadata timestamp spans; check the rest.
+
+        A second date, price or delivery promise in the same sentence remains
+        subject to the normal guard. Metadata is never a grounding source.
+        """
+        text = re.sub(r"[*`]", "", sentence)
+        # A shared timestamp can also be a deadline: "we guarantee shipment at
+        # query time: ...". Only independent metadata statements may lose a
+        # timestamp. Ambiguous action-bearing prose stays fully guarded.
+        if not re.match(r"^\s*(?:-\s*)?(?:按(?:所选)?(?:查询)?时点|查询时点|所选时点|适用性判定时点|适用性依据|有效版本|生效时间|生效时点|自)", text):
+            return sentence
+        date = r"(?:\d{4}-\d{1,2}-\d{1,2}|\d{4}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日)"
+        clock = r"(?:[ T]*\d{2}:\d{2}(?::\d{2})?)?"
+        zone = r"(?:\s*[（(]?\s*(?:UTC|Z|\+00:00)\s*[）)]?)?"
+        stamp = rf"{date}{clock}{zone}"
+        patterns = (
+            ("policy_as_of", rf"(?:所选查询时点|所选时点|查询时点|适用性判定时点|判定时点|适用时点)\s*(?:为|[:：])?\s*(?P<stamp>{stamp})", "所选日期："),
+            ("policy_effective_at", rf"(?:自\s*(?P<stamp>{stamp})\s*(?:起)?生效)", "生效日期："),
+            ("policy_effective_at", rf"(?P<stamp>{stamp})\s*生效", "生效日期："),
+            ("policy_effective_at", rf"(?:生效时间|生效时点)\s*(?:为|[:：])?\s*(?P<stamp>{stamp})", "生效日期："),
+        )
+        spans, metadata_spans = [], []
+        for kind, pattern, label in patterns:
+            for match in re.finditer(pattern, text, re.I):
+                times = reference_times
+                if kind == "policy_effective_at" and re.search(r"未(?:设置|记录)(?:失效日期|失效时间|到期时间)", text):
+                    times = {kind: reference_times.get("policy_open_ended_at", [])}
+                if self._reference_time(label + match["stamp"], times):
+                    spans.append(match.span("stamp"))
+                    metadata_spans.append(match.span())
+        # Reuse the guard's complete action vocabulary. Only an explicitly
+        # verified metadata phrase (including its "effective" caption) may be
+        # removed before checking for actions that share the same timestamp.
+        residue = text
+        for start, end in sorted(set(metadata_spans), reverse=True):
+            residue = residue[:start] + " " * (end - start) + residue[end:]
+        if _COMMIT_RE.search(residue) or _ABSOLUTE_RE.search(residue):
+            return sentence
+        for start, end in sorted(set(spans), reverse=True):
+            text = text[:start] + " " * (end - start) + text[end:]
+        return text
+
     def _reference_time(self, sentence, reference_times):
         """Accept only a complete, correctly valued metadata field, not an action.
 
@@ -548,7 +592,7 @@ class AnswerPolicy:
         promise must still have independent business evidence.
         """
         text = sentence.strip().strip("|").strip().removeprefix("- ")
-        text = re.sub(r"[*`]", "", text)
+        text = re.sub(r"[*`]", "", text).rstrip("。.!！?？")
         validity = re.fullmatch(r"(?:版本有效时间|版本有效期)\s*[:：|]\s*(.+?)\s*生效\s*[；;]\s*(.+?)\s*到期", text)
         if validity:
             # Pair the endpoints from one verified policy; never splice dates

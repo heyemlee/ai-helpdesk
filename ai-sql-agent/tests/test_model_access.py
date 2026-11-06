@@ -878,11 +878,12 @@ class SelfCheckIsMarkedHonestlyTest(unittest.TestCase):
         disagreed = self.validate(Says("结论：不一致\n理由：问的是数量"))
         self.assertEqual((disagreed.self_check, disagreed.passed), ("mismatch", False))
 
-        # 本来就不做自检的情形（没配模型、空结果）：如实写 not_applicable，不算没通过
+        # 未配模型时没有自检；有模型的零行查询也须先验证范围和字段。
         nothing_to_check = self.validate(None)
         self.assertEqual((nothing_to_check.self_check, nothing_to_check.passed), ("not_applicable", True))
-        empty = self.validate(Says("不该被调用"), row_count=0)
-        self.assertEqual(empty.self_check, "not_applicable")
+        empty = self.validate(Says("结论：一致\n理由：范围和字段一致"), row_count=0)
+        self.assertEqual(empty.self_check, "passed")
+        self.assertEqual(empty.findings, [])
 
     def test_the_mark_reaches_the_caller_as_a_risk(self):
         """响应里靠 risk_findings / has_risk 传达；契约里 has_risk 为真 = 这个结果不能直接信。"""

@@ -398,7 +398,8 @@ class CaseService:
         for d in c["drafts"]:
             d["evidence"] = decode(d["evidence"], [])
             d["valid"] = (d["status"] != "invalid" and d["version"] == c["version"] and d["control_version"] == c["control_version"]
-                          and d["evidence_version"] == 1 and await self._evidence_valid(d["evidence"], conn=conn, lock=False))
+                          and d["evidence_version"] == 1
+                          and await self._evidence_valid(d["evidence"], conn=conn, actor=actor, case=c, lock=False))
         c["materials"] = [dict(r) for r in await conn.fetch(
             "SELECT attachment_id,sha256,message_id,version FROM case_materials WHERE case_id=$1", case_id)]
         if self.attachments:
@@ -478,9 +479,26 @@ class CaseService:
                 source = entry.get("business_source") or {}
                 if not fresh(source.get("observed_at")) or not entry.get("evidence_id") or entry.get("db_value") is None:
                     return False
+                # Revalidate the review that authorized this persisted fact,
+                # including dependencies. Old partial/forged source receipts
+                # cannot become valid merely because their clock is fresh.
+                run_id, separator, field = entry["evidence_id"].rpartition(":")
+                if not separator or (entry.get("field") and entry["field"] != field):
+                    return False
+                saved = await (conn or self.db).fetchrow(
+                    "SELECT case_id,result FROM case_image_reviews WHERE run_id=$1 AND attachment_id=$2 AND sha256=$3",
+                    run_id, entry.get("attachment_id"), entry.get("sha256"))
+                if not saved or (case and saved["case_id"] != (case.get("case_id") or case.get("id"))):
+                    return False
+                from app.attachments.verification import enforce_review_dependencies
+                review = enforce_review_dependencies(decode(saved["result"]))
+                matches = [item for item in review["fields"] if item["field"] == field and item["outcome"] == "matched"]
+                if (len(matches) != 1 or matches[0].get("db_value") != entry["db_value"]
+                        or matches[0].get("source") != source):
+                    return False
                 if self.attachments and actor:
                     try:
-                        row = await self.attachments.get(actor, entry["attachment_id"], conn=conn)
+                        row = await self.attachments.get(actor, entry["attachment_id"], conn=conn, lock=lock)
                         if row["sha256"] != entry["sha256"]:
                             return False
                     except HTTPException:
@@ -636,8 +654,9 @@ class CaseService:
             refs = list(result.get("knowledge_sources") or [])
             business = result.get("business_data") or {}
             check_evidence = refs + ([{"source": "business_query", **business}] if business else [])
-            check_evidence += [f for f in ctx["snapshot"].get("facts", {}).values() if f.get("source") == "verified_image"]
-            if not reason and not await self._evidence_valid(check_evidence, conn=conn):
+            if "material_reviews" not in result:
+                check_evidence += [f for f in ctx["snapshot"].get("facts", {}).values() if f.get("source") == "verified_image"]
+            if not reason and not await self._evidence_valid(check_evidence, conn=conn, case=c):
                 reason = "draft_evidence_stale"
             if result.get("material_access_changed") or material_access_error:
                 reason = "material_access_changed"
@@ -723,6 +742,8 @@ class CaseService:
             for item in review["fields"]:
                 if item["outcome"] == "matched" and not fresh((item.get("source") or {}).get("observed_at")):
                     item["outcome"] = "unverified"
+            from app.attachments.verification import enforce_review_dependencies
+            enforce_review_dependencies(review)
             if any(i["field"] in {"order_ref", "model", "expected_model", "received_model"}
                    and i["outcome"] == "matched" and facts.get(i["field"])
                    and facts[i["field"]]["value"] != i["db_value"] for i in review["fields"]):

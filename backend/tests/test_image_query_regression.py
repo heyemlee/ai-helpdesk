@@ -30,7 +30,8 @@ def evidence(steps, *, risk=False):
     return {"observed_at": now, "execution_status": "success", "queried_database": True,
             "has_risk": risk, "degraded": False, "selected_databases": ["erp_db"],
             "trace_id": "recorded-query", "run_id": "recorded-run", "result_truncated": False,
-            "steps": [{**s, "as_of": now, "as_of_source": "query_time"} for s in steps]}
+            "steps": [{"final_sql": "SELECT " + ", ".join(s["rows"][0]) + " FROM order_image_records" if s.get("rows") else "SELECT order_ref FROM order_image_records",
+                       **s, "as_of": now, "as_of_source": "query_time"} for s in steps]}
 
 
 def test_recorded_query_requests_only_visible_typed_fields_without_ocr_prose():

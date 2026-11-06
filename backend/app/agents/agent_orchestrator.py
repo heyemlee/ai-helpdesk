@@ -200,7 +200,7 @@ _HANDOFF_RULE = (
     "permission or fee waiver. Failed/unverified lookups, missing requested facts, actual conflicts, "
     "required approvals or actions, and explicit requests for a person still need clarification or handoff."
 )
-_HANDOFF_TRAILER_RE = re.compile(r"\s*\[\[\s*handoff\s*:\s*(yes|no)\s*\]\]\s*$", re.I)
+_HANDOFF_TRAILER_RE = re.compile(r"\[\[\s*handoff\s*:\s*(yes|no)\s*\]\]", re.I)
 
 # 工具循环打开时追加（见 agents/tool_loop.py）。每个工具查什么写在工具定义的
 # description 里，这里只讲什么时候该调、调的前后怎么写——对每个专家都一样，
@@ -230,6 +230,7 @@ class AgentResponse:
     confidence:  float = 1.0
     latency_ms:  float = 0.0
     escalate:    bool  = False   # 是否需要升级
+    handoff_declared: bool | None = None
     policy_violations: list[PolicyViolation] = field(default_factory=list)
     # success=False 的原因若是"模型服务不可用"（凭证被拒、额度用尽、限流退避，
     # 见 core/llm_guard），这里是原因；其它失败（超时、5xx、代码异常）为空串。
@@ -281,6 +282,7 @@ class OrchestratorResult:
     # 转人工：由置信度不足或明确的转人工意图触发
     handoff:     bool = False
     handoff_reason: str = ""
+    answer_handoff_declared: bool | None = None
     answer_confidence: float = 1.0
     needs_clarification: bool = False
     policy_violations: list[PolicyViolation] = field(default_factory=list)
@@ -445,6 +447,7 @@ class BaseAgent:
                 confidence=self._self_confidence(policy_result.violations, escalate),
                 latency_ms=ms,
                 escalate=escalate,
+                handoff_declared=declared,
                 policy_violations=policy_result.violations,
             )
             self._record_answered(response, declared=declared, inferred=inferred, grounded=grounded)
@@ -500,7 +503,7 @@ class BaseAgent:
                     # 换了行，\n 会把它当一句放出来——所以每一段都要摘一遍。
                     safe, seen = self._split_handoff_trailer(safe)
                     if seen is not None:
-                        declared = seen
+                        declared = declared is True or seen
                 if safe:
                     full.append(safe)
                     if req.fact_evidence is None:
@@ -510,7 +513,7 @@ class BaseAgent:
             if tail:
                 tail, seen = self._split_handoff_trailer(tail)
                 if seen is not None:
-                    declared = seen
+                    declared = declared is True or seen
             if tail:
                 full.append(tail)
                 if req.fact_evidence is None:
@@ -537,6 +540,7 @@ class BaseAgent:
                 confidence=self._self_confidence(guard.violations, escalate),
                 latency_ms=ms,
                 escalate=escalate,
+                handoff_declared=declared,
                 policy_violations=guard.violations,
             )
             self._record_answered(response, declared=declared, inferred=inferred, grounded=grounded,
@@ -747,7 +751,7 @@ class BaseAgent:
                     if safe:
                         safe, seen = self._split_handoff_trailer(safe)
                         if seen is not None:
-                            declared = seen
+                            declared = declared is True or seen
                     if safe:
                         full.append(safe)
                         if req.fact_evidence is None:
@@ -796,7 +800,7 @@ class BaseAgent:
             if tail:
                 tail, seen = self._split_handoff_trailer(tail)
                 if seen is not None:
-                    declared = seen
+                    declared = declared is True or seen
             if tail:
                 full.append(tail)
                 if req.fact_evidence is None:
@@ -828,6 +832,7 @@ class BaseAgent:
                 confidence=self._self_confidence(guard.violations, escalate),
                 latency_ms=ms,
                 escalate=escalate,
+                handoff_declared=declared,
                 policy_violations=guard.violations,
             )
             self._record_answered(response, declared=declared, inferred=inferred, grounded=grounded,
@@ -926,13 +931,13 @@ class BaseAgent:
     @staticmethod
     def _split_handoff_trailer(text: str) -> tuple[str, bool | None]:
         """
-        把末尾的 [[handoff:yes|no]] 标记摘掉，返回 (干净正文, 声明的决定)。
+        摘掉 [[handoff:yes|no]] 标记；矛盾或重复声明中 yes 优先。
         没有标记时第二项为 None，调用方退回关键词判断。
         """
-        m = _HANDOFF_TRAILER_RE.search(text or "")
-        if not m:
+        markers = list(_HANDOFF_TRAILER_RE.finditer(text or ""))
+        if not markers:
             return text, None
-        return text[: m.start()].rstrip(), m.group(1).lower() == "yes"
+        return _HANDOFF_TRAILER_RE.sub("", text).rstrip(), any(m.group(1).lower() == "yes" for m in markers)
 
     def _decide_escalation(self, content: str, declared: bool | None, grounded: bool) -> bool:
         """
@@ -1569,6 +1574,7 @@ class AgentOrchestrator:
                 answer_confidence=answer_confidence,
                 policy_violations=response.policy_violations,
                 executed_agent=response.agent_type,
+                answer_handoff_declared=response.handoff_declared,
             )
 
         return OrchestratorResult(
@@ -1583,6 +1589,7 @@ class AgentOrchestrator:
             supporting_agents=[],
             routing_reason=decision.reason,
             routing_confidence=decision.confidence,
+            answer_handoff_declared=response.handoff_declared,
             answer_confidence=answer_confidence,
             policy_violations=response.policy_violations,
         )
@@ -1616,6 +1623,8 @@ class AgentOrchestrator:
         escalated = any(r.escalate for r in ok)
         violations = [v for r in ok for v in r.policy_violations]
         answer_confidence = self._answer_confidence(req, decision, ok)
+        declared = (True if any(r.handoff_declared is True for r in ok)
+                    else False if ok and all(r.handoff_declared is False for r in ok) else None)
 
         handoff_reasons = self._handoff_signals(req, decision, ok)
         if handoff_reasons:
@@ -1624,6 +1633,7 @@ class AgentOrchestrator:
                 answer=combined if ok else "",
                 answer_confidence=answer_confidence,
                 policy_violations=violations,
+                answer_handoff_declared=declared,
             )
 
         return OrchestratorResult(
@@ -1638,6 +1648,7 @@ class AgentOrchestrator:
             supporting_agents=decision.supporting_agents,
             routing_reason=decision.reason,
             routing_confidence=decision.confidence,
+            answer_handoff_declared=declared,
             answer_confidence=answer_confidence,
             policy_violations=violations,
         )
@@ -1771,6 +1782,7 @@ class AgentOrchestrator:
                 policy_violations=response.policy_violations,
                 executed_agent=response.agent_type,
                 answer_already_sent=True,
+                answer_handoff_declared=response.handoff_declared,
             )
             # 回答本体已经流出去了，这里只补发转人工提示的增量部分
             yield {"type": "delta", "text": result.response[len(response.content):]}
@@ -1790,6 +1802,7 @@ class AgentOrchestrator:
                 primary_agent=decision.primary_agent,
                 routing_reason=decision.reason,
                 routing_confidence=decision.confidence,
+                answer_handoff_declared=response.handoff_declared,
                 answer_confidence=answer_confidence,
                 policy_violations=response.policy_violations,
             ),
@@ -1922,6 +1935,7 @@ class AgentOrchestrator:
         policy_violations: list[PolicyViolation] | None = None,
         executed_agent: AgentType | None = None,
         answer_already_sent: bool = False,
+        answer_handoff_declared: bool | None = None,
     ) -> OrchestratorResult:
         """
         产出转人工结果。
@@ -1977,6 +1991,7 @@ class AgentOrchestrator:
             routing_confidence=decision.confidence,
             handoff=True,
             handoff_reason=reason,
+            answer_handoff_declared=answer_handoff_declared,
             answer_confidence=answer_confidence,
             policy_violations=list(policy_violations or []),
         )

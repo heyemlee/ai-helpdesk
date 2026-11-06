@@ -25,6 +25,7 @@ def encode_result(result) -> dict[str, Any]:
         "routing_confidence": result.routing_confidence,
         "handoff": result.handoff,
         "handoff_reason": result.handoff_reason,
+        "answer_handoff_declared": result.answer_handoff_declared,
         "answer_confidence": result.answer_confidence,
         "needs_clarification": result.needs_clarification,
         "policy_violations": [
@@ -60,6 +61,7 @@ def decode_result(data: dict[str, Any]):
         routing_confidence=float(data.get("routing_confidence") or 0.0),
         handoff=bool(data.get("handoff")),
         handoff_reason=data.get("handoff_reason", ""),
+        answer_handoff_declared=data.get("answer_handoff_declared"),
         answer_confidence=float(data.get("answer_confidence", 1.0)),
         needs_clarification=bool(data.get("needs_clarification")),
         policy_violations=[PolicyViolation(**v) for v in data.get("policy_violations") or []],

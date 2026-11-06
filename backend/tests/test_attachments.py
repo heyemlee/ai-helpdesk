@@ -65,6 +65,7 @@ def evidence(rows=None):
         "steps": [
             {
                 "database": "erp_db",
+                "final_sql": "SELECT " + ", ".join((rows or [{"order_ref": "SO-1", "model": "A", "missing_qty": 2}])[0]) + " FROM image_records",
                 "success": True,
                 "truncated": False,
                 "rows": rows or [{"order_ref": "SO-1", "model": "A", "missing_qty": 2}],

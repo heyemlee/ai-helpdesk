@@ -26,6 +26,20 @@ def recording():
     return json.loads((Path(__file__).parent / "fixtures/stage6_image_handoff.json").read_text())
 
 
+def complete_review_control(review):
+    """Use the later complete development execution as the new commit control.
+
+    The historical failure fixture remains unchanged. Its old provenance did
+    not contain SQL bindings; it is no longer a valid positive adoption input.
+    Business values must match before substituting the complete source record.
+    """
+    facts = json.loads((Path(__file__).parent / "fixtures/development_handoff_scope.json").read_text())["records"]["images-001"]["snapshot"]["facts"]
+    for item in review["fields"]:
+        assert item["db_value"] == facts[item["field"]]["db_value"]
+        item["source"] = copy.deepcopy(facts[item["field"]]["business_source"])
+    return review
+
+
 @pytest.fixture
 async def event_log():
     log = await EventLog.open(EventLogConfig(mode="full", instance="staff"))
@@ -43,10 +57,10 @@ async def verified_continuation(connected, *, only_fields=None, additional_parti
         message=recorded["request_message"], attachment_ids=[image["id"], *([extra["id"]] if extra else [])],
     ))
     run = await claim(a, receipt)
-    review = recorded["image_review"]
+    review = complete_review_control(recorded["image_review"])
     review.update(attachment_id=image["id"], sha256=run.case_context["snapshot"]["review_materials"][0]["sha256"])
-    # Refresh only the observation clock and local attachment identity. Business
-    # values, units, source row and the recorded verdict remain unchanged.
+    # Refresh only the complete control's observation clock and local attachment
+    # identity. Business values and the historical answer remain unchanged.
     for item in review["fields"]:
         item["source"]["observed_at"] = datetime.now(UTC).isoformat()
     if only_fields:
@@ -235,8 +249,8 @@ async def test_checkpoint_replay_rechecks_final_draft_and_existing_fences(connec
         run.checkpoint = {"case_proposal": captured}
         ctx.run = run
         payload = (await executor(ctx)).result
-    retained = {"draft_changed", "dead", "pending_image", "ordinary_followup", "legacy_review", "older_image_fact"}
-    if change in {"takeover", "stale_evidence", "mixed_evidence", "missing_provenance"}:
+    retained = {"draft_changed", "dead", "pending_image", "ordinary_followup", "legacy_review"}
+    if change in {"takeover", "stale_evidence", "mixed_evidence", "missing_provenance", "older_image_fact"}:
         assert payload["case_applied"] is False and payload["handoff"] is False
     else:
         assert payload["case_applied"] is True
