@@ -131,19 +131,65 @@ class PublicationTests(unittest.TestCase):
     def test_published_digest_resolves_to_exact_tested_images(self):
         ids = {name: 'sha256:' + str(index) * 64 for index, name in enumerate(['backend','frontend','sql'], 1)}
         registry = {name: 'example.invalid/app/' + name + '@sha256:' + str(index) * 64 for index, name in enumerate(ids, 4)}
-        manifest = {'revision':'candidate','staff_boundary':1,'contract':'1.14','images':ids}
         def inspected(reference):
             service = next(name for name in ids if reference in {ids[name],registry[name]})
             return {'Id':ids[service],'RepoDigests':[registry[service]],'Config':{'Labels':{'ai-helpdesk.staff-boundary':'1','org.opencontainers.image.revision':'candidate'}}}
-        local = artifact_identity(manifest, inspected)
-        published = {**manifest,'images':registry,'tested_image_ids':ids}
-        self.assertEqual(artifact_identity(published, inspected),local)
         def changed(reference):
             info = inspected(reference)
             if reference == registry['backend']:info['Id']='sha256:'+'9'*64
             return info
-        with self.assertRaisesRegex(ValueError,'different tested image'):
-            artifact_identity(published,changed)
+        for contract in ('1.14', '1.15'):
+            with self.subTest(contract=contract):
+                manifest = {'revision':'candidate','staff_boundary':1,'contract':contract,'images':ids}
+                local = artifact_identity(manifest, inspected)
+                self.assertEqual(local, {'revision':'candidate', 'images':ids})
+                published = {**manifest,'images':registry,'tested_image_ids':ids}
+                self.assertEqual(artifact_identity(published, inspected),local)
+                with self.assertRaisesRegex(ValueError,'different tested image'):
+                    artifact_identity(published,changed)
+
+    def test_unknown_or_malformed_contracts_fail_before_image_inspection(self):
+        contracts = ('1.13', '1.16', '2.0', '1.15.0', 'v1.15', ' 1.15', '1.15 ', '', None, 1.15, True, [], {})
+        manifests = [{'staff_boundary':1, 'contract':contract} for contract in contracts]
+        manifests.append({'staff_boundary':1})
+        with patch('release.subprocess.check_output') as inspect:
+            for manifest in manifests:
+                with self.subTest(manifest=manifest):
+                    with self.assertRaisesRegex(ValueError, 'minimum employee/contract boundary'):
+                        artifact_identity(manifest)
+            inspect.assert_not_called()
+
+    def test_supported_contracts_still_require_the_employee_boundary(self):
+        with patch('release.subprocess.check_output') as inspect:
+            for contract in ('1.14', '1.15'):
+                for boundary in (None, 0, 2, '1'):
+                    with self.subTest(contract=contract, boundary=boundary):
+                        with self.assertRaisesRegex(ValueError, 'minimum employee/contract boundary'):
+                            artifact_identity({'contract':contract, 'staff_boundary':boundary})
+            inspect.assert_not_called()
+
+    def test_supported_contracts_still_require_exactly_three_images(self):
+        with patch('release.subprocess.check_output') as inspect:
+            for contract in ('1.14', '1.15'):
+                for images in ({'backend':'id'}, {'backend':'a', 'frontend':'b', 'sql':'c', 'extra':'d'}):
+                    with self.subTest(contract=contract, images=images):
+                        with self.assertRaisesRegex(ValueError, 'Exactly three'):
+                            artifact_identity({'contract':contract, 'staff_boundary':1, 'images':images})
+            inspect.assert_not_called()
+
+    def test_supported_contracts_still_reject_wrong_image_labels_and_local_ids(self):
+        ids = {name:'sha256:' + str(index) * 64 for index, name in enumerate(['backend','frontend','sql'], 1)}
+        labels = {'ai-helpdesk.staff-boundary':'1', 'org.opencontainers.image.revision':'candidate'}
+        for contract in ('1.14', '1.15'):
+            manifest = {'revision':'candidate', 'staff_boundary':1, 'contract':contract, 'images':ids}
+            for bad_labels in ({}, {**labels, 'ai-helpdesk.staff-boundary':'0'}, {**labels, 'org.opencontainers.image.revision':'other'}):
+                with self.subTest(contract=contract, labels=bad_labels):
+                    with self.assertRaisesRegex(ValueError, 'does not match the release manifest'):
+                        artifact_identity(manifest, lambda reference: {'Id':reference, 'Config':{'Labels':bad_labels}})
+            with self.subTest(contract=contract, local_identity='changed'):
+                with self.assertRaisesRegex(ValueError, 'Local immutable identity changed'):
+                    artifact_identity(manifest, lambda reference: {'Id':'sha256:' + '9' * 64, 'Config':{'Labels':labels}})
+
     def test_timestamp_exports_never_open_the_private_backup_directory(self):
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder);private=root/'private';private.mkdir(mode=0o700)

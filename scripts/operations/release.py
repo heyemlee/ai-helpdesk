@@ -15,7 +15,7 @@ def artifact_identity(manifest, inspect_image=None):
     """Registry references and local IDs must resolve to the same tested bytes."""
     if inspect_image is None:
         inspect_image = lambda image: json.loads(subprocess.check_output(['docker','image','inspect',image]))[0]
-    if manifest.get('staff_boundary') != 1 or manifest.get('contract') != '1.14':
+    if manifest.get('staff_boundary') != 1 or manifest.get('contract') not in ('1.14', '1.15'):
         raise ValueError('Release lacks the minimum employee/contract boundary; keep maintenance closed')
     if set(manifest.get('images',{})) != {'backend','frontend','sql'}:
         raise ValueError('Exactly three application image identities are required')
