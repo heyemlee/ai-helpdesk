@@ -1,5 +1,6 @@
 """Validate actual mixed-workload records and independently rescore each Case."""
 import math
+import statistics
 
 from acceptance.oracle import score
 
@@ -52,6 +53,14 @@ def require_mixed(data, corpus):
     scenarios = {s["id"]: s for s in corpus["scenarios"]}
     allowed = {"development-orders-001", "development-policies-001", "development-images-001"}
     for name, profile in data["profiles"].items():
+        durations = sorted(r.get("elapsed_seconds", 0) for r in profile["records"])
+        if (any(type(v) not in (int, float) or v <= 0 for v in durations)
+                or profile.get("p50_seconds") != statistics.median(durations)
+                or profile.get("p95_seconds") != durations[math.ceil(len(durations) * .95) - 1]):
+            raise ValueError("Load latency summary differs from actual consultation durations")
+        for key in ("simulated_provider_before", "simulated_provider_after"):
+            if profile.get(key, {}).get("fixed_delay_seconds") != .8 or profile.get(key, {}).get("supplier_requests") != 0:
+                raise ValueError("Infrastructure load did not use the frozen 0.8-second local simulation")
         for record in profile["records"]:
             sid, observed = record.get("scenario_id"), record["observed"]
             if sid not in allowed or observed.get("id") != sid or record.get("group") != scenarios[sid]["group"] or observed.get("case", {}).get("created_by") != record["actor_id"]:
