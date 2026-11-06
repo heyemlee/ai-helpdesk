@@ -7,6 +7,7 @@ import re
 from datetime import UTC, datetime
 
 from app.core.evidence import assess
+from app.core.sql_sources import source_columns
 
 MAX_AGE_SECONDS = 300
 _ANCHORS = ("order_ref", "order_id", "order_no", "model", "sku", "expected_model", "received_model", "id")
@@ -106,13 +107,25 @@ def _verified_cells(data, *, at=None):
                 for name, v in row.items() if v is not None and not isinstance(v, (list, dict))}
     if actual != expected or len(actual) != len(cells) or "invalid_evidence" in issues:
         return [], ["invalid_evidence"]
-    grouped = {}
+    grouped, outputs = {}, {}
     for cell in checked:
         if cell["entity_keys"]:
-            key = json.dumps([cell["entity_keys"], cell["field"]], sort_keys=True)
-            grouped.setdefault(key, set()).add(json.dumps([cell["value"], cell["unit"],
-                (cell.get("column_metadata") or {}).get("schema_revision")], sort_keys=True))
-    if any(len(values) > 1 for values in grouped.values()):
+            physical = dict(source_columns(data["steps"][cell["step_index"]]["final_sql"])).get(cell["field"])
+            origin = [cell["database"], *physical] if physical else None
+            # A source revision describes one physical column, not every output
+            # with the same alias. Equal join keys from different tables are not
+            # contradictory definitions; aliases of one column still must agree.
+            key = json.dumps([cell["entity_keys"], origin or ["unknown", cell["field"]]], sort_keys=True)
+            grouped.setdefault(key, []).append(cell)
+            output = json.dumps([cell["entity_keys"], cell["field"]], sort_keys=True)
+            outputs.setdefault(output, []).append((origin, cell))
+    # An unknown physical source cannot separate otherwise conflicting values.
+    # Optional missing/invalid meaning alone never invalidates an execution cell.
+    groups = list(grouped.values()) + [[cell for _, cell in rows] for rows in outputs.values()
+                                      if any(origin is None for origin, _ in rows)]
+    if any(len({json.dumps([cell["value"], cell["unit"]], sort_keys=True) for cell in group}) > 1
+           or len({cell["column_metadata"]["schema_revision"] for cell in group if cell["column_metadata"]}) > 1
+           for group in groups):
         return [], ["conflicting_records"]
     return checked, sorted(set(issues))
 
@@ -133,6 +146,8 @@ def verified_column_metadata(step, field):
                 or any(not isinstance(v, str) or not v.strip() or len(v) > 2000 or "\x00" in v for v in entry.values())
                 or entry["database"] != step.get("database") or entry["output_field"] != field or not step.get("final_sql")
                 or entry["query_hash"] != hashlib.sha256(step["final_sql"].encode()).hexdigest()):
+            return {}
+        if dict(source_columns(step["final_sql"])).get(field) != (entry["table"], entry["column"]):
             return {}
         source = {k: v for k, v in entry.items() if k not in {"schema_revision", "query_hash", "output_field"}}
         revision = hashlib.sha256(json.dumps(source, ensure_ascii=False, sort_keys=True).encode()).hexdigest()

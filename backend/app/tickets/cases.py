@@ -774,13 +774,16 @@ class CaseService:
         # New stable message/run identity. Insertion and source terminal receipt
         # share the transaction, so a crash cannot strand the continuation.
         message_id, next_run = "verified_" + run.run_id, new_run_id()
-        snapshot = {**run.case_context["snapshot"], "facts": facts, "pending_fields": c["pending_fields"],
-                    "status": c["status"], "review_materials": []}
         from app.tickets.draft_decision import complete_order_image_review
+        content = "图片核对已完成；请按已确认事实和待补字段继续处理。"
+        snapshot = {**run.case_context["snapshot"], "facts": facts, "pending_fields": c["pending_fields"],
+                    "status": c["status"], "review_materials": [],
+                    "material_review_receipt": {"case_id": c["case_id"],
+                                                "request_message_id": run.case_context["message_id"],
+                                                "complete": complete_order_image_review(reviews)}}
         context = {**run.case_context, "message_id": message_id, "expected_case_version": c["version"],
                    "snapshot": snapshot, "materials_reviewed": True,
                    "image_review_complete": complete_order_image_review(reviews)}
-        content = "图片核对已完成；请按已确认事实和待补字段继续处理。"
         seq = await conn.fetchval(f"INSERT INTO conversation_log(conv_id,user_id,role,content,created_at)"
                                   f" VALUES($1,$2,'system',$3,{_NOW}) RETURNING seq", run.conv_id, run.user_id, content)
         await conn.execute("INSERT INTO conversation_log_turns(seq,instance) VALUES($1,$2)", seq, self.run_instance)
@@ -790,7 +793,7 @@ class CaseService:
         await conn.execute(f"INSERT INTO agent_runs(run_id,instance,idempotency_key,conv_id,user_id,message,request_id,"
                            f"transport,case_context,created_at,updated_at,dispatched_at)"
                            f" VALUES($1,$2,$3,$4,$5,$6,$7,'case',$8::jsonb,{_NOW},{_NOW},0)",
-                           next_run, self.run_instance, message_id, run.conv_id, run.user_id, content,
+                           next_run, self.run_instance, message_id, run.conv_id, run.user_id, run.message,
                            run.request_id, dumps(context))
         payload.update(response="图片核对结果已保存，正在继续处理。", case_version=c["version"],
                        case_status=c["status"], next_run_id=next_run, draft_id=None, handoff=False)

@@ -559,6 +559,13 @@ class ToolManager:
                               lookup_status="empty" if healthy else "unavailable",
                               error=None if healthy else "未能完成知识检索")
 
+        # Preserve the existing reordering of larger candidate sets after a
+        # rewrite failure. Only suppress the new small-set coverage call: that
+        # path previously needed no model request and has no usable verdict.
+        if rewrite_failed and len(candidates) <= top_k:
+            return ToolResult(success=True, data=candidates[:top_k], tool_name=tool_name,
+                              reranked=False, evidence_ok=None)
+
         outcome = await self._rerank(query, candidates, top_k)
         # **模型调用失败不是"模型判断证据不足"。** 改写或重排没调成的时候，这一轮
         # 没有任何关于证据够不够的判断——以前这里会退回分数阈值、判成"不足"，然后
@@ -709,9 +716,17 @@ class ToolManager:
         query 和候选拼在一起过一遍前向，能建模两者的交互；LLM listwise 更慢
         更贵，但能一次看到全部候选、给出全局排序，并且顺带判定证据充分性。
 
-        候选数不超过 top_k 时没有可排的东西，直接原样返回且 reranked=False——
-        否则调用方会看到 reranked=True 但结果其实没经过任何重排。
+        普通查询的候选数不超过 top_k 时直接原样返回且 reranked=False；
+        政策查询仍需判定所选时点、范围和条款的覆盖情况。
         """
+        from app.core.policy_scope import asks_for_policy
+
+        # Policy coverage includes the requested version, date and scope. A
+        # filtered singleton has nothing to reorder, but similarity alone cannot
+        # decide whether it answers that question. Keep the same bounded verdict
+        # and correction path, with all applicability evidence visible to it.
+        if asks_for_policy(query):
+            return await self._llm_rerank(query, items, top_k)
         if len(items) <= top_k:
             return RerankOutcome(items=items, reranked=False)
 
@@ -742,7 +757,12 @@ class ToolManager:
             title = str(item.get("title", "")).strip()
             content = str(item.get("content", "")).strip()
             if title or content:
-                return f"{title}\n{content[:limit]}"
+                from app.core.policy_scope import policy_source_metadata
+
+                applicability = policy_source_metadata(item)
+                metadata = ("\n本条引用的已校验适用元数据：" + json.dumps(applicability, ensure_ascii=False)
+                            if applicability else "")
+                return f"{title}\n{content[:limit]}{metadata}"
         return json.dumps(item, ensure_ascii=False)[:limit]
 
     async def _llm_rerank(self, query: str, items: list[Any], top_k: int) -> RerankOutcome:
@@ -769,6 +789,8 @@ class ToolManager:
 order 是按相关性降序排列的候选索引。
 sufficient 判断标准：排在最前的内容能否直接支撑一个具体、有依据的回答；
 只是话题相关但答不到点上，算 false。
+适用元数据只证明所选时点、范围和版本，不代替正文中的处理条款；
+按原始查询要求的目标判断覆盖，不把未被请求的额外业务操作当作缺口。
 missing 在 sufficient 为 false 时用一句话说明缺什么信息，充分时留空字符串。"""
         prompt = self._clean_text(prompt)
 

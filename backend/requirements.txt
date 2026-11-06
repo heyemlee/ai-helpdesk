@@ -61,6 +61,7 @@ httpx2==2.12.0             # anthropic 1.x 的 HTTP 层。它是 httpx 原作者
 
 # ── 工具 ──────────────────────────────────────────────────────────────────────
 python-dotenv==1.0.1
+sqlglot==27.29.0           # Verify executed SQL column identities before comparing sources
 
 # ── 测试 ──────────────────────────────────────────────────────────────────────
 pytest==8.3.4

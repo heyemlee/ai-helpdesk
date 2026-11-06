@@ -21,7 +21,7 @@
 import logging
 import re
 from collections.abc import Iterable, Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any
 
@@ -498,12 +498,21 @@ class AnswerPolicy:
                 rebuilt.append(chunk)
                 continue
 
-            hit = None if self._reference_time(sentence, reference_times or {}) else self._check_sentence(sentence, normalized_sources)
+            checked_sentence = sentence
+            if (reference_times or {}).get("policy_as_of"):
+                # A warning not to use today's clock for a historical policy
+                # lookup is not a promise to perform a business action today.
+                # Remove only this closed comparison; every other date, amount
+                # and action in the same sentence is still checked normally.
+                checked_sentence = re.sub(
+                    r"(?:不能|不可|不应|不要)(?:按|以|根据|依据)(?:今天|今日)的?日期"
+                    r"(?:来)?(?:判断|判定)(?:其|该政策|本政策)?是否适用", "", sentence)
+            hit = None if self._reference_time(sentence, reference_times or {}) else self._check_sentence(checked_sentence, normalized_sources)
             if hit is None:
                 rebuilt.append(chunk)
                 continue
 
-            violations.append(hit)
+            violations.append(replace(hit, sentence=sentence))
             # 句首和句尾的空白都要保留。只保尾部时，中文看不出来（句子之间没有空格），
             # 英文会把替换句和前一句黏成 "...before it's verified.The invoice..."。
             head = chunk[: len(chunk) - len(chunk.lstrip())]
@@ -540,16 +549,33 @@ class AnswerPolicy:
         """
         text = sentence.strip().strip("|").strip().removeprefix("- ")
         text = re.sub(r"[*`]", "", text)
+        validity = re.fullmatch(r"(?:版本有效时间|版本有效期)\s*[:：|]\s*(.+?)\s*生效\s*[；;]\s*(.+?)\s*到期", text)
+        if validity:
+            # Pair the endpoints from one verified policy; never splice dates
+            # from different revisions into a claimed validity interval.
+            for interval in reference_times.get("policy_validity_ranges", []):
+                start, separator, end = interval.partition("/")
+                if (separator and self._reference_time("生效日期：" + validity[1], {"policy_effective_at": [start]})
+                        and self._reference_time("失效日期：" + validity[2], {"policy_expires_at": [end]})):
+                    return True
+            return False
         labels = {
-            "policy_as_of": r"所选日期|适用日期|适用时点|查询基准|查询时间点|selected date|as of|query time",
-            "policy_effective_at": r"政策生效日期|生效日期|effective date|effective at",
-            "policy_expires_at": r"政策失效日期|失效日期|expires at|expiry date",
+            "policy_as_of": r"所选日期|所选时点|适用日期|适用时点|查询基准|查询时间点|查询时点|selected date|as of|query time",
+            "policy_effective_at": r"政策生效日期|生效日期|生效时间|生效时点|effective date|effective at",
+            "policy_expires_at": r"政策失效日期|失效日期|失效时间|失效时点|expires at|expiry date",
         }
         for kind, names in labels.items():
             field = re.fullmatch(rf"(?:{names})\s*[:：|]\s*(.+)", text, re.I)
             if not field or not reference_times.get(kind):
                 continue
             value = field[1]
+            if kind == "policy_effective_at":
+                unbounded = re.fullmatch(
+                    r"(.+?)\s*[；;]\s*未设置(?:失效时间|失效日期|到期时间)"
+                    r"(?:[，,]\s*(?:因此)?在(?:上述|所选)(?:查询|适用)?时点有效)?", value)
+                if unbounded:
+                    return self._reference_time("生效日期：" + unbounded[1], {
+                        "policy_effective_at": reference_times.get("policy_open_ended_at", [])})
             dates = list(_LEAD_TIME_RE.finditer(value))
             if len(dates) != 1:
                 return False

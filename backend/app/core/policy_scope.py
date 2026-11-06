@@ -158,6 +158,13 @@ def policy_reference_times(scope=None, sources=()):
         verified = policy_source_metadata(source)
         if not verified:
             continue
+        policy = verified["policy"]
+        if policy["effective_at"]:
+            kind = "policy_validity_ranges" if policy["expires_at"] else "policy_open_ended_at"
+            value = (policy["effective_at"] + "/" + policy["expires_at"]
+                     if policy["expires_at"] else policy["effective_at"])
+            if value not in times.setdefault(kind, []):
+                times[kind].append(value)
         for key, value in {"policy_as_of": verified["as_of"],
                            "policy_effective_at": verified["policy"]["effective_at"],
                            "policy_expires_at": verified["policy"]["expires_at"]}.items():
