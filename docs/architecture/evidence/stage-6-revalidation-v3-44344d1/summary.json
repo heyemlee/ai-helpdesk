@@ -1,0 +1,198 @@
+{
+  "archive_verified": true,
+  "artifacts": {
+    "images": {
+      "backend": "sha256:41c6cee4b8780f02cee7b80784acdc4e754f82b7d1e3649d31aea9133d5f37b7",
+      "frontend": "sha256:3d89fc820c86f29ae05dae64c13093f8efccfb712bf6f8c9e45233aa0025554a",
+      "sql": "sha256:8ffc39a90d9bc8b2b1b1b4edbc0e8aff0169c45d717869d435c8b962de958784"
+    },
+    "revision": "44344d10da110f530f01d3526c8c97ab2882d960"
+  },
+  "candidate_revision": "44344d10da110f530f01d3526c8c97ab2882d960",
+  "corpus_manifest_sha256": "403fd101f834ee384b46c07570e1efefd3ac5275353d991f872f98b88b206b2e",
+  "harness_sha256": "68964a48f9d688038ab318471e4279a153655d42b0b53ddefa1d8e0113feb75e",
+  "kind": "development_candidate_revalidation",
+  "postgres_dump_sha256": "eeeceb14619d4afbb86f733a9505eb6f6136fe8b96436c7e99b6a48d5b23873f",
+  "postgres_toc_sha256": "36f08763ab951e874b4ba28a94f2a32422f71d05b9c23ee98ba0ed27c82928ec",
+  "prior_cumulative_proof_sha256": "9b626421466aa3dbda10fdbc2486fef6a071f4df068e099be5e0259e8188ae28",
+  "release_eligible": false,
+  "remaining": "Three unauthorized handoffs remain in delivery, policy and image development cases. No formal candidate rounds started.",
+  "requests": {
+    "all_requests_have_successful_receipts": false,
+    "all_run_bindings_verified": true,
+    "input_tokens": 620375,
+    "known_real_receipts_verified": true,
+    "ledger_end": 395,
+    "ledger_start": 275,
+    "new": 120,
+    "output_tokens": 11379,
+    "successful_real_receipts": 119,
+    "unattributed": 0,
+    "unfinished": 1,
+    "unknown_usage": 1
+  },
+  "root_recomputed_all_scenarios": true,
+  "score": {
+    "accuracy": 0.75,
+    "business_resolved": 0,
+    "complete": true,
+    "correct": 9,
+    "error_counts": {},
+    "groups": {
+      "cross_message": {
+        "accuracy": 1.0,
+        "correct": 3,
+        "total": 3
+      },
+      "images": {
+        "accuracy": 0.6666666666666666,
+        "correct": 2,
+        "total": 3
+      },
+      "orders": {
+        "accuracy": 0.6666666666666666,
+        "correct": 2,
+        "total": 3
+      },
+      "policies": {
+        "accuracy": 0.6666666666666666,
+        "correct": 2,
+        "total": 3
+      }
+    },
+    "image_extraction": {
+      "date/all": {
+        "correct": 3,
+        "total": 3
+      },
+      "date/clear": {
+        "correct": 3,
+        "total": 3
+      },
+      "model/all": {
+        "correct": 3,
+        "total": 3
+      },
+      "model/clear": {
+        "correct": 3,
+        "total": 3
+      },
+      "order_ref/all": {
+        "correct": 3,
+        "total": 3
+      },
+      "order_ref/clear": {
+        "correct": 2,
+        "total": 2
+      },
+      "order_ref/unclear": {
+        "correct": 1,
+        "total": 1
+      },
+      "quantity/all": {
+        "correct": 3,
+        "total": 3
+      },
+      "quantity/clear": {
+        "correct": 3,
+        "total": 3
+      },
+      "status/all": {
+        "correct": 3,
+        "total": 3
+      },
+      "status/clear": {
+        "correct": 3,
+        "total": 3
+      }
+    },
+    "image_fields": {
+      "date/all": {
+        "correct": 3,
+        "total": 3
+      },
+      "date/conflict": {
+        "correct": 1,
+        "total": 1
+      },
+      "date/matched": {
+        "correct": 2,
+        "total": 2
+      },
+      "model/all": {
+        "correct": 3,
+        "total": 3
+      },
+      "model/conflict": {
+        "correct": 1,
+        "total": 1
+      },
+      "model/matched": {
+        "correct": 2,
+        "total": 2
+      },
+      "order_ref/all": {
+        "correct": 3,
+        "total": 3
+      },
+      "order_ref/conflict": {
+        "correct": 1,
+        "total": 1
+      },
+      "order_ref/matched": {
+        "correct": 1,
+        "total": 1
+      },
+      "order_ref/unclear": {
+        "correct": 1,
+        "total": 1
+      },
+      "quantity/all": {
+        "correct": 3,
+        "total": 3
+      },
+      "quantity/conflict": {
+        "correct": 1,
+        "total": 1
+      },
+      "quantity/matched": {
+        "correct": 2,
+        "total": 2
+      },
+      "status/all": {
+        "correct": 3,
+        "total": 3
+      },
+      "status/conflict": {
+        "correct": 1,
+        "total": 1
+      },
+      "status/matched": {
+        "correct": 2,
+        "total": 2
+      }
+    },
+    "invariant_violations": 3,
+    "missing": [],
+    "run_terminal": 12,
+    "total": 12
+  },
+  "script_sha256": "8e5767efbe1ed4a71ea167fed81537a48ef9da57994b0e8ebb7b08bc8e1bd1fc",
+  "source_commit": "607ad9fe8fa3ad8ead11afa8e583172c9a33e7af",
+  "sqlite_integrity_verified": {
+    "sql-state/audit.db": "f5c63686d1e647937f63dd7e2706c8ac3ac04b59a21d96441d051f56a5fc3722",
+    "sql-state/memory.db": "6fe0be0fdd1c33254f7df9f788a23f4770facfddafe4e5f5b4cb9de83dbc233e",
+    "sql-state/runs.db": "294b4daf09a62d8a546924df70f673fee0bf180f18f8fbed63bbc7ec5757fbb0"
+  },
+  "stage6_cumulative": {
+    "dollar_cost": null,
+    "full_token_totals": null,
+    "known_input_subtotal": 12205283,
+    "known_output_subtotal": 247565,
+    "other_chats_excluded": true,
+    "reserved_requests": 2401,
+    "unknown_usage_requests": 5
+  },
+  "supersedes_receipt_label_in_first_root_proof": "The initial proof verified known receipts and all Run bindings but used an overbroad receipt-label name. Both original proof and source are retained. 119 successful receipts and one unknown request are explicit in this final proof.",
+  "temporary_stack_closed": true
+}

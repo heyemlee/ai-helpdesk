@@ -1,0 +1,191 @@
+{
+  "file_count": 46,
+  "files": {
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration-entry.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration/agent_runs.json": {
+      "bytes": 333439,
+      "sha256": "cee0240aa22948c48f8da8949ff9120410e420bbb4d96507e2725e3b6604caa6"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration/candidate.json": {
+      "bytes": 406,
+      "sha256": "8309876be7bd598ed74cfa018ff12985f9970a39d533d36836734da20842c897"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration/case_events.json": {
+      "bytes": 13769,
+      "sha256": "d3b0da46ad92b16b42176c49ce155369578fe8bde80c62cc1860c58c5da70c97"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration/case_image_reviews.json": {
+      "bytes": 20054,
+      "sha256": "09fad99dd1968aa423eaf37c63c7383c143a01d87e9503275388e9b681f8926e"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration/compose.log": {
+      "bytes": 173211,
+      "sha256": "50a20bcb47225ae6a8df352e81b40528ab5ca5a72fa682fa8234702e4048bcf8"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration/containers.log": {
+      "bytes": 168381,
+      "sha256": "fff341d728dc28b4b419f71dbd4580f8cc921ce203e019b965da0f5768fbfbce"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration/development-cross_message-001.json": {
+      "bytes": 42941,
+      "sha256": "a14bf382deabe9ec08794121ba7095bdc6dc12f3cfebe96dbb75c1aede0cfb3d"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration/development-cross_message-002.json": {
+      "bytes": 69374,
+      "sha256": "0e162b30aaf05287ec5078028f437d9aeb83874c999175f05bf9a535ed79b551"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration/development-cross_message-003.json": {
+      "bytes": 84434,
+      "sha256": "6712c2bd4429a89ecf2ff1af230390653b70bd85fe833dbb1c437c6f0f6bf219"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration/development-images-001.json": {
+      "bytes": 80408,
+      "sha256": "2bd524c74917193a7c41e9527b6a95dcde0a7af15948e68033548e882b96efa8"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration/development-images-006.json": {
+      "bytes": 47361,
+      "sha256": "d2c7099d8f56e39fd2c65c7a9d0ca371503c4265e1787c8234851433ca923504"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration/development-images-011.json": {
+      "bytes": 15839,
+      "sha256": "192e6b07a6e15d7a6a04c39df37795908b6cdd8ce2ac1fc9cd0aa69312415755"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration/development-orders-001.json": {
+      "bytes": 45477,
+      "sha256": "24447df891c5d0b98388cd920012d58a3b3f32de8518d692034a98f3c2ffc8e5"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration/development-orders-002.json": {
+      "bytes": 43933,
+      "sha256": "3a80feca1c8278e84396639a47361efd97ee474d76fb23ff89d611781714f1a4"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration/development-orders-003.json": {
+      "bytes": 54778,
+      "sha256": "8046c5895abb3455c4120ec1290d0a469d35a38062139e8ecb50c02b42166fb6"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration/development-policies-001.json": {
+      "bytes": 14397,
+      "sha256": "d7238dd6fd6f77b228f2a068e8db5ff3f5a50de88d1e37b54872a6832643905a"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration/development-policies-002.json": {
+      "bytes": 14224,
+      "sha256": "2c29f7a936b5742bb48c7ecc8994bb318df2d049317969318321b47397e9c1c2"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration/development-policies-004.json": {
+      "bytes": 10992,
+      "sha256": "448823ba98c134c8ce003450b78669a4a639d00c621225fd094ca9c9884fc2cd"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration/execution.json": {
+      "bytes": 3236,
+      "sha256": "195d912c4efa5e3ec4d2cb403b8ec8a617f0ddf8e8fa8ab681ceec41b588bd54"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration/observed/development-cross_message-001.json": {
+      "bytes": 42601,
+      "sha256": "9bcf1f0a5a2b0a6b0522811a64803bbe6c2c89c92209875576b641c1b9e1b2bd"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration/observed/development-cross_message-002.json": {
+      "bytes": 69036,
+      "sha256": "b76ba876ff8a771d668d9162534e4b4fd83e74dd65d4828e2295a7456ec495b6"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration/observed/development-cross_message-003.json": {
+      "bytes": 84091,
+      "sha256": "e5432ff44e949a2c0fbd357acf5b2d6b6e38ac37a1e44be99f76dfc66e22d79a"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration/observed/development-images-001.json": {
+      "bytes": 79144,
+      "sha256": "f27ebc989310de308d0353724f483917bb912e40f85f65d235599279c726084d"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration/observed/development-images-006.json": {
+      "bytes": 46143,
+      "sha256": "4b20be2a7ded6c42ff4262e4ffe808217d1972a4d87d2bdbca1c5234964182b5"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration/observed/development-images-011.json": {
+      "bytes": 14614,
+      "sha256": "7e6ba336263acd7e3defb004ca4beb4b9de6076633eca69320bed82293950297"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration/observed/development-orders-001.json": {
+      "bytes": 45157,
+      "sha256": "406d86d67a1ca2d9a5ca7c226dde00c0384d75d560458e12d0c16065d5b6e496"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration/observed/development-orders-002.json": {
+      "bytes": 43608,
+      "sha256": "ca955b953f50c4937f0e90a8724dcf41af8440044e625db0f54b86a295d4eb24"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration/observed/development-orders-003.json": {
+      "bytes": 54406,
+      "sha256": "7592342865534a182ac8d8b38434f0a6c9a08cc997c0b720aa7738c9f365258d"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration/observed/development-policies-001.json": {
+      "bytes": 14072,
+      "sha256": "53aa2d1e17189e6e1acee600c48b57d4ab632eff25ffb96d2469214cf9efb809"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration/observed/development-policies-002.json": {
+      "bytes": 13898,
+      "sha256": "491d3d4e9e50db9ee9a2a9d5a2d87574956e648ed6691ece71a972ecd7d43f11"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration/observed/development-policies-004.json": {
+      "bytes": 10613,
+      "sha256": "8dff829111d33cabfc9c5b4ee9443e713180812941bf22ae3418938165d05871"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration/postgres.dump": {
+      "bytes": 236294,
+      "sha256": "eeeceb14619d4afbb86f733a9505eb6f6136fe8b96436c7e99b6a48d5b23873f"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration/progress.json": {
+      "bytes": 14303,
+      "sha256": "6a4ccb1e9bc3cec9952633a3b0b83e85b322790ae1eb315208f9d6ac508f2a7c"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration/provenance.json": {
+      "bytes": 2264,
+      "sha256": "318acda67925b6be6c19a80772ac2171273ebf73b21bdc0c4ad5cccfdc50abd4"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration/report.json": {
+      "bytes": 14304,
+      "sha256": "464cfdd7e66227a5f5c0b4df190300e02f7c70419bd55896ab3ea5c194d99b72"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration/root-postgres.toc": {
+      "bytes": 12035,
+      "sha256": "36f08763ab951e874b4ba28a94f2a32422f71d05b9c23ee98ba0ed27c82928ec"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration/root-verification-02.json": {
+      "bytes": 5065,
+      "sha256": "38b1052ed1b2d07a39c28ad1a40a739eb11c462e8218c11eb06480e717e3fe5a"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration/root-verification.json": {
+      "bytes": 4948,
+      "sha256": "70a53937708630f555f1b90f20a4a9e8b89ce48e46dcf2f239d543e71e33e0f6"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration/sql-state/audit.db": {
+      "bytes": 73728,
+      "sha256": "f5c63686d1e647937f63dd7e2706c8ac3ac04b59a21d96441d051f56a5fc3722"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration/sql-state/memory.db": {
+      "bytes": 241664,
+      "sha256": "6fe0be0fdd1c33254f7df9f788a23f4770facfddafe4e5f5b4cb9de83dbc233e"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration/sql-state/runs.db": {
+      "bytes": 172032,
+      "sha256": "294b4daf09a62d8a546924df70f673fee0bf180f18f8fbed63bbc7ec5757fbb0"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration/turn_events.json": {
+      "bytes": 491074,
+      "sha256": "edb13762563f4aaeb0b440da5e8fee333ba01a66c559a12587594ab5923eb681"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-44344d1-calibration/usage/fb2f25ef39e5be543116fa035a26f3d6e62f0d4d829ec4874cb16baee8d205b1.json": {
+      "bytes": 1116610,
+      "sha256": "b2c6fa08749fe74b847e583832e33136b2c02e97e02d84c24615c1b76e1ba7e6"
+    },
+    ".stage6/evaluation/2026-11-06/verify-development-candidate-v1.py": {
+      "bytes": 6737,
+      "sha256": "a9515c8b1b31161998e0e08d1b226c06e9724920d8530ee24ea204cc1478d211"
+    },
+    ".stage6/evaluation/2026-11-06/verify-development-candidate.py": {
+      "bytes": 7128,
+      "sha256": "8e5767efbe1ed4a71ea167fed81537a48ef9da57994b0e8ebb7b08bc8e1bd1fc"
+    }
+  },
+  "kind": "private_evidence_hash_index",
+  "raw_evidence_git_ignored": true
+}
