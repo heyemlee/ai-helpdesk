@@ -16,8 +16,12 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument('--ref', default='HEAD')
     p.add_argument('--output', required=True)
+    p.add_argument('--baseline', action='store_true', help='Build the isolated pre-Case comparison; never release eligible')
     args = p.parse_args()
     revision = run('git', 'rev-parse', args.ref+'^{commit}')
+    if args.baseline and not revision.startswith('5310da9'):
+        raise ValueError('The comparison baseline is fixed at 5310da9')
+    boundary = 0 if args.baseline else 1
     with tempfile.TemporaryDirectory(prefix='aihd-release-build-') as folder:
         root = Path(folder)
         archive = root/'source.tar'
@@ -32,9 +36,9 @@ def main():
             tag = f'aihd-release/{service}:{revision}'
             subprocess.run(['docker','build','-t',tag,'-f',str(root/context/dockerfile),
                             *(['--target','production'] if service == 'backend' else []), '--build-arg',f'{arg}={revision}', '--label',f'org.opencontainers.image.revision={revision}',
-                            '--label','ai-helpdesk.staff-boundary=1',str(root/context)], check=True)
+                            '--label',f'ai-helpdesk.staff-boundary={boundary}',str(root/context)], check=True)
             images[service] = run('docker','image','inspect','--format','{{.Id}}',tag)
-        Path(args.output).write_text(json.dumps({'format':1,'revision':revision,'staff_boundary':1,'contract':'1.14',
+        Path(args.output).write_text(json.dumps({'format':1,'revision':revision,'staff_boundary':boundary,'contract':'1.14',
                                                 'images':images}, indent=2))
 
 

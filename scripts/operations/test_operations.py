@@ -11,6 +11,7 @@ from unittest.mock import patch
 from recovery import Operations, atomic_json, crypt, digest, publish_metric_status
 from publish_release import verification
 from verify import _verify
+from release import artifact_identity
 
 
 class SnapshotTests(unittest.TestCase):
@@ -127,6 +128,22 @@ class RetentionTests(unittest.TestCase):
 
 
 class PublicationTests(unittest.TestCase):
+    def test_published_digest_resolves_to_exact_tested_images(self):
+        ids = {name: 'sha256:' + str(index) * 64 for index, name in enumerate(['backend','frontend','sql'], 1)}
+        registry = {name: 'example.invalid/app/' + name + '@sha256:' + str(index) * 64 for index, name in enumerate(ids, 4)}
+        manifest = {'revision':'candidate','staff_boundary':1,'contract':'1.14','images':ids}
+        def inspected(reference):
+            service = next(name for name in ids if reference in {ids[name],registry[name]})
+            return {'Id':ids[service],'RepoDigests':[registry[service]],'Config':{'Labels':{'ai-helpdesk.staff-boundary':'1','org.opencontainers.image.revision':'candidate'}}}
+        local = artifact_identity(manifest, inspected)
+        published = {**manifest,'images':registry,'tested_image_ids':ids}
+        self.assertEqual(artifact_identity(published, inspected),local)
+        def changed(reference):
+            info = inspected(reference)
+            if reference == registry['backend']:info['Id']='sha256:'+'9'*64
+            return info
+        with self.assertRaisesRegex(ValueError,'different tested image'):
+            artifact_identity(published,changed)
     def test_timestamp_exports_never_open_the_private_backup_directory(self):
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder);private=root/'private';private.mkdir(mode=0o700)

@@ -105,8 +105,12 @@ def closed_boundary(port):
     raise AssertionError('Maintenance ingress remained open')
 
 
+SQL_COUNTS = "import sqlite3,json; result={};\nfor name in ['audit','runs']:\n c=sqlite3.connect('file:/state/sql/'+name+'.db?mode=ro',uri=True);tables=[r[0] for r in c.execute(\"SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'\")];result[name]={t:c.execute('SELECT count(*) FROM \"'+t+'\"').fetchone()[0] for t in tables}\nprint(json.dumps(result))"
+
+
 def main():
     p=argparse.ArgumentParser();p.add_argument('--manifest',required=True);p.add_argument('--report',required=True);p.add_argument('--legacy-image');p.add_argument('--s3',action='store_true')
+    p.add_argument('--case-count',type=int,default=12)
     args=p.parse_args();root,cfg,password,port=sandbox(args.manifest)
     if args.s3:enable_s3(root,cfg)
     ops=Operations(root/'operations.json');report={'started_at':time.time(),'project':ops.project,'root':str(root),'object_backend':'s3-compatible-local-fixture' if args.s3 else 'local-private-files',
@@ -123,7 +127,7 @@ def main():
                     if attempt==29:raise
                     time.sleep(1)
             for spec in [cfg['objects_s3'],cfg['offsite']]:client.create_bucket(Bucket=spec['bucket'])
-        seeded=ops.run('run','--rm','--no-deps','-T','api','python','scripts/recovery_fixture.py', input=json.dumps({'password':password}).encode())
+        seeded=ops.run('run','--rm','--no-deps','-T','api','python','scripts/recovery_fixture.py', input=json.dumps({'password':password,'case_count':args.case_count}).encode())
         fixture=json.loads(seeded.stdout.decode().splitlines()[-1])
         if args.s3:
             for file in (root/'data/objects').rglob('*'):
@@ -132,6 +136,17 @@ def main():
         atomic_json(root/'probe.json',probe);atomic_json(root/'access-review.json',fixture['accounts'])
         report['initial_release']=deploy(ops,args.manifest,root/'probe.json')
         report['public_ingress_auth_verified']=public_boundary(port)
+        report['fixture_scale']={'case_count':fixture['case_count'],'attachment_count':len(fixture['attachment_previews']),
+                                 'extraction_count':fixture['extraction_count'],'quality_claim':False}
+        if args.case_count >= 200:
+            # A real SQL Agent HTTP request with the real run/audit stores. Its
+            # supplier is explicitly closed on localhost:9; a recorded failure
+            # is enough to test persistence and is never a quality pass.
+            ops.run('exec','-T','api','python','-c',
+                "import os,httpx; r=httpx.post('http://sql-agent:8000/query',headers={'X-API-Key':os.environ['SQL_AGENT_API_KEY']},json={'query':'查询订单 RECOVERY-001 的订单状态','user_id':'ai-helpdesk','session_id':'recovery-scale-audit'},timeout=90);assert r.status_code not in {401,403}")
+            rows=ops.run('exec','-T','sql-agent','python','-c',SQL_COUNTS)
+            report['sql_state_before_backup']=json.loads(rows.stdout)
+            assert any(report['sql_state_before_backup']['audit'].values()) and any(report['sql_state_before_backup']['runs'].values()), 'SQL audit/run workload was empty'
         snapshot=ops.backup();report['backup']=snapshot
         # A fully independent PG restore, including authentication invalidation.
         report['scheduled_verification']=verify(root/'operations.json',source_lock_held=True)
@@ -186,6 +201,12 @@ def main():
             'post_snapshot_write_at':mutation_time,'post_snapshot_writes_expected_lost':1}
         # Restore an actual database+SQL-state+private-object snapshot.
         started=time.time();report['recovery']=ops.restore(snapshot['artifact'])
+        if args.case_count >= 200:
+            rows=ops.run('run','--rm','--no-deps','-T','--entrypoint','python','sql-agent','-c',SQL_COUNTS)
+            report['sql_state_after_restore']=json.loads(rows.stdout)
+            assert report['sql_state_after_restore']==report['sql_state_before_backup'], 'SQL audit/run records changed in restore'
+            report['restored_extraction_count']=int(ops.sql('SELECT count(*) FROM attachment_extractions'))
+            assert report['restored_extraction_count']==fixture['extraction_count']
         assert ops.sql('SELECT count(*) FROM staff_sessions')=='0'
         assert ops.sql('SELECT count(*) FROM staff_accounts WHERE active')=='0'
         assert ops.sql("SELECT count(*) FROM case_actions WHERE action_key='post-snapshot-write'")=='0'

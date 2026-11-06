@@ -6,7 +6,7 @@ import os
 import sys
 import uuid
 
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from app.attachments.objects import LocalObjects
 from app.attachments.service import AttachmentService
@@ -24,6 +24,9 @@ async def main():
     if os.getenv('RECOVERY_DRILL') != '1':
         raise RuntimeError('Disposable recovery fixture only')
     options = json.load(sys.stdin)
+    count = options.get('case_count', 12)
+    if type(count) is not int or not 12 <= count <= 3000:
+        raise ValueError('Recovery fixture count must be between 12 and 3000')
     db = Database(os.environ['POSTGRES_DSN'])
     await db.connect(256)
     auth = StaffAuth(db, 'staff')
@@ -34,14 +37,26 @@ async def main():
     attachments = AttachmentService(db, LocalObjects(os.environ['AI_HELPDESK_ATTACHMENT_DIR']), directory, 'staff')
     cases = CaseService(db, 'staff', actors=directory, identity_store=auth, attachments=attachments, attachment_resolver=attachments.resolve)
     first = None
-    for i in range(12):
+    extraction_count = 0
+    for i in range(count):
         conv = await auth.new_conversation(actor)
         ids = []
         if i % 2:
             image = io.BytesIO()
-            Image.new('RGB', (800,600), color=(i*10,100,200)).save(image,format='PNG')
+            picture = Image.new('RGB', (800,600), color='white')
+            draw = ImageDraw.Draw(picture)
+            draw.text((30,40), f'SYNTHETIC RECOVERY RECORD {i}\nOrder: RECOVERY-001\nQuantity: 2 pcs\nInfrastructure fixture only', fill='black')
+            picture.save(image,format='PNG')
             a = await attachments.upload(actor, image.getvalue(), 'synthetic.png','image/png',uuid.uuid4().hex)
             ids = [a['id']]
+            # A populated historical extraction cache is part of the recovery
+            # workload. These are explicitly authored fixtures, not AI quality
+            # results, and their version cannot hit the live extractor cache.
+            row = await db.fetchrow('SELECT sha256 FROM attachments WHERE id=$1', a['id'])
+            extraction = {'document_type':'order','fields':[{'field':'order_ref','value':'RECOVERY-001','unit':None,'kind':'unknown','readability':'clear','location':'synthetic heading'}]}
+            await db.execute("INSERT INTO attachment_extractions VALUES($1,$2,'recovery-fixture-only-v1',$3::jsonb,extract(epoch FROM now()))",
+                             a['id'],row['sha256'],json.dumps(extraction))
+            extraction_count += 1
         body = CaseInput(new_case=True, conv_id=conv, message_id=uuid.uuid4().hex, message='Synthetic recovery case',
                          facts={'order_ref':'RECOVERY-001'}, issue_type='order', attachment_ids=ids)
         receipt = await cases.accept_input(actor, body)
@@ -53,7 +68,7 @@ async def main():
     await kb.add_documents_async([{'title':'Recovery policy', 'content':'Synthetic policy. Verify current source before confirming.',
                                   'policy':{'status':'published','version':'fixture-v1','audience':'employee','effective_at':'2020-01-01T00:00:00Z'}}])
     previews = {r['id']:r['preview_sha256'] for r in await db.fetch('SELECT id,preview_sha256 FROM attachments')}
-    print(json.dumps({'case_id':first,'attachment_previews':previews,'accounts':[{'actor_id':employee['actor_id'],'role':'employee','active':True},
+    print(json.dumps({'case_id':first,'case_count':count,'extraction_count':extraction_count,'fixture_only':True,'attachment_previews':previews,'accounts':[{'actor_id':employee['actor_id'],'role':'employee','active':True},
                                                  {'actor_id':admin['actor_id'],'role':'admin','active':True}]}))
     await db.close()
 

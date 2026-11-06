@@ -6,23 +6,44 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 import time
 from recovery import Operations, atomic_json, digest
 
 
-def validated_manifest(file):
-    manifest = json.loads(Path(file).read_text())
+def artifact_identity(manifest, inspect_image=None):
+    """Registry references and local IDs must resolve to the same tested bytes."""
+    if inspect_image is None:
+        inspect_image = lambda image: json.loads(subprocess.check_output(['docker','image','inspect',image]))[0]
     if manifest.get('staff_boundary') != 1 or manifest.get('contract') != '1.14':
         raise ValueError('Release lacks the minimum employee/contract boundary; keep maintenance closed')
     if set(manifest.get('images',{})) != {'backend','frontend','sql'}:
         raise ValueError('Exactly three application image identities are required')
-    for image in manifest['images'].values():
+    identities = {}
+    tested = manifest.get('tested_image_ids')
+    if tested is not None and set(tested) != {'backend','frontend','sql'}:
+        raise ValueError('Published manifest lacks complete tested image identities')
+    for service, image in manifest['images'].items():
         if not re.fullmatch(r'(?:sha256:|[^\s]+@sha256:)[0-9a-f]{64}', image):
             raise ValueError('Immutable image ID or registry digest required')
-        info = json.loads(subprocess.check_output(['docker','image','inspect',image]))[0]
+        info = inspect_image(image)
         labels = info['Config'].get('Labels') or {}
         if labels.get('ai-helpdesk.staff-boundary') != '1' or labels.get('org.opencontainers.image.revision') != manifest['revision']:
             raise ValueError('Image does not match the release manifest')
+        identity = info['Id']
+        if tested is not None and identity != tested[service]:
+            raise ValueError('Registry digest resolves to a different tested image')
+        if image.startswith('sha256:') and identity != image:
+            raise ValueError('Local immutable identity changed')
+        if '@sha256:' in image and image not in info.get('RepoDigests', []):
+            raise ValueError('Registry digest is not bound to the inspected image')
+        identities[service] = identity
+    return {'revision': manifest['revision'], 'images': identities}
+
+
+def validated_manifest(file):
+    manifest = json.loads(Path(file).read_text())
+    artifact_identity(manifest)
     return manifest
 
 
@@ -78,6 +99,13 @@ def activate(ops, probe):
 
 def deploy(ops, target, probe):
     candidate = validated_manifest(target)  # Old unsafe images rejected before any switch.
+    if ops.c.get('environment') != 'drill':
+        sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+        from acceptance.gate import require as require_acceptance
+        evidence = ops.c.get('acceptance_report')
+        if not evidence:
+            raise ValueError('Production release requires a complete unified acceptance bundle')
+        require_acceptance(evidence, artifact_identity(candidate))
     existing_file = ops.output/'active-release.json'
     previous = json.loads(existing_file.read_text()) if existing_file.exists() else None
     if ops.marker.exists():

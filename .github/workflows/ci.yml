@@ -10,12 +10,41 @@ on:
   # 是"触发失效"还是"Actions 整个不跑"；二是往后想在某个提交上补跑一次时，
   # 不必靠推一个空提交去骗触发。
   workflow_dispatch:
+    inputs:
+      release_run_id:
+        description: 'Prior CI run holding the immutable release images (same source commit)'
+        required: false
+        type: string
+      acceptance_run_id:
+        description: 'Run holding an externally executed stage6-acceptance evidence bundle'
+        required: false
+        type: string
 
 # 一个仓库三部分：backend/、frontend/ 是客服，ai-sql-agent/ 是 SQL Agent，a2a-contract/ 是两者之间的契约。
 # 每个 PR 五个 job 全跑，**都不加 paths 过滤**：分支保护按 job 的 name 匹配必需检查，
 # 被过滤掉不跑的必需检查会一直挂在"等待"，PR 永远合不进去。改 job 的 name 要同步改分支保护。
 
 jobs:
+  acceptance-tools:
+    name: Unified acceptance tooling (no provider calls)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install deterministic tool dependencies
+        run: pip install -r backend/requirements-dev.txt
+      - name: Frozen corpus, independent oracle and budget boundaries
+        run: python -m unittest discover -s acceptance/tests -v
+      - name: No incomplete report may authorize release
+        run: |
+          python - <<'PY'
+          from acceptance.gate import verify
+          assert not verify({})['passed']
+          assert not verify({'kind':'development_calibration'})['passed']
+          PY
+
   backend:
     name: Backend (pytest + ruff)
     runs-on: ubuntu-latest
@@ -357,7 +386,7 @@ jobs:
 
   images:
     name: Docker images
-    needs: [backend, frontend, attachments-browser, contract, sql-agent]
+    needs: [backend, frontend, attachments-browser, contract, sql-agent, acceptance-tools]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -430,17 +459,14 @@ jobs:
             fi
           done
 
-      - name: Publish the exact verified images when registry publication is enabled
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.AI_HELPDESK_PUBLISH_IMAGES == 'true'
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REGISTRY_OWNER: ${{ github.repository }}
+      - name: Export the exact candidate images for separately authorized acceptance
+        if: github.event_name == 'workflow_dispatch'
         run: |
-          set -euo pipefail
-          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-          python scripts/operations/publish_release.py --manifest /tmp/release.json \
-            --report /tmp/recovery-local.json --report /tmp/recovery-s3.json \
-            --registry "ghcr.io/${REGISTRY_OWNER,,}" --output /tmp/published-release.json
+          python - <<'PY'
+          import json, subprocess
+          manifest=json.load(open('/tmp/release.json'))
+          subprocess.run(['docker','save','-o','/tmp/release-images.tar',*manifest['images'].values()],check=True)
+          PY
 
       - name: Preserve release and recovery evidence
         if: always()
@@ -451,4 +477,59 @@ jobs:
             /tmp/release.json
             /tmp/recovery-local.json
             /tmp/recovery-s3.json
-            /tmp/published-release.json
+            /tmp/release-images.tar
+
+  publish-verified:
+    name: Publish externally accepted immutable release
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.release_run_id != '' && inputs.acceptance_run_id != '' && vars.AI_HELPDESK_PUBLISH_IMAGES == 'true'
+    needs: [backend, frontend, attachments-browser, contract, sql-agent, acceptance-tools]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r scripts/operations/requirements.txt
+      - name: Restore the candidate bundle without rebuilding
+        uses: actions/download-artifact@v4
+        with:
+          name: immutable-release-evidence
+          path: /tmp/verified-release
+          run-id: ${{ inputs.release_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Retrieve independently run acceptance and its raw recordings
+        uses: actions/download-artifact@v4
+        with:
+          name: stage6-acceptance
+          path: /tmp/verified-acceptance
+          run-id: ${{ inputs.acceptance_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Check source, images, raw evidence and recomputed scores
+        run: |
+          python - <<'PY'
+          import json, os, subprocess
+          manifest=json.load(open('/tmp/verified-release/release.json'))
+          assert manifest['revision']==os.environ['GITHUB_SHA'], 'Different source revision'
+          subprocess.run(['docker','load','-i','/tmp/verified-release/release-images.tar'],check=True)
+          PY
+          python -m acceptance.gate /tmp/verified-acceptance/report.json --manifest /tmp/verified-release/release.json
+      - name: Publish only the accepted artifacts
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REGISTRY_OWNER: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          python scripts/operations/publish_release.py --manifest /tmp/verified-release/release.json \
+            --report /tmp/verified-release/recovery-local.json --report /tmp/verified-release/recovery-s3.json \
+            --acceptance /tmp/verified-acceptance/report.json \
+            --registry "ghcr.io/${REGISTRY_OWNER,,}" --output /tmp/published-release.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: published-release
+          path: /tmp/published-release.json

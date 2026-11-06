@@ -5,6 +5,10 @@ import json
 from pathlib import Path
 import re
 import subprocess
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from acceptance.gate import require as require_acceptance
 
 from recovery import atomic_json, digest
 from release import validated_manifest
@@ -49,6 +53,7 @@ def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('--manifest',required=True)
     parser.add_argument('--report',action='append',required=True)
+    parser.add_argument('--acceptance',required=True,help='Unified stage-6 report and its content-addressed evidence directory')
     parser.add_argument('--registry',required=True,help='Lowercase registry/repository prefix')
     parser.add_argument('--output',required=True)
     args=parser.parse_args()
@@ -56,6 +61,7 @@ def main():
         raise ValueError('Invalid registry/repository prefix')
     manifest=validated_manifest(args.manifest)
     checked=verification(manifest,args.report)
+    acceptance=require_acceptance(args.acceptance,manifest)
     published={}
     for service,image in manifest['images'].items():
         repo=args.registry+'/'+service
@@ -66,7 +72,7 @@ def main():
         if info['Id'] != json.loads(subprocess.check_output(['docker','image','inspect',image]))[0]['Id']:
             raise ValueError('Published image differs from the tested image')
         published[service]=next(ref for ref in info['RepoDigests'] if ref.startswith(repo+'@sha256:'))
-    atomic_json(args.output,{**manifest,'images':published,'tested_image_ids':manifest['images'],'verification':checked})
+    atomic_json(args.output,{**manifest,'images':published,'tested_image_ids':manifest['images'],'verification':checked,'acceptance':acceptance})
 
 
 if __name__=='__main__':main()
