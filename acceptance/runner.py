@@ -89,12 +89,17 @@ def execute(employee, scenario, directory, ledger=None, timeout=240):
             if run_id in seen:
                 raise RuntimeError("Cyclic image follow-up Run")
             seen.add(run_id)
+            # The accepted identity is evidence even if polling never succeeds.
+            # Keep one record and replace it only with an actually observed state;
+            # a timeout must not erase the Run or invent a terminal outcome.
+            recorded = {"run_id": run_id}
+            observed["runs"].append(recorded)
             if ledger:
                 ledger.bind_run("helpdesk", run_id, scenario["id"])
             while time.monotonic() < limit:
                 current = employee.request("GET", f"/tickets/cases/runs/{run_id}")
+                recorded.update(current)
                 if current["status"] in {"succeeded", "failed", "dead", "cancelled"}:
-                    observed["runs"].append(current)
                     run_id = (current.get("result") or {}).get("next_run_id")
                     break
                 time.sleep(0.25)
