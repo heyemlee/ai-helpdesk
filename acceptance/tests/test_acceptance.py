@@ -7,6 +7,7 @@ import tempfile
 import types
 import unittest
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 from pathlib import Path
 
 import httpx
@@ -282,11 +283,12 @@ class MethodTests(unittest.TestCase):
         now = "2026-11-06T20:00:00+00:00"
         returned = {k: row[k] for k in ("order_no", "contract_amount", "order_status")}
         evidence = [{"field": k, "value": v, "database": "erp_db", "step_index": 0, "row_index": 0, "as_of": now, "as_of_source": "query_time", "unit": "USD" if k == "contract_amount" else None} for k, v in returned.items()]
-        query = {"source": "business_query", "run_id": "sql-run", "observed_at": now, "evidence": evidence,
-            "steps": [{"final_sql": f"SELECT order_no,contract_amount,order_status FROM orders WHERE order_no='{order}'", "rows": [returned], "success": True, "row_count": 1, "truncated": False}]}
+        query = {"source": "business_query", "run_id": "sql-run", "as_of": now, "observed_at": now, "evidence": evidence,
+            "steps": [{"final_sql": f"SELECT order_no,contract_amount,order_status FROM orders WHERE order_no='{order}'", "rows": [returned], "success": True, "row_count": 1, "truncated": False,
+                       "as_of": now, "as_of_source": "query_time", "observed_at": now}]}
         body = f"订单 {order} [1]\n数据时点 {now}\n- contract amount: {row['contract_amount']} USD\n- 订单状态: {row['order_status']}"
         observed = {"completed": True, "runs": [{"status": "succeeded"}], "case": {"status": "in_progress", "control_mode": "assistant", "pending_fields": [],
-            "drafts": [{"valid": True, "body": body, "evidence": [query]}]}, "side_effects": {"handoff": 0, "notification": 0}}
+            "drafts": [{"valid": True, "body": body, "evidence": [query], "created_at": datetime.fromisoformat(now).timestamp()}]}, "side_effects": {"handoff": 0, "notification": 0}}
         return scenario, observed, dev
 
     def test_correct_answer_plus_extra_wrong_fact_cannot_pass(self):

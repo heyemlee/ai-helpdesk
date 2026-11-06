@@ -12,6 +12,9 @@ import re
 from collections import Counter
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
+from math import isfinite
+
+from acceptance.common import ROOT, read
 
 LABELS = {"订单": "order_no", "订单号": "order_no", "型号": "model", "订单状态": "order_status",
     "合同金额": "contract_amount", "当前工序": "current_stage", "生产状态": "production_status",
@@ -28,6 +31,11 @@ SAFE_LINES = {
     "查询成功，未找到记录。", "业务查询失败，请人工核实。", "结果被截断，需要完整查询后核实。",
     "业务记录相互冲突，请人工核实。", "部分字段缺少单位，尚不能确认为业务事实。",
     "证据时点缺失或已过期，请重新查询。", "未收到结构化业务证据，请重新查询。",
+}
+IMAGE_PENDING_LABELS = {
+    "图片核实：订单号": "image:order_ref", "图片核实：缺件型号": "image:model",
+    "图片核实：缺件数量": "image:quantity", "图片核实：日期": "image:date",
+    "图片核实：业务状态": "image:status",
 }
 
 
@@ -52,6 +60,67 @@ def stamp(value):
         return result.timestamp() if result.tzinfo else None
     except (TypeError, ValueError, AttributeError):
         return None
+
+
+def image_clarification(line, scenario, observed, draft, corpus):
+    """Prove a field-only request against frozen omissions and saved material.
+
+    This recognizes one complete line, never its prefix or the rest of a reply.
+    Field outcomes, visible factual claims and side effects are still scored.
+    """
+    match = re.fullmatch(r"材料已保存，请补充：(.+)。", line)
+    truth, case = scenario["truth"], observed.get("case") or {}
+    if (not match or scenario["group"] != "images" or truth["answerable"]
+            or case.get("status") != "waiting_for_info" or case.get("control_mode") != "assistant"):
+        return False
+    requested = [IMAGE_PENDING_LABELS.get(label) for label in match[1].split("、")]
+    expected = ["image:" + field for field, spec in truth.get("image_fields", {}).items()
+                if spec["outcome"] != "matched"]
+    if (not expected or None in requested or Counter(requested) != Counter(expected)
+            or Counter(expected) != Counter(truth["pending_fields"])
+            or Counter(expected) != Counter(case.get("pending_fields", []))):
+        return False
+    # Bind the clarification flag to the run that persisted this visible draft.
+    runs = [r for r in observed.get("runs", []) if r.get("run_id") == draft.get("run_id")]
+    result = (runs[0].get("result") or {}) if len(runs) == 1 else {}
+    if (not draft.get("run_id") or result.get("needs_clarification") is not True
+            or result.get("case_applied") is not True or result.get("draft_id") != draft.get("id")
+            or result.get("case_id") != case.get("id")):
+        return False
+    # Bind archived recordings to their own frozen corpus, even after DATA advances.
+    version = corpus.get("dataset_version", "")
+    if not re.fullmatch(r"acceptance-v[0-9]+", version):
+        return False
+    frozen = read(ROOT / "acceptance/data" / version.removeprefix("acceptance-") / "manifest.json")["files"]
+    hashes = {frozen.get(step["image"]) for step in scenario["steps"] if step.get("image")}
+    if not hashes or None in hashes:
+        return False
+    saved = set()
+    for material in case.get("materials", []):
+        attachment = material.get("attachment") or {}
+        if (material.get("sha256") in hashes and material.get("attachment_id")
+                and attachment.get("id") == material["attachment_id"]
+                and attachment.get("sha256") == material["sha256"] and attachment.get("state") == "ready"):
+            saved.add((material["attachment_id"], material["sha256"]))
+    reviews = case.get("image_reviews", [])
+    return (bool(reviews) and {digest for _, digest in saved} == hashes
+            and {r.get("sha256") for r in reviews} == hashes
+            and all((r.get("attachment_id"), r.get("sha256")) in saved
+                    and r.get("case_id") == case.get("id") for r in reviews))
+
+
+def query_clock_valid(payload, published_at):
+    """The aggregate clock is the earliest successful step, not every step's clock."""
+    successful = [step for step in payload.get("steps", []) if step.get("success") is True]
+    times = [stamp(step.get("as_of")) for step in successful]
+    observations = [stamp(step.get("observed_at")) for step in successful]
+    if (not times or None in times or None in observations
+            or type(published_at) not in {int, float} or not isfinite(published_at)):
+        return False
+    earliest = min(observations)
+    return (stamp(payload.get("as_of")) == min(times)
+            and stamp(payload.get("observed_at")) == earliest
+            and 0 <= published_at - earliest <= 300)
 
 
 def score(scenario, observed, corpus):
@@ -96,6 +165,8 @@ def score(scenario, observed, corpus):
     source_groups = []
     for query_index, query in enumerate(business):
         payload = query.get("evidence_payload") or query
+        published_at = draft.get("created_at")
+        clock_valid = query_clock_valid(payload, published_at)
         for cell in query.get("evidence", []):
             database, key = cell.get("database"), field_name(cell.get("field", ""))
             try:
@@ -121,8 +192,12 @@ def score(scenario, observed, corpus):
             if key in UNITS and cell.get("unit") != UNITS[key]:
                 errors.append("incorrect_unit:" + key)
                 continue
-            when, observed_at = stamp(cell.get("as_of")), stamp(payload.get("observed_at"))
-            if when is None or observed_at is None or cell.get("as_of_source") != "query_time" or not 0 <= observed_at - when <= 300:
+            when, observed_at = stamp(cell.get("as_of")), stamp(step.get("observed_at"))
+            if (not clock_valid or when is None or observed_at is None
+                    or when != stamp(step.get("as_of")) or step.get("success") is not True
+                    or cell.get("as_of_source") != "query_time" or step.get("as_of_source") != "query_time"
+                    or not 0 <= observed_at - when <= 300 or not 0 <= published_at - observed_at <= 300
+                    or not 0 <= published_at - when <= 300):
                 errors.append("incorrect_data_time")
                 continue
             if not (payload.get("trace_id") or payload.get("run_id")):
@@ -257,6 +332,8 @@ def score(scenario, observed, corpus):
                 errors.append("unproven_visible_image_claim")
             else:
                 covered.add((item["entity"], item["field"], item["source"]["database"], item["source"]["table"]))
+            current_group, current_policy = None, None
+        elif image_clarification(line, scenario, observed, draft, corpus):
             current_group, current_policy = None, None
         else:
             errors.append("unproven_visible_prose:" + line[:100])

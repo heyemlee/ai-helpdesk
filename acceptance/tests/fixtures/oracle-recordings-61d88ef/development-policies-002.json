@@ -1,0 +1,446 @@
+{
+  "observed": {
+    "case": {
+      "case_id": "tk_d06697dafe8a",
+      "control_mode": "assistant",
+      "control_version": 1,
+      "conv_id": "ae24f54f-1084-4342-9439-4ae930643dfa",
+      "created_at": 1793990781.35804,
+      "created_by": "emp_7ee668b99729454fb0310493bbbb4f85",
+      "customer_ref": "",
+      "drafts": [
+        {
+          "approved_by": null,
+          "body": "政策摘录 [P1]：Cedar-02 cabinets 配送费用 2026-A（版本 2026-A；产品 Cedar-02 cabinets；区域 CA；受众 employee；适用时点 2026-11-05T19:59:59+00:00）\n> 办理配送费用适用产品 Cedar-02 cabinets。操作说明：旧版处理时限为 32 个工作日内办结。\n\n以上为可核对的资料。涉及补件、责任、金额或交期承诺，请由员工按适用政策审核后处理。",
+          "body_hash": "b02e6dc13618a74afa80082a8d126ac008bd3876c7c498ccfcfb542740869cc4",
+          "case_id": "tk_d06697dafe8a",
+          "control_version": 1,
+          "created_at": 1793990821.427307,
+          "evidence": [
+            {
+              "chunk_id": "ad8683d51f819733d56f971faf5b130b",
+              "content": "办理配送费用适用产品 Cedar-02 cabinets。操作说明：旧版处理时限为 32 个工作日内办结。",
+              "doc_id": "doc_82443877bea0205fe47f",
+              "doc_title": "Cedar-02 cabinets 配送费用 2026-A",
+              "excerpt": "办理配送费用适用产品 Cedar-02 cabinets。操作说明：旧版处理时限为 32 个工作日内办结。",
+              "passage": 0,
+              "policy": {
+                "audience": "employee",
+                "effective_at": "2026-01-01T00:00:00Z",
+                "expires_at": "2026-11-05T20:00:00Z",
+                "product": "Cedar-02 cabinets",
+                "region": "CA",
+                "status": "published",
+                "version": "2026-A"
+              },
+              "policy_as_of": "2026-11-05T19:59:59+00:00",
+              "policy_revision": "82443877bea0205fe47fba94b5f24b58d1ed038ed6af5406daa17890f53097d2",
+              "policy_scope": {
+                "as_of": "2026-11-05T19:59:59Z",
+                "audience": "employee",
+                "product": "Cedar-02 cabinets",
+                "region": "CA"
+              },
+              "retrieval": "hybrid",
+              "score": 0.4046,
+              "title": "Cedar-02 cabinets 配送费用 2026-A"
+            },
+            {
+              "attempted": true,
+              "databases": [
+                "wms_db",
+                "svc_db",
+                "erp_db"
+              ],
+              "degraded": false,
+              "enabled": true,
+              "evidence": [],
+              "evidence_issues": [
+                "execution_metadata_inconsistent",
+                "has_risk=true（字段缺失或类型不对时同此处置）",
+                "success"
+              ],
+              "evidence_payload": {
+                "answer": "已完成数据库查询。查询结果：[{\"database\": \"svc_db\", \"sql\": \"SELECT NULL AS delivery_fee_rules;\", \"success\": true, \"columns\": [\"delivery_fee_rules\"], \"rows\": [{\"delivery_fee_rules\": null}], \"row_count\": 1, \"error\": null, \"truncated\": false, \"row_limit\": 1000, \"as_of\": \"2026-11-06T18:46:48.291Z\", \"as_of_source\": \"query_time\"}]",
+                "as_of": "2026-11-06T18:46:48.291000+00:00",
+                "as_of_source": "query_time",
+                "currency": null,
+                "degrade_reason": "",
+                "degraded": false,
+                "evidence": [],
+                "execution_status": "success",
+                "has_risk": true,
+                "observed_at": "2026-11-06T18:46:48.291000+00:00",
+                "queried_database": true,
+                "result_truncated": false,
+                "route": "database_query",
+                "run_id": "72efff96a30f423ab11ecb6230202207",
+                "selected_databases": [
+                  "wms_db",
+                  "svc_db",
+                  "erp_db"
+                ],
+                "steps": [
+                  {
+                    "as_of": "2026-11-06T18:46:48.291Z",
+                    "as_of_source": "query_time",
+                    "column_units": {},
+                    "database": "svc_db",
+                    "error": null,
+                    "final_sql": "SELECT NULL AS delivery_fee_rules;",
+                    "observed_at": "2026-11-06T18:46:48.291Z",
+                    "repair_attempts": [],
+                    "risk_findings": [
+                      {
+                        "anomaly": "semantic_mismatch",
+                        "detail": "SQL 实际行为与问题不一致：SQL仅返回NULL，未查询或提供Cedar-02 cabinets的配送费用规定。（复述：这条SQL不读取任何表、不进行筛选或分组，仅输出一行一列，列名为delivery_fee_rules，值为NULL。）",
+                        "severity": "block"
+                      }
+                    ],
+                    "row_count": 1,
+                    "row_limit": 1000,
+                    "rows": [
+                      {
+                        "delivery_fee_rules": null
+                      }
+                    ],
+                    "source_records": [],
+                    "sql": "SELECT NULL AS delivery_fee_rules;",
+                    "success": true,
+                    "truncated": false
+                  }
+                ],
+                "trace_id": "2e14ab8beb244ea9"
+              },
+              "execution_status": "success",
+              "has_risk": true,
+              "outcome": "unverified",
+              "reasons": [
+                "execution_metadata_inconsistent",
+                "has_risk=true（字段缺失或类型不对时同此处置）"
+              ],
+              "run_id": "72efff96a30f423ab11ecb6230202207",
+              "source": "business_query",
+              "trace_id": "2e14ab8beb244ea9"
+            }
+          ],
+          "evidence_version": 1,
+          "id": "dr_01a1b22ee9afc4b6568fee1d8865605b",
+          "invalid_reason": "",
+          "run_id": "01a1b22ee9afc4b6568fee1d8865605b",
+          "status": "pending",
+          "valid": true,
+          "version": 2
+        }
+      ],
+      "events": [
+        {
+          "actor_id": "emp_7ee668b99729454fb0310493bbbb4f85",
+          "case_id": "tk_d06697dafe8a",
+          "control_version": 1,
+          "created_at": 1793990781.36038,
+          "data": {
+            "changed": true,
+            "message_id": "acc_41fedaf9e6ef49e1a909b981429640d0",
+            "run_id": "01a1b22ee9afc4b6568fee1d8865605b"
+          },
+          "id": 20,
+          "kind": "input_accepted",
+          "version": 1
+        },
+        {
+          "actor_id": null,
+          "case_id": "tk_d06697dafe8a",
+          "control_version": 1,
+          "created_at": 1793990821.428031,
+          "data": {
+            "draft_id": "dr_01a1b22ee9afc4b6568fee1d8865605b",
+            "run_id": "01a1b22ee9afc4b6568fee1d8865605b"
+          },
+          "id": 29,
+          "kind": "result_applied",
+          "version": 2
+        }
+      ],
+      "facts": {},
+      "id": "tk_d06697dafe8a",
+      "image_reviews": [],
+      "instance": "staff",
+      "issue_type": "general",
+      "last_message": "请在员工工单入口查看材料",
+      "managed": true,
+      "materials": [],
+      "messages": [
+        {
+          "attachment_ids": [],
+          "content": "请查Cedar-02 cabinets的配送费用规定。",
+          "created_at": 1793990781.35975,
+          "message_id": "acc_41fedaf9e6ef49e1a909b981429640d0",
+          "role": "user",
+          "run_id": "01a1b22ee9afc4b6568fee1d8865605b",
+          "seq": 22,
+          "turn_id": "",
+          "version": 1
+        },
+        {
+          "attachment_ids": [],
+          "content": "政策摘录 [P1]：Cedar-02 cabinets 配送费用 2026-A（版本 2026-A；产品 Cedar-02 cabinets；区域 CA；受众 employee；适用时点 2026-11-05T19:59:59+00:00）\n> 办理配送费用适用产品 Cedar-02 cabinets。操作说明：旧版处理时限为 32 个工作日内办结。\n\n以上为可核对的资料。涉及补件、责任、金额或交期承诺，请由员工按适用政策审核后处理。",
+          "created_at": 1793990821.428462,
+          "message_id": "reply_01a1b22ee9afc4b6568fee1d8865605b",
+          "role": "assistant",
+          "run_id": "01a1b22ee9afc4b6568fee1d8865605b",
+          "seq": 32,
+          "turn_id": "01a1b22ee9b22bfcab9f108703",
+          "version": 2
+        }
+      ],
+      "order_refs": [],
+      "owner_actor_id": null,
+      "pending_fields": [],
+      "policy_scope": {
+        "as_of": "2026-11-05T19:59:59Z",
+        "audience": "employee",
+        "product": "Cedar-02 cabinets",
+        "region": "CA"
+      },
+      "reason": "员工创建的业务问题",
+      "runs": [
+        {
+          "applied": true,
+          "attempt": 1,
+          "error": "",
+          "reason": "",
+          "run_id": "01a1b22ee9afc4b6568fee1d8865605b",
+          "status": "succeeded"
+        }
+      ],
+      "status": "in_progress",
+      "updated_at": 1793990821.425954,
+      "user_id": "case",
+      "version": 2
+    },
+    "case_ids": {
+      "primary": "tk_d06697dafe8a"
+    },
+    "completed": true,
+    "elapsed_seconds": 40.257404499687254,
+    "id": "development-policies-002",
+    "invariant_violations": [],
+    "runs": [
+      {
+        "attempt": 1,
+        "attempts": [
+          {
+            "attempt": 1,
+            "committed": true,
+            "ended_at": 1793990821.428989,
+            "outcome": "succeeded",
+            "reclaimed": false,
+            "started_at": 1793990781.361618,
+            "turn_id": "01a1b22ee9b22bfcab9f108703"
+          }
+        ],
+        "conv_id": "ae24f54f-1084-4342-9439-4ae930643dfa",
+        "created_at": 1793990781.360273,
+        "degrade_level": 0,
+        "error": "",
+        "finished_at": 1793990821.428997,
+        "result": {
+          "agent_type": "order",
+          "agent_types": [
+            "order"
+          ],
+          "answer_confidence": 0.609,
+          "answer_usage": {},
+          "business_data": {
+            "attempted": true,
+            "databases": [
+              "wms_db",
+              "svc_db",
+              "erp_db"
+            ],
+            "degraded": false,
+            "enabled": true,
+            "evidence": [],
+            "evidence_issues": [
+              "execution_metadata_inconsistent",
+              "has_risk=true（字段缺失或类型不对时同此处置）",
+              "success"
+            ],
+            "evidence_payload": {
+              "answer": "已完成数据库查询。查询结果：[{\"database\": \"svc_db\", \"sql\": \"SELECT NULL AS delivery_fee_rules;\", \"success\": true, \"columns\": [\"delivery_fee_rules\"], \"rows\": [{\"delivery_fee_rules\": null}], \"row_count\": 1, \"error\": null, \"truncated\": false, \"row_limit\": 1000, \"as_of\": \"2026-11-06T18:46:48.291Z\", \"as_of_source\": \"query_time\"}]",
+              "as_of": "2026-11-06T18:46:48.291000+00:00",
+              "as_of_source": "query_time",
+              "currency": null,
+              "degrade_reason": "",
+              "degraded": false,
+              "evidence": [],
+              "execution_status": "success",
+              "has_risk": true,
+              "observed_at": "2026-11-06T18:46:48.291000+00:00",
+              "queried_database": true,
+              "result_truncated": false,
+              "route": "database_query",
+              "run_id": "72efff96a30f423ab11ecb6230202207",
+              "selected_databases": [
+                "wms_db",
+                "svc_db",
+                "erp_db"
+              ],
+              "steps": [
+                {
+                  "as_of": "2026-11-06T18:46:48.291Z",
+                  "as_of_source": "query_time",
+                  "column_units": {},
+                  "database": "svc_db",
+                  "error": null,
+                  "final_sql": "SELECT NULL AS delivery_fee_rules;",
+                  "observed_at": "2026-11-06T18:46:48.291Z",
+                  "repair_attempts": [],
+                  "risk_findings": [
+                    {
+                      "anomaly": "semantic_mismatch",
+                      "detail": "SQL 实际行为与问题不一致：SQL仅返回NULL，未查询或提供Cedar-02 cabinets的配送费用规定。（复述：这条SQL不读取任何表、不进行筛选或分组，仅输出一行一列，列名为delivery_fee_rules，值为NULL。）",
+                      "severity": "block"
+                    }
+                  ],
+                  "row_count": 1,
+                  "row_limit": 1000,
+                  "rows": [
+                    {
+                      "delivery_fee_rules": null
+                    }
+                  ],
+                  "source_records": [],
+                  "sql": "SELECT NULL AS delivery_fee_rules;",
+                  "success": true,
+                  "truncated": false
+                }
+              ],
+              "trace_id": "2e14ab8beb244ea9"
+            },
+            "execution_status": "success",
+            "has_risk": true,
+            "outcome": "unverified",
+            "reasons": [
+              "execution_metadata_inconsistent",
+              "has_risk=true（字段缺失或类型不对时同此处置）"
+            ],
+            "run_id": "72efff96a30f423ab11ecb6230202207",
+            "trace_id": "2e14ab8beb244ea9"
+          },
+          "case_applied": true,
+          "case_id": "tk_d06697dafe8a",
+          "case_status": "in_progress",
+          "case_version": 2,
+          "control_version": 1,
+          "conv_id": "ae24f54f-1084-4342-9439-4ae930643dfa",
+          "draft_id": "dr_01a1b22ee9afc4b6568fee1d8865605b",
+          "escalated": true,
+          "handoff": true,
+          "handoff_reason": "Agent 自评置信度 0.65 低于 0.7",
+          "handoff_review": {
+            "basis": "unresolved_answer",
+            "draft_sha256": "b02e6dc13618a74afa80082a8d126ac008bd3876c7c498ccfcfb542740869cc4",
+            "model_answer_sha256": "4f1ca0b7099751f7b51af516eb08c7dc1ba2004e1b314ed51e02026543c65eec",
+            "original_answer_confidence": 0.609,
+            "original_handoff_reason": "Agent 自评置信度 0.65 低于 0.7",
+            "outcome": "retained"
+          },
+          "intent": "delivery",
+          "intent_group": "query",
+          "knowledge": {
+            "attempted": true,
+            "corrected": true,
+            "degraded": false,
+            "evidence_ok": false,
+            "mode": "rewrite_rerank",
+            "reranked": false
+          },
+          "knowledge_sources": [
+            {
+              "chunk_id": "ad8683d51f819733d56f971faf5b130b",
+              "content": "办理配送费用适用产品 Cedar-02 cabinets。操作说明：旧版处理时限为 32 个工作日内办结。",
+              "doc_id": "doc_82443877bea0205fe47f",
+              "doc_title": "Cedar-02 cabinets 配送费用 2026-A",
+              "excerpt": "办理配送费用适用产品 Cedar-02 cabinets。操作说明：旧版处理时限为 32 个工作日内办结。",
+              "passage": 0,
+              "policy": {
+                "audience": "employee",
+                "effective_at": "2026-01-01T00:00:00Z",
+                "expires_at": "2026-11-05T20:00:00Z",
+                "product": "Cedar-02 cabinets",
+                "region": "CA",
+                "status": "published",
+                "version": "2026-A"
+              },
+              "policy_as_of": "2026-11-05T19:59:59+00:00",
+              "policy_revision": "82443877bea0205fe47fba94b5f24b58d1ed038ed6af5406daa17890f53097d2",
+              "policy_scope": {
+                "as_of": "2026-11-05T19:59:59Z",
+                "audience": "employee",
+                "product": "Cedar-02 cabinets",
+                "region": "CA"
+              },
+              "retrieval": "hybrid",
+              "score": 0.4046,
+              "title": "Cedar-02 cabinets 配送费用 2026-A"
+            }
+          ],
+          "knowledge_used": true,
+          "latency_ms": 7411.045795306563,
+          "needs_clarification": false,
+          "policy_violations": [],
+          "primary_agent": "order",
+          "request_id": "0319970bc418",
+          "response": "政策摘录 [P1]：Cedar-02 cabinets 配送费用 2026-A（版本 2026-A；产品 Cedar-02 cabinets；区域 CA；受众 employee；适用时点 2026-11-05T19:59:59+00:00）\n> 办理配送费用适用产品 Cedar-02 cabinets。操作说明：旧版处理时限为 32 个工作日内办结。\n\n以上为可核对的资料。涉及补件、责任、金额或交期承诺，请由员工按适用政策审核后处理。",
+          "routing_confidence": 0.75,
+          "routing_reason": "intent=delivery, group=query, primary=order, supporting=none, scores=[order=0.75, billing=0.12, general=0.10, technical=0.00]",
+          "run": {
+            "attempt": 1,
+            "run_id": "01a1b22ee9afc4b6568fee1d8865605b"
+          },
+          "service_unavailable": false,
+          "supporting_agents": [],
+          "ticket_id": "tk_d06697dafe8a",
+          "ticket_notification": "not_configured",
+          "trajectory": [],
+          "turn_id": "01a1b22ee9b22bfcab9f108703",
+          "unavailable_reason": ""
+        },
+        "run_id": "01a1b22ee9afc4b6568fee1d8865605b",
+        "started_at": 1793990781.36163,
+        "status": "succeeded",
+        "turn_id": "01a1b22ee9b22bfcab9f108703"
+      }
+    ],
+    "side_effects": {
+      "actions": [
+        {
+          "action_key": "handoff:tk_d06697dafe8a",
+          "case_id": "tk_d06697dafe8a",
+          "kind": "handoff"
+        }
+      ],
+      "handoff": 1,
+      "notification": 0,
+      "notifications": []
+    },
+    "step_checks": []
+  },
+  "score": {
+    "business_resolved": false,
+    "elapsed_seconds": 40.257404499687254,
+    "errors": [],
+    "fact_correct": false,
+    "group": "policies",
+    "id": "development-policies-002",
+    "image_fields": [],
+    "invariant_violations": [
+      "unauthorized_or_duplicate_handoff"
+    ],
+    "run_count": 1,
+    "run_terminal": true,
+    "subtype": "boundary"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "delivery_counterexamples": 15,
+  "exit_code": 0,
+  "files": {
+    "mounts/compose.log": "9300720e3eda3153a42eaa092dc08c2ca183d2124103bc813625c978f063af17",
+    "mounts/result.json": "02a4384cc7a728e8ba3265844d929def8558c9532e207f6855ef9b4ee3db7f07",
+    "rescore.json": "534f175e40fda93fdfeb883fba5477b819f925d79df5ff4ba565ae8d546e96b5",
+    "tests.log": "e3f8989414d3ffb9b4fd251ea65fcb54646984336d55f811c0e2b1ff455abc95"
+  },
+  "harness_sha256": "63dce2b64bcb66706ba9dbc5521436fffeaea7a12f718b219c251961f36938f5",
+  "harness_unchanged_during_tests": true,
+  "image_counterexamples": 48,
+  "kind": "acceptance_oracle_validation",
+  "network_mode": "none",
+  "passed": true,
+  "product_revision_for_mount_test": "61d88efeb20287db1ef75814e748cf239f2f6435",
+  "real_credentials_mounted": false,
+  "schema_version": 1,
+  "skipped": 0,
+  "supplier_attempts": 0,
+  "supplier_receipts": 0,
+  "tests_run": 53
+}

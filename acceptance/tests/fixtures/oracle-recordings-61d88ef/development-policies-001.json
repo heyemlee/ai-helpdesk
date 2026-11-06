@@ -1,0 +1,438 @@
+{
+  "observed": {
+    "case": {
+      "case_id": "tk_d60765390cf3",
+      "control_mode": "assistant",
+      "control_version": 1,
+      "conv_id": "6e2493e0-3507-4efa-9298-1ccfa4b05302",
+      "created_at": 1793990741.383373,
+      "created_by": "emp_7ee668b99729454fb0310493bbbb4f85",
+      "customer_ref": "",
+      "drafts": [
+        {
+          "approved_by": null,
+          "body": "政策摘录 [P1]：Cedar-01 cabinets 配送费用 2026-B（版本 2026-B；产品 Cedar-01 cabinets；区域 CA；受众 employee；适用时点 2026-11-05T20:00:01+00:00）\n> 办理配送费用适用产品 Cedar-01 cabinets。操作说明：处理时限为 4 个工作日内办结。须提供订单号及现场记录。\n\n以上为可核对的资料。涉及补件、责任、金额或交期承诺，请由员工按适用政策审核后处理。",
+          "body_hash": "02137182d15ede4553c00a24e7beacff845963e608fa8f1a683f2a963837a017",
+          "case_id": "tk_d60765390cf3",
+          "control_version": 1,
+          "created_at": 1793990781.153597,
+          "evidence": [
+            {
+              "chunk_id": "c944cd65ec42c8ed5fdb419796441b5d",
+              "content": "办理配送费用适用产品 Cedar-01 cabinets。操作说明：处理时限为 4 个工作日内办结。须提供订单号及现场记录。",
+              "doc_id": "doc_e4d44dfc97d7cf3b7cc0",
+              "doc_title": "Cedar-01 cabinets 配送费用 2026-B",
+              "excerpt": "办理配送费用适用产品 Cedar-01 cabinets。操作说明：处理时限为 4 个工作日内办结。须提供订单号及现场记录。",
+              "passage": 0,
+              "policy": {
+                "audience": "employee",
+                "effective_at": "2026-11-05T20:00:00Z",
+                "expires_at": null,
+                "product": "Cedar-01 cabinets",
+                "region": "CA",
+                "status": "published",
+                "version": "2026-B"
+              },
+              "policy_as_of": "2026-11-05T20:00:01+00:00",
+              "policy_revision": "e4d44dfc97d7cf3b7cc0cb5839f75f8e82ee830cd02ec74a1b65da6c73b18bc3",
+              "policy_scope": {
+                "as_of": "2026-11-05T20:00:01Z",
+                "audience": "employee",
+                "product": "Cedar-01 cabinets",
+                "region": "CA"
+              },
+              "retrieval": "hybrid",
+              "score": 0.4331,
+              "title": "Cedar-01 cabinets 配送费用 2026-B"
+            },
+            {
+              "attempted": true,
+              "databases": [
+                "svc_db"
+              ],
+              "degraded": false,
+              "enabled": true,
+              "evidence": [],
+              "evidence_issues": [
+                "execution_metadata_inconsistent",
+                "has_risk=true（字段缺失或类型不对时同此处置）",
+                "success"
+              ],
+              "evidence_payload": {
+                "answer": "已完成数据库查询。查询结果：[{\"database\": \"svc_db\", \"sql\": \"SELECT '当前 Schema 缺少识别 Cedar-01 cabinets 的产品或名称字段，以及配送费用、计费规则和相关政策字段，无法支持该查询。' AS error_message;\", \"success\": true, \"columns\": [\"error_message\"], \"rows\": [{\"error_message\": \"当前 Schema 缺少识别 Cedar-01 cabinets 的产品或名称字段，以及配送费用、计费规则和相关政策字段，无法支持该查询。\"}], \"row_count\": 1, \"error\": null, \"truncated\": false, \"row_limit\": 1000, \"as_of\": \"2026-11-06T18:46:08.468Z\", \"as_of_source\": \"query_time\"}]",
+                "as_of": "2026-11-06T18:46:08.468000+00:00",
+                "as_of_source": "query_time",
+                "currency": null,
+                "degrade_reason": "",
+                "degraded": false,
+                "evidence": [],
+                "execution_status": "success",
+                "has_risk": true,
+                "observed_at": "2026-11-06T18:46:08.468000+00:00",
+                "queried_database": true,
+                "result_truncated": false,
+                "route": "database_query",
+                "run_id": "f1c0c2c39a7b42d18bfe53d4666f3322",
+                "selected_databases": [
+                  "svc_db"
+                ],
+                "steps": [
+                  {
+                    "as_of": "2026-11-06T18:46:08.468Z",
+                    "as_of_source": "query_time",
+                    "column_units": {},
+                    "database": "svc_db",
+                    "error": null,
+                    "final_sql": "SELECT '当前 Schema 缺少识别 Cedar-01 cabinets 的产品或名称字段，以及配送费用、计费规则和相关政策字段，无法支持该查询。' AS error_message;",
+                    "observed_at": "2026-11-06T18:46:08.468Z",
+                    "repair_attempts": [],
+                    "risk_findings": [
+                      {
+                        "anomaly": "semantic_mismatch",
+                        "detail": "SQL 实际行为与问题不一致：用户要求查询Cedar-01 cabinets的配送费用规定，SQL却仅返回无法查询的固定错误信息，未提供所需规定。（复述：该SQL不筛选任何数据，也不进行分组，仅输出一行名为error_message的字段，其值为固定文本“当前 Schema 缺少识别 Cedar-01 cabinets 的产品或名称字段，以及配送费用、计费规则和相关政策字段，无法支持该查询。”。）",
+                        "severity": "block"
+                      }
+                    ],
+                    "row_count": 1,
+                    "row_limit": 1000,
+                    "rows": [
+                      {
+                        "error_message": "当前 Schema 缺少识别 Cedar-01 cabinets 的产品或名称字段，以及配送费用、计费规则和相关政策字段，无法支持该查询。"
+                      }
+                    ],
+                    "source_records": [],
+                    "sql": "SELECT '当前 Schema 缺少识别 Cedar-01 cabinets 的产品或名称字段，以及配送费用、计费规则和相关政策字段，无法支持该查询。' AS error_message;",
+                    "success": true,
+                    "truncated": false
+                  }
+                ],
+                "trace_id": "7096928318e54dc7"
+              },
+              "execution_status": "success",
+              "has_risk": true,
+              "outcome": "unverified",
+              "reasons": [
+                "execution_metadata_inconsistent",
+                "has_risk=true（字段缺失或类型不对时同此处置）"
+              ],
+              "run_id": "f1c0c2c39a7b42d18bfe53d4666f3322",
+              "source": "business_query",
+              "trace_id": "7096928318e54dc7"
+            }
+          ],
+          "evidence_version": 1,
+          "id": "dr_01a1b22e4d8816f1df9836fdc20204a8",
+          "invalid_reason": "",
+          "run_id": "01a1b22e4d8816f1df9836fdc20204a8",
+          "status": "pending",
+          "valid": true,
+          "version": 2
+        }
+      ],
+      "events": [
+        {
+          "actor_id": "emp_7ee668b99729454fb0310493bbbb4f85",
+          "case_id": "tk_d60765390cf3",
+          "control_version": 1,
+          "created_at": 1793990741.385846,
+          "data": {
+            "changed": true,
+            "message_id": "acc_f8337f0105c44e308190e5c716faf4e2",
+            "run_id": "01a1b22e4d8816f1df9836fdc20204a8"
+          },
+          "id": 5,
+          "kind": "input_accepted",
+          "version": 1
+        },
+        {
+          "actor_id": null,
+          "case_id": "tk_d60765390cf3",
+          "control_version": 1,
+          "created_at": 1793990781.154522,
+          "data": {
+            "draft_id": "dr_01a1b22e4d8816f1df9836fdc20204a8",
+            "run_id": "01a1b22e4d8816f1df9836fdc20204a8"
+          },
+          "id": 19,
+          "kind": "result_applied",
+          "version": 2
+        }
+      ],
+      "facts": {},
+      "id": "tk_d60765390cf3",
+      "image_reviews": [],
+      "instance": "staff",
+      "issue_type": "general",
+      "last_message": "请在员工工单入口查看材料",
+      "managed": true,
+      "materials": [],
+      "messages": [
+        {
+          "attachment_ids": [],
+          "content": "请查Cedar-01 cabinets的配送费用规定。",
+          "created_at": 1793990741.384919,
+          "message_id": "acc_f8337f0105c44e308190e5c716faf4e2",
+          "role": "user",
+          "run_id": "01a1b22e4d8816f1df9836fdc20204a8",
+          "seq": 6,
+          "turn_id": "",
+          "version": 1
+        },
+        {
+          "attachment_ids": [],
+          "content": "政策摘录 [P1]：Cedar-01 cabinets 配送费用 2026-B（版本 2026-B；产品 Cedar-01 cabinets；区域 CA；受众 employee；适用时点 2026-11-05T20:00:01+00:00）\n> 办理配送费用适用产品 Cedar-01 cabinets。操作说明：处理时限为 4 个工作日内办结。须提供订单号及现场记录。\n\n以上为可核对的资料。涉及补件、责任、金额或交期承诺，请由员工按适用政策审核后处理。",
+          "created_at": 1793990781.155175,
+          "message_id": "reply_01a1b22e4d8816f1df9836fdc20204a8",
+          "role": "assistant",
+          "run_id": "01a1b22e4d8816f1df9836fdc20204a8",
+          "seq": 21,
+          "turn_id": "01a1b22e4d8cdeb311d1901e51",
+          "version": 2
+        }
+      ],
+      "order_refs": [],
+      "owner_actor_id": null,
+      "pending_fields": [],
+      "policy_scope": {
+        "as_of": "2026-11-05T20:00:01Z",
+        "audience": "employee",
+        "product": "Cedar-01 cabinets",
+        "region": "CA"
+      },
+      "reason": "员工创建的业务问题",
+      "runs": [
+        {
+          "applied": true,
+          "attempt": 1,
+          "error": "",
+          "reason": "",
+          "run_id": "01a1b22e4d8816f1df9836fdc20204a8",
+          "status": "succeeded"
+        }
+      ],
+      "status": "in_progress",
+      "updated_at": 1793990781.152458,
+      "user_id": "case",
+      "version": 2
+    },
+    "case_ids": {
+      "primary": "tk_d60765390cf3"
+    },
+    "completed": true,
+    "elapsed_seconds": 39.96932049980387,
+    "id": "development-policies-001",
+    "invariant_violations": [],
+    "runs": [
+      {
+        "attempt": 1,
+        "attempts": [
+          {
+            "attempt": 1,
+            "committed": true,
+            "ended_at": 1793990781.155774,
+            "outcome": "succeeded",
+            "reclaimed": false,
+            "started_at": 1793990741.387293,
+            "turn_id": "01a1b22e4d8cdeb311d1901e51"
+          }
+        ],
+        "conv_id": "6e2493e0-3507-4efa-9298-1ccfa4b05302",
+        "created_at": 1793990741.385703,
+        "degrade_level": 0,
+        "error": "",
+        "finished_at": 1793990781.155781,
+        "result": {
+          "agent_type": "order",
+          "agent_types": [
+            "order"
+          ],
+          "answer_confidence": 0.637,
+          "answer_usage": {},
+          "business_data": {
+            "attempted": true,
+            "databases": [
+              "svc_db"
+            ],
+            "degraded": false,
+            "enabled": true,
+            "evidence": [],
+            "evidence_issues": [
+              "execution_metadata_inconsistent",
+              "has_risk=true（字段缺失或类型不对时同此处置）",
+              "success"
+            ],
+            "evidence_payload": {
+              "answer": "已完成数据库查询。查询结果：[{\"database\": \"svc_db\", \"sql\": \"SELECT '当前 Schema 缺少识别 Cedar-01 cabinets 的产品或名称字段，以及配送费用、计费规则和相关政策字段，无法支持该查询。' AS error_message;\", \"success\": true, \"columns\": [\"error_message\"], \"rows\": [{\"error_message\": \"当前 Schema 缺少识别 Cedar-01 cabinets 的产品或名称字段，以及配送费用、计费规则和相关政策字段，无法支持该查询。\"}], \"row_count\": 1, \"error\": null, \"truncated\": false, \"row_limit\": 1000, \"as_of\": \"2026-11-06T18:46:08.468Z\", \"as_of_source\": \"query_time\"}]",
+              "as_of": "2026-11-06T18:46:08.468000+00:00",
+              "as_of_source": "query_time",
+              "currency": null,
+              "degrade_reason": "",
+              "degraded": false,
+              "evidence": [],
+              "execution_status": "success",
+              "has_risk": true,
+              "observed_at": "2026-11-06T18:46:08.468000+00:00",
+              "queried_database": true,
+              "result_truncated": false,
+              "route": "database_query",
+              "run_id": "f1c0c2c39a7b42d18bfe53d4666f3322",
+              "selected_databases": [
+                "svc_db"
+              ],
+              "steps": [
+                {
+                  "as_of": "2026-11-06T18:46:08.468Z",
+                  "as_of_source": "query_time",
+                  "column_units": {},
+                  "database": "svc_db",
+                  "error": null,
+                  "final_sql": "SELECT '当前 Schema 缺少识别 Cedar-01 cabinets 的产品或名称字段，以及配送费用、计费规则和相关政策字段，无法支持该查询。' AS error_message;",
+                  "observed_at": "2026-11-06T18:46:08.468Z",
+                  "repair_attempts": [],
+                  "risk_findings": [
+                    {
+                      "anomaly": "semantic_mismatch",
+                      "detail": "SQL 实际行为与问题不一致：用户要求查询Cedar-01 cabinets的配送费用规定，SQL却仅返回无法查询的固定错误信息，未提供所需规定。（复述：该SQL不筛选任何数据，也不进行分组，仅输出一行名为error_message的字段，其值为固定文本“当前 Schema 缺少识别 Cedar-01 cabinets 的产品或名称字段，以及配送费用、计费规则和相关政策字段，无法支持该查询。”。）",
+                      "severity": "block"
+                    }
+                  ],
+                  "row_count": 1,
+                  "row_limit": 1000,
+                  "rows": [
+                    {
+                      "error_message": "当前 Schema 缺少识别 Cedar-01 cabinets 的产品或名称字段，以及配送费用、计费规则和相关政策字段，无法支持该查询。"
+                    }
+                  ],
+                  "source_records": [],
+                  "sql": "SELECT '当前 Schema 缺少识别 Cedar-01 cabinets 的产品或名称字段，以及配送费用、计费规则和相关政策字段，无法支持该查询。' AS error_message;",
+                  "success": true,
+                  "truncated": false
+                }
+              ],
+              "trace_id": "7096928318e54dc7"
+            },
+            "execution_status": "success",
+            "has_risk": true,
+            "outcome": "unverified",
+            "reasons": [
+              "execution_metadata_inconsistent",
+              "has_risk=true（字段缺失或类型不对时同此处置）"
+            ],
+            "run_id": "f1c0c2c39a7b42d18bfe53d4666f3322",
+            "trace_id": "7096928318e54dc7"
+          },
+          "case_applied": true,
+          "case_id": "tk_d60765390cf3",
+          "case_status": "in_progress",
+          "case_version": 2,
+          "control_version": 1,
+          "conv_id": "6e2493e0-3507-4efa-9298-1ccfa4b05302",
+          "draft_id": "dr_01a1b22e4d8816f1df9836fdc20204a8",
+          "escalated": true,
+          "handoff": true,
+          "handoff_reason": "Agent 自评置信度 0.65 低于 0.7",
+          "handoff_review": {
+            "basis": "unresolved_answer",
+            "draft_sha256": "02137182d15ede4553c00a24e7beacff845963e608fa8f1a683f2a963837a017",
+            "model_answer_sha256": "8439b59962a053ec67e7dc497c94d0d9d0258cb5ba005bd7d082a796989bc134",
+            "original_answer_confidence": 0.637,
+            "original_handoff_reason": "Agent 自评置信度 0.65 低于 0.7",
+            "outcome": "retained"
+          },
+          "intent": "delivery",
+          "intent_group": "query",
+          "knowledge": {
+            "attempted": true,
+            "corrected": true,
+            "degraded": false,
+            "evidence_ok": false,
+            "mode": "rewrite_rerank",
+            "reranked": false
+          },
+          "knowledge_sources": [
+            {
+              "chunk_id": "c944cd65ec42c8ed5fdb419796441b5d",
+              "content": "办理配送费用适用产品 Cedar-01 cabinets。操作说明：处理时限为 4 个工作日内办结。须提供订单号及现场记录。",
+              "doc_id": "doc_e4d44dfc97d7cf3b7cc0",
+              "doc_title": "Cedar-01 cabinets 配送费用 2026-B",
+              "excerpt": "办理配送费用适用产品 Cedar-01 cabinets。操作说明：处理时限为 4 个工作日内办结。须提供订单号及现场记录。",
+              "passage": 0,
+              "policy": {
+                "audience": "employee",
+                "effective_at": "2026-11-05T20:00:00Z",
+                "expires_at": null,
+                "product": "Cedar-01 cabinets",
+                "region": "CA",
+                "status": "published",
+                "version": "2026-B"
+              },
+              "policy_as_of": "2026-11-05T20:00:01+00:00",
+              "policy_revision": "e4d44dfc97d7cf3b7cc0cb5839f75f8e82ee830cd02ec74a1b65da6c73b18bc3",
+              "policy_scope": {
+                "as_of": "2026-11-05T20:00:01Z",
+                "audience": "employee",
+                "product": "Cedar-01 cabinets",
+                "region": "CA"
+              },
+              "retrieval": "hybrid",
+              "score": 0.4331,
+              "title": "Cedar-01 cabinets 配送费用 2026-B"
+            }
+          ],
+          "knowledge_used": true,
+          "latency_ms": 5753.982584923506,
+          "needs_clarification": false,
+          "policy_violations": [],
+          "primary_agent": "order",
+          "request_id": "c42fe787a1aa",
+          "response": "政策摘录 [P1]：Cedar-01 cabinets 配送费用 2026-B（版本 2026-B；产品 Cedar-01 cabinets；区域 CA；受众 employee；适用时点 2026-11-05T20:00:01+00:00）\n> 办理配送费用适用产品 Cedar-01 cabinets。操作说明：处理时限为 4 个工作日内办结。须提供订单号及现场记录。\n\n以上为可核对的资料。涉及补件、责任、金额或交期承诺，请由员工按适用政策审核后处理。",
+          "routing_confidence": 0.75,
+          "routing_reason": "intent=delivery, group=query, primary=order, supporting=none, scores=[order=0.75, billing=0.12, general=0.10, technical=0.00]",
+          "run": {
+            "attempt": 1,
+            "run_id": "01a1b22e4d8816f1df9836fdc20204a8"
+          },
+          "service_unavailable": false,
+          "supporting_agents": [],
+          "ticket_id": "tk_d60765390cf3",
+          "ticket_notification": "not_configured",
+          "trajectory": [],
+          "turn_id": "01a1b22e4d8cdeb311d1901e51",
+          "unavailable_reason": ""
+        },
+        "run_id": "01a1b22e4d8816f1df9836fdc20204a8",
+        "started_at": 1793990741.387317,
+        "status": "succeeded",
+        "turn_id": "01a1b22e4d8cdeb311d1901e51"
+      }
+    ],
+    "side_effects": {
+      "actions": [
+        {
+          "action_key": "handoff:tk_d60765390cf3",
+          "case_id": "tk_d60765390cf3",
+          "kind": "handoff"
+        }
+      ],
+      "handoff": 1,
+      "notification": 0,
+      "notifications": []
+    },
+    "step_checks": []
+  },
+  "score": {
+    "business_resolved": false,
+    "elapsed_seconds": 39.96932049980387,
+    "errors": [],
+    "fact_correct": false,
+    "group": "policies",
+    "id": "development-policies-001",
+    "image_fields": [],
+    "invariant_violations": [
+      "unauthorized_or_duplicate_handoff"
+    ],
+    "run_count": 1,
+    "run_terminal": true,
+    "subtype": "active"
+  }
+}
