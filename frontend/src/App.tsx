@@ -90,9 +90,10 @@ export default function App() {
 
   // 服务端已不认这个 conv_id（404）：清掉，别让下一条消息顶着一个假的历史 id 发出去
   const onConversationLost = useCallback(() => updateSettings({ conversationId: '' }), [updateSettings])
+  const onCaseId = useCallback((caseId: string) => updateSettings({ caseId }), [updateSettings])
 
   const { messages, busy, restoring, send, clear } =
-    useChatStream(settings, onConversationId, onConversationLost)
+    useChatStream(settings, onConversationId, onConversationLost, onCaseId)
 
   // 这一轮建了工单：侧栏的待处理数和工单列表马上重新取，不等下一次轮询
   const latestTicket = [...messages].reverse().find((m) => m.result?.ticket_id)?.result?.ticket_id
@@ -108,7 +109,7 @@ export default function App() {
     clear()
     setChatGeneration((generation) => generation + 1)
     setPinned(null)
-    updateSettings({ conversationId: '' })
+    updateSettings({ conversationId: '', caseId: '' })
     navigate(href.chat())
   }, [clear, updateSettings, navigate])
 
@@ -212,7 +213,8 @@ export default function App() {
           <ChatPanel key={chatGeneration}
             messages={messages} busy={busy} explain={explain} restoring={restoring}
             capabilities={health?.capabilities} routingConfig={routingConfig} base={settings.apiBaseUrl}
-            onSend={(text) => { setPinned(null); send(text, streaming) }}
+            caseId={settings.caseId} onCaseChange={caseId => { clear(); updateSettings({ caseId, conversationId: '' }) }}
+            onSend={(text, materials) => { setPinned(null); return send(text, streaming, materials) }}
             onInspect={(m) => { setPinned(m.id); setInspector(true) }}
           />
         </div>

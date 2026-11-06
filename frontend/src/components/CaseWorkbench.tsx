@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Markdown from 'react-markdown'
 import { ApiError, caseApi, loadSettings } from '@/api/client'
-import type { CaseAction, CaseDetail, CaseInput, CaseSummary } from '@/api/types'
+import type { Attachment, CaseAction, CaseDetail, CaseInput, CaseSummary } from '@/api/types'
 import { useT } from '@/i18n'
+import { AttachmentPicker, AttachmentView, ImageReviewTable, imageFieldLabel } from './Attachments'
 
 const labels: Record<string, [string, string]> = {
   open: ['待处理', 'Open'], waiting_for_info: ['等待补料', 'Waiting for information'],
@@ -18,7 +19,7 @@ export function CaseWorkbench({ base, ticketId }: { base: string; ticketId?: str
   const { lang } = useT()
   const en = lang === 'en'
   const text = (zh: string, english: string) => en ? english : zh
-  const label = (key: string) => labels[key]?.[en ? 1 : 0] ?? key
+  const label = (key: string) => labels[key]?.[en ? 1 : 0] ?? imageFieldLabel(key, en)
   const [list, setList] = useState<CaseSummary[]>([])
   const [selected, setSelected] = useState(ticketId ?? '')
   const [current, setCurrent] = useState<CaseDetail | null>(null)
@@ -27,6 +28,8 @@ export function CaseWorkbench({ base, ticketId }: { base: string; ticketId?: str
   const [customer, setCustomer] = useState('')
   const [message, setMessage] = useState('')
   const [facts, setFacts] = useState<Record<string, string>>({})
+  const [attachments, setAttachments] = useState<Attachment[]>([])
+  const [uploading, setUploading] = useState(false)
   const [reason, setReason] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -87,20 +90,22 @@ export function CaseWorkbench({ base, ticketId }: { base: string; ticketId?: str
       }
     } finally { setBusy(false) }
   }
-  async function submit() {
+  async function submit(retryIds?: string[]) {
     await perform(async () => {
       const cleanFacts = Object.fromEntries(Object.entries(facts).filter(([, v]) => v.trim()))
-      const fingerprint = JSON.stringify({ selected, conv, message, cleanFacts, issue, customer })
+      const ids = retryIds ?? attachments.map(a => a.id)
+      const fingerprint = JSON.stringify({ selected, conv, message, cleanFacts, issue, customer, ids })
       if (pending.current?.fingerprint !== fingerprint) {
         pending.current = { fingerprint, body: {
           message_id: id(), message, conv_id: current?.conv_id ?? conv, facts: cleanFacts,
+          ...(ids.length ? { attachment_ids: ids } : {}),
           ...(current ? { case_id: current.id, expected_version: current.version, expected_control_version: current.control_version }
             : { new_case: true, issue_type: issue, customer_ref: customer }),
         } }
       }
       const receipt = await caseApi.input(base, pending.current.body)
       pending.current = null
-      setMessage(''); setFacts({})
+      setMessage(''); setFacts({}); setAttachments([])
       setSelected(receipt.case_id)
       setCurrent(await caseApi.get(base, receipt.case_id))
       await refreshList()
@@ -117,7 +122,7 @@ export function CaseWorkbench({ base, ticketId }: { base: string; ticketId?: str
     })
   }
   const closed = current?.status === 'resolved' || current?.status === 'cancelled'
-  const required = [...new Set([...(fields[current?.issue_type ?? issue] ?? []), ...(current?.pending_fields ?? [])])]
+  const required = [...new Set([...(fields[current?.issue_type ?? issue] ?? []), ...(current?.pending_fields ?? [])])].filter(f => !f.startsWith('image:'))
   return <section className="case-workbench" aria-label={text('跨消息工单', 'Case workspace')}>
     <h2>{text('同一问题，持续处理', 'Continue the same business problem')}</h2>
     <p>{text('明确选择已有问题或新建。相同订单可以有多个售后问题，系统不会自动合并。', 'Choose a case or create a new problem. The same order can have several separate issues.')}</p>
@@ -125,7 +130,7 @@ export function CaseWorkbench({ base, ticketId }: { base: string; ticketId?: str
     {notice && <p role="status" className="note neutral">{notice}</p>}
     {available && <>
       <label>{text('选择问题', 'Choose case')}
-        <select value={selected} disabled={busy} onChange={e => { setSelected(e.target.value); setMessage('') }}>
+        <select value={selected} disabled={busy || uploading} onChange={e => { setSelected(e.target.value); setMessage(''); setAttachments([]) }}>
           <option value="">{text('新建问题', 'New problem')}</option>
           {list.map(c => <option key={c.id} value={c.id}>{c.id} · {label(c.issue_type)} · {label(c.status)}</option>)}
         </select>
@@ -149,10 +154,17 @@ export function CaseWorkbench({ base, ticketId }: { base: string; ticketId?: str
             <button className="btn btn-primary" disabled={busy || !reason.trim()} onClick={() => act('reopen')}>{text('重开问题', 'Reopen')}</button></div>}
           <h3>{text('材料与待补项', 'Materials and missing information')}</h3>
           <dl>{Object.entries(current.facts).map(([field, fact]) => <div key={field}>
-            <dt>{label(field)}</dt><dd>{fact.value} · {fact.source === 'verified_evidence' ? text('证据已核实', 'Verified evidence') : text('员工提交', 'Employee supplied')}</dd>
+            <dt>{label(field)}</dt><dd>{fact.value} · {['verified_evidence', 'verified_image'].includes(fact.source) ? text('证据已核实', 'Verified evidence') : text('员工提交', 'Employee supplied')}</dd>
           </div>)}</dl>
           <p>{text('待补', 'Missing')}: {current.pending_fields.map(label).join(', ') || text('无', 'None')}</p>
-          {current.materials.map(m => <p key={m.attachment_id}>{text('附件', 'Attachment')}: {m.attachment_id} · {m.sha256.slice(0, 12)}</p>)}
+          {current.materials.map(m => <div key={m.attachment_id}>
+            <AttachmentView base={base} id={m.attachment_id} name={m.attachment?.filename} />
+            <p>{text('材料指纹', 'Material hash')}: {m.sha256.slice(0, 12)}</p>
+            {current.image_reviews?.filter(r => r.attachment_id === m.attachment_id).slice(-1).map(r =>
+              <ImageReviewTable key={r.run_id} review={r.result} />)}
+            {!closed && <button type="button" className="btn btn-secondary" disabled={busy || running || uploading}
+              onClick={() => submit([m.attachment_id])}>{text('重新核对此图', 'Recheck image')}</button>}
+          </div>)}
         </> : <div className="case-fields">
           <label>{text('会话', 'Conversation')}<input value={conv} onChange={e => setConv(e.target.value)} /></label>
           <label>{text('问题类型', 'Issue type')}<select value={issue} onChange={e => { setIssue(e.target.value as typeof issue); setFacts({}) }}>
@@ -166,7 +178,8 @@ export function CaseWorkbench({ base, ticketId }: { base: string; ticketId?: str
               onChange={e => setFacts({ ...facts, [field]: e.target.value })} />
           </label>)}</div>
           <label>{text('补充说明', 'Message')}<textarea value={message} onChange={e => setMessage(e.target.value)} maxLength={4000} /></label>
-          <button className="btn btn-primary" disabled={busy || !conv.trim() || (!message.trim() && !Object.values(facts).some(v => v.trim()))}>
+          <AttachmentPicker base={base} value={attachments} onChange={setAttachments} onBusy={setUploading} disabled={busy} />
+          <button className="btn btn-primary" disabled={busy || uploading || !conv.trim() || (!message.trim() && !attachments.length && !Object.values(facts).some(v => v.trim()))}>
             {busy ? text('正在保存…', 'Saving…') : text('保存并继续', 'Save and continue')}
           </button>
         </form>}

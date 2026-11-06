@@ -348,6 +348,8 @@ class Database:
                     await conn.execute(schema)
                 from app.tickets.case_schema import migrate
                 await migrate(conn)
+                from app.attachments.schema import migrate as migrate_attachments
+                await migrate_attachments(conn)
             if verify_dim:
                 await self._check_vector_dim(conn, "kb_chunks", dim)
                 await self._check_vector_dim(conn, "memory_episodic", dim)

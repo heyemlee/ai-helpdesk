@@ -3,6 +3,7 @@
 Only server middleware may put an ActorContext in ASGI scope. Neither user_id nor
 X-API-Key supplies employee claims. Tests override this dependency explicitly.
 """
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 from fastapi import HTTPException, Request
@@ -25,3 +26,30 @@ def get_current_actor(request: Request) -> ActorContext:
         raise HTTPException(401, {"code": "employee_identity_required", "message": "员工登录尚未接入或会话已失效；共享服务密钥不能代替员工身份"})
     actor.require_employee()
     return actor
+
+
+class ActorDirectory:
+    """Live account lookup shared by requests and durable work (stage 5).
+
+    Install a provider backed by the identity system, in every API/worker process.
+    Never reconstruct permissions from a queued roles snapshot. No provider fails
+    closed, including when a request happens to have an ActorContext in scope.
+    """
+
+    def __init__(self, provider: Callable[..., Awaitable[ActorContext | None]] | None = None):
+        self.provider = provider
+
+    async def resolve(self, actor_id: str, instance: str, *, conn=None) -> ActorContext:
+        # Providers accept conn=None and use the supplied transaction connection
+        # when present. Acquiring a second connection inside every locked Case
+        # transaction can exhaust the pool and block worker heartbeats.
+        actor = await self.provider(actor_id, instance, conn=conn) if self.provider else None
+        if not isinstance(actor, ActorContext):
+            raise HTTPException(401, {"code": "employee_account_unavailable", "message": "员工登录已失效或账号服务尚未接入"})
+        actor.require_employee()
+        if actor.actor_id != actor_id or actor.instance != instance:
+            raise HTTPException(403, "Employee identity mismatch")
+        return actor
+
+    async def refresh(self, actor: ActorContext, *, conn=None) -> ActorContext:
+        return await self.resolve(actor.actor_id, actor.instance, conn=conn)

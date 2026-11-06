@@ -580,6 +580,12 @@ app = FastAPI(
     docs_url="/docs",
 )
 
+from app.attachments.body_limit import UploadBodyLimit  # noqa: E402
+from app.core.actor import ActorDirectory  # noqa: E402
+
+app.state.actor_directory = ActorDirectory()
+app.add_middleware(UploadBodyLimit)
+
 # CORS 白名单从环境变量读取，默认放开是为了本地联调；
 # 部署时用 CORS_ALLOW_ORIGINS=https://console.example.com 收敛。
 _cors_origins = [
@@ -1078,8 +1084,11 @@ class ChatResponse(BaseModel):
 # 模型连接的管理接口（api/model_admin.py）。带员工钥匙这一层和其它写接口一样；
 # 能不能改还要过它自己那道"本机控制台发来的"检查。
 from app.api import model_admin as _model_admin  # noqa: E402
+from app.api.attachment_api import router as attachment_router  # noqa: E402
 from app.api.case_api import optional_actor, readable_case_run, require_actor  # noqa: E402
 from app.api.case_api import router as case_router  # noqa: E402
+
+app.include_router(attachment_router)
 
 app.include_router(_model_admin.router, dependencies=[Depends(require_api_key)])
 app.include_router(case_router)
@@ -1931,6 +1940,10 @@ async def _run_queued_turn(ctx: RunContext) -> RunOutcome:
 async def _start_cases() -> None:
     """Case executions are durable even when legacy FAQ requests use inline mode."""
     global _cases, _case_worker, _case_event_log
+    from app.attachments.objects import configured_objects
+    from app.attachments.service import AttachmentService
+    from app.attachments.verification import ImageExtractor
+    from app.attachments.workflow import MaterialWorkflow
     from app.runs.broker import RedisBroker
     from app.runs.channel import RedisChannel
     from app.runs.memo import RedisMemo
@@ -1945,7 +1958,11 @@ async def _start_cases() -> None:
     channel = RedisChannel(_infra_redis)
     await broker.ensure_group()
     runs = RunService(store=store, broker=broker, channel=channel, config=config, heartbeat_s=SSE_HEARTBEAT_S)
-    _cases = CaseService(_pg_database, _INSTANCE, run_service=runs,
+    objects = configured_objects()
+    attachments = AttachmentService(_pg_database, objects, app.state.actor_directory, _INSTANCE) if objects else None
+    app.state.attachments = attachments if config.serves_api else None
+    _cases = CaseService(_pg_database, _INSTANCE, run_service=runs, attachments=attachments,
+                         attachment_resolver=attachments.resolve if attachments else None,
                          webhook_url=os.getenv("TICKET_WEBHOOK_URL", "").strip())
     app.state.case_service = _cases if config.serves_api else None
     # Case audit uses its protected PG scope. Existing Kafka topics/consumers
@@ -1963,7 +1980,20 @@ async def _start_cases() -> None:
         finally:
             request_id_var.reset(token)
 
-    executor = CaseExecutor(_cases, prepare=prepare, answer=_orchestrator.run, event_log=_case_event_log)
+    materials = None
+    if attachments:
+        extractor = ImageExtractor(None, "")
+        _model_runtime.register_llm(extractor)
+
+        async def query_images(question, run):
+            if _sql_agent is None or not _sql_agent.enabled:
+                return {"unavailable": True}
+            result = await _tool_manager.call("order_data_query", {
+                "query": question, "user_id": run.user_id, "session_id": f"case-{_INSTANCE}-{run.case_context['case_id']}"})
+            return result.data if result.success else {"unavailable": True}
+
+        materials = MaterialWorkflow(attachments, extractor, query_images)
+    executor = CaseExecutor(_cases, prepare=prepare, answer=_orchestrator.run, event_log=_case_event_log, materials=materials)
     if config.runs_worker:
         _case_worker = RunWorker(store=store, broker=broker, channel=channel, memo=RedisMemo(_infra_redis),
                                  execute=executor, config=config, policy=DegradePolicy.from_env(), on_dead=executor.dead)

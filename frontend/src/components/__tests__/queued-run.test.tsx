@@ -51,6 +51,81 @@ function sseResponse(frames: string[], breakAfter = false): Response {
 
 const settings = { userId: 'u1', conversationId: '', apiBaseUrl: '/api' }
 
+describe('image Case continuation', () => {
+  const materials = { attachments: [{ id: 'at_1', filename: 'order.png', sha256: 'sha', media_type: 'image/png',
+    byte_size: 50, width: 10, height: 10, state: 'ready', error_code: '' }], caseChoice: 'new', issueType: 'order' as const }
+
+  it('persists the Case at acceptance and follows a new Run without another input', async () => {
+    const onCase = vi.fn()
+    const fetchMock = vi.fn(async (url: string) => url.endsWith('/chat/stream')
+      ? sseResponse([frame('run', { run_id: RUN, conv_id: 'c1', case_id: 'tk_1', status: 'queued', attempt: 0 }),
+        frame('result', { ...RESULT, case_id: 'tk_1', response: 'review saved', next_run_id: 'next' })])
+      : sseResponse([frame('result', { ...RESULT, case_id: 'tk_1', response: 'verified draft' })]))
+    vi.stubGlobal('fetch', fetchMock)
+    const hook = renderHook(() => useChatStream(settings, vi.fn(), undefined, onCase))
+    await act(async () => { expect(await hook.result.current.send('', true, materials)).toBe(true) })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/runs/next/events')
+    expect(onCase).toHaveBeenCalledWith('tk_1')
+    expect(hook.result.current.messages.at(-1)).toMatchObject({ content: 'verified draft', routing: { primary_agent: 'order' } })
+  })
+
+  it('keeps the same message receipt when a submit loses its network response', async () => {
+    const requests: Record<string, unknown>[] = []
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => {
+      requests.push(JSON.parse(String(init.body)))
+      if (requests.length === 1) throw new TypeError('lost receipt')
+      return sseResponse([frame('result', { ...RESULT, case_id: 'tk_1' })])
+    }))
+    const hook = renderHook(() => useChatStream(settings, vi.fn()))
+    await act(async () => { expect(await hook.result.current.send('', true, materials)).toBe(false) })
+    await act(async () => { expect(await hook.result.current.send('', true, materials)).toBe(true) })
+    expect(requests[0]).toEqual(requests[1])
+    expect(requests[0]).toMatchObject({ new_case: true, attachment_ids: ['at_1'], message: '' })
+  })
+
+  it('a clean EOF before acceptance retains the same input receipt for retry', async () => {
+    const requests: Record<string, unknown>[] = []
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => {
+      requests.push(JSON.parse(String(init.body)))
+      return sseResponse(requests.length === 1 ? [] : [frame('result', { ...RESULT, case_id: 'tk_1' })])
+    }))
+    const hook = renderHook(() => useChatStream(settings, vi.fn()))
+    await act(async () => { expect(await hook.result.current.send('', true, materials)).toBe(false) })
+    expect(hook.result.current.messages.at(-1)?.error).toContain('未收到完成回执')
+    await act(async () => { expect(await hook.result.current.send('', true, materials)).toBe(true) })
+    expect(requests[0]).toEqual(requests[1])
+    expect(hook.result.current.messages).toHaveLength(2)
+  })
+
+  it('retries the saved continuation after automatic Case selection changes from new to its ID', async () => {
+    vi.useFakeTimers()
+    let offline = true
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith('/chat/stream')) return sseResponse([
+        frame('run', { run_id: RUN, conv_id: 'c1', case_id: 'tk_1', status: 'running', attempt: 1 }),
+        frame('result', { ...RESULT, case_id: 'tk_1', next_run_id: 'next' }),
+      ])
+      if (offline) throw new TypeError('continuation disconnected')
+      return sseResponse([frame('result', { ...RESULT, case_id: 'tk_1', response: 'resumed' })])
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const hook = renderHook(({ caseId }) => useChatStream({ ...settings, caseId }, vi.fn(), undefined, vi.fn()),
+      { initialProps: { caseId: '' } })
+    let sending = Promise.resolve(false)
+    await act(async () => { sending = hook.result.current.send('', true, materials) })
+    for (let i = 0; i < 20; i++) await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
+    expect(await sending).toBe(false)
+    hook.rerender({ caseId: 'tk_1' })
+    offline = false
+    await act(async () => { expect(await hook.result.current.send('', true, { ...materials, caseChoice: 'tk_1' })).toBe(true) })
+    expect(fetchMock.mock.calls.filter(([url]) => url.endsWith('/chat/stream'))).toHaveLength(1)
+    expect(fetchMock.mock.calls.at(-1)?.[0]).toBe('/api/runs/next/events')
+    expect(hook.result.current.messages).toHaveLength(2)
+    expect(hook.result.current.messages.at(-1)?.content).toBe('resumed')
+  })
+})
+
 async function send(text = '补件到哪了') {
   const onConversation = vi.fn()
   const hook = renderHook(() => useChatStream(settings, onConversation))
@@ -148,7 +223,7 @@ describe('断线续流', () => {
       : Promise.reject(new TypeError('Failed to fetch')))
     vi.stubGlobal('fetch', fetchMock)
     const hook = renderHook(() => useChatStream(settings, vi.fn()))
-    let sending: Promise<void> = Promise.resolve()
+    let sending: Promise<boolean> = Promise.resolve(false)
     await act(async () => { sending = hook.result.current.send('补件到哪了', true) })
     for (let i = 0; i < 20; i += 1) {                            // 0.5 + 1 + 2 + 4 + 8 秒
       await act(async () => { await vi.advanceTimersByTimeAsync(1000) })

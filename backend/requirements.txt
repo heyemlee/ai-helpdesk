@@ -32,6 +32,8 @@ starlette==0.48.0           # 显式声明：GHSA-2c2j-9gv5-cj73 在 0.47.2 修�
 python-multipart==0.0.32    # FastAPI 文件上传支持。0.0.12 有两个 DoS
                             # （GHSA-59g5-xgcq-4qw3 / GHSA-pp6c-gr5w-3c5g），
                             # 修复在 0.0.27
+Pillow==13.0.0              # Decode and bound private image attachments
+boto3==1.43.125             # Private S3-compatible object storage
 
 # ── 数据存储 ──────────────────────────────────────────────────────────────────
 redis==5.2.1

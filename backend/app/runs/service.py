@@ -141,6 +141,7 @@ class RunService:
         """一个 run 的 SSE 帧：after 为空时从头读（先发一帧 run），否则从 after 后面接着读。"""
         if not after:
             yield sse("run", {"run_id": run.run_id, "conv_id": run.conv_id, "status": run.status,
+                              **({"case_id": run.case_context["case_id"]} if run.case_context else {}),
                               "attempt": run.attempt})
         cursor = after or "0-0"
         attempt = 0

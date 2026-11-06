@@ -74,6 +74,8 @@ export interface BusinessDataTrace {
 }
 
 export interface ChatResponse {
+  case_id?: string
+  next_run_id?: string
   conv_id: string
   response: string
   intent: string
@@ -298,6 +300,7 @@ export interface StreamMetaEvent {
 
 /** 排队模式的第一帧：run_id 是断线之后续流的凭据（GET /runs/{run_id}/events） */
 export interface StreamRunEvent {
+  case_id?: string
   run_id: string
   conv_id: string
   status: string
@@ -783,12 +786,22 @@ export interface CaseSummary {
   pending_fields: string[]
 }
 export interface CaseDetail extends CaseSummary {
-  messages: { seq: number; role: string; content: string; message_id: string; run_id: string; version: number }[]
+  messages: { seq: number; role: string; content: string; message_id: string; run_id: string; version: number; attachment_ids?: string[] }[]
   drafts: { id: string; body: string; body_hash: string; version: number; control_version: number;
     status: string; valid: boolean; invalid_reason: string; approved_by: string | null; evidence: unknown[] }[]
-  materials: { attachment_id: string; sha256: string; message_id: string; version: number }[]
+  materials: { attachment_id: string; sha256: string; message_id: string; version: number; attachment?: Attachment }[]
+  image_reviews?: { attachment_id: string; run_id: string; version: number; result: ImageReview }[]
   runs: { run_id: string; status: string | null; applied: boolean | null; reason: string | null }[]
   events: { id: number; kind: string; actor_id: string | null; version: number; data: Record<string, unknown> }[]
+}
+export interface Attachment {
+  id: string; filename: string; sha256: string; media_type: string; byte_size: number
+  width: number; height: number; state: string; error_code: string
+}
+export interface ImageReview {
+  query_outcome: string
+  fields: { field: string; value: string | null; unit: string | null; outcome: string; db_value: string | null;
+    source: { database: string; column: string; as_of: string; as_of_source: string; trace_id: string; run_id: string } | null }[]
 }
 export interface CaseInput {
   message_id: string

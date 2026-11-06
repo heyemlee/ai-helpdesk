@@ -77,6 +77,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Start isolated private S3 service
+        run: |
+          docker run -d --rm --name attachment-s3 -p 127.0.0.1:8333:8333 \
+            -e AWS_ACCESS_KEY_ID=attachment-test -e AWS_SECRET_ACCESS_KEY=attachment-test-secret \
+            chrislusf/seaweedfs:4.52 mini -dir=/data
+          for attempt in $(seq 1 60); do
+            if curl -sS -o /dev/null http://127.0.0.1:8333/; then exit 0; fi
+            sleep 1
+          done
+          exit 1
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -101,6 +112,7 @@ jobs:
           TEST_POSTGRES_DSN: postgresql://test:test@localhost:5432/test
           TEST_REDIS_URL: redis://localhost:6379/0
           TEST_KAFKA_BOOTSTRAP: localhost:9092
+          TEST_S3_ENDPOINT: http://127.0.0.1:8333
           # 契约从仓库里读。以前这个 job 不设它，契约用例和轨迹评测里的契约用例在这里全部跳过；
           # 设了 REQUIRED，找不到契约就失败，不再静默跳过
           A2A_CONTRACT_DIR: ${{ github.workspace }}/a2a-contract
@@ -141,6 +153,29 @@ jobs:
       # 这一步是那条缺口唯一的门禁。
       - name: Build (production)
         run: npm run build
+
+  attachments-browser:
+    name: Attachment browser workflow
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install isolated test tools
+        run: |
+          python -m venv backend/.venv
+          backend/.venv/bin/pip install -r backend/requirements-dev.txt
+          cd frontend
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Exercise real browser and disposable services
+        run: scripts/test-attachments-browser.sh
 
   contract:
     name: A2A contract

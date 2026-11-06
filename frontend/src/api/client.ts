@@ -1,5 +1,5 @@
 import type {
-  CaseAction, CaseDetail, CaseInput, CaseReceipt, CaseSummary,
+  Attachment, CaseAction, CaseDetail, CaseInput, CaseReceipt, CaseSummary,
   ChatConnectionBody, ChatModelBody, ChatRequest, ChatResponse, ConversationResponse,
   EmbeddingConnectionBody, EmbeddingModelBody, EvalReport, HealthResponse, ImportResult,
   KnowledgeCategoryOverview, KnowledgeDocument, KnowledgeDocumentDetail, KnowledgeDocumentList,
@@ -12,6 +12,7 @@ const STORAGE_KEY = 'ai-helpdesk.console.settings.v2'
 const STAFF_KEY_STORAGE = 'ai-helpdesk.console.staff-key'
 
 export interface Settings {
+  caseId?: string
   userId: string
   conversationId: string
   apiBaseUrl: string
@@ -24,6 +25,7 @@ export function loadSettings(): Settings {
       userId: saved.userId || 'u1001',
       conversationId: saved.conversationId || '',
       apiBaseUrl: saved.apiBaseUrl || DEFAULT_API_BASE,
+      ...(saved.caseId ? { caseId: saved.caseId } : {}),
     }
   } catch {
     return { userId: 'u1001', conversationId: '', apiBaseUrl: DEFAULT_API_BASE }
@@ -334,4 +336,17 @@ export const caseApi = {
   adopt: (base: string, id: string, updated: number, reason: string) =>
     request<CaseDetail>(base, `/tickets/${encodeURIComponent(id)}/case/adopt`,
       json({ expected_ticket_updated_at: updated, reason })),
+}
+
+export const attachmentApi = {
+  upload: (base: string, file: File, key: string) => {
+    const body = new FormData(); body.append('file', file)
+    return request<Attachment>(base, '/attachments', { method: 'POST', body, headers: { 'Idempotency-Key': key } })
+  },
+  remove: (base: string, id: string) => request<void>(base, `/attachments/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  content: async (base: string, id: string, preview = false): Promise<Blob> => {
+    const res = await fetch(`${trimSlash(base)}/attachments/${encodeURIComponent(id)}/content?preview=${preview}`, { headers: authHeaders() })
+    if (!res.ok) throw new ApiError(res.status, 'Attachment access failed')
+    return res.blob()
+  },
 }

@@ -42,7 +42,7 @@ def pending_fields(c) -> list[str]:
     required = {"order": ["order_ref"], "missing_parts": ["order_ref", "model", "quantity"],
                 "wrong_item": ["order_ref", "expected_model", "received_model"]}.get(c["issue_type"], [])
     missing = list(dict.fromkeys([*decode(c["pending_fields"], []), *required]))
-    return [f for f in missing if f not in facts and not (f == "order_ref" and decode(c["order_refs"], []))]
+    return [f for f in missing if f.startswith("image:") or (f not in facts and not (f == "order_ref" and decode(c["order_refs"], [])))]
 
 
 class CaseInput(BaseModel):
@@ -63,7 +63,9 @@ class CaseInput(BaseModel):
 
     @model_validator(mode="after")
     def validate_input(self):
-        if self.message_id.startswith(("reply_", "adopt_")):
+        if any(k.startswith("image:") for k in [*self.facts, *(self.pending_fields or [])]):
+            raise ValueError("图片核验状态由服务器维护，请补充材料或重新核对")
+        if self.message_id.startswith(("reply_", "adopt_", "verified_")):
             raise ValueError("message_id 使用了保留前缀")
         if bool(self.case_id) == self.new_case:
             raise ValueError("明确选择现有工单或新建问题；不按订单号自动合并")
@@ -102,7 +104,8 @@ class CaseAdoption(BaseModel):
 
 
 class CaseService:
-    def __init__(self, db, instance: str, *, run_service=None, webhook_url: str = "", attachment_resolver=None):
+    def __init__(self, db, instance: str, *, run_service=None, webhook_url: str = "", attachment_resolver=None,
+                 attachments=None):
         self.db = db
         self.instance = instance
         self.run_instance = instance + CASE_SUFFIX
@@ -110,6 +113,7 @@ class CaseService:
         self.webhook_url = webhook_url
         # Stage 3: reauthorize IDs for this actor; return {id, sha256}, never URLs.
         self.attachment_resolver = attachment_resolver
+        self.attachments = attachments
 
     def authorize(self, actor: ActorContext):
         actor.require_employee()
@@ -237,6 +241,12 @@ class CaseService:
                 await conn.execute("UPDATE ticket_case_state SET created_by=$2 WHERE case_id=$1", case_id, actor.actor_id)
             if c["status"] not in ACTIVE:
                 raise conflict("case_closed")
+            if attachments and self.attachments:
+                # Same lock as discard/GC. No deletion can pass between the
+                # ready/hash check and the association's commit.
+                fresh = await self.attachments.resolve(actor, body.attachment_ids, conn=conn)
+                if fresh != sorted(attachments, key=lambda a: a["id"]):
+                    raise conflict("attachment_changed")
             # Hashes are immutable. Repeated attachment associations do not count as new material.
             added = []
             for a in attachments:
@@ -258,13 +268,16 @@ class CaseService:
                                     "actor_id": actor.actor_id}
                     changed = True
             if body.pending_fields is not None and body.pending_fields != decode(c["pending_fields"], []):
-                c["pending_fields"], changed = body.pending_fields, True
+                protected = [f for f in decode(c["pending_fields"], []) if f.startswith("image:")]
+                c["pending_fields"], changed = list(dict.fromkeys([*protected, *body.pending_fields])), True
             c["facts"] = facts
             c["pending_fields"] = pending_fields(c)
+            if attachments and self.attachments:
+                c["pending_fields"] = list(dict.fromkeys([*c["pending_fields"], "image:review"]))
             c["version"] += int(changed)
             await self._save(conn, c, invalidate="materials_changed" if changed else "")
             run_id = new_run_id()
-            content = body.message or ("补充材料：" + ", ".join([*body.facts, *body.attachment_ids]))
+            content = body.message or f"补充了工单材料（图片 {len(set(body.attachment_ids))} 张，字段 {len(body.facts)} 项）。"
             seq = await conn.fetchval(
                 f"INSERT INTO conversation_log(conv_id,user_id,request_id,role,content,created_at)"
                 f" VALUES($1,$2,$3,'user',$4,{_NOW}) RETURNING seq",
@@ -280,11 +293,18 @@ class CaseService:
                 await conn.execute(
                     "INSERT INTO case_materials(case_id,attachment_id,sha256,message_id,actor_id,version)"
                     " VALUES($1,$2,$3,$4,$5,$6)", case_id, a["id"], a["sha256"], body.message_id, actor.actor_id, c["version"])
+            if self.attachments:
+                for a in attachments:
+                    await conn.execute("INSERT INTO message_attachments VALUES($1,$2,$3)", body.message_id, a["id"], a["sha256"])
             snapshot = {k: decode(c[k]) if k in {"facts", "pending_fields", "order_refs"} else c[k]
                         for k in ("case_id", "status", "issue_type", "customer_ref", "order_refs",
                                   "facts", "pending_fields", "control_mode")}
             snapshot["materials"] = [dict(r) for r in await conn.fetch(
-                "SELECT attachment_id,sha256,message_id FROM case_materials WHERE case_id=$1", case_id)]
+                "SELECT attachment_id,sha256,message_id FROM case_materials WHERE case_id=$1 ORDER BY version DESC,attachment_id", case_id)]
+            # A bounded batch. On a text supplement, retry the latest batch with
+            # the new order/facts context. Older images remain in the audit.
+            snapshot["review_materials"] = ([m for m in snapshot["materials"] if m["attachment_id"] in body.attachment_ids]
+                                             if attachments else snapshot["materials"][:4])
             snapshot["messages"] = [dict(r) for r in await conn.fetch(
                 "SELECT l.role,l.content FROM case_messages m JOIN conversation_log l ON l.seq=m.seq"
                 " WHERE m.case_id=$1 AND l.role='user' ORDER BY l.seq DESC LIMIT 12", case_id)][::-1]
@@ -309,8 +329,18 @@ class CaseService:
                 "run_id": run_id, "deduplicated": False}
 
     async def get(self, actor: ActorContext, case_id: str):
+        if self.attachments:
+            actor = await self.attachments.actor(actor)
         self.authorize(actor)
-        row = await self.db.fetchrow(
+        async with self.db.transaction() as conn:
+            # Messages, reviews, version and Run status must describe one snapshot.
+            # Otherwise a terminal status read after a newer commit can stop UI
+            # polling while the earlier messages query still lacks that reply.
+            await conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+            return await self._get(conn, actor, case_id)
+
+    async def _get(self, conn, actor, case_id):
+        row = await conn.fetchrow(
             "SELECT t.id,t.conv_id,t.user_id,t.reason,t.last_message,t.created_at,c.*"
             " FROM tickets t JOIN ticket_case_state c ON c.case_id=t.id"
             " WHERE t.id=$1 AND c.instance=$2", case_id, self.instance)
@@ -319,23 +349,34 @@ class CaseService:
         c = dict(row)
         for k in ("facts", "pending_fields", "order_refs"):
             c[k] = decode(c[k])
-        c["messages"] = [dict(r) for r in await self.db.fetch(
+        c["messages"] = [dict(r) for r in await conn.fetch(
             "SELECT l.seq,l.role,l.content,l.created_at,l.turn_id,m.message_id,m.run_id,m.version"
             " FROM (SELECT c.*,COALESCE(t.turn_id,'') AS turn_id FROM conversation_log c"
             " LEFT JOIN conversation_log_turns t ON t.seq=c.seq) l"
             " JOIN case_messages m ON m.seq=l.seq WHERE m.case_id=$1 ORDER BY l.seq", case_id)]
-        c["drafts"] = [dict(r) for r in await self.db.fetch(
+        c["drafts"] = [dict(r) for r in await conn.fetch(
             "SELECT * FROM case_drafts WHERE case_id=$1 ORDER BY created_at DESC", case_id)]
         for d in c["drafts"]:
             d["evidence"] = decode(d["evidence"], [])
             d["valid"] = d["status"] != "invalid" and d["version"] == c["version"] and d["control_version"] == c["control_version"]
-        c["materials"] = [dict(r) for r in await self.db.fetch(
+        c["materials"] = [dict(r) for r in await conn.fetch(
             "SELECT attachment_id,sha256,message_id,version FROM case_materials WHERE case_id=$1", case_id)]
-        c["events"] = [dict(r) for r in await self.db.fetch(
+        if self.attachments:
+            for material in c["materials"]:
+                row = await self.attachments.get(actor, material["attachment_id"], ready=False, conn=conn, lock=False)
+                material["attachment"] = self.attachments.public(row)
+            c["image_reviews"] = [dict(r) for r in await conn.fetch(
+                "SELECT * FROM case_image_reviews WHERE case_id=$1 ORDER BY created_at", case_id)]
+            for review in c["image_reviews"]:
+                review["result"] = decode(review["result"])
+            for message in c["messages"]:
+                message["attachment_ids"] = [r["attachment_id"] for r in await conn.fetch(
+                    "SELECT attachment_id FROM message_attachments WHERE message_id=$1 ORDER BY attachment_id", message["message_id"])]
+        c["events"] = [dict(r) for r in await conn.fetch(
             "SELECT * FROM case_events WHERE case_id=$1 ORDER BY id", case_id)]
         for e in c["events"]:
             e["data"] = decode(e["data"])
-        c["runs"] = [dict(r) for r in await self.db.fetch(
+        c["runs"] = [dict(r) for r in await conn.fetch(
             "SELECT m.run_id,r.status,r.attempt,r.error,receipt.applied,receipt.reason"
             " FROM case_messages m LEFT JOIN agent_runs r ON r.run_id=m.run_id"
             " LEFT JOIN case_run_receipts receipt ON receipt.run_id=m.run_id"
@@ -452,6 +493,24 @@ class CaseService:
     async def complete(self, run: RunRecord, result: dict[str, Any], *, dead=False):
         """Atomic Case effects + run terminal state. Always called with a worker lease."""
         ctx = run.case_context
+        material_access_error = False
+        sources = {m["attachment_id"]: m for m in ctx["snapshot"].get("review_materials", [])}
+        for fact in ctx["snapshot"].get("facts", {}).values():
+            if fact.get("source") == "verified_image":
+                sources[fact["attachment_id"]] = fact
+        # Slow storage runs BEFORE locking agent_runs so the worker's heartbeat
+        # can extend its lease. The hash identifies the bytes we actually read;
+        # PostgreSQL cannot lock an external object's future contents.
+        if self.attachments:
+            try:
+                actor = await self.attachments.actors.resolve(ctx["actor_id"], ctx["instance"])
+                for material in sources.values():
+                    _, row = await self.attachments.content(actor, material["attachment_id"])
+                    if row["sha256"] != material["sha256"]:
+                        raise conflict("attachment_changed")
+                    await self.attachments.content(actor, material["attachment_id"], preview=True)
+            except HTTPException:
+                material_access_error = True
         async with self.db.transaction() as conn:
             r = await conn.fetchrow(
                 f"SELECT *,lease_until>{_NOW} AS live FROM agent_runs WHERE run_id=$1 AND instance=$2 FOR UPDATE",
@@ -474,7 +533,21 @@ class CaseService:
                 reason = "human_control"
             elif result.get("service_unavailable"):
                 reason = "service_unavailable"
-            payload = {**result, "case_id": c["case_id"], "ticket_id": c["case_id"],
+            if not reason and self.attachments:
+                try:
+                    actor = await self.attachments.actors.resolve(ctx["actor_id"], ctx["instance"], conn=conn)
+                    for material in sorted(sources.values(), key=lambda m: m["attachment_id"]):
+                        row = await self.attachments.get(actor, material["attachment_id"], conn=conn)
+                        if row["sha256"] != material["sha256"]:
+                            raise conflict("attachment_changed")
+                        if not await conn.fetchval("SELECT 1 FROM case_materials WHERE case_id=$1 AND attachment_id=$2 AND sha256=$3",
+                                                   c["case_id"], material["attachment_id"], material["sha256"]):
+                            raise conflict("attachment_changed")
+                except HTTPException:
+                    reason = "material_access_changed"
+            if result.get("material_access_changed") or material_access_error:
+                reason = "material_access_changed"
+            payload = {**{k: v for k, v in result.items() if k != "material_reviews"}, "case_id": c["case_id"], "ticket_id": c["case_id"],
                        "turn_id": r["turn_id"],
                        "case_version": c["version"], "control_version": c["control_version"],
                        "run": {"run_id": run.run_id, "attempt": run.attempt}, "case_applied": not reason}
@@ -487,6 +560,8 @@ class CaseService:
                                case_rejection=reason, handoff=False, draft_id=None,
                                knowledge_sources=[], business_data={}, knowledge={})
                 await self._event(conn, c, "result_rejected", data={"run_id": run.run_id, "reason": reason})
+            elif "material_reviews" in result:
+                await self._apply_reviews(conn, c, run, result["material_reviews"], payload)
             else:
                 pending = decode(c["pending_fields"], [])
                 c["status"] = "waiting_for_info" if pending or result.get("needs_clarification") else "in_progress"
@@ -536,6 +611,78 @@ class CaseService:
                 # lock. Roll back ALL draft/history/outbox changes in that case.
                 raise conflict("run_lease_lost")
         return payload, not reason
+
+    async def _apply_reviews(self, conn, c, run, reviews, payload):
+        """Called ONLY inside complete's Case+lease transaction; no external effects."""
+        facts, pending = decode(c["facts"], {}), set(decode(c["pending_fields"], []))
+        pending.discard("image:review")
+        by_field = {}
+        for review in reviews:
+            if any(i["field"] in {"order_ref", "model", "expected_model", "received_model"}
+                   and i["outcome"] == "matched" and facts.get(i["field"])
+                   and facts[i["field"]]["value"] != i["value"] for i in review["fields"]):
+                # A different pictured model cannot lend its quantity to the
+                # Case's existing model, even when both are real DB records.
+                for item in review["fields"]:
+                    if item["outcome"] == "matched":
+                        item["outcome"] = "case_conflict"
+            if not review["fields"]:
+                pending.add("image:readability")
+            for item in review["fields"]:
+                by_field.setdefault(item["field"], []).append((review, item))
+        if by_field:
+            pending.discard("image:readability")
+        for field, items in by_field.items():
+            values = {i["value"] for _, i in items if i["outcome"] == "matched"}
+            confirmed = len(values) == 1 and all(i["outcome"] == "matched" for _, i in items)
+            value = next(iter(values)) if confirmed else None
+            old = facts.get(field)
+            if old and old.get("value") != value:
+                confirmed = False  # never overwrite an employee/prior confirmed fact silently
+            if confirmed:
+                review, item = items[0]
+                facts[field] = {"value": value, "source": "verified_image", "unit": item["unit"],
+                                "attachment_id": review["attachment_id"], "sha256": review["sha256"],
+                                "evidence_id": run.run_id + ":" + field, "business_source": item["source"],
+                                "message_id": run.case_context["message_id"]}
+                pending.discard("image:" + field)
+            else:
+                pending.add("image:" + field)
+                for _, item in items:
+                    if item["outcome"] == "matched":
+                        item["outcome"] = "case_conflict"
+        c.update(facts=facts, pending_fields=sorted(pending), version=c["version"] + 1)
+        c["pending_fields"] = pending_fields(c)
+        c["status"] = "waiting_for_info" if c["pending_fields"] else "in_progress"
+        await conn.execute("SELECT set_config('ai_helpdesk.image_review','on',true)")
+        await self._save(conn, c, invalidate="image_review")
+        await conn.execute("SELECT set_config('ai_helpdesk.image_review','off',true)")
+        for review in reviews:
+            await conn.execute(f"INSERT INTO case_image_reviews VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,{_NOW})",
+                               c["case_id"], review["attachment_id"], review["sha256"], run.run_id,
+                               c["version"], c["control_version"], dumps(review))
+        # New stable message/run identity. Insertion and source terminal receipt
+        # share the transaction, so a crash cannot strand the continuation.
+        message_id, next_run = "verified_" + run.run_id, new_run_id()
+        snapshot = {**run.case_context["snapshot"], "facts": facts, "pending_fields": c["pending_fields"],
+                    "status": c["status"], "review_materials": []}
+        context = {**run.case_context, "message_id": message_id, "expected_case_version": c["version"],
+                   "snapshot": snapshot, "materials_reviewed": True}
+        content = "图片核对已完成；请按已确认事实和待补字段继续处理。"
+        seq = await conn.fetchval(f"INSERT INTO conversation_log(conv_id,user_id,role,content,created_at)"
+                                  f" VALUES($1,$2,'system',$3,{_NOW}) RETURNING seq", run.conv_id, run.user_id, content)
+        await conn.execute("INSERT INTO conversation_log_turns(seq,instance) VALUES($1,$2)", seq, self.run_instance)
+        await conn.execute("INSERT INTO case_messages VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)", message_id,
+                           c["case_id"], self.instance, run.conv_id, run.user_id, seq, next_run, c["version"],
+                           hashlib.sha256(content.encode()).hexdigest())
+        await conn.execute(f"INSERT INTO agent_runs(run_id,instance,idempotency_key,conv_id,user_id,message,request_id,"
+                           f"transport,case_context,created_at,updated_at,dispatched_at)"
+                           f" VALUES($1,$2,$3,$4,$5,$6,$7,'case',$8::jsonb,{_NOW},{_NOW},0)",
+                           next_run, self.run_instance, message_id, run.conv_id, run.user_id, content,
+                           run.request_id, dumps(context))
+        payload.update(response="图片核对结果已保存，正在继续处理。", case_version=c["version"],
+                       case_status=c["status"], next_run_id=next_run, draft_id=None, handoff=False)
+        await self._event(conn, c, "images_reviewed", data={"run_id": run.run_id, "next_run_id": next_run})
 
     async def _handoff(self, conn, c, payload):
         key = f"handoff:{c['case_id']}"

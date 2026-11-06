@@ -165,6 +165,13 @@ class ModelRuntime:
         self._llm_info.update(provider=cfg["provider"], model=cfg["model"])
         self.chat = cfg
 
+    def register_llm(self, component) -> None:
+        """Register optional workers with the same explicit protocol/configuration."""
+        cfg = self.chat
+        component.reconfigure_llm(create_llm_client(cfg["api_key"], cfg.get("base_url") or None,
+                                                   provider=cfg["provider"], api_mode=cfg.get("api_mode", "chat")), cfg["model"])
+        self._components.append(component)
+
     # ── 向量 ──────────────────────────────────────────────────────────────────
 
     @property

@@ -4,6 +4,8 @@ from __future__ import annotations
 import contextlib
 from collections.abc import Awaitable, Callable
 
+from fastapi import HTTPException
+
 from app.core import admission
 from app.events import bind
 from app.runs.checkpoint import encode_result
@@ -14,12 +16,15 @@ from app.runs.worker import RetryRun, RunContext, RunOutcome
 FIELD_LABELS = {
     "order_ref": "订单号", "model": "缺件型号", "quantity": "缺件数量",
     "expected_model": "应收型号", "received_model": "实收型号",
+    "status": "业务状态", "date": "日期", "readability": "清晰图片", "review": "完成图片核对",
 }
 
 
 class CaseExecutor:
-    def __init__(self, service, *, prepare: Callable[..., Awaitable], answer: Callable[..., Awaitable], event_log):
+    def __init__(self, service, *, prepare: Callable[..., Awaitable], answer: Callable[..., Awaitable], event_log,
+                 materials=None):
         self.service, self.prepare, self.answer, self.event_log = service, prepare, answer, event_log
+        self.materials = materials
 
     async def __call__(self, ctx: RunContext) -> RunOutcome:
         run = ctx.run
@@ -38,8 +43,17 @@ class CaseExecutor:
                                 "escalated": False, "latency_ms": 0.0, "handoff": False}
                     if snapshot["control_mode"] == "human":
                         proposal["response"] = "此问题已由人工接管，材料已保存。"
+                    elif self.materials and snapshot.get("review_materials") and not run.case_context.get("materials_reviewed"):
+                        await ctx.publish("progress", {"stage": "helpdesk.images", "label": "正在读取图片并核对业务记录"})
+                        try:
+                            proposal["material_reviews"] = await self.materials.review(run)
+                            proposal["response"] = "图片核对已完成。"
+                        except HTTPException:
+                            proposal.update(material_access_changed=True, response="材料访问权限已变化。")
                     elif snapshot.get("pending_fields"):
-                        fields = "、".join(FIELD_LABELS.get(f, f) for f in snapshot["pending_fields"])
+                        fields = "、".join(("图片核实：" if f.startswith("image:") else "") +
+                                          FIELD_LABELS.get(f.removeprefix("image:"), f.removeprefix("image:"))
+                                          for f in snapshot["pending_fields"])
                         proposal.update(response=f"材料已保存，请补充：{fields}。", needs_clarification=True)
                     else:
                         await ctx.publish("progress", {"stage": "helpdesk.gathering", "label": "正在核对工单材料"})
