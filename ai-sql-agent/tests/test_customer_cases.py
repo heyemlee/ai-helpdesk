@@ -137,6 +137,8 @@ class CustomerOfflineRunTest(unittest.TestCase):
 
         items = json.loads(CUSTOMER_CASES.read_text(encoding="utf-8"))
         with customer_runner() as runner:
+            # 客服拿到的是每一步的结果：答案在前面某一步也算对
+            self.assertTrue(runner.score_all_steps)
             report = runner.run()
 
         self.assertFalse(report.incomplete)
@@ -148,7 +150,7 @@ class CustomerOfflineRunTest(unittest.TestCase):
             self.assertNotIn("model_classifier", item.route_signals, item.item_id)
 
         lines = customer_summary(report)
-        self.assertTrue(lines[0].startswith(f"客服转来的问法（{CUSTOMER_CATEGORY}，单独一行，不计入门禁）"))
+        self.assertTrue(lines[0].startswith(f"客服转来的问法（{CUSTOMER_CATEGORY}，单独一行，不计入门禁，每一步都比）"))
         self.assertTrue(any("生产入口的路由（规则判）" in line for line in lines))
 
     def test_never_touches_a_configured_pgvector(self):

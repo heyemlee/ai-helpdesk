@@ -214,6 +214,20 @@ class BenchmarkItemResult:
     这一项只记录，不改判分：流水线照样跑、照样按标准答案打分。
     """
 
+    matched_step: Optional[int] = None
+    """
+    按所有步骤判分时（`score_all_steps`），和标准答案对上的是第几步（从 1 数）；
+    最后一步就对上了也记最后一步。前面某一步对上、但客服用不上时也记着（见
+    `unusable_match`）。没对上、或者没按所有步骤判，为 None。
+    """
+
+    unusable_match: bool = False
+    """
+    前面某一步和标准答案对上了，但客服用不上，所以不算对：这次结果带风险提示（has_risk，
+    客服的可信校验整份不用），或者那一步被截在 answer 的结果预览外面（客服读的就是那一段）。
+    和 `mismatch` 分开记：`mismatch` 说的始终是最后一步错在哪——客服照着说的是它。
+    """
+
     route_signals: List[str] = field(default_factory=list)
     """路由的依据。模型判的带 `model_classifier`；没有它就是规则判的（没配模型，或模型调用失败退回了规则）。"""
 
@@ -418,6 +432,8 @@ class BenchmarkReport:
                     "silent_error": item.silent_error,
                     "flag_reasons": item.flag_reasons,
                     "mismatch": item.mismatch,
+                    "matched_step": item.matched_step,
+                    "unusable_match": item.unusable_match,
                     "route": item.route,
                     "route_signals": item.route_signals,
                     "steps": item.steps,
@@ -564,6 +580,40 @@ def _rows_cover(gold_rows: List[Dict[str, Any]], predicted_rows: List[Dict[str, 
     return True
 
 
+def _contradicts(
+    gold_rows: List[Dict[str, Any]],
+    rows: List[Dict[str, Any]],
+    matched_rows: List[Dict[str, Any]] = (),
+) -> bool:
+    """
+    rows 对同一件事给了另一个说法：有「答案字段」、取值却不在标准答案里。
+
+    判分不看列名，模型又常给字段起别名（`order_status AS 状态`），所以答案字段除了标准
+    答案自己的列名，还算上对上的那一步里取值全在标准答案里的列（`order_no` 这类标识列
+    取值不在答案里，不算）。换了个完全不同的名字说同一件事的，这里分不出来——和「最后一步
+    查的是另一件事」（c02）一样看不出区别，不硬猜。
+    """
+    gold_all = {_normalize_value(value) for row in gold_rows for value in row.values()}
+    answer_values: Dict[str, set] = {}
+    for row in gold_rows:
+        for column, value in row.items():
+            answer_values.setdefault(column, set()).add(_normalize_value(value))
+    matched_columns = {column for row in matched_rows for column in row}
+    for column in matched_columns:
+        values = {_normalize_value(row.get(column)) for row in matched_rows if column in row}
+        if values and values <= gold_all:
+            answer_values.setdefault(column, set()).update(values)
+    return any(
+        column in answer_values and _normalize_value(value) not in answer_values[column]
+        for row in rows
+        for column, value in row.items()
+    )
+
+
+def _normalize_value(value: Any) -> str:
+    return str(round(value, 6) if isinstance(value, float) else value)
+
+
 def explain_mismatch(gold_rows: List[Dict[str, Any]], predicted_rows: List[Dict[str, Any]]) -> str:
     """
     答错时错在哪，取值见 MISMATCH_LABELS；答对返回空串。**只用来看错因，不改判分**。
@@ -608,6 +658,7 @@ class BenchmarkRunner:
         enable_repair: Optional[bool] = None,
         access_check: Optional[Callable[[], List[Dict[str, Any]]]] = None,
         router=None,
+        score_all_steps: bool = False,
     ):
         """
         enable_repair 显式传 False 时关闭回溯回路，用于测「回溯增益」：
@@ -618,9 +669,15 @@ class BenchmarkRunner:
 
         router（`ai_sql_agent.pipeline.DynamicIntentRouter`）给了的话，每一题先问一遍生产入口
         会不会查库，记进 `route`；不给就不看（150 条评测集不看）。只记录，不改判分。
+
+        score_all_steps 为 True 时，任何一步执行成功、结果和标准答案对得上（同一条
+        `result_matches`），这一题就算对，`matched_step` 记是第几步。给客服转来的问法用：
+        客服拿到的是每一步的结果，客户问法又常被拆成 订单 → 生产 → 配送 几步，答案在前面
+        某一步时，只比最后一步会把答对的题记成错。默认 False：150 条评测集和门禁只比最后一步。
         """
         self.access_check = access_check or model_access_blocks
         self.router = router
+        self.score_all_steps = score_all_steps
         if pipeline is None:
             from ai_sql_agent.pipeline import Text2SQLPipeline
             from ai_sql_agent.pipeline.objects import PipelineConfig
@@ -833,42 +890,73 @@ class BenchmarkRunner:
 
         final_log = pipeline_result.step_logs[-1]
         execution = final_log.execution_result
+        matched_step = (
+            self._matching_step(gold_rows, pipeline_result) if self.score_all_steps else None
+        )
 
         if not execution.get("success"):
             recall_hit, retrieval_hit, retrieved_count = self._score_recall(
                 item, pipeline_result
             )
+            matched_log = (
+                pipeline_result.step_logs[matched_step - 1] if matched_step else final_log
+            )
+            _answered, flagged, _degraded, flag_reasons = self._risk_signals(pipeline_result)
+            # 前面某一步对上了也要客服用得上：带风险提示的结果（has_risk），客服的可信校验
+            # 整份不用（backend/app/core/evidence.py），这时算对就是把「客户没拿到」记成「拿到了」
+            usable = matched_step is not None and self._earlier_match_usable(
+                gold_rows, pipeline_result, matched_step, flagged=flagged, degraded=degraded
+            )
             return BenchmarkItemResult(
                 item_id=item["id"],
                 category=item["category"],
                 query=item["query"],
-                correct=False,
-                predicted_sql=final_log.final_sql or final_log.sql,
+                correct=usable,
+                unusable_match=matched_step is not None and not usable,
+                predicted_sql=matched_log.final_sql or matched_log.sql,
                 error=execution.get("error"),
                 repair_used=bool(final_log.repair_attempts),
                 recall_hit=recall_hit,
                 retrieval_recall_hit=retrieval_hit,
                 retrieved_columns=retrieved_count,
+                flagged=flagged,
                 degraded=degraded,
                 degrade_reason=degrade_reason,
+                flag_reasons=flag_reasons,
+                steps=self._step_trace(pipeline_result),
+                matched_step=matched_step,
                 route=route,
                 route_signals=route_signals,
             )
 
         predicted_rows = list(execution.get("rows") or [])
-        correct = result_matches(gold_rows, predicted_rows)
-        mismatch = "" if correct else explain_mismatch(gold_rows, predicted_rows)
         recall_hit, retrieval_hit, retrieved_count = self._score_recall(
             item, pipeline_result
         )
         answered, flagged, degraded, flag_reasons = self._risk_signals(pipeline_result)
+        final_correct = result_matches(gold_rows, predicted_rows)
+        # 只在前面某一步对上时才看风险提示（理由同上）；最后一步对上的判法和评测集一样
+        earlier = (
+            matched_step
+            if matched_step is not None and matched_step != len(pipeline_result.step_logs)
+            else None
+        )
+        earlier_usable = earlier is not None and self._earlier_match_usable(
+            gold_rows, pipeline_result, earlier, flagged=flagged, degraded=degraded
+        )
+        correct = final_correct or earlier_usable
+        # 错因说的始终是最后一步：客服照着说的是它（静默错误里「取值不对」要照常数进去）
+        mismatch = "" if correct else explain_mismatch(gold_rows, predicted_rows)
+        shown_log = (
+            pipeline_result.step_logs[earlier - 1] if earlier is not None and correct else final_log
+        )
 
         return BenchmarkItemResult(
             item_id=item["id"],
             category=item["category"],
             query=item["query"],
             correct=correct,
-            predicted_sql=final_log.final_sql or final_log.sql,
+            predicted_sql=shown_log.final_sql or shown_log.sql,
             repair_used=bool(final_log.repair_attempts),
             recall_hit=recall_hit,
             retrieval_recall_hit=retrieval_hit,
@@ -880,9 +968,78 @@ class BenchmarkRunner:
             flag_reasons=flag_reasons,
             steps=self._step_trace(pipeline_result),
             mismatch=mismatch,
+            matched_step=matched_step,
+            unusable_match=earlier is not None and not earlier_usable,
             route=route,
             route_signals=route_signals,
         )
+
+    @classmethod
+    def _earlier_match_usable(
+        cls, gold_rows, pipeline_result, step_number: int, *, flagged: bool, degraded: bool
+    ) -> bool:
+        """
+        前面第 step_number 步对上了标准答案，客服能不能把它当答案用：
+
+        - 这次结果不带风险提示、也不是降级答复（带了 has_risk，客服的可信校验整份不用）；
+        - 那一步整段落在 answer 的结果预览里（客服读的就是那一段）；
+        - 别的步骤没有给出矛盾的值：同名字段、取值不在标准答案里（第 1 步「已签单」、
+          最后一步又说「生产中」，客服可能照着后者说）。
+        """
+        if flagged or degraded or not cls._visible_to_caller(pipeline_result, step_number):
+            return False
+        logs = list(getattr(pipeline_result, "step_logs", None) or [])
+        matched_rows = list((logs[step_number - 1].execution_result or {}).get("rows") or [])
+        return not any(
+            _contradicts(
+                gold_rows, list((log.execution_result or {}).get("rows") or []), matched_rows
+            )
+            for number, log in enumerate(logs, start=1)
+            if number != step_number and (log.execution_result or {}).get("success")
+        )
+
+    @staticmethod
+    def _visible_to_caller(pipeline_result, step_number: int) -> bool:
+        """
+        第 step_number 步的结果整段落在 answer 的结果预览里。
+
+        客服拿到的不是 steps[] 的完整行，是 answer 里嵌的那段 JSON，过长截断
+        （`pipeline.conversation_service.answer_result_preview`）。前面几步结果一多，后面
+        对上的那一步就被截掉了，客服根本看不到。预览是完整 JSON 的前缀，所以只要看
+        前 step_number 步序列化之后的长度有没有超出截断点。
+        """
+        from ai_sql_agent.pipeline.conversation_service import (
+            ANSWER_PREVIEW_CHARS,
+            answer_result_preview,
+        )
+
+        logs = list(getattr(pipeline_result, "step_logs", None) or [])
+        preview = answer_result_preview(logs)
+
+        def dumps(part):
+            return json.dumps(
+                [log.execution_result for log in part], ensure_ascii=False, default=str
+            )
+
+        if preview == dumps(logs):
+            return True  # 没截断，每一步都在
+        # 截断了：preview 是完整 JSON 的前缀（再接省略号）。到这一步为止的那一段
+        # （去掉末尾的 "]"）整段落在截断点之内，这一步才算看得到
+        return len(dumps(logs[:step_number])) - 1 <= ANSWER_PREVIEW_CHARS - 10
+
+    @staticmethod
+    def _matching_step(gold_rows, pipeline_result) -> Optional[int]:
+        """和标准答案对得上的那一步（从 1 数）：先看最后一步，再从前往后看；都对不上是 None。"""
+        logs = list(getattr(pipeline_result, "step_logs", None) or [])
+        # 标准答案是空的时候只看最后一步：前面随便哪一步 0 行都会「对上」
+        order = [len(logs)] + (list(range(1, len(logs))) if gold_rows else [])
+        for number in order:
+            execution = logs[number - 1].execution_result or {}
+            if execution.get("success") and result_matches(
+                gold_rows, list(execution.get("rows") or [])
+            ):
+                return number
+        return None
 
 
 def run_holdout_recall(

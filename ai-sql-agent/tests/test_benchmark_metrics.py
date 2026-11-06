@@ -366,7 +366,10 @@ class MismatchExplanationTest(unittest.TestCase):
     def test_every_reason_has_a_label(self):
         from benchmark.runner import MISMATCH_LABELS
 
-        self.assertEqual(set(MISMATCH_LABELS), {"empty", "row_count", "wrong_values", "extra_columns"})
+        self.assertEqual(
+            set(MISMATCH_LABELS),
+            {"empty", "row_count", "wrong_values", "extra_columns"},
+        )
 
 
 class CustomerGroupStaysOutOfGateTest(unittest.TestCase):
