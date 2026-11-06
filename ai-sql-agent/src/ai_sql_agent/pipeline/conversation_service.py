@@ -9,6 +9,26 @@ from ai_sql_agent.memory import ConversationMemoryContext, ConversationMemorySer
 from .objects import PipelineResult
 from .text2sql_pipeline import Text2SQLPipeline
 
+ANSWER_PREVIEW_CHARS = 1500
+"""answer 里嵌的查询结果最多这么长，超出的截到 ANSWER_PREVIEW_CHARS - 10 再接省略号。"""
+
+
+def answer_result_preview(step_logs) -> str:
+    """
+    answer 里嵌的那段查询结果：每一步执行结果的 JSON，过长截断。
+
+    调用方（客服）能看到的就是这一段，不是 steps[] 的完整行。评测按所有步骤判分时用它
+    确认对上的那一步真的在这段里（benchmark/runner.py），两边共用这一个函数，免得口径走样。
+    """
+    preview = json.dumps(
+        [log.execution_result for log in step_logs],
+        ensure_ascii=False,
+        default=str,
+    )
+    if len(preview) > ANSWER_PREVIEW_CHARS:
+        preview = preview[:ANSWER_PREVIEW_CHARS - 10] + "……"
+    return preview
+
 
 @dataclass
 class ConversationPipelineResult:
@@ -69,13 +89,7 @@ class MemoryAwareSqlAgentService:
             user_id=user_id,
         )
         payload = result.to_dict()
-        result_preview = json.dumps(
-            [log.execution_result for log in result.step_logs],
-            ensure_ascii=False,
-            default=str,
-        )
-        if len(result_preview) > 1500:
-            result_preview = result_preview[:1490] + "……"
+        result_preview = answer_result_preview(result.step_logs)
         if result.degraded and result.step_logs:
             answer = (
                 "模型服务暂时不可用，已用你上次相同问题的 SQL 重新执行，"

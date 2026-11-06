@@ -48,7 +48,7 @@ MISMATCH_LABELS = {
     "row_count": "行数不对",
     "wrong_values": "取值不对",
     "extra_columns": "取值都对，多输出了列",
-    "matched_unusable": "前面某一步对上了，但带了风险提示，客服不会拿它当依据",
+    "matched_unusable": "前面某一步对上了，但客服用不上（结果带风险提示，或者那一步被截在了结果预览外面）",
 }
 """答错时错在哪（`explain_mismatch`）。只用来看错因，不参与判分。"""
 
@@ -863,7 +863,10 @@ class BenchmarkRunner:
             _answered, flagged, _degraded, flag_reasons = self._risk_signals(pipeline_result)
             # 前面某一步对上了也要客服用得上：带风险提示的结果（has_risk），客服的可信校验
             # 整份不用（backend/app/core/evidence.py），这时算对就是把「客户没拿到」记成「拿到了」
-            usable = matched_step is not None and not flagged and not degraded
+            usable = (
+                matched_step is not None and not flagged and not degraded
+                and self._visible_to_caller(pipeline_result, matched_step)
+            )
             return BenchmarkItemResult(
                 item_id=item["id"],
                 category=item["category"],
@@ -898,7 +901,10 @@ class BenchmarkRunner:
             if matched_step is not None and matched_step != len(pipeline_result.step_logs)
             else None
         )
-        correct = final_correct or (earlier is not None and not flagged and not degraded)
+        correct = final_correct or (
+            earlier is not None and not flagged and not degraded
+            and self._visible_to_caller(pipeline_result, earlier)
+        )
         if correct:
             mismatch = ""
         elif earlier is not None:
@@ -930,6 +936,35 @@ class BenchmarkRunner:
             route=route,
             route_signals=route_signals,
         )
+
+    @staticmethod
+    def _visible_to_caller(pipeline_result, step_number: int) -> bool:
+        """
+        第 step_number 步的结果整段落在 answer 的结果预览里。
+
+        客服拿到的不是 steps[] 的完整行，是 answer 里嵌的那段 JSON，过长截断
+        （`pipeline.conversation_service.answer_result_preview`）。前面几步结果一多，后面
+        对上的那一步就被截掉了，客服根本看不到。预览是完整 JSON 的前缀，所以只要看
+        前 step_number 步序列化之后的长度有没有超出截断点。
+        """
+        from ai_sql_agent.pipeline.conversation_service import (
+            ANSWER_PREVIEW_CHARS,
+            answer_result_preview,
+        )
+
+        logs = list(getattr(pipeline_result, "step_logs", None) or [])
+        preview = answer_result_preview(logs)
+
+        def dumps(part):
+            return json.dumps(
+                [log.execution_result for log in part], ensure_ascii=False, default=str
+            )
+
+        if preview == dumps(logs):
+            return True  # 没截断，每一步都在
+        # 截断了：preview 是完整 JSON 的前缀（再接省略号）。到这一步为止的那一段
+        # （去掉末尾的 "]"）整段落在截断点之内，这一步才算看得到
+        return len(dumps(logs[:step_number])) - 1 <= ANSWER_PREVIEW_CHARS - 10
 
     @staticmethod
     def _matching_step(gold_rows, pipeline_result) -> Optional[int]:

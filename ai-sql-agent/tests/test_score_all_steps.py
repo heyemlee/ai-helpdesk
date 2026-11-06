@@ -103,6 +103,36 @@ class ScoreAllStepsTest(unittest.TestCase):
             self.assertEqual(item.mismatch, "matched_unusable")
             self.assertEqual(item.matched_step, 1)
 
+    def test_earlier_match_cut_off_from_the_answer_preview_is_not_counted(self):
+        """
+        客服看到的是 answer 里那段截到约 1500 字的结果 JSON，不是 steps[] 的完整行。
+        第 1 步行很多，把对上的第 2 步挤出了截断点：客服没看到，不能算对。
+        """
+        big = [{"order_no": f"J{n:05d}", "note": "x" * 40} for n in range(60)]
+        logs = [_log("erp_db", big),
+                _log("prod_db", [{"order_no": "J1", "order_status": "已签单"}]),
+                _log("svc_db", [{"order_no": "J1", "delivery_status": "待配送"}])]
+        item = self._score(logs, all_steps=True)
+        self.assertFalse(item.correct)
+        self.assertEqual(item.mismatch, "matched_unusable")
+        self.assertEqual(item.matched_step, 2)
+        # 第 1 步小的时候同一份结果照样算对
+        logs[0] = _log("erp_db", big[:1])
+        self.assertTrue(self._score(logs, all_steps=True).correct)
+
+    def test_answer_preview_keeps_its_limit(self):
+        from ai_sql_agent.pipeline.conversation_service import (
+            ANSWER_PREVIEW_CHARS,
+            answer_result_preview,
+        )
+
+        short = [_log("erp_db", [{"a": 1}])]
+        self.assertEqual(answer_result_preview(short), json.dumps([short[0].execution_result]))
+        long = [_log("erp_db", [{"a": "x" * 3000}])]
+        preview = answer_result_preview(long)
+        self.assertEqual(len(preview), ANSWER_PREVIEW_CHARS - 10 + len("……"))
+        self.assertTrue(preview.endswith("……"))
+
     def test_no_step_matching_is_still_wrong(self):
         logs = [_log("erp_db", [{"order_no": "J1", "order_status": "生产中"}]),
                 _log("svc_db", [{"order_no": "J1", "delivery_status": "待配送"}])]

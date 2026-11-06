@@ -502,8 +502,10 @@ when the answer sits in an earlier step, last-step-only scoring marks a right an
 wrong. An item counts as correct when any successful step matches the gold result under
 the evaluation set's rule, and `matched_step` records which step (the 150 evaluation
 cases and the gate still compare the last step only). An earlier-step match only counts
-when the run carries no risk finding: with `has_risk` the helpdesk's evidence gate uses
-none of the result, so such an item is wrong with `mismatch` = `matched_unusable`. The report also says why each wrong
+when the helpdesk can use it: the run carries no risk finding (with `has_risk` the
+helpdesk's evidence gate uses none of the result), and the step fits inside the result
+preview embedded in `answer` (about 1,500 characters), which is all the helpdesk reads.
+Otherwise the item is wrong with `mismatch` = `matched_unusable`. The report also says why each wrong
 answer is wrong (`mismatch`): empty result, wrong row count, wrong values, or right
 values with too many columns. Only the first three can be repeated to a customer as a
 wrong fact, so the line counts silent errors with wrong values or row counts
