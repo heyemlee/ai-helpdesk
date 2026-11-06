@@ -21,7 +21,7 @@ def answer_result_preview(step_logs) -> str:
     确认对上的那一步真的在这段里（benchmark/runner.py），两边共用这一个函数，免得口径走样。
     """
     preview = json.dumps(
-        [log.execution_result for log in step_logs],
+        [{k: v for k, v in log.execution_result.items() if k != "observed_at"} for log in step_logs],
         ensure_ascii=False,
         default=str,
     )

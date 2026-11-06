@@ -13,7 +13,7 @@ const COUNTED = 'SELECT stage, COUNT(*) AS n FROM deal GROUP BY stage'
 
 const stepOf = (rows: Array<Record<string, unknown>>, extra: Record<string, unknown> = {}) => normalizeResult({
   route: 'database_query', queried_database: true, has_risk: false, degraded: false, execution_status: 'success',
-  steps: [{ database: 'sales_db', sql: COUNTED, final_sql: COUNTED, success: true, row_count: rows.length, rows, ...extra }],
+  steps: [{ database: 'sales_db', sql: COUNTED, final_sql: COUNTED, success: true, truncated: false, row_count: rows.length, rows, ...extra }],
 }, { transport: 'query' }).steps[0]!
 
 const describeChart = (chart: Chart | null) => (chart

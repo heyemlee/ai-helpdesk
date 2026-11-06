@@ -93,6 +93,7 @@ class RunService:
         request_id: str = "",
         idempotency_key: str = "",
         transport: str = "stream",
+        policy_scope: dict | None = None,
     ) -> tuple[RunRecord, bool]:
         """
         提交一轮。返回 (run, 是不是新建的)。
@@ -105,7 +106,7 @@ class RunService:
             existing = await self.store.get_by_key(idempotency_key)
             if existing is not None:
                 probe = RunRecord(run_id=existing.run_id, instance=self.instance, conv_id=conv_id,
-                                  user_id=user_id, message=message)
+                                  user_id=user_id, message=message, policy_scope=policy_scope or {})
                 if not same_request(existing, probe):
                     raise IdempotencyConflict(existing)
                 RUNS_SUBMITTED.labels(outcome="deduplicated").inc()
@@ -119,7 +120,7 @@ class RunService:
         run = RunRecord(
             run_id=new_run_id(), instance=self.instance, conv_id=conv_id, user_id=user_id,
             message=message, request_id=request_id, idempotency_key=idempotency_key,
-            transport=transport,
+            transport=transport, policy_scope=policy_scope or {},
         )
         stored, created = await self.store.create(run)
         if not created:

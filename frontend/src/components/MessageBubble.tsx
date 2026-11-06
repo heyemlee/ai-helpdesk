@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import Markdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
+import { SafeMarkdown } from './SafeMarkdown'
+import { EvidenceDetails } from './EvidenceDetails'
 import { Chip } from './ui'
 import { Icon } from './Icon'
 import { TurnExplanation } from './TurnExplanation'
@@ -364,7 +364,7 @@ export function MessageBubble({ message, onInspect, explain, routingConfig, base
         </div>
         <div className="body">
           <div className="prose-chat">
-            <Markdown remarkPlugins={[remarkGfm]}>{message.content}</Markdown>
+            <SafeMarkdown>{message.content}</SafeMarkdown>
           </div>
         </div>
         {message.ticketId && (base
@@ -389,7 +389,7 @@ export function MessageBubble({ message, onInspect, explain, routingConfig, base
         {/* 后端给客户的那句原话照样显示：员工要知道客户端看到的是什么 */}
         <div className="body">
           <div className="prose-chat">
-            <Markdown remarkPlugins={[remarkGfm]}>{message.content}</Markdown>
+            <SafeMarkdown>{message.content}</SafeMarkdown>
           </div>
         </div>
         <UnavailableNote reason={result.unavailable_reason} />
@@ -462,7 +462,7 @@ export function MessageBubble({ message, onInspect, explain, routingConfig, base
         {/* 流式下每次增量都重渲染半截 Markdown——未闭合的语法先当普通文本，
             补全后自然变成格式。react-markdown 默认不解析原始 HTML。 */}
         <div className="prose-chat">
-          <Markdown remarkPlugins={[remarkGfm]}>{message.content}</Markdown>
+          <SafeMarkdown>{message.content}</SafeMarkdown>
         </div>
         {message.streaming && <span className="caret" />}
       </div>
@@ -498,6 +498,7 @@ export function MessageBubble({ message, onInspect, explain, routingConfig, base
       )}
 
       {result && data && <DataNote data={data} />}
+      {result && (data?.evidence || sources.some(s => s.policy_revision)) && <EvidenceDetails records={[...sources, ...(data ? [data] : [])]} />}
       {result && sources.length > 0 && <Sources sources={sources} />}
 
       {explain && result && (

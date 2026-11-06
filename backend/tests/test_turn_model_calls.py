@@ -340,14 +340,14 @@ async def test_a_loop_turn_records_each_step_and_projects_to_the_response(monkey
                              "tool_call", "tool_call", "model_call", "loop_ended", "agent_answered", "turn_completed"]
     discarded = next(e for e in recorded if e["type"] == "preamble_discarded")
     assert (discarded["data"], discarded["body"], discarded["step"]) == ({"chars": 5}, {"text": "我先查一下"}, 1)
-    assert _decisions(recorded) == ["dedup", "execute"]
+    assert _decisions(recorded) == ["execute", "execute"]
     steps = [e["step"] for e in recorded if e["type"] == "model_call"]
     assert steps == [1, 2] and {e["data"]["purpose"] for e in recorded if e["type"] == "model_call"} == {"answer"}
     started = next(e for e in recorded if e["type"] == "agent_started")["data"]
     assert started["mode"] == "loop" and started["tools"] == ["knowledge_search", "order_data_query"]
     assert started["deadline_s"] > 0 and len(started["tools_sha256"]) == 64
     ended = next(e for e in recorded if e["type"] == "loop_ended")["data"]
-    assert ended == {"model_calls": 2, "tool_calls": 1, "stop_reason": "end_turn", "forced": ""}
+    assert ended == {"model_calls": 2, "tool_calls": 2, "stop_reason": "end_turn", "forced": ""}
     order_call = next(e for e in recorded if e["type"] == "tool_call" and e["call_id"] == "call_o")
     assert order_call["body"]["raw"]["answer"] == EVIDENCE["answer"]
     assert order_call["data"]["idem_key"] == f"{answer['turn_id']}:call_o"

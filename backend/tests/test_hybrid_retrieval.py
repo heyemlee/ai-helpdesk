@@ -5,12 +5,12 @@
 稀疏检索和 RRF 是纯计算，自纠错的控制流用打桩的重排结果驱动。
 """
 import pytest
+from evidence_fixtures import PublishedKnowledgeBase as KnowledgeBase
 
 from app.core.lexical import bm25_scores, index_text, query_tokens, tokenize
 from app.core.reranker import Reranker
 from app.storage.vector_store import LocalStore
 from app.tools.knowledge_base import (
-    KnowledgeBase,
     fuse_candidates,
     lexical_first_fuse,
     rrf_fuse,

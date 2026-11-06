@@ -211,7 +211,7 @@ describe('导入', () => {
     await userEvent.click(dialog.getByRole('button', { name: 'Import', hidden: true }))
 
     expect(mocks.addKnowledge).toHaveBeenCalledWith([
-      { title: 'Quartz care', content: '# Quartz Care\n\nNo sealing needed.' },
+      { title: 'Quartz care', content: '# Quartz Care\n\nNo sealing needed.', policy: expect.objectContaining({ status: 'draft', version: 'legacy-unreviewed' }) },
     ])
     const notice = await screen.findByRole('status')
     expect(notice).toHaveTextContent('Imported “Quartz care” as 2 passages.')
@@ -523,7 +523,7 @@ describe('分类', () => {
     await userEvent.click(dialog.getByRole('button', { name: 'Import', hidden: true }))
 
     expect(mocks.addKnowledge).toHaveBeenCalledWith([
-      { title: 'Will-call', content: 'Pick up at the dock.', category: 'delivery' },
+      { title: 'Will-call', content: 'Pick up at the dock.', category: 'delivery', policy: expect.objectContaining({ status: 'draft' }) },
     ])
     expect(navigate).toHaveBeenCalledWith('#/knowledge/category/delivery')
     expect(await screen.findByRole('status')).toHaveTextContent('Category: Delivery & receiving.')

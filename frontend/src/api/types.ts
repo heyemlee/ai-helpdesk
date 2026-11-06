@@ -1,3 +1,14 @@
+export interface PolicyMetadata {
+  status: 'draft' | 'published' | 'retired'
+  version: string
+  product: string
+  region: string
+  audience: string
+  effective_at: string | null
+  expires_at: string | null
+}
+export interface PolicyScope { product?: string; region?: string; audience?: string; as_of?: string | null }
+
 // 与后端 Pydantic 模型对齐的类型定义。
 // 后端返回 snake_case，这里不做 camelCase 转换——保持字段名一致，
 // 改后端模型时 tsc 能直接指出前端哪里没跟上。
@@ -25,6 +36,9 @@ export interface PolicyViolation {
  * 没有文档归属的片段 doc_id 为空，这时只能显示片段自己的标题。
  */
 export interface KnowledgeSource {
+  policy?: PolicyMetadata
+  policy_revision?: string
+  policy_as_of?: string
   doc_id: string
   chunk_id: string
   /** 片段标题（导入时填的，常常只是文件名） */
@@ -59,6 +73,9 @@ export type BusinessDataOutcome =
   | 'paused'
 
 export interface BusinessDataTrace {
+  evidence?: Record<string, unknown>[]
+  evidence_issues?: string[]
+  observed_at?: string | null
   enabled?: boolean
   attempted?: boolean
   outcome?: BusinessDataOutcome | string
@@ -501,6 +518,8 @@ export interface SearchResponse {
 export type DocumentOrigin = 'original' | 'legacy' | 'legacy_partial'
 
 export interface KnowledgeDocument {
+  policy?: PolicyMetadata
+  policy_revision?: string
   id: string
   /** 导入时填的标题（上传文件时是文件名） */
   title: string
@@ -771,6 +790,7 @@ export interface ModelListResult {
 /** Canonical state behind the existing ticket ID. Actor comes from server login. */
 export type CaseStatus = 'open' | 'waiting_for_info' | 'in_progress' | 'resolved' | 'cancelled'
 export interface CaseSummary {
+  policy_scope?: PolicyScope
   id: string
   case_id: string
   conv_id: string
@@ -804,6 +824,7 @@ export interface ImageReview {
     source: { database: string; column: string; as_of: string; as_of_source: string; trace_id: string; run_id: string } | null }[]
 }
 export interface CaseInput {
+  policy_scope?: PolicyScope
   message_id: string
   message: string
   conv_id: string

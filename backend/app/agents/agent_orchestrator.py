@@ -241,6 +241,9 @@ class Request:
     # 本轮回答允许引用的出处（RAG 检索结果等）。AnswerPolicy 用它判断
     # 回复里的价格/时效是否"有依据"。
     grounding_sources: list[str] = field(default_factory=list)
+    fact_evidence: dict[str, Any] | None = None
+    policy_ref_validator: Any = None
+    response_language: str = ""
     request_id:  str = field(default_factory=lambda: str(uuid.uuid4())[:8])
     # 工具循环打开时由准备阶段挂上（agents/tool_loop.TurnContext）：这一轮能用的工具、
     # 可信身份、去重表和轨迹。为 None 时专家照旧只做一次生成。
@@ -367,6 +370,30 @@ class BaseAgent:
                 return await self._handle_with_tools(req, tools)
             return await self._handle_inner(req)
 
+    async def _factual_text(self, req, fallback):
+        if req.fact_evidence is None:
+            return fallback
+        from app.core.business_facts import (
+            collect_evidence,
+            conversational_only,
+            language_of,
+            render_draft,
+            verified_cells,
+        )
+        language = req.response_language or language_of(req.message)
+        selected = collect_evidence(req.fact_evidence, req.turn.trajectory if req.turn else [])
+        sources, business = selected["knowledge"]["sources"], selected["business_data"]
+        if not sources and not business.get("attempted") and not (req.fact_evidence.get("knowledge") or {}).get("attempted"):
+            return conversational_only(fallback, language)
+        if sources and (req.policy_ref_validator is None or not await req.policy_ref_validator(sources)):
+            sources = []
+        if business.get("evidence"):
+            cells, issues = verified_cells(business.get("evidence_payload") or {})
+            business.update(evidence=cells, evidence_issues=issues)
+        selected["knowledge"]["sources"] = sources
+        req.fact_evidence.update(selected)
+        return render_draft(sources, business, language=language)
+
     async def _handle_inner(self, req: Request) -> AgentResponse:
         t0 = time.monotonic()
         # 统计只在请求结束时记（stats.record），在途期间不动——见 AgentStats.record
@@ -393,6 +420,7 @@ class BaseAgent:
                     "; ".join(v.evidence for v in policy_result.violations),
                 )
 
+            policy_result.text = await self._factual_text(req, policy_result.text)
             grounded = bool(req.grounding_sources) and not policy_result.violations
             escalate, inferred = self._escalation(policy_result.text, declared, grounded)
             response = AgentResponse(
@@ -460,7 +488,8 @@ class BaseAgent:
                         declared = seen
                 if safe:
                     full.append(safe)
-                    yield {"type": "delta", "text": safe}
+                    if req.fact_evidence is None:
+                        yield {"type": "delta", "text": safe}
 
             tail = guard.flush()
             if tail:
@@ -469,12 +498,15 @@ class BaseAgent:
                     declared = seen
             if tail:
                 full.append(tail)
-                yield {"type": "delta", "text": tail}
+                if req.fact_evidence is None:
+                    yield {"type": "delta", "text": tail}
 
             ms = (time.monotonic() - t0) * 1000
             self._record(ok=True, ms=ms)
 
-            content = "".join(full)
+            content = await self._factual_text(req, "".join(full))
+            if req.fact_evidence is not None and content:
+                yield {"type": "delta", "text": content}
             grounded = bool(req.grounding_sources) and not guard.violations
             escalate, inferred = self._escalation(content, declared, grounded)
             if guard.violations:
@@ -506,7 +538,7 @@ class BaseAgent:
                 latency_ms=ms,
                 unavailable_reason=reason,
             )
-            self._record_answered(response, sent_chars=sum(map(len, full)) if stream else 0)
+            self._record_answered(response, sent_chars=sum(map(len, full)) if stream and req.fact_evidence is None else 0)
             yield {"type": "end", "response": response}
 
     async def _stream_llm(self, req: Request, skill_prompt: str = "") -> AsyncIterator[str]:
@@ -703,7 +735,8 @@ class BaseAgent:
                             declared = seen
                     if safe:
                         full.append(safe)
-                        yield {"type": "delta", "text": safe}
+                        if req.fact_evidence is None:
+                            yield {"type": "delta", "text": safe}
                 elif isinstance(event, ToolStart):
                     recorder.emit("tool_started", {
                         "actor": "model", "tool": event.name, "decision": event.decision,
@@ -748,9 +781,12 @@ class BaseAgent:
                     declared = seen
             if tail:
                 full.append(tail)
-                yield {"type": "delta", "text": tail}
+                if req.fact_evidence is None:
+                    yield {"type": "delta", "text": tail}
 
-            content = "".join(full)
+            content = await self._factual_text(req, "".join(full))
+            if req.fact_evidence is not None and content:
+                yield {"type": "delta", "text": content}
             if not content.strip():
                 if last_stop == "max_tokens":
                     raise ValueError("模型在生成正文前耗尽了 max_tokens。推理模型会先输出 thinking 块——"
@@ -797,7 +833,7 @@ class BaseAgent:
                     latency_ms=ms,
                     unavailable_reason=reason,
                 )
-                self._record_answered(response, sent_chars=sum(map(len, full)) if stream else 0)
+                self._record_answered(response, sent_chars=sum(map(len, full)) if stream and req.fact_evidence is None else 0)
                 yield {"type": "end", "response": response}
         if fallback:
             async for event in self._stream_plain(req, stream=stream):

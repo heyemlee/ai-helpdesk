@@ -271,7 +271,7 @@ async def test_old_scan_claim_and_dispatch_paths_cannot_reach_case_runs(pair):
     assert await old.due_for_dispatch(idle_s=-1, lease_grace_s=0) == []
     assert await old.claim(r["run_id"], "old-worker", 60) is None
     await old.mark_dispatched([r["run_id"]])
-    current = PgRunStore(a.db, "staff:case-v1")
+    current = PgRunStore(a.db, "staff:case-v2")
     assert r["run_id"] in await current.due_for_dispatch(idle_s=-1, lease_grace_s=0)
 
 
@@ -441,6 +441,9 @@ async def test_public_entrypoints_use_same_case_worker_and_employee_boundary(pai
     monkeypatch.setattr(main, "_case_worker", None)
     monkeypatch.setattr(main, "_case_event_log", main._case_event_log)
     previous = getattr(main.app.state, "case_service", None)
+    async def lookup_current(actor_id, instance, **kwargs):
+        return actor if actor_id == actor.actor_id and instance == actor.instance else None
+    monkeypatch.setattr(main.app.state.actor_directory, "provider", lookup_current)
     await main._start_cases()
     try:
         body = new(issue_type="missing_parts").model_dump(exclude_unset=True)
@@ -467,7 +470,7 @@ async def test_public_entrypoints_use_same_case_worker_and_employee_boundary(pai
             public = await http.get(f"/runs/{run_id}")
             assert public.status_code == 200 and public.json()["status"] == "succeeded"
             record = await main._cases.run(run_id)
-            assert record.user_id == actor.actor_id and record.instance == namespace + ":case-v1"
+            assert record.user_id == actor.actor_id and record.instance == namespace + ":case-v2"
             if transport == "/chat/stream":
                 assert "event: result" in response.text and "event: delta" not in response.text
             # Complete the same Case with explicit material, then approve the

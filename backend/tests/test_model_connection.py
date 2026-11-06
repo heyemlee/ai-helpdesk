@@ -12,6 +12,7 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
+from evidence_fixtures import PublishedKnowledgeBase as KnowledgeBase
 from openai import AuthenticationError, NotFoundError, RateLimitError
 from starlette.requests import Request
 
@@ -21,7 +22,6 @@ from app.core.embedder import Embedder, EmbeddingUnavailable
 from app.core.model_runtime import ModelRuntime, chat_config_from, embedder_from
 from app.core.openai_compat import AsyncOpenAICompat
 from app.storage.vector_store import EMBEDDING_SIGNATURE_KEY, LocalStore, check_embedding_signature
-from app.tools.knowledge_base import KnowledgeBase
 
 KEY = "sk-proj-test-0123456789abcd"
 OTHER_KEY = "sk-proj-other-9876543210wxyz"

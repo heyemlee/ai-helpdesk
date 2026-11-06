@@ -136,6 +136,7 @@ class SQLiteMCPExecutor:
                 truncated=truncated,
                 row_limit=row_limit,
                 truncated_by=truncated_by,
+                observed_at=now_rfc3339(),
                 as_of=as_of,
                 as_of_source=self.as_of_source,
             )

@@ -208,6 +208,9 @@ async def knowledge_lookup(
             score = item.get("score", "")
             if not content:
                 continue
+            if item.get("fallback") or not item.get("policy_revision"):
+                info["degraded"] = True
+                continue
             used = True
             # 只走了关键词一路的结果没有向量分（score 是 None），不给模型看一行"相关度: None"
             relevance = f"   相关度: {score}\n" if isinstance(score, (int, float)) else ""
@@ -216,6 +219,9 @@ async def knowledge_lookup(
                 info["degraded"] = True
                 continue
             sources.append({
+                "policy": item.get("policy"), "policy_revision": item.get("policy_revision"),
+                "policy_scope": item.get("policy_scope"), "policy_as_of": item.get("policy_as_of"),
+                "content": content,
                 "doc_id": str(item.get("doc_id") or ""),
                 "chunk_id": str(item.get("chunk_id") or ""),
                 "title": title,
@@ -360,7 +366,7 @@ async def delegate_order_query(
         # 都分辨不出来。这里把失败明写进上下文，要求 Agent 说出来。
         if data.get("unavailable") or (not result.success and not data):
             reason = str(data.get("error") or result.error or "未知原因")
-            info.update(outcome="unavailable", reason=reason)
+            info.update(outcome="unavailable", reason=reason, evidence_issues=["failed"])
             return "\n".join([
                 "[业务系统查询未完成]",
                 f"本轮尝试查询订单/生产/库存/账款系统，但没有拿到结果（{reason}）。",
@@ -402,7 +408,7 @@ async def delegate_order_query(
                 trace_id, verdict.execution_status, verdict.status_source,
                 "；".join(verdict.reasons) or "-",
             )
-            info.update(outcome="failed", reasons=list(verdict.reasons))
+            info.update(outcome="failed", reasons=list(verdict.reasons), evidence_issues=["failed"])
             return "\n".join([
                 "[业务系统查询未成功]",
                 f"本轮查询业务系统的每一个步骤都没有成功执行（trace_id: {trace_id or '未知'}）。",
@@ -412,62 +418,15 @@ async def delegate_order_query(
                 "你说的内容已经过系统核对。",
             ]), False
 
-        answer = str(data.get("answer", "")).strip()
-        if not answer:
-            info.update(outcome="empty")
-            return "", False
-
-        # ai-sql-agent 的 answer 里嵌的是查询结果的 JSON 原文，行数多的时候
-        # 能到几万字符（它那边 max_rows 默认 10000）。整段塞进 prompt 会把
-        # 上下文顶爆，也会把知识库那部分挤掉，所以这里截断。
-        # 截断阈值调大之前先想清楚：真正该做的是让下游少返点行，不是这边多收点。
-        limit = int(os.getenv("SQL_AGENT_MAX_CONTEXT_CHARS", "2000"))
-        if len(answer) > limit:
-            answer = answer[:limit] + f"\n…（结果过长已截断，完整结果见 trace_id {trace_id}）"
-
-        databases = ", ".join(str(d) for d in data.get("selected_databases") or []) or "未标明"
-        # 标题就把可信度写在第一行：可作出处的那段叫「实时数据」，不可作出处的
-        # 那段绝不能也叫这个名字——Agent 读到的第一行决定它怎么措辞。
-        header = "[业务系统实时数据]" if verdict.usable_as_source else "[业务系统数据（未通过可信校验，仅供参考）]"
-        parts = [
-            header,
-            f"来源: ai-sql-agent（命中库: {databases}；trace_id: {trace_id}；"
-            f"执行状态: {verdict.execution_status}）",
-            answer,
-        ]
-        if verdict.has_risk:
-            parts.append(
-                "注意: 这条查询结果带有异常提示（空结果 / 基数异常 / 语义不一致），"
-                "SQL 跑通了但答的可能不是问的那件事。**不得**把其中的金额、日期、"
-                "订单状态说成已核实的结论，只能说明系统里查到了这些内容、需要人工核对。"
-            )
-        if verdict.degraded:
-            parts.append(
-                f"注意: 数据服务处于降级状态（{data.get('degrade_reason', '') or '原因未说明'}），"
-                "结果可能来自历史查询重放，可能已经过期。**不得**表述为当前状态，"
-                "必须请客户以正式单据为准。"
-            )
-        parts.extend(f"注意: {c}" for c in verdict.caveats)
-        parts.append(currency_note(data, currency))
-        parts.append(
-            "以上是业务系统查到的真实数据，回答订单/交期/库存/账款问题时优先依据它。"
-            if verdict.usable_as_source else
-            "以上内容**没有通过可信校验**，不能当作已核实的系统依据。"
-            "涉及具体日期、金额、库存数字时必须明说这一点，并建议人工核实。"
-        )
-        if not verdict.usable_as_source:
-            logger.warning(
-                "业务数据未通过可信校验，不进 grounding_sources trace_id=%s status=%s(%s) 原因=%s",
-                trace_id, verdict.execution_status, verdict.status_source,
-                "；".join(verdict.reasons) or "-",
-            )
-        info.update(
-            outcome="evidence" if verdict.usable_as_source else "unverified",
-            has_risk=verdict.has_risk,
-            degraded=verdict.degraded,
-            reasons=list(verdict.reasons),
-        )
-        return "\n".join(p for p in parts if p), verdict.usable_as_source
+        from app.core.business_facts import render_cells, verified_cells
+        cells, issues = verified_cells(data)
+        info.update(outcome="evidence" if cells else "unverified", evidence=cells, evidence_issues=issues,
+                    evidence_payload=data, has_risk=verdict.has_risk, degraded=verdict.degraded,
+                    reasons=list(verdict.reasons))
+        text = render_cells(cells)
+        if issues:
+            text += "\n业务证据限制：" + ", ".join(issues)
+        return text, bool(cells)
     except Exception as ex:
         logger.warning(f"构建业务数据上下文失败: {ex}")
         info.update(outcome="error", reason=str(ex) or type(ex).__name__)

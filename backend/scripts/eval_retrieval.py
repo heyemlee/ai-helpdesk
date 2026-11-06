@@ -582,7 +582,7 @@ def _judge(case: Case, answer: str, known: str, handoff: bool) -> dict[str, Any]
     if case.facts:
         missing = [fact[0] for fact in case.facts if not any(_contains(folded, v) for v in fact)]
         verdict.update(
-            correct=not missing,
+            correct=not missing and not invented and not any(any(_contains(folded, v) for v in fact) for fact in case.stale_facts),
             missing=missing,
             stale=[fact[0] for fact in case.stale_facts if any(_contains(folded, v) for v in fact)],
         )
@@ -640,6 +640,7 @@ class _Chain:
     orchestrator: Any
     tools: _ProbedTools
     deps: Any
+    policy_ref_validator: Any
     reranker: str     # llm_listwise，或者配了远端的 cross_encoder:<模型>
 
 
@@ -707,7 +708,7 @@ def _build_chain(kb: KnowledgeBase, embedder: _CachedEmbedder) -> _Chain:
 
     deps = TurnDeps(load_memory=no_memory, recognize_intent=orchestrator.recognize_intent,
                     outage_reason=orchestrator.llm_unavailable_reason, prefetch=Prefetch(tool_manager=tools))
-    return _Chain(cfg=cfg, orchestrator=orchestrator, tools=tools, deps=deps, reranker=reranker.backend)
+    return _Chain(cfg=cfg, orchestrator=orchestrator, tools=tools, deps=deps, policy_ref_validator=kb.validate_policy_refs, reranker=reranker.backend)
 
 
 def _hit(titles: list[str], case: Case) -> bool:
@@ -726,6 +727,7 @@ async def _run_case(chain: _Chain, case: Case, top_k: int, known: str) -> dict[s
     with bind(recorder):
         prepared = await prepare_turn(case.query, user_id="eval-chain", conv_id=conv_id,
                                       request_id=conv_id, deps=chain.deps)
+        prepared.request.policy_ref_validator = chain.policy_ref_validator
         result = await chain.orchestrator.run(prepared.request)
 
     knowledge = prepared.evidence.get("knowledge") or {}
@@ -766,7 +768,7 @@ async def _run_case(chain: _Chain, case: Case, top_k: int, known: str) -> dict[s
             "by_purpose": dict(Counter(str(c.get("purpose") or "unknown") for c in calls)),
             "failed": sum(1 for c in calls if c.get("status") != "ok"),
         },
-        **_judge(case, result.response, known, result.handoff),
+        **_judge(case, result.response, _fold("\n".join(prepared.request.grounding_sources) + json.dumps(knowledge, ensure_ascii=False)), result.handoff),
     }
 
 
@@ -972,9 +974,10 @@ async def main(args: argparse.Namespace) -> int:
 
     try:
         kb = KnowledgeBase(store=store, embedder=embedder)
-        await kb.ensure_seeded()
-        if extra_docs:
-            await kb.add_documents_async(extra_docs)
+        from app.core.policy_scope import PolicyMetadata
+        from app.tools.knowledge_base import _DEFAULT_DOCS
+        published = PolicyMetadata(status="published", version="eval-v1", effective_at="2020-01-01T00:00:00Z").model_dump(mode="json")
+        await kb.add_documents_async([{**d, "policy": d.get("policy") or published} for d in [*_DEFAULT_DOCS, *extra_docs]])
         stats = await kb.document_stats()
         chunks = await store.kb_search(await embedder.embed_query(cases[0].query), 100_000)
         _check_cases(cases, chunks)

@@ -122,6 +122,15 @@ def _meta(evs: list[dict[str, Any]], turn_id: str, conv_id: str) -> dict[str, An
     else:
         planned = _first(evs, "prefetch_planned")
         meta["business_data"] = dict((planned or {}).get("data", {}).get("not_queried") or {})
+    completed = _first(evs, "turn_completed")
+    selected = (completed or {}).get("data", {}).get("selected_evidence")
+    if selected is not None:
+        from app.events.shapes import merge_trace
+        text = ((completed or {}).get("body") or {}).get("selected_evidence") or {}
+        knowledge = merge_trace(selected.get("knowledge", {}), text.get("knowledge"))
+        meta["knowledge_sources"] = knowledge.pop("sources", [])
+        meta["knowledge"] = knowledge
+        meta["business_data"] = merge_trace(selected.get("business_data", {}), text.get("business_data"))
     return meta
 
 

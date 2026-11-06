@@ -5,6 +5,8 @@
 test_sql_agent_delegation 已经覆盖。这里直接装配依赖，确认评测之类的调用方
 不起 FastAPI、不碰 main 的模块级变量，也能复刻同一个准备阶段。
 """
+from evidence_fixtures import policy_hits, with_evidence
+
 from app.agents.tool_loop import LoopConfig, LoopSetup
 from app.agents.turn_prep import PreparedTurn, TurnDeps, prepare_turn
 from app.core.intent_recognizer import IntentCategory, UrgencyLevel
@@ -23,6 +25,9 @@ ORDER_DATA = {
     "steps": [{"database": "wms_db", "success": True}],
 }
 
+
+KNOWLEDGE = policy_hits(KNOWLEDGE)
+ORDER_DATA = with_evidence(ORDER_DATA)
 
 class _Tools:
     """按工具名返回：知识库给片段，业务数据给一份可作出处的结果。"""
@@ -95,7 +100,7 @@ async def test_prepare_turn_runs_on_injected_dependencies():
 
     # 知识和可作出处的业务数据进 grounding_sources，记忆只进上下文
     assert len(turn.request.grounding_sources) == 2
-    assert "9 月 15 日" in turn.request.grounding_sources[1]
+    assert "3个工作日" in turn.request.grounding_sources[1]
     assert "第 6 句" in turn.request.context
     assert "第 6 句" not in "".join(turn.request.grounding_sources)
     assert turn.knowledge_used is True
@@ -138,7 +143,7 @@ async def test_delegation_itself_has_no_gate():
     text, is_evidence = await delegate_order_query(tools, "你好", user_id="u1", conv_id="c1",
                                                    trace=trace)
     assert [name for name, _ in tools.calls] == ["order_data_query"]
-    assert is_evidence is True and "9 月 15 日" in text
+    assert is_evidence is True and "3个工作日" in text
     assert trace["attempted"] is True and trace["outcome"] == "evidence"
 
 

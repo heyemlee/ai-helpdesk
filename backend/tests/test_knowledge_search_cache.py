@@ -12,11 +12,11 @@ import uuid
 from types import SimpleNamespace
 
 import pytest
+from evidence_fixtures import PublishedKnowledgeBase as KnowledgeBase
 
 from app.core.embedder import Embedder
 from app.core.lexical import index_text
 from app.storage.vector_store import LocalStore
-from app.tools.knowledge_base import KnowledgeBase
 from app.tools.tool_manager import Tool, ToolManager
 
 TEST_PG_DSN = os.getenv("TEST_POSTGRES_DSN", "").strip()

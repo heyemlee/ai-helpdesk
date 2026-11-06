@@ -1,3 +1,4 @@
+import type { PolicyScope } from '@/api/types'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, ApiError, caseApi, streamChat, streamRun, type Settings } from '@/api/client'
 import type {
@@ -41,7 +42,7 @@ export interface ChatMessage {
   /** 连接断了，正在按 run 续流 */
   reconnecting?: boolean
 }
-export interface ChatMaterials { attachments: Attachment[]; caseChoice: string; issueType: CaseInput['issue_type'] }
+export interface ChatMaterials { policyScope?: PolicyScope; attachments: Attachment[]; caseChoice: string; issueType: CaseInput['issue_type'] }
 
 const newId = () =>
   (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`)
@@ -267,7 +268,7 @@ export function useChatStream(
       if ((!content && !materials?.attachments.length) || busy) return false
 
       const choice = materials?.caseChoice || settings.caseId
-      const fingerprint = JSON.stringify({ content, ids: materials?.attachments.map(a => a.id), choice, issue: materials?.issueType })
+      const fingerprint = JSON.stringify({ content, ids: materials?.attachments.map(a => a.id), choice, issue: materials?.issueType, policyScope: materials?.policyScope })
       const pending = pendingCase.current
       const retrying = pending && [pending.fingerprint, pending.originalFingerprint].includes(fingerprint) ? pending : null
       const assistantId = retrying?.assistantId || newId()
@@ -281,6 +282,7 @@ export function useChatStream(
 
       let body: ChatRequest = {
         message: content,
+        ...(materials?.policyScope ? { policy_scope: materials.policyScope } : {}),
         user_id: settings.userId || 'anonymous',
         ...(settings.conversationId ? { conv_id: settings.conversationId } : {}),
       }
@@ -323,7 +325,7 @@ export function useChatStream(
                   if (pendingCase.current) pendingCase.current.resumeRun = runId
                   if (evt.data.case_id) {
                     if (pendingCase.current) pendingCase.current.fingerprint = JSON.stringify({ content,
-                      ids: materials?.attachments.map(a => a.id), choice: evt.data.case_id, issue: materials?.issueType })
+                      ids: materials?.attachments.map(a => a.id), choice: evt.data.case_id, issue: materials?.issueType, policyScope: materials?.policyScope })
                     onCaseId?.(evt.data.case_id); onConversationId(evt.data.conv_id)
                   }
                 }
@@ -334,7 +336,7 @@ export function useChatStream(
                   finished = true; nextRun = evt.data.next_run_id
                   if (evt.data.case_id) {
                     if (pendingCase.current) pendingCase.current.fingerprint = JSON.stringify({ content,
-                      ids: materials?.attachments.map(a => a.id), choice: evt.data.case_id, issue: materials?.issueType })
+                      ids: materials?.attachments.map(a => a.id), choice: evt.data.case_id, issue: materials?.issueType, policyScope: materials?.policyScope })
                     onCaseId?.(evt.data.case_id); onConversationId(evt.data.conv_id)
                   }
                 }

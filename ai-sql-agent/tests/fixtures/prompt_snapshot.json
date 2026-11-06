@@ -287,7 +287,7 @@
    {
     "__type__": "ConversationMemoryContext",
     "prompt": {
-     "sha256": "4b00d1d94f700730",
+     "sha256": "055be70359f5140f",
      "len": 4596
     }
    }
@@ -312,7 +312,7 @@
     "采购"
    ],
    "query": {
-    "sha256": "07b8a1bec4315bbe",
+    "sha256": "987111d656348e04",
     "len": 4643
    }
   }
@@ -336,11 +336,11 @@
     }
    ],
    "schema_graph": {
-    "sha256": "dcb92552d8eecb41",
+    "sha256": "0c86dd466f566fef",
     "len": 5581
    },
    "user_query": {
-    "sha256": "07b8a1bec4315bbe",
+    "sha256": "987111d656348e04",
     "len": 4643
    }
   }
@@ -349,7 +349,7 @@
   "call": "ThinkingModelClient.generate",
   "args": [
    {
-    "sha256": "7378b9987534bc44",
+    "sha256": "159328ef0e03cbf5",
     "len": 13160
    }
   ],
@@ -497,7 +497,7 @@
    {
     "__type__": "ConversationMemoryContext",
     "prompt": {
-     "sha256": "660d225bf993af5a",
+     "sha256": "7eb6081675c47ae7",
      "len": 4962
     }
    }
@@ -521,7 +521,7 @@
     "采购"
    ],
    "query": {
-    "sha256": "a302b3ec5c2e5960",
+    "sha256": "bd9fc452c02648ca",
     "len": 5007
    }
   }
@@ -536,7 +536,7 @@
     "len": 2762
    },
    "user_query": {
-    "sha256": "a302b3ec5c2e5960",
+    "sha256": "bd9fc452c02648ca",
     "len": 5007
    }
   }
@@ -545,7 +545,7 @@
   "call": "ThinkingModelClient.generate",
   "args": [
    {
-    "sha256": "ea93c18d90e3b25e",
+    "sha256": "d0f213cb526e53ec",
     "len": 9892
    }
   ],
@@ -693,7 +693,7 @@
    {
     "__type__": "ConversationMemoryContext",
     "prompt": {
-     "sha256": "849193077ce78c1c",
+     "sha256": "b2634ec9654dabad",
      "len": 5875
     }
    }
@@ -707,7 +707,7 @@
    {
     "__type__": "ConversationMemoryContext",
     "prompt": {
-     "sha256": "849193077ce78c1c",
+     "sha256": "b2634ec9654dabad",
      "len": 5875
     }
    }

@@ -19,6 +19,7 @@ import secrets
 from urllib.parse import urlsplit, urlunsplit
 
 import pytest
+from evidence_fixtures import PublishedKnowledgeBase as KnowledgeBase
 
 from app.core import embedder as embedder_module
 from app.core.embedder import Embedder, EmbeddingUnavailable
@@ -28,7 +29,6 @@ from app.storage.vector_store import (
     LocalStore,
     check_embedding_signature,
 )
-from app.tools.knowledge_base import KnowledgeBase
 
 TEST_PG_DSN = os.getenv("TEST_POSTGRES_DSN", "").strip()
 REMOTE = {"base_url": "https://embeddings.example/v1", "api_key": "sk-test", "model": "fake-embed"}

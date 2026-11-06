@@ -212,6 +212,10 @@ class StubToolManager:
             if self.fixtures is None:
                 raise RuntimeError("找不到 a2a-contract：它应该在本仓库的 a2a-contract/ 下，或用 A2A_CONTRACT_DIR 指过去")
             payload = self.fixtures.load(str(rule["fixture"]))
+            # Explicit simulation clock: this is a fixture-backed test query,
+            # not a production replay or a claim that the live database was read.
+            from datetime import UTC, datetime
+            payload["observed_at"] = datetime.now(UTC).isoformat()
         data = normalize_delegation_result(payload, answer=str(rule.get("answer") or ""))
         return ToolResult(success=True, data=data, tool_name=name)
 

@@ -102,6 +102,7 @@ class MCPProtocolExecutor:
             error=payload.get("error"),
             truncated=bool(payload.get("truncated")),
             row_limit=payload.get("row_limit"),
+            observed_at=str(payload.get("observed_at") or ""),
             as_of=str(payload.get("as_of") or ""),
             as_of_source=str(payload.get("as_of_source") or ""),
         )

@@ -106,6 +106,8 @@ async def prepare_turn(
     工作台显示的"回答依据"和学习模式的讲解都只来自这里——前端自己推断不出
     这一轮有没有查库，推断出来的也不能当事实显示。
     """
+    from app.core.business_facts import language_of
+    response_language = (case_context or {}).get("language") or language_of(message)
     prefetch = deps.prefetch
     recorder = events()
     report_stage(progress_cb, STAGE_UNDERSTANDING)
@@ -209,6 +211,8 @@ async def prepare_turn(
             latency_ms=latency_ms,
         )
     evidence_trace = {"knowledge": knowledge_trace, "business_data": data_trace}
+    orch_req.fact_evidence = evidence_trace
+    orch_req.response_language = response_language
     return PreparedTurn(orch_req, intent_result, knowledge_used, evidence_trace)
 
 

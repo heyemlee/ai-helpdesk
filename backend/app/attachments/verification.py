@@ -107,7 +107,7 @@ def normalized(value, field):
     if field == "quantity":
         try:
             number = Decimal(text)
-            return str(number.normalize()) if number.is_finite() and number >= 0 else None
+            return format(number.normalize(), "f") if number.is_finite() and number >= 0 else None
         except InvalidOperation:
             return None
     if field == "date":
@@ -116,13 +116,14 @@ def normalized(value, field):
             return date.fromisoformat(text).isoformat()
         except ValueError:
             return None
-    return text.casefold()
+    return text.casefold() if field == "status" else text
 
 
 def verify(extraction: Extraction, data, order_ref, context_error="", issue_type="general"):
     """Fail closed on ambiguous rows/units/dates; never inspect data['answer']."""
     data = data or {}
     verdict = assess(data)
+    from app.core.business_facts import fresh
     global_error = context_error
     if not global_error:
         if data.get("unavailable"):
@@ -131,6 +132,8 @@ def verify(extraction: Extraction, data, order_ref, context_error="", issue_type
             global_error = "no_record"
         elif verdict.execution_status == "failed":
             global_error = "failed"
+        elif not fresh(data.get("observed_at")):
+            global_error = "unverified"
         elif (not verdict.usable_as_source or verdict.truncated or verdict.execution_status != "success" or data.get("failed_steps")
               or not data.get("steps") or any(s.get("success") is not True or s.get("truncated") is not False
                                              or type(s.get("row_count")) is not int
@@ -170,8 +173,8 @@ def verify(extraction: Extraction, data, order_ref, context_error="", issue_type
                 for row_index, row in enumerate(step.get("rows") or []):
                     if not isinstance(row, dict):
                         continue
-                    row_order = {str(row[k]).casefold() for k in COLUMNS["order_ref"] if row.get(k) is not None}
-                    if row_order != {order_ref.casefold()}:
+                    row_order = {str(row[k]) for k in COLUMNS["order_ref"] if row.get(k) is not None}
+                    if row_order != {order_ref}:
                         continue
                     if (candidate.field in {"quantity", "date", "status"}
                             and any(row.get(k) is not None for f in ("model", "expected_model", "received_model") for k in COLUMNS[f])
@@ -189,9 +192,9 @@ def verify(extraction: Extraction, data, order_ref, context_error="", issue_type
                         if value is not None:
                             if value == normalized(candidate.value, candidate.field):
                                 matching_rows.add((step_index, row_index))
-                            values.append((value, str(row[column]), {
+                            values.append((value, value, {
                                 "database": step["database"], "column": column, "row_index": row_index,
-                                "unit": unit, "as_of": step["as_of"], "as_of_source": step.get("as_of_source"),
+                                "unit": unit, "as_of": step["as_of"], "as_of_source": step.get("as_of_source"), "observed_at": data.get("observed_at"),
                                 "source_records": (step.get("source_records") or [])[:20],
                                 "trace_id": data.get("trace_id", ""), "run_id": data.get("run_id", ""),
                                 "order_ref": order_ref,
@@ -238,10 +241,10 @@ def verify(extraction: Extraction, data, order_ref, context_error="", issue_type
                     if item["field"] == "date":
                         columns = {"delivery": ("delivery_date",), "ship": ("ship_date",), "order": ("order_date",)}.get(item["kind"], ())
                     col = next(c for c in columns if normalized(step["rows"][ri].get(c), item["field"]) == normalized(item["value"], item["field"]))
-                    item.update(db_value=str(step["rows"][ri][col]), source={
+                    item.update(db_value=normalized(step["rows"][ri][col], item["field"]), source={
                         "database": step["database"], "column": col, "row_index": ri,
                         "unit": (step.get("column_units") or {}).get(col), "as_of": step["as_of"],
-                        "as_of_source": step["as_of_source"], "source_records": (step.get("source_records") or [])[:20],
+                        "as_of_source": step["as_of_source"], "observed_at": data.get("observed_at"), "source_records": (step.get("source_records") or [])[:20],
                         "trace_id": data.get("trace_id", ""), "run_id": data.get("run_id", ""), "order_ref": order_ref,
                     })
     return {"document_type": extraction.document_type, "fields": reviews, "query_outcome": global_error or "checked"}

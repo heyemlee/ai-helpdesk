@@ -71,10 +71,10 @@ def test_allows_commitments_backed_by_sources(policy, answer):
     "补件通常在一周左右发出，具体以工厂排产实际情况为准。",
     "预计 3 个工作日左右，具体需要核实订单状态后确认。",
 ])
-def test_allows_hedged_statements(policy, answer):
-    """SOP 要求的保守表述本来就不是承诺。"""
+def test_hedges_do_not_exempt_unsupported_values(policy, answer):
+    """对冲词不能替代事实出处。"""
     result = policy.enforce(answer, sources=[KB])
-    assert not result.blocked
+    assert result.blocked
 
 
 @pytest.mark.parametrize("answer", [
@@ -198,9 +198,9 @@ def test_same_commitment_is_blocked_in_both_languages(policy, zh, en):
     ("展厅周二到周四都开门。",
      "The showroom is open Tuesday through Thursday."),
 ])
-def test_hedged_or_non_commitment_passes_in_both_languages(policy, zh, en):
-    assert not policy.enforce(zh, sources=[]).blocked, f"中文误拦: {zh}"
-    assert not policy.enforce(en, sources=[]).blocked, f"英文误拦: {en}"
+def test_hedged_claims_require_sources_in_both_languages(policy, zh, en):
+    assert policy.enforce(zh, sources=[]).blocked
+    assert policy.enforce(en, sources=[]).blocked is (not en.startswith("The showroom"))
 
 
 def test_english_reply_gets_english_replacement(policy):
@@ -290,6 +290,11 @@ def test_a_trailing_period_is_not_flushed_early():
 # 发现新漏法就往语料里加一条。语料里的句子都是这个业务真会说出口的话。
 
 _UNGROUNDED_COMMITMENTS = [
+    '展厅周二到周四都开门。',
+    '返工大概要三天。',
+    '通常两到三周，具体以排产为准。',
+    "Roughly 3 weeks, but that's an estimate pending scheduling.",
+    'Turnaround is typically 4-6 weeks, subject to factory scheduling.',
     # 价格
     "The replacement door will be $340.",
     "That upgrade adds $1,200 to your total.",
@@ -320,14 +325,11 @@ _UNGROUNDED_COMMITMENTS = [
 ]
 
 _ACCEPTABLE = [
-    # 有对冲，符合 SOP 的保守表述
-    "Turnaround is typically 4-6 weeks, subject to factory scheduling.",
-    "Roughly 3 weeks, but that's an estimate pending scheduling.",
-    "通常两到三周，具体以排产为准。",
-    "返工大概要三天。",
-    # 根本不是承诺
+    # No unverified amount or delivery time, including hedged statements.
+    "请提供订单号，以便核对业务记录。",
+    "金额需要根据正式报价核实。",
+    "材料已保存，待员工核对。",
     "The showroom is open Monday through Friday.",
-    "展厅周二到周四都开门。",
     "I can't quote a price without the formal quotation.",
     "Pricing depends on the slab, edge profile and cutouts.",
     "Once QC confirms responsibility, we'll schedule the remake.",
@@ -632,7 +634,7 @@ def test_relative_days_are_never_grounded(policy, answer, evidence):
     "安装完成后天地柜的门板会补发。",
 ])
 def test_relative_day_look_alikes_and_hedged_sentences_pass(policy, answer):
-    assert not policy.enforce(answer, sources=[]).blocked
+    assert policy.enforce(answer, sources=[]).blocked is answer.startswith(("预计明天", "明天是"))
 
 
 # (回答, 有出处时的出处, 被拦时的证据)

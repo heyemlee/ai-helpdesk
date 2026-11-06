@@ -15,7 +15,7 @@ describe('conversation interactions', () => {
     expect(screen.getByRole('textbox')).toHaveValue('柜门关不严、门缝不齐，应该怎么排查？')
     expect(screen.getByRole('textbox')).toHaveFocus()
     await userEvent.click(screen.getByRole('button', { name: '发送' }))
-    expect(onSend).toHaveBeenCalledWith('柜门关不严、门缝不齐，应该怎么排查？')
+    expect(onSend).toHaveBeenCalledWith('柜门关不严、门缝不齐，应该怎么排查？', expect.objectContaining({ policyScope: {} }))
     expect(screen.getByRole('textbox')).toHaveValue('')
   })
 
@@ -58,7 +58,7 @@ describe('conversation interactions', () => {
     fireEvent.change(input, { target: { value: `  ${emoji}\n` } })
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
     fireEvent.keyDown(input, { key: 'Enter' })
-    expect(onSend).toHaveBeenCalledWith(emoji)
+    expect(onSend).toHaveBeenCalledWith(emoji, expect.objectContaining({ policyScope: {} }))
   })
 
   it('says how far over the cap a message is in English too', () => {
@@ -112,7 +112,7 @@ describe('empty conversation', () => {
     const input = screen.getByRole('textbox')
     expect(container.querySelector('.composer-wrap')).toHaveClass('is-empty')
     await userEvent.type(input, '测试问题{Enter}')
-    expect(onSend).toHaveBeenCalledWith('测试问题')
+    expect(onSend).toHaveBeenCalledWith('测试问题', expect.objectContaining({ policyScope: {} }))
     rerender(<ChatPanel {...props} messages={[{ id: 'u1', role: 'user', content: '测试问题' }]} />)
     expect(container.querySelector('.composer-wrap')).not.toHaveClass('is-empty')
     expect(screen.queryByRole('group', { name: '试试这些问题' })).not.toBeInTheDocument()

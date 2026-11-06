@@ -221,7 +221,7 @@ async def test_the_same_query_runs_once_including_what_the_rules_fetched():
     turn.remember(tool.memo_key(LookupArgs(query="SO-1 补件")),
                   ToolOutcome(content="预取的资料", evidence="预取的资料", outcome="found"))
     model = ScriptedModel(
-        tool_step(("c1", "lookup", {"query": " so-1  补件 "}),     # 大小写、空白不同也算同一次
+        tool_step(("c1", "lookup", {"query": " SO-1  补件 "}),     # whitespace only; business identifiers remain case-sensitive
                   ("c2", "lookup", {"query": "SO-2"}), ("c3", "lookup", {"query": "SO-2"})),
         text_step("好的。"),
     )

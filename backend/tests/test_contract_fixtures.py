@@ -111,7 +111,7 @@ def _validator_for(schema_rel: str):
     registry = Registry().with_resources(resources)
 
     schema = json.loads((CONTRACT / schema_rel).read_text(encoding="utf-8"))
-    return jsonschema.Draft202012Validator(schema, registry=registry)
+    return jsonschema.Draft202012Validator(schema, registry=registry, format_checker=jsonschema.FormatChecker())
 
 
 def _schema_errors(case: dict, payload: dict) -> list:

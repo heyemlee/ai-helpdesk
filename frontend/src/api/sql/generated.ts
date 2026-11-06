@@ -6,6 +6,23 @@
 
 // ── SQL Agent（OpenAPI 1.0.0）────────────────────────────────────────
 
+/** BusinessEvidence */
+export interface BusinessEvidence {
+  as_of?: string | null
+  as_of_source?: string | null
+  database: string
+  entity: Record<string, unknown>
+  evidence_id: string
+  field: string
+  issues?: string[]
+  query_hash: string
+  row_index: number
+  source_records?: Array<Record<string, unknown>>
+  step_index: number
+  unit?: string | null
+  value: unknown
+}
+
 /** 用户对一次回答的判定。 */
 export interface FeedbackRequest {
   comment?: string
@@ -104,9 +121,11 @@ export interface QueryResponse {
   currency?: string | null
   degrade_reason?: string
   degraded?: boolean
+  evidence?: BusinessEvidence[]
   execution_status?: string
   failed_steps?: number
   has_risk?: boolean
+  observed_at?: string | null
   queried_database: boolean
   reason: string
   repaired_steps?: number
@@ -138,6 +157,7 @@ export interface StepLogResponse {
   database: string
   error?: string | null
   final_sql: string
+  observed_at?: string | null
   repair_attempts?: Array<Record<string, unknown>>
   risk_findings?: Array<Record<string, unknown>>
   row_count: number
@@ -179,9 +199,31 @@ export interface ArtifactDataPart {
   repaired_steps?: number
   result_truncated?: ArtifactDataPartStrictBoolean
   as_of?: string | null
-  as_of_source?: "query_time" | "snapshot" | "unknown"
+  as_of_source?: "query_time" | "snapshot" | "unknown" | null
   currency?: string | null
   steps: ArtifactDataPartStep[]
+  observed_at: string | null
+  evidence: ArtifactDataPartBusinessEvidence[]
+}
+
+export interface ArtifactDataPartBusinessEvidence {
+  evidence_id: string
+  entity: {
+    kind: "query_row"
+    query_hash: string
+    row_index: number
+  }
+  field: string
+  value: string | number | boolean | null
+  unit: string | null
+  as_of: string | null
+  as_of_source: "query_time" | "snapshot" | "unknown" | null
+  database: DatabaseId
+  step_index: number
+  row_index: number
+  query_hash: string
+  source_records: Array<Record<string, unknown>>
+  issues: Array<"missing_unit" | "missing_time" | "missing_provenance" | "truncated">
 }
 
 export interface ArtifactDataPartStep {
@@ -193,11 +235,14 @@ export interface ArtifactDataPartStep {
   sql?: string
   final_sql?: string
   error?: string | null
-  rows?: unknown[]
+  rows: Array<Record<string, unknown>>
   repair_attempts?: unknown[]
   risk_findings?: unknown[]
-  column_units?: Record<string, unknown>
-  source_records?: unknown[]
+  column_units?: Record<string, string>
+  source_records?: Array<Record<string, unknown>>
+  as_of?: string | null
+  as_of_source?: "query_time" | "snapshot" | "unknown" | null
+  observed_at?: string | null
 }
 
 export type ArtifactDataPartStrictBoolean = boolean

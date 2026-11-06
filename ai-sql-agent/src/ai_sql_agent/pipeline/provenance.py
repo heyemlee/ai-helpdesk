@@ -27,7 +27,7 @@ MAX_SOURCE_KEYS = 50
 """单张表最多回传多少条主键。溯源要的是「能查回去」，不是把结果集抄一遍。"""
 
 
-def _output_column_sources(sql: str, dialect: str) -> Dict[str, "tuple"]:
+def _output_column_sources(sql: str, dialect: str, *, direct_only=False) -> Dict[str, "tuple"]:
     """
     输出列名 → (表名, 原始列名)。
 
@@ -64,6 +64,9 @@ def _output_column_sources(sql: str, dialect: str) -> Dict[str, "tuple"]:
     for projection in root.expression.selects if hasattr(root.expression, "selects") else []:
         output_name = projection.alias_or_name
         if not output_name or output_name == "*":
+            continue
+        direct = projection.this if isinstance(projection, exp.Alias) else projection
+        if direct_only and not isinstance(direct, exp.Column):
             continue
         column = _unwrap_single_column(projection, exp)
         if column is None:
@@ -159,7 +162,7 @@ def source_records(
     if not callable(key_lookup):
         return []
 
-    mapping = _output_column_sources(sql, dialect)
+    mapping = _output_column_sources(sql, dialect, direct_only=True)
     # 输出列名 → 原始列名，按表分组
     per_table: Dict[str, Dict[str, str]] = {}
     for output_name, (table, origin) in mapping.items():

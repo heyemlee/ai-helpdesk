@@ -36,7 +36,7 @@ CARD_VERSION = "1.1.0"          # 契约 §6.1：从 1.0.0 提到 1.1.0 作为�
 # 这份实现对应的契约版本。必须等于 a2a-contract/fixtures/index.json 的 contract_version，
 # tests/test_contract_fixtures.py 断言这一点。改契约时三处在同一个 PR 里一起改：这里、
 # 客服的 backend/app/tools/a2a_client.py 的 CONTRACT_VERSION、index.json
-CONTRACT_VERSION = "v1.13"
+CONTRACT_VERSION = "v1.14"
 
 # JSON-RPC 错误码。-32004 是 A2A 规范的 UnsupportedOperationError，
 # 调用方读到它就退回 message/send（契约 §6.2 的回滚路径）。

@@ -1,3 +1,5 @@
+import { PolicyFields, ScopeFields, draftPolicy } from './PolicyFields'
+import type { PolicyScope } from '@/api/types'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useAddKnowledge, useCategories, useDocuments, useSearch, useUploadKnowledge } from '@/api/hooks'
 import { Card, Chip, StateBlock } from './ui'
@@ -76,6 +78,8 @@ export function KnowledgePanel({ base, mode, docId, category, navigate }: {
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
   const [importCategory, setImportCategory] = useState('')
+  const [policy, setPolicy] = useState(draftPolicy)
+  const [scope, setScope] = useState<PolicyScope>({})
   const [imported, setImported] = useState<ImportResult | null>(null)
   const dialogRef = useRef<HTMLDialogElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -99,7 +103,7 @@ export function KnowledgePanel({ base, mode, docId, category, navigate }: {
     if (!text || search.isPending) return
     setQuestion(text)
     setAsked(text)
-    search.mutate({ query: text })
+    search.mutate({ query: text, scope })
   }
 
   /** 打开导入框。分类默认放在正在看的那一类里——在"安装与验收"下点导入，多半就是要导进这一类。 */
@@ -187,6 +191,7 @@ export function KnowledgePanel({ base, mode, docId, category, navigate }: {
         ) : (
           <section aria-label={t('kb.tab.ask')}>
             <p className="tab-lede">{t('kb.ask.lede')}</p>
+            <ScopeFields value={scope} onChange={setScope} />
             <form className="searchbar" onSubmit={(e) => { e.preventDefault(); ask(question) }}>
               <Icon name="search" />
               <label className="sr-only" htmlFor="kb-q">{t('kb.searchLabel')}</label>
@@ -280,6 +285,7 @@ export function KnowledgePanel({ base, mode, docId, category, navigate }: {
             bodyStyle={{ display: 'grid', gap: 12 }}
           >
             <p className="note neutral">{t('kb.import.note')}</p>
+            <PolicyFields value={policy} onChange={setPolicy} />
             <label className="field-row">
               <span>{t('kb.fTitle')}</span>
               <input className="field" ref={titleRef} value={title} onChange={(e) => setTitle(e.target.value)}
@@ -316,7 +322,7 @@ export function KnowledgePanel({ base, mode, docId, category, navigate }: {
                 className="btn btn-primary" aria-busy={add.isPending}
                 disabled={add.isPending || !title.trim() || !content.trim()}
                 onClick={() => add.mutate(
-                  [{ title: title.trim(), content, ...(importCategory ? { category: importCategory } : {}) }],
+                  [{ title: title.trim(), content, policy: { ...policy, version: policy.version || 'legacy-unreviewed' }, ...(importCategory ? { category: importCategory } : {}) }],
                   { onSuccess: done },
                 )}
               >
@@ -328,7 +334,7 @@ export function KnowledgePanel({ base, mode, docId, category, navigate }: {
                 onChange={(e) => {
                   const file = e.target.files?.[0]
                   e.target.value = ''
-                  if (file) upload.mutate({ file, category: importCategory }, { onSuccess: done })
+                  if (file) upload.mutate({ file, category: importCategory, policy: { ...policy, version: policy.version || 'legacy-unreviewed' } }, { onSuccess: done })
                 }}
               />
             </div>

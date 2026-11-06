@@ -1,5 +1,8 @@
+import { ScopeFields } from './PolicyFields'
+import type { PolicyScope } from '@/api/types'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import Markdown from 'react-markdown'
+import { SafeMarkdown } from './SafeMarkdown'
+import { EvidenceDetails } from './EvidenceDetails'
 import { ApiError, caseApi, loadSettings } from '@/api/client'
 import type { Attachment, CaseAction, CaseDetail, CaseInput, CaseSummary } from '@/api/types'
 import { useT } from '@/i18n'
@@ -27,6 +30,8 @@ export function CaseWorkbench({ base, ticketId }: { base: string; ticketId?: str
   const [conv, setConv] = useState(() => loadSettings().conversationId || id())
   const [customer, setCustomer] = useState('')
   const [message, setMessage] = useState('')
+  const [policyScope, setPolicyScope] = useState<PolicyScope>({})
+  useEffect(() => { setPolicyScope(current?.policy_scope ?? {}) }, [current?.id])
   const [facts, setFacts] = useState<Record<string, string>>({})
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [uploading, setUploading] = useState(false)
@@ -94,10 +99,10 @@ export function CaseWorkbench({ base, ticketId }: { base: string; ticketId?: str
     await perform(async () => {
       const cleanFacts = Object.fromEntries(Object.entries(facts).filter(([, v]) => v.trim()))
       const ids = retryIds ?? attachments.map(a => a.id)
-      const fingerprint = JSON.stringify({ selected, conv, message, cleanFacts, issue, customer, ids })
+      const fingerprint = JSON.stringify({ selected, conv, message, cleanFacts, issue, customer, ids, policyScope })
       if (pending.current?.fingerprint !== fingerprint) {
         pending.current = { fingerprint, body: {
-          message_id: id(), message, conv_id: current?.conv_id ?? conv, facts: cleanFacts,
+          message_id: id(), message, policy_scope: policyScope, conv_id: current?.conv_id ?? conv, facts: cleanFacts,
           ...(ids.length ? { attachment_ids: ids } : {}),
           ...(current ? { case_id: current.id, expected_version: current.version, expected_control_version: current.control_version }
             : { new_case: true, issue_type: issue, customer_ref: customer }),
@@ -128,6 +133,7 @@ export function CaseWorkbench({ base, ticketId }: { base: string; ticketId?: str
     <p>{text('明确选择已有问题或新建。相同订单可以有多个售后问题，系统不会自动合并。', 'Choose a case or create a new problem. The same order can have several separate issues.')}</p>
     {error && <p role="alert" className="note danger">{error}</p>}
     {notice && <p role="status" className="note neutral">{notice}</p>}
+    <ScopeFields value={policyScope} onChange={setPolicyScope} />
     {available && <>
       <label>{text('选择问题', 'Choose case')}
         <select value={selected} disabled={busy || uploading} onChange={e => { setSelected(e.target.value); setMessage(''); setAttachments([]) }}>
@@ -188,12 +194,8 @@ export function CaseWorkbench({ base, ticketId }: { base: string; ticketId?: str
           <h3>{text('答复草稿', 'Reply drafts')}</h3>
           {current.drafts.map(d => <article className="case-draft" key={d.id}>
             <p>{text('版本', 'Version')} {d.version} · {d.valid ? (d.status === 'approved' ? text('已确认', 'Approved') : text('待确认', 'Pending approval')) : text('已失效', 'Invalidated')}</p>
-            <Markdown>{d.body}</Markdown>
-            <details><summary>{text('草稿依据', 'Draft evidence')} ({d.evidence.length})</summary><ul>{d.evidence.map((record, index) => {
-              const e = record && typeof record === 'object' ? record as Record<string, unknown> : {}
-              const parts = ['doc_title', 'title', 'value', 'source', 'outcome', 'evidence_id'].map(k => e[k]).filter(v => typeof v === 'string')
-              return <li key={index}>{parts.join(' · ') || text('业务查询记录', 'Business query record')}</li>
-            })}</ul></details>
+            <SafeMarkdown>{d.body}</SafeMarkdown>
+            <EvidenceDetails records={d.evidence} />
             <button className="btn btn-secondary" disabled={busy || !d.valid || d.status === 'approved'} onClick={() => perform(async () => { setCurrent(await caseApi.approve(base, current, d)) })}>
               {text('确认此版本草稿', 'Approve this version')}
             </button>

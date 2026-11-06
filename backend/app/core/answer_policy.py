@@ -568,29 +568,21 @@ class AnswerPolicy:
         sentence: str,
         normalized_sources: list[str],
     ) -> PolicyViolation | None:
-        """判断单句是否构成"无依据承诺"。四条同时成立才拦截。"""
-        price = _PRICE_RE.search(sentence)
+        """逐一核对单句的金额/时效，不因模糊措辞或缺少承诺动词放行。"""
+        prices = list(_PRICE_RE.finditer(sentence))
         lead_times = list(_LEAD_TIME_RE.finditer(sentence))
-        if not price and not lead_times:
+        if not prices and not lead_times:
             return None
 
-        # 2. 必须落在承诺语境里
-        if not _COMMIT_RE.search(sentence):
-            return None
-
-        # 3. 已经按 SOP 做了保守表述，且没有绝对化措辞 → 放行
-        if _HEDGE_RE.search(sentence) and not _ABSOLUTE_RE.search(sentence):
-            return None
-
-        # 4. 数字必须能在 grounding sources 中找到出处。
+        # 数字必须能在 grounding sources 中找到出处。
         #    时效表述照旧只核句子里的第一处，但具体日期不占这个名额，有几个核几个。
         #    日期对得上出处之后，要是还只核第一处，「10 月 28 日出厂，11 月 3 日送到」
         #    「10 月 28 日出厂，3-5 个工作日送到」后半句编出来的送货时间，就跟着
         #    有出处的出厂日期一起放行了。
         dates = [m for m in lead_times if _date_of(self._normalize(m.group(0)))]
         others = [m for m in lead_times if m not in dates]
-        checks = [("price_commitment", price)] + [
-            ("lead_time_commitment", m) for m in sorted(dates + others[:1], key=lambda m: m.start())
+        checks = [("price_commitment", price) for price in prices] + [
+            ("lead_time_commitment", m) for m in sorted(dates + others, key=lambda m: m.start())
         ]
         for rule, match in checks:
             if match is None:

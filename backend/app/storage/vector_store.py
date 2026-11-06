@@ -19,7 +19,7 @@
 LocalStore 的暴力扫为什么可接受：demo 知识库百级片段、情景记忆按用户过滤后
 更小，纯 Python 余弦在这个量级是亚毫秒。生产数据量走 PgStore。
 
-文档与分片：检索的单位是分片（kb_chunks），人读的单位是文档（kb_documents）。
+文档与分片：检索的单位是分片（policy_chunks），人读的单位是文档（policy_documents）。
 文档表只存"导入时拿到了什么"——标题、原文、来源、导入时间——分片用 doc_id
 指回去。升级前写入的分片 doc_id 为空，由 KnowledgeBase.ensure_documents 归档
 成"历史"文档；那一步只用这里的原子操作拼出来，两个后端走的是同一段逻辑。
@@ -31,7 +31,7 @@ LocalStore 的暴力扫为什么可接受：demo 知识库百级片段、情景�
 余弦算得出来，但和内容无关。check_embedding_signature 在启动时把关，
 replace_embeddings 给 scripts/reembed.py 整批换向量用。
 
-分片表的版本号：storage_meta 里另记一个 kb_revision，kb_chunks 每改一次就换成
+分片表的版本号：storage_meta 里另记一个 kb_revision，policy_chunks 每改一次就换成
 新值。检索结果缓存在各实例的进程里，靠它判断手里的结果还能不能用——员工和客户
 两个实例共用一个库，一边导入了文档，另一边缓存着的检索结果也得跟着作废。
 """
@@ -49,6 +49,7 @@ from typing import TYPE_CHECKING, Any
 
 from app.core.embedder import cosine
 from app.core.lexical import bm25_scores
+from app.core.policy_scope import current_scope, sql_filter
 
 if TYPE_CHECKING:
     from app.storage.pg import Database
@@ -56,7 +57,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _LOCAL_SCHEMA = """
-CREATE TABLE IF NOT EXISTS kb_chunks (
+CREATE TABLE IF NOT EXISTS policy_chunks (
     id           TEXT PRIMARY KEY,
     title        TEXT NOT NULL DEFAULT '',
     content      TEXT NOT NULL,
@@ -67,7 +68,7 @@ CREATE TABLE IF NOT EXISTS kb_chunks (
     tokens       TEXT NOT NULL DEFAULT '',  -- 空格分隔的稀疏检索 token
     doc_id       TEXT NOT NULL DEFAULT ''   -- 所属文档；空 = 升级前写入、尚未归档
 );
-CREATE TABLE IF NOT EXISTS kb_documents (
+CREATE TABLE IF NOT EXISTS policy_documents (
     id           TEXT PRIMARY KEY,
     title        TEXT NOT NULL DEFAULT '',
     content      TEXT NOT NULL,             -- 导入时的原文；历史文档是由分片拼回来的
@@ -79,8 +80,8 @@ CREATE TABLE IF NOT EXISTS kb_documents (
     created_at   REAL NOT NULL,             -- 导入时间
     category     TEXT NOT NULL DEFAULT ''   -- 大类的 key（见 knowledge_base.CATEGORIES）；空 = 未分类
 );
-CREATE INDEX IF NOT EXISTS idx_kb_docs_hash ON kb_documents (content_hash);
-CREATE INDEX IF NOT EXISTS idx_kb_docs_created ON kb_documents (created_at);
+CREATE INDEX IF NOT EXISTS idx_kb_docs_hash ON policy_documents (content_hash);
+CREATE INDEX IF NOT EXISTS idx_kb_docs_created ON policy_documents (created_at);
 CREATE TABLE IF NOT EXISTS memory_episodic (
     id        TEXT PRIMARY KEY,
     user_id   TEXT NOT NULL,
@@ -104,9 +105,9 @@ CREATE TABLE IF NOT EXISTS storage_meta (
 """
 
 # 带向量列的两张表。知识库分片和情景记忆用的是同一个 Embedder，要换一起换。
-_VECTOR_TABLES = ("kb_chunks", "memory_episodic")
+_VECTOR_TABLES = ("policy_chunks", "memory_episodic")
 EMBEDDING_SIGNATURE_KEY = "embedding_signature"
-# 分片表的版本号：kb_chunks 每改一次（导入、删除、归档、回填关键词、换向量）就换一个新值
+# 分片表的版本号：policy_chunks 每改一次（导入、删除、归档、回填关键词、换向量）就换一个新值
 KB_REVISION_KEY = "kb_revision"
 
 
@@ -136,11 +137,11 @@ def _require_vectors(
 
 # 文档列表返回的列。正文只取开头一段（列表页要它算摘要），整篇正文走详情。
 DOC_HEAD_CHARS = 600
-_DOC_COLUMNS = "id, title, origin, source_type, source_name, chunk_count, created_at, category"
+_DOC_COLUMNS = "id, title, origin, source_type, source_name, chunk_count, created_at, category, policy, policy_revision"
 # kb_doc_update 允许改的列。写死白名单：列名是拼进 SQL 的，不能来自调用方。
 _DOC_UPDATABLE = (
     "title", "content", "content_hash", "origin", "source_type", "source_name", "chunk_count",
-    "category",
+    "category", "policy", "policy_revision",
 )
 
 
@@ -204,14 +205,27 @@ class LocalStore:
         self._db.execute("PRAGMA journal_mode=WAL")
         self._lock = threading.Lock()
         with self._lock:
-            self._db.executescript(_LOCAL_SCHEMA)
-            self._migrate_chunk_columns()
-            self._migrate_document_columns()
-            self._db.commit()
+            from app.storage.policy_migration import local_rename, local_seal
+            try:
+                self._db.execute("BEGIN IMMEDIATE")
+                local_rename(self._db)
+                # executescript implicitly commits; execute individual DDL inside
+                # this transaction so a second process cannot recreate old names.
+                for statement in _LOCAL_SCHEMA.split(";"):
+                    if statement.strip():
+                        self._db.execute(statement)
+                self._migrate_chunk_columns()
+                self._migrate_document_columns()
+                local_seal(self._db)
+                self._db.commit()
+            except BaseException:
+                self._db.rollback()
+                self._db.close()
+                raise
 
     def _migrate_chunk_columns(self) -> None:
         """
-        给已存在的 kb_chunks 补后来才加的列。
+        给已存在的 policy_chunks 补后来才加的列。
 
         CREATE TABLE IF NOT EXISTS 对已有表是空操作，所以老的 vector_store.db
         里没有这些列：
@@ -222,26 +236,26 @@ class LocalStore:
         doc_id 的索引也在这里建，不放进建表脚本：脚本在补列之前执行，
         对着一张还没有 doc_id 的老表建索引会失败。
         """
-        cols = {r["name"] for r in self._db.execute("PRAGMA table_info(kb_chunks)")}
+        cols = {r["name"] for r in self._db.execute("PRAGMA table_info(policy_chunks)")}
         if "tokens" not in cols:
-            self._db.execute("ALTER TABLE kb_chunks ADD COLUMN tokens TEXT NOT NULL DEFAULT ''")
-            logger.info("kb_chunks 已补 tokens 列（稀疏检索索引待回填）")
+            self._db.execute("ALTER TABLE policy_chunks ADD COLUMN tokens TEXT NOT NULL DEFAULT ''")
+            logger.info("policy_chunks 已补 tokens 列（稀疏检索索引待回填）")
         if "doc_id" not in cols:
-            self._db.execute("ALTER TABLE kb_chunks ADD COLUMN doc_id TEXT NOT NULL DEFAULT ''")
-            logger.info("kb_chunks 已补 doc_id 列（历史分片待归档成文档）")
-        self._db.execute("CREATE INDEX IF NOT EXISTS idx_kb_chunks_doc ON kb_chunks (doc_id)")
+            self._db.execute("ALTER TABLE policy_chunks ADD COLUMN doc_id TEXT NOT NULL DEFAULT ''")
+            logger.info("policy_chunks 已补 doc_id 列（历史分片待归档成文档）")
+        self._db.execute("CREATE INDEX IF NOT EXISTS idx_policy_chunks_doc ON policy_chunks (doc_id)")
 
     def _migrate_document_columns(self) -> None:
         """
-        给已存在的 kb_documents 补 category 列（加分类时加的）。
+        给已存在的 policy_documents 补 category 列（加分类时加的）。
 
         补出来是空串，也就是"未分类"：已有文档原样留在库里，等人在工作台里归类。
         不按标题猜分类——猜错了的文档会躲进一个没人去找的大类里。
         """
-        cols = {r["name"] for r in self._db.execute("PRAGMA table_info(kb_documents)")}
+        cols = {r["name"] for r in self._db.execute("PRAGMA table_info(policy_documents)")}
         if "category" not in cols:
-            self._db.execute("ALTER TABLE kb_documents ADD COLUMN category TEXT NOT NULL DEFAULT ''")
-            logger.info("kb_documents 已补 category 列（已有文档都是未分类）")
+            self._db.execute("ALTER TABLE policy_documents ADD COLUMN category TEXT NOT NULL DEFAULT ''")
+            logger.info("policy_documents 已补 category 列（已有文档都是未分类）")
 
     # ── KB 片段 ───────────────────────────────────────────────────────────────
 
@@ -250,7 +264,7 @@ class LocalStore:
             with self._lock:
                 marks = ",".join("?" * len(ids))
                 rows = self._db.execute(
-                    f"SELECT id FROM kb_chunks WHERE id IN ({marks})", ids
+                    f"SELECT id FROM policy_chunks WHERE id IN ({marks})", ids
                 ).fetchall()
             return {r["id"] for r in rows}
         return await asyncio.to_thread(_q) if ids else set()
@@ -260,7 +274,7 @@ class LocalStore:
         def _w() -> None:
             with self._lock:
                 self._db.executemany(
-                    "INSERT OR IGNORE INTO kb_chunks"
+                    "INSERT OR IGNORE INTO policy_chunks"
                     " (id, title, content, chunk_index, total_chunks, ingested_at, embedding,"
                     "  tokens, doc_id)"
                     " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -273,11 +287,13 @@ class LocalStore:
                 self._db.commit()
         await asyncio.to_thread(_w)
 
-    async def kb_search(self, embedding: list[float], top_k: int) -> list[dict[str, Any]]:
+    async def kb_search(self, embedding: list[float], top_k: int, *, scope=None) -> list[dict[str, Any]]:
+        predicate, args = sql_filter(scope or current_scope())
         def _q() -> list[dict[str, Any]]:
             with self._lock:
                 rows = self._db.execute(
-                    "SELECT id, title, content, chunk_index, doc_id, embedding FROM kb_chunks"
+                    "SELECT c.*, d.policy, d.policy_revision FROM policy_chunks c JOIN policy_documents d ON c.doc_id=d.id WHERE " + predicate,
+                    args,
                 ).fetchall()
             scored = [
                 {
@@ -285,7 +301,7 @@ class LocalStore:
                     "title": r["title"],
                     "content": r["content"],
                     "chunk_index": r["chunk_index"],
-                    "doc_id": r["doc_id"],
+                    "doc_id": r["doc_id"], "policy": r["policy"], "policy_revision": r["policy_revision"],
                     "score": cosine(embedding, json.loads(r["embedding"])),
                 }
                 for r in rows
@@ -295,7 +311,7 @@ class LocalStore:
         return await asyncio.to_thread(_q)
 
     async def kb_search_lexical(
-        self, tokens: list[str], embedding: list[float] | None, top_k: int
+        self, tokens: list[str], embedding: list[float] | None, top_k: int, *, scope=None
     ) -> list[dict[str, Any]]:
         """
         BM25 关键词检索。分数为 0（无字面命中）的片段直接不返回。
@@ -306,11 +322,12 @@ class LocalStore:
         if not tokens:
             return []
 
+        predicate, args = sql_filter(scope or current_scope())
         def _q() -> list[dict[str, Any]]:
             with self._lock:
                 rows = self._db.execute(
-                    "SELECT id, title, content, chunk_index, doc_id, embedding, tokens"
-                    " FROM kb_chunks WHERE tokens <> ''"
+                    "SELECT c.*, d.policy, d.policy_revision FROM policy_chunks c JOIN policy_documents d ON c.doc_id=d.id"
+                    " WHERE c.tokens <> '' AND " + predicate, args,
                 ).fetchall()
             if not rows:
                 return []
@@ -321,7 +338,7 @@ class LocalStore:
                     "title": r["title"],
                     "content": r["content"],
                     "chunk_index": r["chunk_index"],
-                    "doc_id": r["doc_id"],
+                    "doc_id": r["doc_id"], "policy": r["policy"], "policy_revision": r["policy_revision"],
                     "lex_score": score,
                     "score": (cosine(embedding, json.loads(r["embedding"]))
                               if embedding is not None else None),
@@ -337,7 +354,7 @@ class LocalStore:
         def _q() -> list[dict[str, Any]]:
             with self._lock:
                 rows = self._db.execute(
-                    "SELECT id, title, content FROM kb_chunks WHERE tokens = '' LIMIT ?",
+                    "SELECT id, title, content FROM policy_chunks WHERE tokens = '' LIMIT ?",
                     (limit,),
                 ).fetchall()
             return [dict(r) for r in rows]
@@ -348,7 +365,7 @@ class LocalStore:
         def _w() -> None:
             with self._lock:
                 self._db.executemany(
-                    "UPDATE kb_chunks SET tokens = ? WHERE id = ?",
+                    "UPDATE policy_chunks SET tokens = ? WHERE id = ?",
                     [(tokens, chunk_id) for chunk_id, tokens in rows],
                 )
                 self._bump_kb_revision()
@@ -358,7 +375,7 @@ class LocalStore:
     async def kb_count(self) -> int:
         def _q() -> int:
             with self._lock:
-                return self._db.execute("SELECT COUNT(*) AS n FROM kb_chunks").fetchone()["n"]
+                return self._db.execute("SELECT COUNT(*) AS n FROM policy_chunks").fetchone()["n"]
         return await asyncio.to_thread(_q)
 
     # ── 文档 ──────────────────────────────────────────────────────────────────
@@ -368,14 +385,14 @@ class LocalStore:
         def _w() -> bool:
             with self._lock:
                 cur = self._db.execute(
-                    "INSERT OR IGNORE INTO kb_documents"
+                    "INSERT OR IGNORE INTO policy_documents"
                     " (id, title, content, content_hash, origin, source_type, source_name,"
-                    "  chunk_count, created_at, category)"
-                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "  chunk_count, created_at, category, policy, policy_revision)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (doc["id"], doc["title"], doc["content"], doc["content_hash"],
                      doc.get("origin", "original"), doc.get("source_type", ""),
                      doc.get("source_name", ""), doc.get("chunk_count", 0), doc["created_at"],
-                     doc.get("category", "")),
+                     doc.get("category", ""), json.dumps(doc.get("policy", {})), doc.get("policy_revision", "legacy")),
                 )
                 self._db.commit()
                 return cur.rowcount > 0
@@ -386,8 +403,8 @@ class LocalStore:
             with self._lock:
                 row = self._db.execute(
                     f"SELECT {_DOC_COLUMNS}, content, content_hash, length(content) AS chars,"
-                    " (SELECT COUNT(*) FROM kb_chunks c WHERE c.doc_id = d.id) AS chunks"
-                    " FROM kb_documents d WHERE id = ?",
+                    " (SELECT COUNT(*) FROM policy_chunks c WHERE c.doc_id = d.id) AS chunks"
+                    " FROM policy_documents d WHERE id = ?",
                     (doc_id,),
                 ).fetchone()
             return dict(row) if row else None
@@ -398,8 +415,8 @@ class LocalStore:
             with self._lock:
                 row = self._db.execute(
                     f"SELECT {_DOC_COLUMNS},"
-                    " (SELECT COUNT(*) FROM kb_chunks c WHERE c.doc_id = d.id) AS chunks"
-                    " FROM kb_documents d WHERE content_hash = ?"
+                    " (SELECT COUNT(*) FROM policy_chunks c WHERE c.doc_id = d.id) AS chunks"
+                    " FROM policy_documents d WHERE content_hash = ?"
                     " ORDER BY created_at, id LIMIT 1",
                     (content_hash,),
                 ).fetchone()
@@ -426,13 +443,13 @@ class LocalStore:
         def _q() -> tuple[list[dict[str, Any]], int]:
             with self._lock:
                 total = self._db.execute(
-                    f"SELECT COUNT(*) AS n FROM kb_documents {where}", params
+                    f"SELECT COUNT(*) AS n FROM policy_documents {where}", params
                 ).fetchone()["n"]
                 rows = self._db.execute(
                     f"SELECT {_DOC_COLUMNS}, substr(content, 1, {DOC_HEAD_CHARS}) AS head,"
                     f" length(content) AS chars{body},"
-                    " (SELECT COUNT(*) FROM kb_chunks c WHERE c.doc_id = d.id) AS chunks"
-                    f" FROM kb_documents d {where} ORDER BY {order}"
+                    " (SELECT COUNT(*) FROM policy_chunks c WHERE c.doc_id = d.id) AS chunks"
+                    f" FROM policy_documents d {where} ORDER BY {order}"
                     f" LIMIT ?{len(params) + 1} OFFSET ?{len(params) + 2}",
                     [*params, limit, offset],
                 ).fetchall()
@@ -446,7 +463,7 @@ class LocalStore:
         def _q() -> dict[str, int]:
             with self._lock:
                 rows = self._db.execute(
-                    f"SELECT category, COUNT(*) AS n FROM kb_documents {where} GROUP BY category",
+                    f"SELECT category, COUNT(*) AS n FROM policy_documents {where} GROUP BY category",
                     params,
                 ).fetchall()
             return {r["category"]: r["n"] for r in rows}
@@ -462,7 +479,7 @@ class LocalStore:
             with self._lock:
                 rows = self._db.execute(
                     f"SELECT {_DOC_COLUMNS}, substr(content, 1, {DOC_HEAD_CHARS}) AS head"
-                    f" FROM kb_documents WHERE id IN ({marks})",
+                    f" FROM policy_documents WHERE id IN ({marks})",
                     doc_ids,
                 ).fetchall()
             return [dict(r) for r in rows]
@@ -476,18 +493,36 @@ class LocalStore:
         def _w() -> None:
             with self._lock:
                 self._db.execute(
-                    f"UPDATE kb_documents SET {', '.join(f'{c} = ?' for c in cols)} WHERE id = ?",
+                    f"UPDATE policy_documents SET {', '.join(f'{c} = ?' for c in cols)} WHERE id = ?",
                     [*(fields[c] for c in cols), doc_id],
                 )
+                if "policy" in fields:
+                    self._bump_kb_revision()
                 self._db.commit()
         await asyncio.to_thread(_w)
+
+    async def kb_policy_update(self, doc_id, policy, expected_revision, content_hash):
+        def write():
+            with self._lock:
+                try:
+                    changed = self._db.execute(
+                        "UPDATE policy_documents SET policy=?,policy_revision=?,content_hash=? WHERE id=? AND policy_revision=?",
+                        (policy, uuid.uuid4().hex, content_hash, doc_id, expected_revision)).rowcount
+                    if changed:
+                        self._bump_kb_revision()
+                    self._db.commit()
+                    return bool(changed)
+                except BaseException:
+                    self._db.rollback()
+                    raise
+        return await asyncio.to_thread(write)
 
     async def kb_doc_delete(self, doc_id: str) -> None:
         """删掉一篇文档和它名下的分片。只用于收拾没导完的半成品和空壳记录。"""
         def _w() -> None:
             with self._lock:
-                self._db.execute("DELETE FROM kb_chunks WHERE doc_id = ?", (doc_id,))
-                self._db.execute("DELETE FROM kb_documents WHERE id = ?", (doc_id,))
+                self._db.execute("DELETE FROM policy_chunks WHERE doc_id = ?", (doc_id,))
+                self._db.execute("DELETE FROM policy_documents WHERE id = ?", (doc_id,))
                 self._bump_kb_revision()
                 self._db.commit()
         await asyncio.to_thread(_w)
@@ -498,7 +533,7 @@ class LocalStore:
                 row = self._db.execute(
                     "SELECT COUNT(*) AS total,"
                     " COALESCE(SUM(CASE WHEN origin <> 'original' THEN 1 ELSE 0 END), 0) AS legacy"
-                    " FROM kb_documents"
+                    " FROM policy_documents"
                 ).fetchone()
             return {"total": row["total"], "legacy": row["legacy"]}
         return await asyncio.to_thread(_q)
@@ -510,7 +545,7 @@ class LocalStore:
                 rows = self._db.execute(
                     "SELECT id, chunk_index, total_chunks, content, ingested_at,"
                     " (tokens <> '') AS indexed"
-                    " FROM kb_chunks WHERE doc_id = ? ORDER BY chunk_index, id",
+                    " FROM policy_chunks WHERE doc_id = ? ORDER BY chunk_index, id",
                     (doc_id,),
                 ).fetchall()
             return [{**dict(r), "indexed": bool(r["indexed"])} for r in rows]
@@ -525,8 +560,8 @@ class LocalStore:
             with self._lock:
                 rows = self._db.execute(
                     "SELECT id, title, content, chunk_index, total_chunks, ingested_at, doc_id"
-                    " FROM kb_chunks c WHERE doc_id = ''"
-                    " OR NOT EXISTS (SELECT 1 FROM kb_documents d WHERE d.id = c.doc_id)"
+                    " FROM policy_chunks c WHERE doc_id = ''"
+                    " OR NOT EXISTS (SELECT 1 FROM policy_documents d WHERE d.id = c.doc_id)"
                     " ORDER BY title, ingested_at, total_chunks, chunk_index, id"
                 ).fetchall()
             return [dict(r) for r in rows]
@@ -543,7 +578,7 @@ class LocalStore:
                 for at in range(0, len(chunk_ids), 500):
                     batch = chunk_ids[at:at + 500]
                     self._db.execute(
-                        f"UPDATE kb_chunks SET doc_id = ? WHERE id IN ({','.join('?' * len(batch))})",
+                        f"UPDATE policy_chunks SET doc_id = ? WHERE id IN ({','.join('?' * len(batch))})",
                         [doc_id, *batch],
                     )
                 self._bump_kb_revision()
@@ -559,7 +594,7 @@ class LocalStore:
             marks = ",".join("?" * len(chunk_ids))
             with self._lock:
                 rows = self._db.execute(
-                    f"SELECT id, doc_id FROM kb_chunks WHERE id IN ({marks})", chunk_ids
+                    f"SELECT id, doc_id FROM policy_chunks WHERE id IN ({marks})", chunk_ids
                 ).fetchall()
             return {r["id"]: r["doc_id"] for r in rows}
         return await asyncio.to_thread(_q)
@@ -569,8 +604,8 @@ class LocalStore:
         def _q() -> list[str]:
             with self._lock:
                 rows = self._db.execute(
-                    "SELECT id FROM kb_documents d WHERE created_at < ?"
-                    " AND NOT EXISTS (SELECT 1 FROM kb_chunks c WHERE c.doc_id = d.id)",
+                    "SELECT id FROM policy_documents d WHERE created_at < ?"
+                    " AND NOT EXISTS (SELECT 1 FROM policy_chunks c WHERE c.doc_id = d.id)",
                     (created_before,),
                 ).fetchall()
             return [r["id"] for r in rows]
@@ -649,6 +684,14 @@ class LocalStore:
         """分片表现在的版本号（见 KB_REVISION_KEY）。还没写过分片时是空串。"""
         return await self.meta_get(KB_REVISION_KEY) or ""
 
+    async def kb_policy_state(self) -> list[dict[str, Any]]:
+        """All metadata for clock-sensitive cache invalidation, without a UI page cap."""
+        def _q():
+            with self._lock:
+                return [dict(row) for row in self._db.execute(
+                    "SELECT id,policy_revision,policy FROM policy_documents ORDER BY id")]
+        return await asyncio.to_thread(_q)
+
     def _bump_kb_revision(self) -> None:
         """给分片表换一个新版本号。调用方持锁，和改分片的语句在同一次提交里。"""
         self._db.execute(
@@ -665,7 +708,7 @@ class LocalStore:
                 for table in _VECTOR_TABLES:
                     rows = self._db.execute(f"SELECT COUNT(*) AS n FROM {table}").fetchone()["n"]
                     sample = self._db.execute(f"SELECT embedding FROM {table} LIMIT 1").fetchone()
-                    state[table] = {
+                    state["kb_chunks" if table == "policy_chunks" else table] = {
                         "rows": rows,
                         "dim": len(json.loads(sample["embedding"])) if sample else None,
                     }
@@ -677,7 +720,7 @@ class LocalStore:
         def _q() -> list[dict[str, Any]]:
             with self._lock:
                 rows = self._db.execute(
-                    "SELECT id, title, content FROM kb_chunks ORDER BY id"
+                    "SELECT id, title, content FROM policy_chunks ORDER BY id"
                 ).fetchall()
             return [dict(r) for r in rows]
         return await asyncio.to_thread(_q)
@@ -705,7 +748,7 @@ class LocalStore:
         def _w() -> None:
             with self._lock:
                 try:
-                    for table, vectors in (("kb_chunks", kb), ("memory_episodic", episodic)):
+                    for table, vectors in (("policy_chunks", kb), ("memory_episodic", episodic)):
                         ids = {r["id"] for r in self._db.execute(f"SELECT id FROM {table}")}
                         _require_vectors(table, ids, vectors, dim)
                         self._db.executemany(
@@ -759,13 +802,13 @@ class PgStore:
         if not ids:
             return set()
         rows = await self._db.fetch(
-            "SELECT id FROM kb_chunks WHERE id = ANY($1::text[])", ids
+            "SELECT id FROM policy_chunks WHERE id = ANY($1::text[])", ids
         )
         return {r["id"] for r in rows}
 
     async def kb_add(self, chunks: list[dict[str, Any]]) -> None:
         await self._db.executemany(
-            "INSERT INTO kb_chunks"
+            "INSERT INTO policy_chunks"
             " (id, title, content, chunk_index, total_chunks, ingested_at, embedding, tokens,"
             "  doc_id)"
             " VALUES ($1, $2, $3, $4, $5, $6, $7::vector, to_tsvector('simple', $8), $9)"
@@ -777,36 +820,26 @@ class PgStore:
         )
         await self._bump_kb_revision()
 
-    async def kb_search(self, embedding: list[float], top_k: int) -> list[dict[str, Any]]:
+    async def kb_search(self, embedding: list[float], top_k: int, *, scope=None) -> list[dict[str, Any]]:
+        predicate, args = sql_filter(scope or current_scope(), postgres=True, start=3)
         rows = await self._db.fetch(
-            "SELECT id, title, content, chunk_index, doc_id,"
-            "       1 - (embedding <=> $1::vector) AS score"
-            " FROM kb_chunks ORDER BY embedding <=> $1::vector LIMIT $2",
-            self._vec(embedding), top_k,
+            "SELECT c.id,c.title,c.content,c.chunk_index,c.doc_id,d.policy,d.policy_revision,"
+            " 1-(c.embedding <=> $1::vector) AS score FROM policy_chunks c"
+            " JOIN policy_documents d ON c.doc_id=d.id WHERE " + predicate +
+            " ORDER BY c.embedding <=> $1::vector LIMIT $2", self._vec(embedding), top_k, *args,
         )
         return [dict(r) for r in rows]
 
-    async def kb_search_lexical(
-        self, tokens: list[str], embedding: list[float] | None, top_k: int
-    ) -> list[dict[str, Any]]:
-        """
-        tsvector 关键词检索，GIN 索引 + ts_rank_cd 排序。
-
-        token 之间用 `|`（OR）而不是 `&`：客服问句里多数 token 是无关紧要的
-        修饰语（"这个""怎么办"），AND 会让任何一个噪声 token 就把整条查询打空。
-        排序交给 ts_rank_cd —— 命中得多、命中得密的片段自然排前面。
-
-        embedding 为 None（拿不到查询向量）时 score 是 NULL，召回和排序不受影响。
-        """
+    async def kb_search_lexical(self, tokens, embedding, top_k, *, scope=None):
         if not tokens:
             return []
+        predicate, args = sql_filter(scope or current_scope(), postgres=True, start=4)
         rows = await self._db.fetch(
-            "SELECT id, title, content, chunk_index, doc_id,"
-            "       ts_rank_cd(tokens, q) AS lex_score,"
-            "       1 - (embedding <=> $2::vector) AS score"
-            " FROM kb_chunks, to_tsquery('simple', $1) AS q"
-            " WHERE tokens @@ q ORDER BY lex_score DESC LIMIT $3",
-            " | ".join(tokens), self._vec(embedding) if embedding is not None else None, top_k,
+            "SELECT c.id,c.title,c.content,c.chunk_index,c.doc_id,d.policy,d.policy_revision,"
+            " ts_rank_cd(c.tokens,q) AS lex_score, 1-(c.embedding <=> $2::vector) AS score"
+            " FROM policy_chunks c JOIN policy_documents d ON c.doc_id=d.id, to_tsquery('simple',$1) AS q"
+            " WHERE c.tokens @@ q AND " + predicate + " ORDER BY lex_score DESC LIMIT $3",
+            " | ".join(tokens), self._vec(embedding) if embedding is not None else None, top_k, *args,
         )
         return [dict(r) for r in rows]
 
@@ -814,7 +847,7 @@ class PgStore:
         # 空 tsvector 和 NULL 都算"没建索引"：前者来自 to_tsvector('simple', '')，
         # 后者来自升级补列。少判其中一种，回填就会漏掉一半存量数据。
         rows = await self._db.fetch(
-            "SELECT id, title, content FROM kb_chunks"
+            "SELECT id, title, content FROM policy_chunks"
             " WHERE tokens IS NULL OR tokens = ''::tsvector LIMIT $1",
             limit,
         )
@@ -822,12 +855,12 @@ class PgStore:
 
     async def kb_set_tokens(self, rows: list[tuple[str, str]]) -> None:
         await self._db.executemany(
-            "UPDATE kb_chunks SET tokens = to_tsvector('simple', $2) WHERE id = $1", rows
+            "UPDATE policy_chunks SET tokens = to_tsvector('simple', $2) WHERE id = $1", rows
         )
         await self._bump_kb_revision()
 
     async def kb_count(self) -> int:
-        row = await self._db.fetchrow("SELECT COUNT(*) AS n FROM kb_chunks")
+        row = await self._db.fetchrow("SELECT COUNT(*) AS n FROM policy_chunks")
         return row["n"]
 
     # ── 文档（与 LocalStore 同构，说明见那边）────────────────────────────────
@@ -836,23 +869,23 @@ class PgStore:
         # ON CONFLICT DO NOTHING + RETURNING：冲突时不返回行。两个实例同时启动、
         # 同时给同一批历史分片归档时，后到的那个在这里落空，不会写出第二份。
         row = await self._db.fetchrow(
-            "INSERT INTO kb_documents"
+            "INSERT INTO policy_documents"
             " (id, title, content, content_hash, origin, source_type, source_name,"
-            "  chunk_count, created_at, category)"
-            " VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)"
+            "  chunk_count, created_at, category, policy, policy_revision)"
+            " VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12)"
             " ON CONFLICT (id) DO NOTHING RETURNING id",
             doc["id"], doc["title"], doc["content"], doc["content_hash"],
             doc.get("origin", "original"), doc.get("source_type", ""),
             doc.get("source_name", ""), doc.get("chunk_count", 0), doc["created_at"],
-            doc.get("category", ""),
+            doc.get("category", ""), json.dumps(doc.get("policy", {})), doc.get("policy_revision", "legacy"),
         )
         return row is not None
 
     async def kb_doc_get(self, doc_id: str) -> dict[str, Any] | None:
         row = await self._db.fetchrow(
             f"SELECT {_DOC_COLUMNS}, content, content_hash, length(content) AS chars,"
-            " (SELECT COUNT(*) FROM kb_chunks c WHERE c.doc_id = d.id) AS chunks"
-            " FROM kb_documents d WHERE id = $1",
+            " (SELECT COUNT(*) FROM policy_chunks c WHERE c.doc_id = d.id) AS chunks"
+            " FROM policy_documents d WHERE id = $1",
             doc_id,
         )
         return dict(row) if row else None
@@ -860,8 +893,8 @@ class PgStore:
     async def kb_doc_find_by_hash(self, content_hash: str) -> dict[str, Any] | None:
         row = await self._db.fetchrow(
             f"SELECT {_DOC_COLUMNS},"
-            " (SELECT COUNT(*) FROM kb_chunks c WHERE c.doc_id = d.id) AS chunks"
-            " FROM kb_documents d WHERE content_hash = $1"
+            " (SELECT COUNT(*) FROM policy_chunks c WHERE c.doc_id = d.id) AS chunks"
+            " FROM policy_documents d WHERE content_hash = $1"
             " ORDER BY created_at, id LIMIT 1",
             content_hash,
         )
@@ -876,13 +909,13 @@ class PgStore:
         )
         body = ", content" if with_content else ""
         total = await self._db.fetchrow(
-            f"SELECT COUNT(*) AS n FROM kb_documents {where}", *params
+            f"SELECT COUNT(*) AS n FROM policy_documents {where}", *params
         )
         rows = await self._db.fetch(
             f"SELECT {_DOC_COLUMNS}, substr(content, 1, {DOC_HEAD_CHARS}) AS head,"
             f" length(content) AS chars{body},"
-            " (SELECT COUNT(*) FROM kb_chunks c WHERE c.doc_id = d.id) AS chunks"
-            f" FROM kb_documents d {where} ORDER BY {order}"
+            " (SELECT COUNT(*) FROM policy_chunks c WHERE c.doc_id = d.id) AS chunks"
+            f" FROM policy_documents d {where} ORDER BY {order}"
             f" LIMIT ${len(params) + 1} OFFSET ${len(params) + 2}",
             *params, limit, offset,
         )
@@ -891,7 +924,7 @@ class PgStore:
     async def kb_doc_category_counts(self, terms: list[str]) -> dict[str, int]:
         where, _, params = doc_filter_sql(terms, lambda i: f"${i + 1}")
         rows = await self._db.fetch(
-            f"SELECT category, COUNT(*) AS n FROM kb_documents {where} GROUP BY category", *params
+            f"SELECT category, COUNT(*) AS n FROM policy_documents {where} GROUP BY category", *params
         )
         return {r["category"]: r["n"] for r in rows}
 
@@ -900,7 +933,7 @@ class PgStore:
             return []
         rows = await self._db.fetch(
             f"SELECT {_DOC_COLUMNS}, substr(content, 1, {DOC_HEAD_CHARS}) AS head"
-            " FROM kb_documents WHERE id = ANY($1::text[])",
+            " FROM policy_documents WHERE id = ANY($1::text[])",
             doc_ids,
         )
         return [dict(r) for r in rows]
@@ -910,21 +943,30 @@ class PgStore:
         if not cols:
             return
         sets = ", ".join(f"{c} = ${i + 2}" for i, c in enumerate(cols))
-        await self._db.execute(
-            f"UPDATE kb_documents SET {sets} WHERE id = $1",
-            doc_id, *(fields[c] for c in cols),
-        )
+        async with self._db.transaction() as conn:
+            await conn.execute(f"UPDATE policy_documents SET {sets} WHERE id=$1", doc_id, *(fields[c] for c in cols))
+            if "policy" in fields:
+                await self._bump_kb_revision(conn)
+
+    async def kb_policy_update(self, doc_id, policy, expected_revision, content_hash):
+        async with self._db.transaction() as conn:
+            changed = await conn.fetchval(
+                "UPDATE policy_documents SET policy=$2::jsonb,policy_revision=$3,content_hash=$5"
+                " WHERE id=$1 AND policy_revision=$4 RETURNING id", doc_id, policy, uuid.uuid4().hex, expected_revision, content_hash)
+            if changed:
+                await self._bump_kb_revision(conn)
+            return bool(changed)
 
     async def kb_doc_delete(self, doc_id: str) -> None:
-        await self._db.execute("DELETE FROM kb_chunks WHERE doc_id = $1", doc_id)
-        await self._db.execute("DELETE FROM kb_documents WHERE id = $1", doc_id)
+        await self._db.execute("DELETE FROM policy_chunks WHERE doc_id = $1", doc_id)
+        await self._db.execute("DELETE FROM policy_documents WHERE id = $1", doc_id)
         await self._bump_kb_revision()
 
     async def kb_doc_stats(self) -> dict[str, int]:
         row = await self._db.fetchrow(
             "SELECT COUNT(*) AS total,"
             " COALESCE(SUM(CASE WHEN origin <> 'original' THEN 1 ELSE 0 END), 0) AS legacy"
-            " FROM kb_documents"
+            " FROM policy_documents"
         )
         return {"total": row["total"], "legacy": row["legacy"]}
 
@@ -932,7 +974,7 @@ class PgStore:
         rows = await self._db.fetch(
             "SELECT id, chunk_index, total_chunks, content, ingested_at,"
             " (tokens IS NOT NULL AND tokens <> ''::tsvector) AS indexed"
-            " FROM kb_chunks WHERE doc_id = $1 ORDER BY chunk_index, id",
+            " FROM policy_chunks WHERE doc_id = $1 ORDER BY chunk_index, id",
             doc_id,
         )
         return [dict(r) for r in rows]
@@ -940,8 +982,8 @@ class PgStore:
     async def kb_chunks_unfiled(self) -> list[dict[str, Any]]:
         rows = await self._db.fetch(
             "SELECT id, title, content, chunk_index, total_chunks, ingested_at, doc_id"
-            " FROM kb_chunks c WHERE doc_id = ''"
-            " OR NOT EXISTS (SELECT 1 FROM kb_documents d WHERE d.id = c.doc_id)"
+            " FROM policy_chunks c WHERE doc_id = ''"
+            " OR NOT EXISTS (SELECT 1 FROM policy_documents d WHERE d.id = c.doc_id)"
             " ORDER BY title, ingested_at, total_chunks, chunk_index, id"
         )
         return [dict(r) for r in rows]
@@ -952,7 +994,7 @@ class PgStore:
         # 一条语句归完一整篇：另一个实例此刻读到的要么是全没归、要么是全归了，
         # 不会看到半篇——半篇会被当成"不完整的历史分片"另立一篇文档。
         await self._db.execute(
-            "UPDATE kb_chunks SET doc_id = $1 WHERE id = ANY($2::text[])", doc_id, chunk_ids
+            "UPDATE policy_chunks SET doc_id = $1 WHERE id = ANY($2::text[])", doc_id, chunk_ids
         )
         await self._bump_kb_revision()
 
@@ -960,14 +1002,14 @@ class PgStore:
         if not chunk_ids:
             return {}
         rows = await self._db.fetch(
-            "SELECT id, doc_id FROM kb_chunks WHERE id = ANY($1::text[])", chunk_ids
+            "SELECT id, doc_id FROM policy_chunks WHERE id = ANY($1::text[])", chunk_ids
         )
         return {r["id"]: r["doc_id"] for r in rows}
 
     async def kb_docs_without_chunks(self, created_before: float) -> list[str]:
         rows = await self._db.fetch(
-            "SELECT id FROM kb_documents d WHERE created_at < $1"
-            " AND NOT EXISTS (SELECT 1 FROM kb_chunks c WHERE c.doc_id = d.id)",
+            "SELECT id FROM policy_documents d WHERE created_at < $1"
+            " AND NOT EXISTS (SELECT 1 FROM policy_chunks c WHERE c.doc_id = d.id)",
             created_before,
         )
         return [r["id"] for r in rows]
@@ -1030,6 +1072,10 @@ class PgStore:
     async def kb_revision(self) -> str:
         return await self.meta_get(KB_REVISION_KEY) or ""
 
+    async def kb_policy_state(self) -> list[dict[str, Any]]:
+        return [dict(row) for row in await self._db.fetch(
+            "SELECT id,policy_revision,policy FROM policy_documents ORDER BY id")]
+
     async def _bump_kb_revision(self, conn: Any = None) -> None:
         """
         给分片表换一个新版本号。必须排在改分片的语句之后：先换号再写的话，
@@ -1046,7 +1092,7 @@ class PgStore:
         state: dict[str, dict[str, int | None]] = {}
         async with self._db.transaction() as conn:
             for table in _VECTOR_TABLES:
-                state[table] = {
+                state["kb_chunks" if table == "policy_chunks" else table] = {
                     "rows": await conn.fetchval(f"SELECT COUNT(*) FROM {table}"),
                     # 维度写在列类型里，空表也有
                     "dim": await self._db.vector_dim(conn, table),
@@ -1054,7 +1100,7 @@ class PgStore:
         return state
 
     async def kb_embedding_rows(self) -> list[dict[str, Any]]:
-        rows = await self._db.fetch("SELECT id, title, content FROM kb_chunks ORDER BY id")
+        rows = await self._db.fetch("SELECT id, title, content FROM policy_chunks ORDER BY id")
         return [dict(r) for r in rows]
 
     async def episodic_embedding_rows(self) -> list[dict[str, Any]]:
@@ -1075,7 +1121,8 @@ class PgStore:
         手工建过的向量索引会随旧列一起删掉，需要重建。
         """
         async with self._db.transaction() as conn:
-            for table, vectors in (("kb_chunks", kb), ("memory_episodic", episodic)):
+            await conn.execute("DROP VIEW kb_chunks")
+            for table, vectors in (("policy_chunks", kb), ("memory_episodic", episodic)):
                 await conn.execute(
                     f"ALTER TABLE {table} ADD COLUMN embedding_next vector({int(dim)})"
                 )
@@ -1097,6 +1144,8 @@ class PgStore:
                 " ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
                 EMBEDDING_SIGNATURE_KEY, signature,
             )
+            from app.storage.policy_migration import pg_seal
+            await pg_seal(conn)
             await self._bump_kb_revision(conn)
 
     async def close(self) -> None:

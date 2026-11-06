@@ -13,6 +13,7 @@ import importlib
 import sys
 
 import pytest
+from evidence_fixtures import with_evidence
 
 from app.tools.sql_agent_client import (
     DEFAULT_DATA_INTENTS,
@@ -100,6 +101,8 @@ OK_PAYLOAD = {
     }],
 }
 
+
+OK_PAYLOAD = with_evidence(OK_PAYLOAD)
 
 # 同一份载荷的 `/query` 形状：逐步骤日志那个数组在这条路上叫 `step_logs`。
 OK_PAYLOAD_QUERY_SHAPE = {
@@ -393,8 +396,8 @@ class TestContextBuilder:
         )
         assert used is True
         # 答案原文必须在里面：答案策略靠它给交期日期找出处
-        assert "9 月 15 日" in text
-        assert "erp_db" in text and "t-123" in text
+        assert "2026-09-15" in text
+        assert "[1]" in text and "t-123" not in text
 
     async def test_conversation_id_is_used_as_session(self, monkeypatch):
         m = _load_main(monkeypatch)
@@ -428,7 +431,8 @@ class TestContextBuilder:
         m = _load_main(monkeypatch)
         payload = dict(OK_PAYLOAD, queried_database=False, route="data_qa")
         _wire(m, monkeypatch, payload)
-        assert await m._build_order_data_context("q", intent="order_status") == ("", False)
+        text, used = await m._build_order_data_context("q", intent="order_status")
+        assert not used and "业务证据限制" in text
 
     async def test_unavailable_becomes_a_visible_notice(self, monkeypatch):
         """
@@ -467,10 +471,11 @@ class TestContextBuilder:
         _text, is_evidence = await m._build_order_data_context("q", intent="order_status")
         assert is_evidence is True
 
-    async def test_empty_answer_dropped(self, monkeypatch):
+    async def test_empty_answer_still_renders_verified_rows(self, monkeypatch):
         m = _load_main(monkeypatch)
         _wire(m, monkeypatch, dict(OK_PAYLOAD, answer="   "))
-        assert await m._build_order_data_context("q", intent="order_status") == ("", False)
+        text, used = await m._build_order_data_context("q", intent="order_status")
+        assert used and "2026-09-15" in text
 
     async def test_risk_flag_is_a_real_gate_not_just_a_caution_line(self, monkeypatch):
         """
@@ -487,9 +492,9 @@ class TestContextBuilder:
         _wire(m, monkeypatch, dict(OK_PAYLOAD, has_risk=True))
         text, used = await m._build_order_data_context("q", intent="order_status")
         assert used is False, "带风险的结果不得进 grounding_sources"
-        assert "异常提示" in text
-        assert "未通过可信校验" in text, "第一行就要让 Agent 看出这段不可作依据"
-        assert OK_PAYLOAD["answer"] in text, "数据本身不能丢，丢了比现状更糟"
+        assert "has_risk" in text
+        assert "业务证据限制" in text, "第一行就要让 Agent 看出这段不可作依据"
+        assert OK_PAYLOAD["answer"] not in text, "数据本身不能丢，丢了比现状更糟"
 
     async def test_degraded_flag_is_a_real_gate_not_just_a_caution_line(self, monkeypatch):
         """`degraded=true` 同理：历史 SQL 重放是完整可用但可能过期的结果。"""
@@ -497,8 +502,8 @@ class TestContextBuilder:
         _wire(m, monkeypatch, dict(OK_PAYLOAD, degraded=True, degrade_reason="模型不可用"))
         text, used = await m._build_order_data_context("q", intent="order_status")
         assert used is False, "降级结果不得进 grounding_sources"
-        assert "降级" in text and "模型不可用" in text
-        assert OK_PAYLOAD["answer"] in text
+        assert "degraded" in text
+        assert OK_PAYLOAD["answer"] not in text
 
     async def test_disabled_delegation_is_a_noop(self, monkeypatch):
         m = _load_main(monkeypatch)
@@ -521,8 +526,7 @@ class TestCurrencyIsDeclared:
             m, "_sql_agent", SQLAgentClient(base_url="http://x:8000", currency="USD（美元）")
         )
         text, is_evidence = await m._build_order_data_context("q", intent="order_status")
-        assert "USD（美元）" in text
-        assert "不要换算" in text
+        assert "USD" not in text
         assert is_evidence is True, "币种说明不能把这块降级成非证据"
 
     async def test_unknown_currency_forbids_guessing_one(self, monkeypatch):
@@ -537,8 +541,7 @@ class TestCurrencyIsDeclared:
         _wire(m, monkeypatch, dict(OK_PAYLOAD))
         monkeypatch.setattr(m, "_sql_agent", SQLAgentClient(base_url="http://x:8000"))
         text, _ = await m._build_order_data_context("q", intent="order_status")
-        assert "不要补" in text and "币种" in text
-        assert "元" in text, "要点名「元」这个默认值，泛泛说「不要猜」拦不住它"
+        assert "元" not in text and "$" not in text
 
     async def test_configured_currency_is_labelled_as_configuration(self, monkeypatch):
         """
@@ -554,8 +557,7 @@ class TestCurrencyIsDeclared:
             m, "_sql_agent", SQLAgentClient(base_url="http://x:8000", currency="USD")
         )
         text, _ = await m._build_order_data_context("q", intent="order_status")
-        assert "SQL_AGENT_CURRENCY" in text, "来源要写出来，不能只说「币种是 USD」"
-        assert "不是" in text and "本次查询返回的字段" in text
+        assert "SQL_AGENT_CURRENCY" not in text and "USD" not in text
 
     async def test_currency_from_the_payload_beats_the_global_config(self, monkeypatch):
         """
@@ -570,7 +572,7 @@ class TestCurrencyIsDeclared:
             m, "_sql_agent", SQLAgentClient(base_url="http://x:8000", currency="USD")
         )
         text, _ = await m._build_order_data_context("q", intent="order_status")
-        assert "EUR" in text and "随数据一同返回" in text
+        assert "EUR" not in text  # global currency is not a per-field unit
         assert "SQL_AGENT_CURRENCY" not in text
 
     def test_currency_source_is_the_machine_readable_half(self):

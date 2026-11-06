@@ -1,6 +1,6 @@
 # 两侧 CI 必须跑的契约用例
 
-> 配套：`a2a-streaming-contract.md`（v1.13）、`schema/`、`fixtures/`。
+> 配套：`a2a-streaming-contract.md`（v1.14）、`schema/`、`fixtures/`。
 > 本文只说**跑什么、断言什么**，不规定用什么测试框架。
 >
 > 上面这个版本号由 `tools/check_contract.py version` 与契约状态行比对。
@@ -63,8 +63,8 @@ v1.2 虚报、v1.3 推翻、v1.4 的证据表证错了东西——三次都不�
 
 ### B 组：schema 反例——**必须被拒**
 
-`fixtures/data-part/schema-invalid/` 下六个用例，**外加 v1.12 改判进来的 `dp-trust-01`**
-（共七条）。**这一组是 §9.1 缺口的回归测试。**
+B 组共九条：`dp-bad-01`–`05`、`dp-bad-07`–`09`，以及 v1.12 改判进来的 `dp-trust-01`。
+`dp-bad-06` 是 D 组的数据库标识反例。**这一组是 §9.1 缺口的回归测试。**
 
 > **`dp-trust-01` 为什么在这一组，而文件却还在 `trust-negative/` 下。**
 > v1.12 把 `execution_status` 提级为 `required` 之后，这份不带该字段的载荷
@@ -72,7 +72,7 @@ v1.2 虚报、v1.3 推翻、v1.4 的证据表证错了东西——三次都不�
 > **文件没有跟着挪目录**：两侧都按字面路径读它，挪目录就得同时改两侧的测试。
 > 分组看 `fixtures/index.json` 的 `group`，不要按目录名推断。
 
-**服务端断言：** 自己产出的 data part 永远不长成这六种样子。
+**服务端断言：** 自己产出的 data part 永远不长成这些反例的样子。
 最省的做法是在 A 组那次真实查询后顺手再过一遍 schema——反例本身服务端不用构造。
 
 **调用方断言（两条，缺一不可）：**
@@ -89,7 +89,7 @@ v1.2 虚报、v1.3 推翻、v1.4 的证据表证错了东西——三次都不�
 
 ### C 组：信任反例——**校验通过，但不可作出处**
 
-`fixtures/data-part/trust-negative/` 下的用例，**v1.12 起是六条**：`02`–`07`。
+`fixtures/data-part/trust-negative/` 下的用例，**v1.14 起是七条**：`02`–`08`，包括声明成功但步骤失败的冲突载荷。
 这一组是本文最容易被跳过、也最值钱的一组：**它们全都是合法载荷**，
 schema 拦不住，只能靠业务判据。
 
@@ -286,3 +286,5 @@ SQL Agent `ai-sql-agent/src/ai_sql_agent/a2a/server.py` 的 `CONTRACT_VERSION`�
 - **`as_of` / `currency` / `source_records`（§4.6.4–4.6.6）** —— 服务端还没有这些概念，
   schema 里是可选字段，**现在写用例只会验到空气**。等实现后补，
   补的时候把它们从可选提级为必填，那是一次 §6 契约变更。
+
+Stage 4: verify explicit successful status without status, contradictory steps, malformed evidence cells, truncated rows without a limit, and identical evidence on all three carriers. Factual approval also tests missing unit/time/provenance, conflicts and observation expiry.

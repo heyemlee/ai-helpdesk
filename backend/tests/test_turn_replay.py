@@ -107,8 +107,8 @@ async def test_the_loop_state_is_what_the_model_saw_next(monkeypatch):
 
     state = rebuild_loop_state(recorded, agent)
     assert _plain(state.messages) == _plain(model.requests[1]["messages"])    # 第二步真正收到的
-    assert (state.steps, state.tool_calls, state.delegations, state.in_flight) == (2, 1, 1, [])
-    assert ("knowledge_search", MESSAGE.casefold(), 3) in state.memo          # 规则预取查过的
+    assert (state.steps, state.tool_calls, state.delegations, state.in_flight) == (2, 2, 1, [])
+    assert ("knowledge_search", MESSAGE, 3) in state.memo          # 规则预取查过的
     assert state.sent_chars == 0                                              # 非流式：没往外发过字
 
     # 进程挂在工具跑到一半：发起了、没有结果的那一个看得出来

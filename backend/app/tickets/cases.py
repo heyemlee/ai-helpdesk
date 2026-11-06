@@ -14,13 +14,15 @@ from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.core.actor import ActorContext
+from app.core.business_facts import fresh, language_of, verified_cells
 from app.core.metrics import CASE_ACTIONS, CASE_REJECTIONS
+from app.core.policy_scope import PolicyScope
 from app.runs.records import RunRecord, new_run_id
 from app.runs.store import _COLUMNS, _NOW, _record
 
 ACTIVE = {"open", "waiting_for_info", "in_progress"}
 STATUSES = ACTIVE | {"resolved", "cancelled"}
-CASE_SUFFIX = ":case-v1"
+CASE_SUFFIX = ":case-v2"
 
 
 def dumps(value) -> str:
@@ -59,6 +61,7 @@ class CaseInput(BaseModel):
     order_refs: list[str] = Field(default_factory=list, max_length=20)
     facts: dict[str, str] = Field(default_factory=dict, max_length=40)
     pending_fields: list[str] | None = Field(default=None, max_length=40)
+    policy_scope: PolicyScope | None = None
     attachment_ids: list[str] = Field(default_factory=list, max_length=20)
 
     @model_validator(mode="after")
@@ -105,7 +108,7 @@ class CaseAdoption(BaseModel):
 
 class CaseService:
     def __init__(self, db, instance: str, *, run_service=None, webhook_url: str = "", attachment_resolver=None,
-                 attachments=None):
+                 attachments=None, knowledge_base=None, actors=None):
         self.db = db
         self.instance = instance
         self.run_instance = instance + CASE_SUFFIX
@@ -114,6 +117,7 @@ class CaseService:
         # Stage 3: reauthorize IDs for this actor; return {id, sha256}, never URLs.
         self.attachment_resolver = attachment_resolver
         self.attachments = attachments
+        self.knowledge_base, self.actors = knowledge_base, actors
 
     def authorize(self, actor: ActorContext):
         actor.require_employee()
@@ -152,6 +156,8 @@ class CaseService:
             dumps(decode(c["order_refs"], [])), c["owner_actor_id"], c["control_mode"], c["version"],
             c["control_version"], dumps(decode(c["facts"], {})), dumps(decode(c["pending_fields"], [])),
         )
+        await conn.execute("UPDATE ticket_case_state SET policy_scope=$2::jsonb WHERE case_id=$1",
+                           c["case_id"], dumps(decode(c.get("policy_scope"), {})))
         if invalidate:
             await conn.execute(
                 "UPDATE case_drafts SET status='invalid',invalid_reason=$2 WHERE case_id=$1 AND status<>'invalid'",
@@ -258,6 +264,9 @@ class CaseService:
                     added.append(a)
             facts = decode(c["facts"], {})
             changed = bool(body.message.strip() or added)
+            if body.policy_scope is not None and body.policy_scope.model_dump(mode="json") != decode(c.get("policy_scope"), {}):
+                c["policy_scope"] = body.policy_scope.model_dump(mode="json")
+                changed = True
             for field in ("customer_ref", "order_refs"):
                 current = decode(c[field], []) if field == "order_refs" else c[field]
                 if field in body.model_fields_set and current != getattr(body, field):
@@ -299,6 +308,8 @@ class CaseService:
             snapshot = {k: decode(c[k]) if k in {"facts", "pending_fields", "order_refs"} else c[k]
                         for k in ("case_id", "status", "issue_type", "customer_ref", "order_refs",
                                   "facts", "pending_fields", "control_mode")}
+            snapshot["language"] = language_of(body.message) if body.message.strip() else "zh"
+            snapshot["policy_scope"] = decode(c.get("policy_scope"), {})
             snapshot["materials"] = [dict(r) for r in await conn.fetch(
                 "SELECT attachment_id,sha256,message_id FROM case_materials WHERE case_id=$1 ORDER BY version DESC,attachment_id", case_id)]
             # A bounded batch. On a text supplement, retry the latest batch with
@@ -347,7 +358,7 @@ class CaseService:
         if not row:
             raise HTTPException(404, "Not Found")
         c = dict(row)
-        for k in ("facts", "pending_fields", "order_refs"):
+        for k in ("facts", "pending_fields", "order_refs", "policy_scope"):
             c[k] = decode(c[k])
         c["messages"] = [dict(r) for r in await conn.fetch(
             "SELECT l.seq,l.role,l.content,l.created_at,l.turn_id,m.message_id,m.run_id,m.version"
@@ -358,7 +369,8 @@ class CaseService:
             "SELECT * FROM case_drafts WHERE case_id=$1 ORDER BY created_at DESC", case_id)]
         for d in c["drafts"]:
             d["evidence"] = decode(d["evidence"], [])
-            d["valid"] = d["status"] != "invalid" and d["version"] == c["version"] and d["control_version"] == c["control_version"]
+            d["valid"] = (d["status"] != "invalid" and d["version"] == c["version"] and d["control_version"] == c["control_version"]
+                          and d["evidence_version"] == 1 and await self._evidence_valid(d["evidence"], conn=conn, lock=False))
         c["materials"] = [dict(r) for r in await conn.fetch(
             "SELECT attachment_id,sha256,message_id,version FROM case_materials WHERE case_id=$1", case_id)]
         if self.attachments:
@@ -418,8 +430,35 @@ class CaseService:
             await self._event(conn, c, body.operation, actor.actor_id, {"status": c["status"], "reason": body.reason})
         return await self.get(actor, case_id)
 
+    async def _evidence_valid(self, evidence, *, conn=None, actor=None, case=None, lock=True):
+        refs = [e for e in evidence if e.get("doc_id")]
+        if refs and (self.knowledge_base is None or not await self.knowledge_base.validate_policy_refs(refs, conn=conn, lock=lock)):
+            return False
+        for entry in evidence:
+            if entry.get("source") == "business_query" and entry.get("evidence"):
+                cells, issues = verified_cells(entry.get("evidence_payload") or {})
+                if issues or cells != entry["evidence"]:
+                    return False
+            if entry.get("source") == "verified_image":
+                source = entry.get("business_source") or {}
+                if not fresh(source.get("observed_at")) or not entry.get("evidence_id") or entry.get("db_value") is None:
+                    return False
+                if self.attachments and actor:
+                    try:
+                        row = await self.attachments.get(actor, entry["attachment_id"], conn=conn)
+                        if row["sha256"] != entry["sha256"]:
+                            return False
+                    except HTTPException:
+                        return False
+            if entry.get("source") == "verified_evidence":
+                # Legacy generic evidence has no business unit/time/provenance.
+                return False
+        return True
+
     async def approve(self, actor: ActorContext, case_id: str, draft_id: str, body: DraftApproval):
         async with self.db.transaction() as conn:
+            if self.actors:
+                actor = await self.actors.refresh(actor, conn=conn)
             c = await self._locked(conn, case_id, actor)
             self._expected(c, body.expected_version, body.expected_control_version)
             d = await conn.fetchrow("SELECT * FROM case_drafts WHERE id=$1 AND case_id=$2 FOR UPDATE", draft_id, case_id)
@@ -428,7 +467,10 @@ class CaseService:
             if (d["status"] == "invalid" or d["version"] != c["version"] or
                     d["control_version"] != c["control_version"] or d["body_hash"] != body.body_hash or c["status"] not in ACTIVE):
                 raise conflict("draft_stale")
+            if d["evidence_version"] != 1 or not await self._evidence_valid(decode(d["evidence"], []), conn=conn, actor=actor, case=c):
+                raise conflict("draft_evidence_stale")
             if d["status"] != "approved":
+                await conn.execute("SELECT set_config('ai_helpdesk.evidence_approval','on',true)")
                 await conn.execute("UPDATE case_drafts SET status='approved',approved_by=$2 WHERE id=$1", draft_id, actor.actor_id)
                 await self._event(conn, c, "draft_approved", actor.actor_id, {"draft_id": draft_id, "body_hash": d["body_hash"]})
         return await self.get(actor, case_id)
@@ -545,6 +587,12 @@ class CaseService:
                             raise conflict("attachment_changed")
                 except HTTPException:
                     reason = "material_access_changed"
+            refs = list(result.get("knowledge_sources") or [])
+            business = result.get("business_data") or {}
+            check_evidence = refs + ([{"source": "business_query", **business}] if business else [])
+            check_evidence += [f for f in ctx["snapshot"].get("facts", {}).values() if f.get("source") == "verified_image"]
+            if not reason and not await self._evidence_valid(check_evidence, conn=conn):
+                reason = "draft_evidence_stale"
             if result.get("material_access_changed") or material_access_error:
                 reason = "material_access_changed"
             payload = {**{k: v for k, v in result.items() if k != "material_reviews"}, "case_id": c["case_id"], "ticket_id": c["case_id"],
@@ -571,14 +619,19 @@ class CaseService:
                 payload.update(case_version=c["version"], case_status=c["status"])
                 if not dead and not result.get("service_unavailable"):
                     draft_id = "dr_" + run.run_id
-                    evidence = [v for v in decode(c["facts"], {}).values()]
+                    evidence = [{"field": field, **value} for field, value in decode(c["facts"], {}).items()]
+                    from app.core.business_facts import rendered_images
+                    image_refs = {field: f"I{i}" for i, (field, _) in enumerate(rendered_images(decode(c["facts"], {})), 1)}
+                    for item in evidence:
+                        if item["field"] in image_refs:
+                            item["reply_reference"] = image_refs[item["field"]]
                     evidence += list(result.get("knowledge_sources") or [])
                     if result.get("business_data"):
                         evidence.append({"source": "business_query", **result["business_data"]})
                     evidence += [{"source": "tool_trace", "trace": entry} for entry in result.get("trajectory", [])]
                     await conn.execute(
-                        f"INSERT INTO case_drafts(id,case_id,run_id,version,control_version,body,body_hash,evidence,created_at)"
-                        f" VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,{_NOW})",
+                        f"INSERT INTO case_drafts(id,case_id,run_id,version,control_version,body,body_hash,evidence,evidence_version,created_at)"
+                        f" VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,1,{_NOW})",
                         draft_id, c["case_id"], run.run_id, c["version"], c["control_version"], payload["response"],
                         hashlib.sha256(payload["response"].encode()).hexdigest(), dumps(evidence))
                     payload["draft_id"] = draft_id
@@ -618,9 +671,12 @@ class CaseService:
         pending.discard("image:review")
         by_field = {}
         for review in reviews:
+            for item in review["fields"]:
+                if item["outcome"] == "matched" and not fresh((item.get("source") or {}).get("observed_at")):
+                    item["outcome"] = "unverified"
             if any(i["field"] in {"order_ref", "model", "expected_model", "received_model"}
                    and i["outcome"] == "matched" and facts.get(i["field"])
-                   and facts[i["field"]]["value"] != i["value"] for i in review["fields"]):
+                   and facts[i["field"]]["value"] != i["db_value"] for i in review["fields"]):
                 # A different pictured model cannot lend its quantity to the
                 # Case's existing model, even when both are real DB records.
                 for item in review["fields"]:
@@ -635,7 +691,7 @@ class CaseService:
         elif by_field:
             pending.discard("image:readability")
         for field, items in by_field.items():
-            values = {i["value"] for _, i in items if i["outcome"] == "matched"}
+            values = {i["db_value"] for _, i in items if i["outcome"] == "matched"}
             confirmed = len(values) == 1 and all(i["outcome"] == "matched" for _, i in items)
             value = next(iter(values)) if confirmed else None
             old = facts.get(field)
@@ -643,7 +699,8 @@ class CaseService:
                 confirmed = False  # never overwrite an employee/prior confirmed fact silently
             if confirmed:
                 review, item = items[0]
-                facts[field] = {"value": value, "source": "verified_image", "unit": item["unit"],
+                facts[field] = {"value": value, "db_value": value, "candidate_value": item["value"],
+                                "source": "verified_image", "unit": item["unit"],
                                 "attachment_id": review["attachment_id"], "sha256": review["sha256"],
                                 "evidence_id": run.run_id + ":" + field, "business_source": item["source"],
                                 "message_id": run.case_context["message_id"]}

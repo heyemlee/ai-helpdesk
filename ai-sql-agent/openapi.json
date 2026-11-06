@@ -1,6 +1,104 @@
 {
   "components": {
     "schemas": {
+      "BusinessEvidence": {
+        "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "as_of_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of Source"
+          },
+          "database": {
+            "title": "Database",
+            "type": "string"
+          },
+          "entity": {
+            "additionalProperties": true,
+            "title": "Entity",
+            "type": "object"
+          },
+          "evidence_id": {
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "issues": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Issues",
+            "type": "array"
+          },
+          "query_hash": {
+            "title": "Query Hash",
+            "type": "string"
+          },
+          "row_index": {
+            "title": "Row Index",
+            "type": "integer"
+          },
+          "source_records": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Source Records",
+            "type": "array"
+          },
+          "step_index": {
+            "title": "Step Index",
+            "type": "integer"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "value": {
+            "title": "Value"
+          }
+        },
+        "required": [
+          "evidence_id",
+          "entity",
+          "field",
+          "value",
+          "database",
+          "step_index",
+          "row_index",
+          "query_hash"
+        ],
+        "title": "BusinessEvidence",
+        "type": "object"
+      },
       "FeedbackRequest": {
         "description": "用户对一次回答的判定。\n\n只收 trace_id 与判定本身：问题原文与实际执行的 SQL 从审计记录回填，\n不接受客户端传。否则「这条 SQL 是对的」就成了客户端说了算，\n而认证 SQL 会被注入后续查询的生成 Prompt。",
         "properties": {
@@ -465,6 +563,14 @@
             "title": "Degraded",
             "type": "boolean"
           },
+          "evidence": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/BusinessEvidence"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
           "execution_status": {
             "default": "failed",
             "title": "Execution Status",
@@ -479,6 +585,17 @@
             "default": false,
             "title": "Has Risk",
             "type": "boolean"
+          },
+          "observed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed At"
           },
           "queried_database": {
             "title": "Queried Database",
@@ -650,6 +767,17 @@
           "final_sql": {
             "title": "Final Sql",
             "type": "string"
+          },
+          "observed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed At"
           },
           "repair_attempts": {
             "default": [],

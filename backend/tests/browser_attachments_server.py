@@ -12,6 +12,7 @@ import os
 from contextlib import asynccontextmanager
 from types import SimpleNamespace as NS
 
+from evidence_fixtures import with_evidence
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from PIL import Image
@@ -20,9 +21,12 @@ from redis.asyncio import Redis
 from app.agents.agent_orchestrator import AgentType, OrchestratorResult
 from app.api import main
 from app.core.actor import ActorContext
+from app.core.embedder import Embedder
 from app.core.llm_utils import create_llm_client
 from app.runs.config import RunConfig
 from app.storage.pg import Database
+from app.storage.vector_store import PgStore
+from app.tools.knowledge_base import KnowledgeBase
 from app.tools.sql_agent_client import SQLAgentClient
 
 assert os.environ.get("ATTACHMENT_BROWSER_FIXTURE") == "1"
@@ -108,13 +112,13 @@ async def query(request: Request):
     assert body["user_id"] == "ai-helpdesk" and "SO-1" in body["query"]
     assert "赔偿" not in body["query"] or "不要执行" in body["query"]
     state["queries"].append({"session_id": body["session_id"], "user_id": body["user_id"]})
-    return {"answer": "UNTRUSTED ANSWER: quantity 999", "route": "single", "queried_database": True,
+    return with_evidence({"answer": "UNTRUSTED ANSWER: quantity 999", "route": "database_query", "queried_database": True,
             "execution_status": "success", "has_risk": False, "degraded": False, "result_truncated": False,
             "trace_id": "browser-sql-trace", "selected_databases": ["erp_db"],
             "steps": [{"database": "erp_db", "success": True, "truncated": False, "error": None,
                        "rows": [{"order_ref": "SO-1", "model": "A", "missing_qty": 2}], "row_count": 1,
-                       "column_units": {"missing_qty": "pcs"}, "as_of": "2026-11-05T10:00:00Z",
-                       "as_of_source": "query_time", "source_records": [{"line_id": "line-1"}]}]}
+                       "column_units": {"missing_qty": "pcs"}, "final_sql": "SELECT order_ref,model,missing_qty FROM order_lines WHERE order_ref='SO-1'",
+                       "as_of_source": "query_time", "source_records": [{"line_id": "line-1"}]}]})
 
 
 @asynccontextmanager
@@ -124,10 +128,11 @@ async def lifespan(_):
     redis = Redis.from_url(os.environ["TEST_REDIS_URL"])
     base = os.environ["BROWSER_API_URL"]
     main._pg_database, main._infra_redis, main._INSTANCE = db, redis, "staff"
+    main._knowledge_base = KnowledgeBase(store=PgStore(db), embedder=Embedder(dim=128))
     main._RUN_CONFIG = RunConfig(mode="queued", lease_s=2, redispatch_after_s=0.1, wait_s=15)
     main._sql_agent = SQLAgentClient(base_url=base + "/test/sql", api_key="fixture")
     client = create_llm_client("fixture", base + "/test/model/v1", provider="openai", api_mode="responses")
-    main._model_runtime = NS(register_llm=lambda component: component.reconfigure_llm(client, "gpt-6.1-sol"))
+    main._model_runtime = NS(switching=False, register_llm=lambda component: component.reconfigure_llm(client, "gpt-6.1-sol"))
 
     async def call(name, params):
         assert name == "order_data_query"
@@ -141,10 +146,15 @@ async def lifespan(_):
         return OrchestratorResult(request_id="fixture", response="已按业务记录核实，请员工确认内部草稿。",
                                   agent_type=AgentType.GENERAL, intent=None)
 
-    async def prepare(*args, **kwargs):
-        return NS(request={}, evidence={}, intent=NS(intent_group="order"), knowledge_used=False)
+    async def prepare(req, *args, **kwargs):
+        sources = await main._knowledge_base.search_async(req.message)
+        return NS(request={}, evidence={"knowledge": {"sources": sources}}, intent=NS(intent_group="order"), knowledge_used=bool(sources))
 
-    main._tool_manager = NS(call=call)
+    async def search_with_rewrite(name, query, top_k=5):
+        assert name == "knowledge_search"
+        return NS(data=await main._knowledge_base.search_async(query, top_k=top_k), reranked=False, corrected=False, evidence_ok=True)
+
+    main._tool_manager = NS(call=call, search_with_rewrite=search_with_rewrite)
     main._orchestrator = NS(run=answer, get_stats=lambda: {}, routing_config=lambda: None)
     main._prepare_request = prepare
     app.state.actor_directory.provider = lookup

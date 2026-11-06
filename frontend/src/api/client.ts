@@ -1,5 +1,5 @@
 import type {
-  Attachment, CaseAction, CaseDetail, CaseInput, CaseReceipt, CaseSummary,
+  PolicyMetadata, PolicyScope, Attachment, CaseAction, CaseDetail, CaseInput, CaseReceipt, CaseSummary,
   ChatConnectionBody, ChatModelBody, ChatRequest, ChatResponse, ConversationResponse,
   EmbeddingConnectionBody, EmbeddingModelBody, EvalReport, HealthResponse, ImportResult,
   KnowledgeCategoryOverview, KnowledgeDocument, KnowledgeDocumentDetail, KnowledgeDocumentList,
@@ -118,8 +118,8 @@ export const api = {
   health: (base: string) => request<HealthResponse>(base, '/health'),
   monitor: (base: string) => request<MonitorSummary>(base, '/monitor'),
 
-  search: (base: string, query: string, topK = 5) =>
-    request<SearchResponse>(base, '/search', json({ query, top_k: topK })),
+  search: (base: string, query: string, topK = 5, scope?: PolicyScope) =>
+    request<SearchResponse>(base, '/search', json({ query, top_k: topK, policy_scope: scope ?? {} })),
 
   chat: (base: string, body: ChatRequest) =>
     request<ChatResponse>(base, '/chat', json(body)),
@@ -145,18 +145,22 @@ export const api = {
   categories: (base: string) => request<KnowledgeCategoryOverview>(base, '/knowledge/categories'),
 
   /** 只改分类：正文、片段和检索都不受影响。空串是未分类。 */
+  setDocumentPolicy: (base: string, docId: string, policy: PolicyMetadata, expected_revision: string) =>
+    request<KnowledgeDocumentDetail>(base, `/knowledge/documents/${encodeURIComponent(docId)}`, json({ policy, expected_revision }, 'PATCH')),
+
   setDocumentCategory: (base: string, docId: string, category: string) =>
     request<KnowledgeDocument>(
       base, `/knowledge/documents/${encodeURIComponent(docId)}`, json({ category }, 'PATCH'),
     ),
 
-  addKnowledge: (base: string, documents: Array<{ title: string; content: string; category?: string }>) =>
+  addKnowledge: (base: string, documents: Array<{ title: string; content: string; category?: string; policy?: PolicyMetadata }>) =>
     request<ImportResult>(base, '/knowledge/add', json({ documents })),
 
   /** category 是这次导入的分类；JSON 文件里每篇自己写了 category 的以它为准。 */
-  uploadKnowledge: (base: string, file: File, category = '') => {
+  uploadKnowledge: (base: string, file: File, category = '', policy?: PolicyMetadata) => {
     const form = new FormData()
     form.append('file', file)
+    if (policy) form.append('policy', JSON.stringify(policy))
     if (category) form.append('category', category)
     return request<ImportResult>(base, '/knowledge/upload', { method: 'POST', body: form })
   },

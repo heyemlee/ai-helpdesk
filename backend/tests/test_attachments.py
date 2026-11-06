@@ -5,6 +5,7 @@ import copy
 import io
 import os
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
@@ -52,6 +53,7 @@ def extraction(**values):
 
 def evidence(rows=None):
     return {
+        "observed_at": datetime.now(UTC).isoformat(),
         "execution_status": "success",
         "queried_database": True,
         "has_risk": False,
@@ -68,7 +70,7 @@ def evidence(rows=None):
                 "rows": rows or [{"order_ref": "SO-1", "model": "A", "missing_qty": 2}],
                 "row_count": len(rows) if rows is not None else 1,
                 "column_units": {"missing_qty": "pcs"},
-                "as_of": "2026-11-05T10:00:00Z",
+                "as_of": datetime.now(UTC).isoformat(),
                 "as_of_source": "query_time",
                 "source_records": [{"id": "line-1"}],
             }

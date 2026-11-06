@@ -10,6 +10,7 @@ import json
 import sys
 
 from conftest import ScriptedModel, make_request, text_step, tool_step
+from evidence_fixtures import policy_hits, with_evidence
 from prometheus_client import REGISTRY
 
 from app.agents.agent_orchestrator import AgentOrchestrator, AgentType, RoutingDecision
@@ -33,6 +34,9 @@ ORDER_DATA = {
 }
 UNAVAILABLE = {"answer": "", "queried_database": False, "unavailable": True, "error": "ReadTimeout"}
 
+
+KNOWLEDGE = policy_hits(KNOWLEDGE)
+ORDER_DATA = with_evidence(ORDER_DATA)
 
 class _Tools:
     """记账的假 ToolManager：知识库给一段片段，业务数据按构造时给的结果回。"""
@@ -287,7 +291,7 @@ async def test_a_rules_delegation_that_answered_without_data_does_not_block_a_be
     result = await _orchestrator((AgentType.ORDER, model)).run(prepared.request)
 
     assert len(tools.delegations()) == 2
-    assert [r["outcome"] for r in result.trajectory if r["actor"] == "model"] == ["empty"]
+    assert [r["outcome"] for r in result.trajectory if r["actor"] == "model"] == ["evidence"]
 
 
 async def test_a_model_outage_mid_loop_is_not_a_handoff():

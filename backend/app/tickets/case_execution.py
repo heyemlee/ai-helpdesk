@@ -7,6 +7,8 @@ from collections.abc import Awaitable, Callable
 from fastapi import HTTPException
 
 from app.core import admission
+from app.core.business_facts import collect_evidence, render_draft
+from app.core.policy_scope import PolicyScope, bind_policy_scope
 from app.events import bind
 from app.runs.checkpoint import encode_result
 from app.runs.memo import bind_run
@@ -30,7 +32,7 @@ class CaseExecutor:
         run = ctx.run
         turn = self.event_log.open_turn(conv_id=run.conv_id, request_id=run.request_id)
         try:
-            with bind_run(ctx.scope), bind(turn), (admission.shed() if ctx.degrade.shed else contextlib.nullcontext()):
+            with bind_policy_scope(PolicyScope.model_validate(run.case_context["snapshot"].get("policy_scope") or {})), bind_run(ctx.scope), bind(turn), (admission.shed() if ctx.degrade.shed else contextlib.nullcontext()):
                 await ctx.set_turn(turn.turn_id)
                 turn.emit("turn_started", {"transport": "case", "run": {"run_id": run.run_id, "attempt": run.attempt},
                                           "case_id": run.case_context["case_id"]}, {"message": run.message})
@@ -65,6 +67,10 @@ class CaseExecutor:
                                         knowledge_sources=evidence.pop("sources", []), knowledge=evidence,
                                         business_data=prepared.evidence.get("business_data") or {})
                         proposal["intent"] = proposal.get("intent") or "other"
+                        selected = collect_evidence(prepared.evidence, proposal.get("trajectory", []))
+                        proposal["knowledge_sources"] = selected["knowledge"]["sources"]
+                        proposal["business_data"] = selected["business_data"]
+                        proposal["response"] = render_draft(proposal["knowledge_sources"], proposal["business_data"], snapshot.get("facts"), language=snapshot.get("language", "zh"))
                     if not await ctx.commit({"case_proposal": proposal}):
                         raise RetryRun("Case proposal lost its lease")
                 # No model delta, ticket, notification or history has been published yet.

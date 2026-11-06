@@ -1,3 +1,5 @@
+import { ScopeFields } from './PolicyFields'
+import type { PolicyScope } from '@/api/types'
 import { useEffect, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { MessageBubble } from './MessageBubble'
@@ -81,6 +83,8 @@ export function ChatPanel({ messages, busy, onSend, onInspect, explain, restorin
 }) {
   const { t, lang } = useT(), en = lang === 'en'
   const [draft, setDraft] = useState('')
+  const [policyScope, setPolicyScope] = useState<PolicyScope>({})
+  const [scopeOpen, setScopeOpen] = useState(false)
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [uploading, setUploading] = useState(false)
   const [caseChoice, setCaseChoice] = useState(caseId || '')
@@ -135,7 +139,7 @@ export function ChatPanel({ messages, busy, onSend, onInspect, explain, restorin
     if ((!text && !attachments.length) || (attachments.length > 0 && !caseChoice) || busy || uploading || restoring || over > 0) return
     followLatest.current = true
     setAwayFromBottom(false)
-    const result = attachments.length || caseChoice ? onSend(text, { attachments, caseChoice, issueType }) : onSend(text)
+    const result = onSend(text, { attachments, caseChoice, issueType, policyScope })
     if (result instanceof Promise ? await result : true) { setDraft(''); setAttachments([]) }
     requestAnimationFrame(grow)
   }
@@ -181,6 +185,7 @@ export function ChatPanel({ messages, busy, onSend, onInspect, explain, restorin
           setAwayFromBottom(false)
           listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' })
         }}>{t('cw.latest')} ↓</button>}
+        <details onToggle={e => setScopeOpen(e.currentTarget.open)}><summary>{en ? 'Policy scope' : '政策适用条件'}</summary>{scopeOpen && <ScopeFields value={policyScope} onChange={setPolicyScope} />}</details>
         <form className="composer" onSubmit={(e) => { e.preventDefault(); submit() }}>
           <label className="sr-only" htmlFor="draft">{t('cw.composeLabel')}</label>
           <textarea

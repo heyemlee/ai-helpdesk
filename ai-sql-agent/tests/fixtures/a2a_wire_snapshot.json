@@ -329,9 +329,11 @@
       "currency",
       "degrade_reason",
       "degraded",
+      "evidence",
       "execution_status",
       "failed_steps",
       "has_risk",
+      "observed_at",
       "queried_database",
       "repaired_steps",
       "result_truncated",
@@ -348,6 +350,7 @@
       "database",
       "error",
       "final_sql",
+      "observed_at",
       "repair_attempts",
       "risk_findings",
       "row_count",
@@ -357,6 +360,26 @@
       "sql",
       "success",
       "truncated"
+     ],
+     "evidence_keys": [
+      "as_of",
+      "as_of_source",
+      "database",
+      "entity",
+      "evidence_id",
+      "field",
+      "issues",
+      "query_hash",
+      "row_index",
+      "source_records",
+      "step_index",
+      "unit",
+      "value"
+     ],
+     "entity_keys": [
+      "kind",
+      "query_hash",
+      "row_index"
      ]
     },
     {
@@ -836,9 +859,11 @@
       "currency",
       "degrade_reason",
       "degraded",
+      "evidence",
       "execution_status",
       "failed_steps",
       "has_risk",
+      "observed_at",
       "queried_database",
       "repaired_steps",
       "result_truncated",
@@ -855,6 +880,7 @@
       "database",
       "error",
       "final_sql",
+      "observed_at",
       "repair_attempts",
       "risk_findings",
       "row_count",
@@ -864,6 +890,26 @@
       "sql",
       "success",
       "truncated"
+     ],
+     "evidence_keys": [
+      "as_of",
+      "as_of_source",
+      "database",
+      "entity",
+      "evidence_id",
+      "field",
+      "issues",
+      "query_hash",
+      "row_index",
+      "source_records",
+      "step_index",
+      "unit",
+      "value"
+     ],
+     "entity_keys": [
+      "kind",
+      "query_hash",
+      "row_index"
      ]
     },
     {
@@ -929,9 +975,11 @@
       "currency",
       "degrade_reason",
       "degraded",
+      "evidence",
       "execution_status",
       "failed_steps",
       "has_risk",
+      "observed_at",
       "queried_database",
       "repaired_steps",
       "result_truncated",
@@ -948,6 +996,7 @@
       "database",
       "error",
       "final_sql",
+      "observed_at",
       "repair_attempts",
       "risk_findings",
       "row_count",
@@ -957,6 +1006,26 @@
       "sql",
       "success",
       "truncated"
+     ],
+     "evidence_keys": [
+      "as_of",
+      "as_of_source",
+      "database",
+      "entity",
+      "evidence_id",
+      "field",
+      "issues",
+      "query_hash",
+      "row_index",
+      "source_records",
+      "step_index",
+      "unit",
+      "value"
+     ],
+     "entity_keys": [
+      "kind",
+      "query_hash",
+      "row_index"
      ]
     }
    ]
@@ -995,9 +1064,11 @@
       "currency",
       "degrade_reason",
       "degraded",
+      "evidence",
       "execution_status",
       "failed_steps",
       "has_risk",
+      "observed_at",
       "queried_database",
       "repaired_steps",
       "result_truncated",
@@ -1014,6 +1085,7 @@
       "database",
       "error",
       "final_sql",
+      "observed_at",
       "repair_attempts",
       "risk_findings",
       "row_count",
@@ -1023,6 +1095,26 @@
       "sql",
       "success",
       "truncated"
+     ],
+     "evidence_keys": [
+      "as_of",
+      "as_of_source",
+      "database",
+      "entity",
+      "evidence_id",
+      "field",
+      "issues",
+      "query_hash",
+      "row_index",
+      "source_records",
+      "step_index",
+      "unit",
+      "value"
+     ],
+     "entity_keys": [
+      "kind",
+      "query_hash",
+      "row_index"
      ]
     }
    ]
@@ -1039,9 +1131,11 @@
     "currency",
     "degrade_reason",
     "degraded",
+    "evidence",
     "execution_status",
     "failed_steps",
     "has_risk",
+    "observed_at",
     "queried_database",
     "reason",
     "repaired_steps",
@@ -1060,6 +1154,7 @@
     "database",
     "error",
     "final_sql",
+    "observed_at",
     "repair_attempts",
     "risk_findings",
     "row_count",
@@ -1069,6 +1164,26 @@
     "sql",
     "success",
     "truncated"
+   ],
+   "evidence_keys": [
+    "as_of",
+    "as_of_source",
+    "database",
+    "entity",
+    "evidence_id",
+    "field",
+    "issues",
+    "query_hash",
+    "row_index",
+    "source_records",
+    "step_index",
+    "unit",
+    "value"
+   ],
+   "entity_keys": [
+    "kind",
+    "query_hash",
+    "row_index"
    ]
   },
   {
@@ -1081,9 +1196,11 @@
     "currency",
     "degrade_reason",
     "degraded",
+    "evidence",
     "execution_status",
     "failed_steps",
     "has_risk",
+    "observed_at",
     "queried_database",
     "reason",
     "repaired_steps",
@@ -1102,6 +1219,7 @@
     "database",
     "error",
     "final_sql",
+    "observed_at",
     "repair_attempts",
     "risk_findings",
     "row_count",
@@ -1111,6 +1229,26 @@
     "sql",
     "success",
     "truncated"
+   ],
+   "evidence_keys": [
+    "as_of",
+    "as_of_source",
+    "database",
+    "entity",
+    "evidence_id",
+    "field",
+    "issues",
+    "query_hash",
+    "row_index",
+    "source_records",
+    "step_index",
+    "unit",
+    "value"
+   ],
+   "entity_keys": [
+    "kind",
+    "query_hash",
+    "row_index"
    ]
   }
  ]

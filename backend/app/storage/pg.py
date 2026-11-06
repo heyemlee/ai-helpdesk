@@ -10,7 +10,7 @@ Postgres 库（pgvector 扩展做向量检索），替换掉 chromadb 容器和
 tsvector 用 'simple' 配置——中文分词由 core/lexical.py 在写入前完成
 （字符二元组），不依赖 zhparser/pg_bigm 这类需要单独编译的扩展。
 
-片段之上还有一张文档表（kb_documents）：存导入时的原文、来源、时间和分类，
+片段之上还有一张文档表（policy_documents）：存导入时的原文、来源、时间和分类，
 片段用 doc_id 指回去。它不参与检索，只回答"知识库里到底有哪些文档"。
 
 维度契约：向量列的维度在建表时由当前 Embedder 决定。启动时校验现有
@@ -100,7 +100,7 @@ CREATE TABLE IF NOT EXISTS conversation_log_turns (
     instance TEXT NOT NULL DEFAULT ''
 );
 
-CREATE TABLE IF NOT EXISTS kb_chunks (
+CREATE TABLE IF NOT EXISTS policy_chunks (
     id           TEXT PRIMARY KEY,
     title        TEXT NOT NULL DEFAULT '',
     content      TEXT NOT NULL,
@@ -113,16 +113,16 @@ CREATE TABLE IF NOT EXISTS kb_chunks (
 );
 -- 稀疏检索列。对已存在的老表补列（CREATE TABLE IF NOT EXISTS 不会改已有表），
 -- 老数据的 tokens 为 NULL，由 KnowledgeBase.backfill_lexical 在启动时回填。
-ALTER TABLE kb_chunks ADD COLUMN IF NOT EXISTS tokens tsvector;
-CREATE INDEX IF NOT EXISTS idx_kb_tokens ON kb_chunks USING GIN (tokens);
+ALTER TABLE policy_chunks ADD COLUMN IF NOT EXISTS tokens tsvector;
+CREATE INDEX IF NOT EXISTS idx_kb_tokens ON policy_chunks USING GIN (tokens);
 
 -- 文档：人读的单位。与 storage/vector_store.py 的 SQLite 版同构，说明见那边。
 -- 分片用 doc_id 指回来；老分片补出来的 doc_id 是空串，表示"还不知道属于哪篇"，
 -- 由 KnowledgeBase.ensure_documents 在启动时归档。带常量默认值的 ADD COLUMN
 -- 不重写表（PG 11+），已有的分片、向量和关键词索引一行不动。
-ALTER TABLE kb_chunks ADD COLUMN IF NOT EXISTS doc_id TEXT NOT NULL DEFAULT '';
-CREATE INDEX IF NOT EXISTS idx_kb_chunks_doc ON kb_chunks (doc_id);
-CREATE TABLE IF NOT EXISTS kb_documents (
+ALTER TABLE policy_chunks ADD COLUMN IF NOT EXISTS doc_id TEXT NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS idx_policy_chunks_doc ON policy_chunks (doc_id);
+CREATE TABLE IF NOT EXISTS policy_documents (
     id           TEXT PRIMARY KEY,
     title        TEXT NOT NULL DEFAULT '',
     content      TEXT NOT NULL,
@@ -134,11 +134,13 @@ CREATE TABLE IF NOT EXISTS kb_documents (
     created_at   DOUBLE PRECISION NOT NULL,
     category     TEXT NOT NULL DEFAULT ''
 );
-CREATE INDEX IF NOT EXISTS idx_kb_docs_hash ON kb_documents (content_hash);
-CREATE INDEX IF NOT EXISTS idx_kb_docs_created ON kb_documents (created_at);
+CREATE INDEX IF NOT EXISTS idx_kb_docs_hash ON policy_documents (content_hash);
+CREATE INDEX IF NOT EXISTS idx_kb_docs_created ON policy_documents (created_at);
 -- 分类：工作台整理文档用，检索不看它。老表补出来是空串（未分类），同样不重写表。
-ALTER TABLE kb_documents ADD COLUMN IF NOT EXISTS category TEXT NOT NULL DEFAULT '';
+ALTER TABLE policy_documents ADD COLUMN IF NOT EXISTS category TEXT NOT NULL DEFAULT '';
 
+ALTER TABLE policy_documents ADD COLUMN IF NOT EXISTS policy JSONB NOT NULL DEFAULT '{{}}';
+ALTER TABLE policy_documents ADD COLUMN IF NOT EXISTS policy_revision TEXT NOT NULL DEFAULT 'legacy';
 CREATE TABLE IF NOT EXISTS memory_episodic (
     id        TEXT PRIMARY KEY,
     user_id   TEXT NOT NULL,
@@ -258,7 +260,7 @@ CREATE INDEX IF NOT EXISTS idx_eval_candidates_time ON eval_candidates (instance
 
 # 数据量到十万级后再建 ivfflat/hnsw 索引；demo 阶段顺序扫描反而更快，
 # 且 ivfflat 需要先有数据才能训练聚类中心。DDL 保留在注释里作为运维手册：
-#   CREATE INDEX ON kb_chunks USING hnsw (embedding vector_cosine_ops);
+#   CREATE INDEX ON policy_chunks USING hnsw (embedding vector_cosine_ops);
 #   CREATE INDEX ON memory_episodic USING hnsw (embedding vector_cosine_ops);
 
 
@@ -344,14 +346,34 @@ class Database:
         async with self._pool.acquire() as conn:
             async with conn.transaction():
                 await conn.execute("SELECT pg_advisory_xact_lock($1)", _SCHEMA_LOCK)
+                from app.storage.policy_migration import pg_rename, pg_seal
+                await pg_rename(conn)
                 if not await _schema_complete(conn, schema):
                     await conn.execute(schema)
+                await pg_seal(conn)
                 from app.tickets.case_schema import migrate
                 await migrate(conn)
                 from app.attachments.schema import migrate as migrate_attachments
                 await migrate_attachments(conn)
+                if not await conn.fetchval("SELECT 1 FROM helpdesk_migrations WHERE version='policy-evidence-v1'"):
+                    await conn.execute("ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS policy_scope JSONB NOT NULL DEFAULT '{}'")
+                    await conn.execute("ALTER TABLE ticket_case_state ADD COLUMN IF NOT EXISTS policy_scope JSONB NOT NULL DEFAULT '{}'")
+                    await conn.execute("ALTER TABLE case_drafts ADD COLUMN IF NOT EXISTS evidence_version INTEGER NOT NULL DEFAULT 0")
+                    await conn.execute("""
+                        CREATE OR REPLACE FUNCTION helpdesk_evidence_approval() RETURNS trigger AS $$
+                        BEGIN
+                            IF NEW.status='approved' AND (NEW.evidence_version<>1 OR
+                                current_setting('ai_helpdesk.evidence_approval',true) IS DISTINCT FROM 'on') THEN
+                                RAISE EXCEPTION 'evidence_requires_current_approval' USING ERRCODE='55000';
+                            END IF;
+                            RETURN NEW;
+                        END; $$ LANGUAGE plpgsql;
+                        CREATE TRIGGER helpdesk_evidence_approval BEFORE UPDATE ON case_drafts
+                        FOR EACH ROW EXECUTE FUNCTION helpdesk_evidence_approval();
+                    """)
+                    await conn.execute("INSERT INTO helpdesk_migrations VALUES('policy-evidence-v1')")
             if verify_dim:
-                await self._check_vector_dim(conn, "kb_chunks", dim)
+                await self._check_vector_dim(conn, "policy_chunks", dim)
                 await self._check_vector_dim(conn, "memory_episodic", dim)
 
     @staticmethod

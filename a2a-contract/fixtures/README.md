@@ -1,6 +1,6 @@
 # 跨仓库 golden fixtures
 
-两侧共用的**同一批**载荷样本。清单只有一份：[`index.json`](index.json)。
+两侧共用的**同一批**载荷样本。v1.14 共 34 项，清单只有一份：[`index.json`](index.json)。
 
 ## 目录
 

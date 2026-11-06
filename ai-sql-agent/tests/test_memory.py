@@ -773,7 +773,7 @@ class SummaryInputBudgetTest(unittest.TestCase):
                 "truncated",
                 "row_limit",
             }  # 读
-            | {"as_of", "as_of_source"},  # 不读
+            | {"as_of", "as_of_source", "observed_at"},  # 不读；时间保留在结构化结果，不让摘要更新它
         )
 
     def test_a_failed_step_keeps_its_sql_and_error(self) -> None:

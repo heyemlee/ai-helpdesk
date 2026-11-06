@@ -319,19 +319,15 @@ class ToolManager:
             return ToolResult(success=False, data=None, tool_name=name, error=f"工具不存在: {name}")
 
         cache_rerank_top_k = rerank_top_k if rerank_top_k > 0 and tool.supports_rerank else 0
-        # 排队模式：这一轮属于一个 run。重跑时同一个工具、同样的参数直接取上一遍记下的结果
-        # ——worker 在委派查库的第 35 秒被杀掉，接手的那一遍不该再让下游跑 40 秒（app/runs/memo.py）
+        version = await self._cache_version(tool) if tool.cache_ttl > 0 or name == "knowledge_search" else None
         scope = current_run()
-        memo = memo_key("call", name, {"params": params, "rerank_top_k": cache_rerank_top_k}) if scope else ""
-        if scope is not None:
+        memo = memo_key("call", name, {"params": params, "rerank_top_k": cache_rerank_top_k,
+                                      "version": version}) if scope else ""
+        if scope is not None and (name != "knowledge_search" or version is not None):
             recalled = await scope.recall(memo)
             if recalled is not None:
                 return ToolResult(success=True, data=recalled.get("data"), tool_name=name, cached=True,
                                   reranked=bool(recalled.get("reranked")), replayed=True)
-        # 在执行之前取版本，写缓存时用的也是它：执行期间数据被改了的话，
-        # 这次的结果记在旧版本底下，之后的调用拿新版本来取，不会用到它。
-        # None = 版本读不出来，这一次不读也不写缓存。
-        version = await self._cache_version(tool) if tool.cache_ttl > 0 else None
 
         # 缓存命中
         if use_cache and version is not None:
@@ -507,7 +503,10 @@ class ToolManager:
         if scope is None:
             return await self._search_with_rewrite(tool_name, query, top_k, context,
                                                    self_correct=self_correct)
-        key = memo_key("search", tool_name, {"query": query, "top_k": top_k, "self_correct": self_correct})
+        version = await self._cache_version(self._tools[tool_name]) if tool_name in self._tools else None
+        if version is None:
+            return await self._search_with_rewrite(tool_name, query, top_k, context, self_correct=self_correct)
+        key = memo_key("search", tool_name, {"query": query, "top_k": top_k, "self_correct": self_correct, "version": version})
         recalled = await scope.recall(key)
         if recalled is not None:
             return ToolResult(success=True, data=recalled.get("data"), tool_name=tool_name, cached=True,
@@ -634,7 +633,7 @@ class ToolManager:
                     {k: v for k, v in item.items() if k != "score"},
                     sort_keys=True, ensure_ascii=False, default=str,
                 )
-            return hashlib.md5(str(body).encode()).hexdigest()
+            return hashlib.md5(str((item.get("doc_id"), item.get("policy_revision"), body)).encode()).hexdigest()
         return hashlib.md5(str(item).encode()).hexdigest()
 
     @classmethod

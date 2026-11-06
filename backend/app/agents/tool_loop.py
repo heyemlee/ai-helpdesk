@@ -117,7 +117,7 @@ class ToolOutcome:
 
 
 def _normalize(value: Any) -> Any:
-    return " ".join(value.split()).casefold() if isinstance(value, str) else value
+    return " ".join(value.split()) if isinstance(value, str) else value
 
 
 class LoopTool:
@@ -413,7 +413,7 @@ def _plan_call(
         return call
 
     key = tool.memo_key(call.parsed)
-    if key in turn.memo:
+    if key in turn.memo and tool.name != "knowledge_search":
         call.future, call.dedup = turn.memo[key], True
         return call
     reason = tool.skip(turn)

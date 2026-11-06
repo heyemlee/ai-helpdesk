@@ -40,7 +40,7 @@ from app.storage.conversation_log import ConversationLog
 from app.tickets.ticket_store import TicketStore
 from app.tools.tool_manager import ToolResult
 
-ANSWER = "补件已经登记，我们会尽快安排发出。"
+ANSWER = "材料已保存。目前缺少适用的已发布政策或有效业务证据，请补充适用产品、区域、受众及业务记录后核实。"
 
 
 class _Intent:
@@ -336,7 +336,7 @@ async def test_a_worker_dying_after_the_commit_point_does_not_answer_twice(monke
         frames = await asyncio.wait_for(reader, 10)
         done = await _until(desk.store, run_id, SUCCEEDED)
 
-        assert done.attempt == 2 and done.result["response"].startswith("第一遍的回答。")
+        assert done.attempt == 2 and done.result["response"].startswith(ANSWER)
         assert desk.model.requests and len(desk.model.requests) == 1     # 第二遍一次模型都没调
         tickets = await desk.tickets.list()
         assert len(tickets) == 1 and done.result["ticket_id"] == tickets[0].id
@@ -362,9 +362,9 @@ async def test_a_redis_blip_after_the_commit_point_is_retried_from_the_checkpoin
         submitted = await desk.main.submit_run(_ask(desk.main, conv_id="c-blip"), None)
         done = await _until(desk.store, submitted["run_id"], SUCCEEDED)
         assert done.attempt == 2 and done.history[0]["outcome"] == "retry"
-        assert done.result["response"] == "定下来的回答。" and len(desk.model.requests) == 1
-        assert desk.memory.turns == [("补件到哪了", "定下来的回答。")]
-        assert await _audit(desk, "c-blip") == [("user", "补件到哪了"), ("assistant", "定下来的回答。")]
+        assert done.result["response"] == ANSWER and len(desk.model.requests) == 1
+        assert desk.memory.turns == [("补件到哪了", ANSWER)]
+        assert await _audit(desk, "c-blip") == [("user", "补件到哪了"), ("assistant", ANSWER)]
     finally:
         await _close(desk)
 

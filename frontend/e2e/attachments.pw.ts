@@ -14,10 +14,11 @@ test('chat image-only submission, continuation, reload, private preview and down
   await page.locator('input[type=file]').setInputFiles(fixture('clear.png'))
   await expect(page.getByRole('img', { name: 'clear.png' })).toBeVisible()
   await page.getByRole('button', { name: '发送', exact: true }).click()
-  await expect(page.getByText('已按业务记录核实，请员工确认内部草稿。', { exact: false })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText('图片已核实', { exact: false }).first()).toBeVisible({ timeout: 30_000 })
   const state = await (await page.request.get('/api/test/state')).json()
   const c = state.cases[0]
   expect(c.facts.quantity.value).toBe('2')
+  await expect(page.getByText('999', { exact: false })).toHaveCount(0)
   expect(state.queries[0].user_id).toBe('ai-helpdesk')
   expect(state.queries[0].session_id).toMatch(/^hd-/) // SQL client scopes and hashes the Case session
   await page.reload()
@@ -53,7 +54,7 @@ test('workbench retains upload retries, exposes conflict, accepts clearer supple
   await work.locator('input[type=file]').setInputFiles(fixture('clear.png'))
   await expect(work.getByRole('img', { name: 'clear.png' })).toBeVisible()
   await work.getByRole('button', { name: '保存并继续' }).click()
-  await expect(work.getByText('已按业务记录核实，请员工确认内部草稿。').first()).toBeVisible({ timeout: 30_000 })
+  await expect(work.getByText('图片已核实').first()).toBeVisible({ timeout: 30_000 })
   await expect(work.getByText('待补: 无')).toBeVisible()
   await work.getByRole('button', { name: '人工接管' }).click()
   await expect(work.getByRole('button', { name: '交回助手' })).toBeVisible()
@@ -78,7 +79,7 @@ for (const phase of ['model', 'answer']) {
     await page.reload()
     await expect(page.getByRole('img', { name: 'clear.png' })).toBeVisible()
     await page.request.post(`/api/test/hold/${phase}?release=true`)
-    await expect(page.getByText('已按业务记录核实，请员工确认内部草稿。', { exact: false })).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByText('图片已核实', { exact: false }).first()).toBeVisible({ timeout: 30_000 })
     const after = await (await page.request.get('/api/test/state')).json()
     expect(after.model_calls - before.model_calls).toBe(1)
     expect(after.cases.length - before.cases.length).toBe(1)
@@ -102,6 +103,52 @@ test('switching away cancels restored Case polling without moving its reply into
     const c = await (await page.request.get(`/api/tickets/${caseId}/case`)).json()
     return c.drafts.length
   }).toBe(1)
-  await expect(page.getByText('已按业务记录核实，请员工确认内部草稿。')).toHaveCount(0)
+  await expect(page.getByText('图片已核实')).toHaveCount(0)
   await expect(page.getByRole('img', { name: 'clear.png' })).toHaveCount(0)
+})
+
+test('scoped policy search, draft evidence and withdrawal use the real API and editor', async ({ page }) => {
+  const policy = { status: 'published', version: 'browser-v1', product: 'Cab', region: 'CA', audience: 'employee',
+    effective_at: '2020-01-01T00:00:00Z', expires_at: null }
+  const added = await page.request.post('/api/knowledge/add', { data: { documents: [
+    { title: 'Browser shipping policy', content: 'Shipping fee is $150 per order.', policy },
+  ] } })
+  expect(added.ok()).toBe(true)
+  const doc = (await added.json()).documents[0]
+  const scope = { product: 'Cab', region: 'CA', audience: 'employee', as_of: null }
+  const unknown = await page.request.post('/api/search', { data: { query: 'Shipping fee' } })
+  expect((await unknown.json()).results).toHaveLength(0)
+  const matched = await page.request.post('/api/search', { data: { query: 'Shipping fee', policy_scope: scope } })
+  expect((await matched.json()).results.map((r: { doc_id: string }) => r.doc_id)).toContain(doc.id)
+  await page.goto('/#/tickets')
+  await page.getByRole('button', { name: '进入跨消息工单' }).click()
+  const work = page.getByRole('region', { name: '跨消息工单' })
+  await work.getByLabel('产品', { exact: true }).fill('Cab')
+  await work.getByLabel('区域', { exact: true }).fill('CA')
+  await work.getByLabel('受众', { exact: true }).fill('employee')
+  await work.getByLabel('补充说明').fill('Shipping fee')
+  await work.getByRole('button', { name: '保存并继续' }).click()
+  await expect(work.locator('.case-draft')).toHaveCount(1, { timeout: 30_000 })
+  const draft = work.locator('.case-draft')
+  await expect(draft.getByText('Shipping fee is $150 per order.', { exact: false }).first()).toBeVisible()
+  await draft.locator('summary').filter({ hasText: '可核对的依据' }).click()
+  await expect(draft.getByRole('heading', { name: '[P1] Browser shipping policy' })).toBeVisible()
+  await expect(draft.getByRole('button', { name: '确认此版本草稿' })).toBeEnabled()
+  const caseId = await work.getByLabel('选择问题').inputValue()
+  const before = await (await page.request.get(`/api/tickets/${caseId}/case`)).json()
+  expect(before.policy_scope).toEqual(scope)
+  await page.goto(`/#/knowledge/doc/${doc.id}`)
+  await page.getByLabel('发布状态').selectOption('retired')
+  const saved = page.waitForResponse(r => r.request().method() === 'PATCH' && r.url().includes(`/knowledge/documents/${doc.id}`))
+  await page.getByRole('button', { name: '保存政策', exact: true }).click()
+  expect((await saved).ok()).toBe(true)
+  const approval = await page.request.post(`/api/tickets/${caseId}/case/drafts/${before.drafts[0].id}/approve`, { data: {
+    expected_version: before.version, expected_control_version: before.control_version, body_hash: before.drafts[0].body_hash,
+  } })
+  expect(approval.status()).toBe(409)
+  await page.goto('/#/tickets')
+  await page.getByRole('button', { name: '进入跨消息工单' }).click()
+  await work.getByLabel('选择问题').selectOption(caseId)
+  await expect(work.locator('.case-draft').getByText('已失效', { exact: false })).toBeVisible()
+  await expect(work.getByRole('button', { name: '确认此版本草稿' })).toBeDisabled()
 })

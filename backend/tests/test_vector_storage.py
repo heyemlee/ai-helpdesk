@@ -8,11 +8,11 @@ import os
 import uuid
 
 import pytest
+from evidence_fixtures import PublishedKnowledgeBase as KnowledgeBase
 
 from app.core.embedder import Embedder, cosine
 from app.core.lexical import index_text, query_tokens
 from app.storage.vector_store import LocalStore
-from app.tools.knowledge_base import KnowledgeBase
 
 TEST_PG_DSN = os.getenv("TEST_POSTGRES_DSN", "").strip()
 
@@ -60,6 +60,8 @@ async def _store_contract(store, embedder):
          "embedding": await embedder.embed("送货排期说明"),
          "tokens": index_text("送货", "送货排期说明")},
     ]
+    from evidence_fixtures import publish_chunks
+    await publish_chunks(store, chunks)
     await store.kb_add(chunks)
     existing = await store.kb_existing_ids([chunks[0]["id"], "missing-id"])
     assert chunks[0]["id"] in existing
