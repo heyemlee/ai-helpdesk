@@ -602,6 +602,9 @@ class Text2SQLPipeline:
             held = self._dependent_step_outcome(cot_step, step_index=step_index, outcomes=outcomes)
             if held is not None:
                 step_logs.append(held)
+                # 回填清空：这一步本该交出的取值没有，后面的步骤不能拿到更早那一步的
+                # 取值、当成「上一步结果」抄进 IN 列表（依赖说法没认出来时就会这样）
+                previous_results = ""
             else:
                 step_log, execution_result = self._run_step(
                     query,
@@ -643,7 +646,9 @@ class Text2SQLPipeline:
             for a, b in re.findall(r"步骤\s*(\d+)|第\s*(\d+)\s*步", text)
             if 0 < int(a or b) < step_index
         }
-        if step_index > 1 and re.search(r"上一步|前一步|上一个步骤|上步", text):
+        if step_index > 1 and re.search(
+            r"上一步|前一步|上一个步骤|上步|前面(?:查到|得到|输出|的结果)|上述(?:结果|取值|列表)", text
+        ):
             steps.add(step_index - 1)
         return steps
 
@@ -1778,7 +1783,8 @@ class Text2SQLPipeline:
         比多写几句「请改写为字面量」的指令有效得多——模型跟随格式示例
         远强于跟随文字指令。
 
-        没有行时返回空串；这时后面的步骤根本不会执行（见 `_run_steps`）。
+        没有行时返回空串。规划里认得出依赖这一步的步骤不会执行（见 `_run_steps`）；
+        认不出的照常生成，拿到的是空回填，不是更早那一步的取值。
         """
         if not execution_result.success or not execution_result.rows:
             return ""

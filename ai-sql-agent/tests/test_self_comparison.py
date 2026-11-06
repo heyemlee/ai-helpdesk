@@ -197,6 +197,40 @@ class DependentStepTest(_OfflinePipeline, unittest.TestCase):
         self.assertFalse(second.execution_result["success"])
         self.assertIn("第 1 步没有查成", second.execution_result["error"])
 
+    def test_held_step_clears_the_backfill_for_later_steps(self):
+        """
+        1 空 → 2 独立有行 → 3 依赖 1（拦下）→ 4 依赖 3、说法认不出来。第 4 步生成时不能看到
+        第 2 步的取值被当成「上一步结果」：模型会照抄进 IN 列表，筛错单号。
+        """
+        plan = [
+            self.FIRST,
+            self.INDEPENDENT,
+            ("mes_db", "work_order.job_no，work_order.workshop",
+             "先把步骤1输出的job_no取值当作字面量列表，筛选job_no落在该列表内的工单，输出job_no",
+             "work_order.job_no"),
+            ("erp_db", "sales_order.job_no，sales_order.order_no",
+             "用这些工程号找订单，输出order_no", "sales_order.order_no"),
+        ]
+        self.plan = plan
+        prompts = []
+        replies = iter([
+            "SELECT job_no FROM sales_order WHERE order_no = 'SO-NOPE';",
+            "SELECT job_no, workshop FROM work_order WHERE work_status = 'finished';",
+            "SELECT order_no FROM sales_order;",
+        ])
+
+        def generate_sql(client_self, prompt):
+            prompts.append(prompt)
+            return next(replies)
+
+        with mock.patch.object(Text2SQLPipeline, "_plan", lambda pipe, prepared: self._plan(pipe, prepared)), \
+             mock.patch.object(CoderModelClient, "generate_sql", generate_sql):
+            result = Text2SQLPipeline().run("SO-NOPE 这单的工单在哪个车间")
+
+        self.assertEqual(len(prompts), 3)  # 第 3 步没生成
+        self.assertTrue(result.step_logs[1].execution_result["rows"])  # 第 2 步有取值可回填
+        self.assertNotIn("# 上一步结果", prompts[2])  # 第 4 步看不到它
+
     def test_independent_step_still_runs_after_an_empty_step(self):
         generated, result = self._run([self.FIRST, self.INDEPENDENT])
         self.assertEqual(generated.count("mes_db"), 1)
