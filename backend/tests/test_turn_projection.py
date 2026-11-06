@@ -623,7 +623,7 @@ async def test_ordinary_ids_still_get_through(monkeypatch):
 
 
 # 客户原话也原样进审计：NUL、孤立代理字符存不进去，审计里客户原话那一条就丢了，同样 422。
-# 规则比 id 宽：换行、制表符是正常的原话，长度也不在这里管。
+# 规则比 id 宽：换行、制表符是正常的原话，照收。长度另有上限，那是为了模型，见下面最后一条。
 
 @pytest.mark.parametrize("path", ["/chat", "/chat/stream"])
 @pytest.mark.parametrize("value", ["SO-7731\x00 补件到哪了", "\udfff 补件到哪了"],
@@ -643,13 +643,31 @@ def test_a_message_keeps_its_line_breaks_tabs_emoji_and_length(monkeypatch):
 
     main = _http_app(monkeypatch)
     client = TestClient(main.app)
-    for message in ("第一行\n第二行\r\n第三行", "订单号\tSO-1", "表情 😀 照收", "补" * 5000):
+    cap = main.MAX_MESSAGE_CHARS
+    for message in ("第一行\n第二行\r\n第三行", "订单号\tSO-1", "表情 😀 照收", "补" * cap, "😀" * cap):
         assert main.ChatRequest(message=message).message == message
-        # json.dumps 把表情转成一对代理字符的转义，服务端解出来是一个字符，不是孤立代理字符。
-        # 没起编排器，过了校验就是 503
+        # json.dumps 把表情转成一对代理字符的转义，服务端解出来是一个字符，不是孤立代理字符，
+        # 也只算一个字（前端输入框也这么数）。没起编排器，过了校验就是 503
         response = client.post("/chat", content=json.dumps({"message": message}),
                                headers={"Content-Type": "application/json"})
         assert response.status_code == 503
+
+
+# 长度上限为的是模型，不是审计：超长的原话会原样进好几次模型调用，写进记忆后之后几轮都带着它；
+# 长到超过模型上下文时，这个会话之后每一轮都答不出来（main.MAX_MESSAGE_CHARS 上的说明）。
+
+@pytest.mark.parametrize("path", ["/chat", "/chat/stream"])
+def test_chat_turns_away_a_message_over_the_length_cap(monkeypatch, path):
+    from fastapi.testclient import TestClient
+
+    main = _http_app(monkeypatch)
+    client = TestClient(main.app)
+    for message in ("补" * (main.MAX_MESSAGE_CHARS + 1), "😀" * (main.MAX_MESSAGE_CHARS + 1)):
+        response = client.post(path, content=json.dumps({"message": message}),
+                               headers={"Content-Type": "application/json"})
+        assert response.status_code == 422
+        error = response.json()["detail"][0]
+        assert error["loc"][-1] == "message" and error["type"] == "string_too_long"
 
 
 # ── 前端夹具：刷新之后的历史、取回的那一轮、工单 ──────────────────────────────

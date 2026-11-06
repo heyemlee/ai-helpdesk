@@ -245,6 +245,25 @@ async def test_a_queued_stream_carries_the_run_and_event_ids(monkeypatch, tmp_pa
         await _close(desk)
 
 
+async def test_a_run_accepted_before_the_length_cap_still_runs(monkeypatch, tmp_path):
+    """
+    消息长度上限只管 HTTP 入口。旧镜像收下的、超过上限的 run，新 worker 重建请求时不能再校验一遍：
+    那样这一轮会直接 FAILED、不转人工，pydantic 的报错还带着客户原话的开头进日志和终态帧。
+    """
+    desk = await _queued(monkeypatch, tmp_path)
+    try:
+        long = "补件到哪了" * (desk.main.MAX_MESSAGE_CHARS // 5 + 1)
+        assert len(long) > desk.main.MAX_MESSAGE_CHARS
+        # 跳过校验构造，等于入口没有上限的时候提交上来的
+        accepted = desk.main.ChatRequest.model_construct(message=long, user_id="u1", conv_id="c1")
+        frames = await _read(await desk.main.chat_stream(accepted, None))
+        assert frames[-1][0] == "result" and frames[-1][1]["response"] == ANSWER
+        await _until(desk.store, frames[0][1]["run_id"], SUCCEEDED)
+        assert desk.memory.turns == [(long, ANSWER)]
+    finally:
+        await _close(desk)
+
+
 async def test_a_restored_turn_still_says_which_run_and_degrade_level_it_was(monkeypatch, tmp_path):
     """刷新之后工作台从事件日志重建这一轮：run 和降级档位要和当轮发出去的一样，不然重建出来的少了这两条说明。"""
     desk = await _queued(monkeypatch, tmp_path, policy=DegradePolicy(thresholds=(1, 99, 99, 99)))
