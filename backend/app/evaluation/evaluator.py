@@ -119,6 +119,10 @@ class EvalReport:
     baseline_release: str = ""           # 对比基线的版本号
     baseline_timestamp: str = ""
     promoted:         bool = False       # 本次报告是否被提升为新基线
+    # 作答和判分用的对话模型。换模型之后分数整体会动，和基线比之前先看两边是不是同一个：
+    # 不是的话，"退化"里混着换模型的影响，不能直接当成代码退化。空串 = 报告是加这个字段之前存的
+    model:            str = ""
+    baseline_model:   str = ""
     # 评测没跑完就中止了（模型服务不可用）。results 里是中止前已经完成的那些；
     # 这样的报告不做回归对比、不能当基线——半套用例的平均分和整套的不可比。
     incomplete:       bool = False
@@ -383,6 +387,7 @@ class EndToEndEvaluator:
 
         self._orchestrator     = orchestrator
         self._judge            = LLMJudge(client, model)
+        self._model            = model
         self._recognizer       = recognizer
         self._grounding        = grounding_provider
         self._concurrency      = max(1, concurrency or _default_concurrency())
@@ -396,6 +401,7 @@ class EndToEndEvaluator:
         """换用另一份对话模型连接：判分跟着换（编排器和意图识别由它们自己换）。"""
         self._llm_guard = getattr(client, "guard", None)
         self._judge = LLMJudge(client, model)
+        self._model = model
 
     async def run(
         self,
@@ -503,8 +509,14 @@ class EndToEndEvaluator:
             # 4. 回归检测：始终对比磁盘上的基线，而不是本进程上一次的结果
             regressions = self._detect_regressions(avg_scores)
 
-            # 5. 优化建议
+            # 5. 优化建议。基线是另一个模型跑的话，这一条排最前：上面的"退化"先打个折扣
             recommendations = self._recommendations(avg_scores, intent_metrics)
+            other_model = self._other_model_note()
+            if other_model:
+                recommendations.insert(0, (
+                    f"{other_model}：和基线的差别里混着换模型的影响，不能直接当成代码退化。"
+                    "确认这次的分数可以接受后，把它提升为新基线（/eval/promote）。"
+                ))
 
         report = EvalReport(
             timestamp=datetime.now().isoformat(),
@@ -521,6 +533,8 @@ class EndToEndEvaluator:
             incomplete=incomplete,
             incomplete_reason=abort.reason if incomplete else "",
             planned=planned,
+            model=self._model,
+            baseline_model=self._baseline.model if self._baseline else "",
         )
         self._history.append(report)
 
@@ -681,6 +695,9 @@ class EndToEndEvaluator:
             return []
         base = self._baseline.avg_scores
         label = self._baseline.release or self._baseline.timestamp or "baseline"
+        # 跨模型比的时候每一条都带上：控制台只显示这几行，读的人得在同一行里看到
+        other_model = self._other_model_note()
+        suffix = f"；{other_model}" if other_model else ""
         regressions = []
         for metric, value in current.items():
             if metric in base and base[metric] > 0:
@@ -688,9 +705,17 @@ class EndToEndEvaluator:
                 if delta < -self.REGRESSION_TOLERANCE:
                     regressions.append(
                         f"{metric}: {base[metric]:.3f} → {value:.3f} "
-                        f"(相对基线 {label} 退化 {abs(delta):.1%})"
+                        f"(相对基线 {label} 退化 {abs(delta):.1%}{suffix})"
                     )
         return regressions
+
+    def _other_model_note(self) -> str:
+        """基线和这次不是同一个模型时说一句是哪两个；同一个模型、或者还没有基线时为空。"""
+        if self._baseline is None or self._baseline.model == self._model:
+            return ""
+        if not self._baseline.model:
+            return f"基线没有记录是哪个模型跑的，本次是 {self._model}"
+        return f"基线是 {self._baseline.model} 跑的，本次是 {self._model}"
 
     def _recommendations(
         self,
@@ -771,6 +796,8 @@ class EndToEndEvaluator:
             incomplete=bool(data.get("incomplete", False)),
             incomplete_reason=str(data.get("incomplete_reason", "")),
             planned=int(data.get("planned", 0)),
+            model=str(data.get("model", "")),
+            baseline_model=str(data.get("baseline_model", "")),
             results=[
                 EvalResult(
                     test_id=r.get("test_id", ""),

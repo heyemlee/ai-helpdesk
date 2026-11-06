@@ -170,7 +170,7 @@ PostgreSQL 上按题型统计的前 3 命中数，只测融合检索这一步（
 | 新旧版本并存     |       4 |                3 |                    4 |
 | **合计**         | **108** |           **77** |              **101** |
 
-52 篇文档和 122 道题（其中 14 道没有答案）都是仿真的测试数据；即使用远端向量，6 道有新旧版本的题里仍有 4 道是旧版排在前面。记录：[本地向量](docs/evaluation/retrieval-ca-factory.md)、[远端向量](docs/evaluation/retrieval-remote-embedding.md)。
+52 篇文档和 122 道题（其中 14 道没有答案）都是仿真的测试数据；即使用远端向量，6 道有新旧版本的题里仍有 4 道是旧版排在前面。走完整条对话链路后，回答用的仍是现行版本：没有一条报出旧版的数字，64 道带数字的题里 59 道答出了正确的数字。记录：[本地向量](docs/evaluation/retrieval-ca-factory.md)、[远端向量](docs/evaluation/retrieval-remote-embedding.md)、[完整链路](docs/evaluation/kb-full-chain.md)（英文）。
 
 ### 护栏与转人工
 
@@ -229,6 +229,7 @@ scripts/ci-local.sh                         # 在一次性副本里跑一遍 CI 
 .claude/skills/test-backend/scripts/run-sql-agent.sh  # 在一次性副本里跑 SQL Agent 的测试
 cd backend && .venv/bin/python -m pytest    # 后端测试；设了 TEST_POSTGRES_DSN 才跑 pgvector 用例
 .venv/bin/python scripts/eval_retrieval.py  # 检索的 hit@3 和 MRR，不调用模型
+.venv/bin/python scripts/eval_retrieval.py --full-chain --embedding env  # 知识库问答最后那句回答里的数字对不对；会调用模型
 .venv/bin/python scripts/run_eval.py        # 端到端评测；会调用模型
 .venv/bin/python scripts/run_trajectory_eval.py  # 工具循环对规则组，40 条轨迹用例；加 --yes 才调用模型
 cd ../frontend && npm test                  # 工作台测试

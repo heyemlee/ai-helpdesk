@@ -164,7 +164,8 @@ PG 合同用例要 `TEST_POSTGRES_DSN`（一个装得上 vector 扩展的空库�
 | 一轮的事件日志：每个决定、每次模型和工具调用按顺序落库，原文和结构分开保留 | `app/events/`（记录器、批量写入、按实例隔离的存储、保留期、投影、重放）；模型调用在 `core/llm_guard.GuardedLLMClient` 那一层记 | `tests/test_turn_events.py`、`test_turn_projection.py`、`test_turn_model_calls.py`、`test_turn_replay.py`；`GET /turns/{turn_id}` |
 | 轨迹评测：规则组对循环组 | `app/evaluation/trajectory.py`、`scripts/run_trajectory_eval.py`（订单数据读 a2a-contract 夹具） | `tests/test_trajectory_eval.py`；记录见 `docs/evaluation/tool-loop-ab.md` |
 | 四维 LLM-as-Judge | `app/evaluation/evaluator.py::LLMJudge` | `test_judge_prompt_names_all_four_dimensions` |
-| 相对存档基线的回归检测 | `EndToEndEvaluator._detect_regressions`，基线需显式提升 | `test_baseline_is_not_overwritten_on_every_run` |
+| 相对存档基线的回归检测（报告记模型名，基线是别的模型跑的会注明） | `EndToEndEvaluator._detect_regressions`，基线需显式提升 | `test_baseline_is_not_overwritten_on_every_run`、`test_a_baseline_from_another_model_is_called_out` |
+| 知识库问答走完整链路：答案里的数字对不对、有没有报旧版、没答案时编没编 | `scripts/eval_retrieval.py --full-chain`，要核的数字在 `data/eval/retrieval_cases.json` 的 `answer` | `tests/test_eval_retrieval.py`；记录见 `docs/evaluation/kb-full-chain.md` |
 | 本地向量时关键词优先、真模型时 RRF | `app/tools/knowledge_base.py::fuse_candidates`（`lexical_first_fuse` / `rrf_fuse`） | `test_local_vectors_do_not_push_the_keyword_winner_out_of_the_top_three`；`scripts/eval_retrieval.py` |
 | 远端 Embedding 出故障不拿本地向量顶上 | `app/core/embedder.py`（抛 `EmbeddingUnavailable`，冷却后重试） | `test_remote_failure_raises_instead_of_substituting_local_vectors`、`test_search_falls_back_to_keywords_when_embedding_is_down` |
 | 库里的向量不是当前模型算的就拒绝启动 | `storage_meta` 里的 `embedding_signature`（`check_embedding_signature`） | `test_startup_refuses_vectors_from_another_model` |
@@ -1190,7 +1191,8 @@ curl -X POST http://localhost:8080/search \
 
   不加 `--apply` 也会向 Embedding 发一次真实请求（配了远端的话）。控制台保存过向量模型时，脚本用保存的那一组。
   默认连服务用的库，也可以 `--dsn` / `--sqlite` 指定。只换向量，文档、分片、关键词索引、记忆摘要都不动。
-- 换完用 `python scripts/eval_retrieval.py --embedding env` 看检索效果（它会按 `EMBEDDING_*` 真的调用远端），
+- 换完用 `python scripts/eval_retrieval.py --embedding env` 看检索效果（和服务一样，控制台保存过向量模型时用那一组，
+  没有就按 `EMBEDDING_*`；都会真的调用远端），
   并按它打印的分数分布重新定 `RAG_EVIDENCE_MIN_SCORE`。
 
 有的模型要求查询前加一段指令（如 Qwen3-Embedding），用 `EMBEDDING_QUERY_PREFIX` 配；它只加在

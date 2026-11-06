@@ -1,5 +1,6 @@
 {
   "release": "outage-fixture",
+  "model": "claude-sonnet-5",
   "timestamp": "2026-10-04T21:00:00",
   "pass_rate": 0.0,
   "total": 0,
@@ -11,7 +12,8 @@
   ],
   "baseline": {
     "release": "",
-    "timestamp": ""
+    "timestamp": "",
+    "model": ""
   },
   "promoted": false,
   "incomplete": true,

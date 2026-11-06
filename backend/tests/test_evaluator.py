@@ -21,13 +21,14 @@ def baseline_path(tmp_path):
     return tmp_path / "baseline.json"
 
 
-def make_evaluator(baseline_path, release="v2.0.0") -> EndToEndEvaluator:
+def make_evaluator(baseline_path, release="v2.0.0", **kwargs) -> EndToEndEvaluator:
     return EndToEndEvaluator(
         orchestrator=None,
         recognizer=None,
         api_key="test-key",
         baseline_path=str(baseline_path),
         release=release,
+        **kwargs,
     )
 
 
@@ -182,6 +183,74 @@ async def test_report_records_release_under_test(baseline_path):
     report = await evaluator.run(intent_cases=CASES)
 
     assert report.release == "2026.08.17-abc1234"
+
+
+# ── 模型名：换了模型，"退化"就不全是代码的事 ──────────────────────────────────
+
+async def test_report_and_baseline_record_the_model(baseline_path):
+    evaluator = make_evaluator(baseline_path, model="model-a")
+    stub_intent_metrics(evaluator, 0.9)
+    report = await evaluator.run(intent_cases=CASES)
+
+    assert report.model == "model-a" and report.baseline_model == ""
+    assert json.loads(baseline_path.read_text(encoding="utf-8"))["model"] == "model-a"
+    assert make_evaluator(baseline_path).baseline.model == "model-a"
+
+
+async def test_a_baseline_from_another_model_is_called_out(baseline_path):
+    """控制台只显示退化那几行和建议：跨模型比的时候，两处都要说清楚是哪两个模型。"""
+    first = make_evaluator(baseline_path, model="model-a")
+    stub_intent_metrics(first, 0.90)
+    await first.run(intent_cases=CASES)
+
+    later = make_evaluator(baseline_path, release="v2.1.0", model="model-b")
+    stub_intent_metrics(later, 0.70)
+    report = await later.run(intent_cases=CASES)
+
+    assert (report.model, report.baseline_model) == ("model-b", "model-a")
+    assert report.regressions and all("基线是 model-a 跑的，本次是 model-b" in r for r in report.regressions)
+    assert report.recommendations[0].startswith("基线是 model-a 跑的，本次是 model-b")
+    assert "/eval/promote" in report.recommendations[0]
+
+
+async def test_a_baseline_saved_before_models_were_recorded_says_so(baseline_path):
+    """9/1 那份基线没有 model 字段：说不清是不是同一个模型，照样要提醒。"""
+    baseline_path.write_text(json.dumps({
+        "timestamp": "2026-09-01T23:28:31", "total": 1, "passed": 1, "pass_rate": 1.0,
+        "avg_scores": {"intent_accuracy": 0.9}, "regressions": [], "recommendations": [],
+        "release": "cabinet-domain", "results": [],
+    }), encoding="utf-8")
+    evaluator = make_evaluator(baseline_path, model="gpt-6-luna")
+    stub_intent_metrics(evaluator, 0.7)
+
+    report = await evaluator.run(intent_cases=CASES)
+
+    assert report.baseline_model == ""
+    assert "基线没有记录是哪个模型跑的，本次是 gpt-6-luna" in report.regressions[0]
+    assert report.recommendations[0].startswith("基线没有记录是哪个模型跑的")
+
+
+async def test_same_model_keeps_the_regression_lines_as_they_were(baseline_path):
+    first = make_evaluator(baseline_path, model="model-a")
+    stub_intent_metrics(first, 0.90)
+    await first.run(intent_cases=CASES)
+
+    later = make_evaluator(baseline_path, model="model-a")
+    stub_intent_metrics(later, 0.70)
+    report = await later.run(intent_cases=CASES)
+
+    assert report.regressions[0].endswith("退化 22.2%)")
+    assert not any("基线" in r and "跑的" in r for r in report.recommendations)
+
+
+async def test_switching_the_model_in_the_console_changes_the_recorded_model(baseline_path):
+    evaluator = make_evaluator(baseline_path, model="model-a")
+    evaluator.reconfigure_llm(SimpleNamespace(), "model-c")
+    stub_intent_metrics(evaluator, 0.9)
+
+    report = await evaluator.run(intent_cases=CASES)
+
+    assert report.model == "model-c"
 
 
 # ── 并发 ──────────────────────────────────────────────────────────────────────
