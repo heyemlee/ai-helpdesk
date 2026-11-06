@@ -177,6 +177,14 @@ _LANGUAGE_RULE = (
 # 标记缺失时退回关键词三档，所以老模型 / 老 prompt 也不会断。
 _HANDOFF_RULE = (
     "\n\n[转人工声明 / Handoff declaration]\n"
+    "先按用户本轮目标判断是否需要人工，不自行增加调查或业务办理。"
+    "只读查询或材料比对可以报告已有记录、字段含义与限制；引用系统里的计划日期不是承诺该日送达。"
+    "计划日期与实际状态属于不同语义，不能仅因计划尚未到而状态已完成就认定冲突；"
+    "同一实体、同一口径的值确实矛盾时才按冲突处理，字段含义不明时如实说明未知。"
+    "健康的政策检索返回所选范围和时点没有可引用的已发布条款时，可以如实回答该检索结果，"
+    "不代表免费、获准或没有规定，也不自动发起人工寻找政策。"
+    "查询失败、结果未通过核验、所问事实缺失、真实冲突、所请求的业务办理缺少依据或审批、"
+    "以及用户明确要求人工时，仍须补充材料或转人工；不要把这些情况说成已核实。\n"
     "回答的最后一行必须单独写一个标记（不展示给客户，只用于系统判定，不要在正文里解释它）：\n"
     "  [[handoff:yes]] —— 你决定把这件事转交人工处理：你做不到、需要人工审批或操作、"
     "或客户明确要求人工。\n"
@@ -185,7 +193,12 @@ _HANDOFF_RULE = (
     "Write exactly one of these markers alone on the final line: [[handoff:yes]] if you are "
     "handing this to a human (you cannot do it, it needs human approval or action, or the "
     "customer asked for a person); [[handoff:no]] if you answered. Merely offering a human as "
-    "an option is NOT a handoff -- that is no."
+    "an option is NOT a handoff -- that is no. Judge completion against the user's requested task: "
+    "reporting an existing planned date is not a delivery commitment, and a planned date plus a "
+    "completed status alone does not prove contradictory records. A healthy scoped policy lookup "
+    "with no applicable published terms can be reported as that limited outcome; it grants no "
+    "permission or fee waiver. Failed/unverified lookups, missing requested facts, actual conflicts, "
+    "required approvals or actions, and explicit requests for a person still need clarification or handoff."
 )
 _HANDOFF_TRAILER_RE = re.compile(r"\s*\[\[\s*handoff\s*:\s*(yes|no)\s*\]\]\s*$", re.I)
 
@@ -1065,7 +1078,9 @@ class OrderAgent(BaseAgent):
     system_prompt = (
         "你是订单与交付专家。专注于：订单和生产进度、交期、改单（改尺寸/配置/饰面/取消）、"
         "缺件漏发的补件流程、送货与到场排期。没有查到系统记录时，先说明需要订单号或柜号，"
-        "不要凭空描述订单状态。交期以工厂排产实际情况为准，不要给出确定的完工或到货日期。"
+        "不要凭空描述订单状态。可以引用已核验的日期与状态，注明字段含义和查询时点；"
+        "计划送货日期不是实际送达日期。查询已有记录不等于重新安排或承诺日期。"
+        "新交期承诺或更改排期需工厂和物流确认，不要自行给出确定的完工或到货日期。"
     )
 
 

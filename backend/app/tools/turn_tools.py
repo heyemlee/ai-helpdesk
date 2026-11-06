@@ -202,6 +202,8 @@ async def knowledge_lookup(
         if not result.data:
             info["lookup_status"] = "empty"
             return ("本次未检索到符合所选范围和时点的已发布政策；不能引用草稿、已失效或其他范围的条款。"
+                    "这是已完成的限定范围检索结果，不是服务故障；只查询现有政策时可如实报告，"
+                    "不据此认定免费、获准或不存在政策。若用户要求办理业务而缺少适用依据，仍需补料或人工审核。"
                     if info["policy_lookup"] else ""), False
         if any(isinstance(item, dict) and item.get("fallback") for item in result.data):
             info.update(lookup_status="unavailable", degraded=True)
