@@ -82,6 +82,44 @@ async def test_real_local_store_produces_exact_projection_and_witnesses(kb):
     assert await kb.validate_policy_projection(result["fact_receipt"], result["knowledge_sources"])
 
 
+@pytest.mark.parametrize("language", ["zh", "en"])
+async def test_policy_scope_and_time_stay_in_attributed_blocks_without_extra_prose(kb, language):
+    import copy
+
+    from app.core.lookup_scope import digest
+
+    ctx = context()
+    ctx["snapshot"]["language"] = language
+    task = pc.make_task(MESSAGE, ctx, "run-control", 1)
+    knowledge = await bound(kb, task)
+    result = pc.proposal(task, knowledge)
+    response, receipt = result["response"], result["fact_receipt"]
+    visible = [line for line in response.splitlines() if line and not line.startswith("> ")]
+    assert len(visible) == 3
+    assert visible[0].startswith("政策摘录 [P1]：" if language == "zh" else "Policy excerpt [P1]:")
+    assert all(value in visible[0] for value in (DOCUMENT["title"], "rev-control", SCOPE.product,
+                                                SCOPE.region, SCOPE.audience, SCOPE.as_of.isoformat()))
+    assert visible[1].startswith("生效时点：" if language == "zh" else "Effective:")
+    assert visible[2].startswith("以上为可核对的资料。" if language == "zh" else "These are source records for review.")
+    assert "> " + DOCUMENT["content"] in response
+    assert receipt["coverage"]["scope"]["value"] == task["scope"]
+    assert receipt["coverage"]["as_of"]["value"] == task["scope"]["as_of"]
+    assert set(receipt["coverage"]) == set(task["fields"])
+    assert receipt["proof"] == knowledge["_policy_dispatch"]
+    persisted = json.loads(json.dumps(result))
+    assert pc.receipt_valid(persisted["fact_receipt"], persisted["knowledge_sources"], message=MESSAGE,
+        context=ctx, run_id=task["run_id"], attempt=1, body=response)
+    assert await kb.validate_policy_projection(receipt, result["knowledge_sources"])
+    # Public body hashes cannot authorize another free-standing narrative line,
+    # even when its values repeat the authenticated scope.
+    added = f"查询范围：产品 {SCOPE.product}；区域 {SCOPE.region}；受众 {SCOPE.audience}；查询时点 {task['scope']['as_of']}\n\n" + response
+    altered = copy.deepcopy(receipt)
+    altered["body_sha256"] = hashlib.sha256(added.encode()).hexdigest()
+    altered["id"] = digest({k: v for k, v in altered.items() if k != "id"})
+    assert not pc.receipt_valid(altered, result["knowledge_sources"], message=MESSAGE,
+        context=ctx, run_id=task["run_id"], attempt=1, body=added)
+
+
 @pytest.mark.parametrize("suffix", ["并告诉我退货天数", "请转人工", "并直接办理退款", "再查询OTHER-902订单",
                                       "比较另一政策", "并确认申请截止日期", "并判断是否获批"])
 def test_entire_request_closure_rejects_missing_or_action_roles(suffix):

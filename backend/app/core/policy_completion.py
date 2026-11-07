@@ -347,11 +347,7 @@ def proposal(task, knowledge, *, key=None, at=None):
     if proof is None:
         return None
     ref = {**proof["sources"][0], "content": proof["document"]["content"]}
-    scope = task["scope"]
-    caption = (f"Selected scope: product {scope['product']}; region {scope['region']}; audience {scope['audience']}; "
-               f"query time {scope['as_of']}" if task["language"] == "en" else
-               f"查询范围：产品 {scope['product']}；区域 {scope['region']}；受众 {scope['audience']}；查询时点 {scope['as_of']}")
-    response = caption + "\n\n" + render_draft([ref], {}, language=task["language"])
+    response = render_draft([ref], {}, language=task["language"])
     receipt = {"kind": KIND, "version": 1, "task": task, "proof": proof | {"signature": knowledge["_policy_dispatch"]["signature"]},
                "body_sha256": hashlib.sha256(response.encode()).hexdigest(),
                "coverage": field_witnesses(task, proof["document"])}
