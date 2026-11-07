@@ -63,8 +63,8 @@
     }
    ],
    "schema_graph": {
-    "sha256": "4913bea043ba704b",
-    "len": 6742
+    "sha256": "11a9921d997edf79",
+    "len": 5346
    },
    "user_query": "以下是与当前问题相关的会话记忆：\n[近期对话]\n用户：查询准时率低于0.9的供应商名称\n\n当前用户问题：查询准时率低于0.9的供应商名称"
   }
@@ -311,8 +311,8 @@
    {
     "__type__": "ConversationMemoryContext",
     "prompt": {
-     "sha256": "055be70359f5140f",
-     "len": 4596
+     "sha256": "47e697ce69c2023d",
+     "len": 993
     }
    }
   ],
@@ -336,8 +336,8 @@
     "采购"
    ],
    "query": {
-    "sha256": "987111d656348e04",
-    "len": 4643
+    "sha256": "0f17b190efd1a43e",
+    "len": 1040
    }
   }
  },
@@ -372,12 +372,12 @@
     }
    ],
    "schema_graph": {
-    "sha256": "0c86dd466f566fef",
-    "len": 5581
+    "sha256": "a23be16de1792cb5",
+    "len": 5801
    },
    "user_query": {
-    "sha256": "987111d656348e04",
-    "len": 4643
+    "sha256": "0f17b190efd1a43e",
+    "len": 1040
    }
   }
  },
@@ -533,7 +533,7 @@
    {
     "__type__": "ConversationMemoryContext",
     "prompt": {
-     "sha256": "7eb6081675c47ae7",
+     "sha256": "b645a9beedba770d",
      "len": 4962
     }
    }
@@ -557,7 +557,7 @@
     "采购"
    ],
    "query": {
-    "sha256": "bd9fc452c02648ca",
+    "sha256": "760f0dc6faafd4ad",
     "len": 5007
    }
   }
@@ -568,11 +568,11 @@
   "kwargs": {
    "few_shots": [],
    "schema_graph": {
-    "sha256": "feabc7280ba03e5a",
-    "len": 2762
+    "sha256": "0d17261b16ea6bb1",
+    "len": 3605
    },
    "user_query": {
-    "sha256": "bd9fc452c02648ca",
+    "sha256": "760f0dc6faafd4ad",
     "len": 5007
    }
   }
@@ -729,8 +729,8 @@
    {
     "__type__": "ConversationMemoryContext",
     "prompt": {
-     "sha256": "b2634ec9654dabad",
-     "len": 5875
+     "sha256": "e99b1f8c7ca30075",
+     "len": 4952
     }
    }
   ],
@@ -743,8 +743,8 @@
    {
     "__type__": "ConversationMemoryContext",
     "prompt": {
-     "sha256": "b2634ec9654dabad",
-     "len": 5875
+     "sha256": "e99b1f8c7ca30075",
+     "len": 4952
     }
    }
   ],

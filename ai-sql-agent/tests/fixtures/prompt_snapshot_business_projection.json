@@ -1,6 +1,6 @@
 {
-  "base_snapshot_sha256": "3f240e906133b489274efae767df2bb1cd3d3b72cfa7c028f3a8cad9db23bb63",
-  "reason": "Business target binding and internal-key/grain prompt alignment; user_query added to generation, no model-call or SQL-execution sequence changes.",
+  "base_snapshot_sha256": "6a2307b2540bd97f320ee17360c7a0afaa0a0152dbc7fe3cd0a1fe06db968f4e",
+  "reason": "Business target binding and internal-key/grain prompt alignment; user_query added to generation, no model-call or SQL-execution sequence changes. Authorized table-tier schema coverage refresh; later memory includes the changed schema. Model-call and SQL-execution sequences remain unchanged.",
   "changes": {
     "5": {
       "before_sha256": "f117912d0ae3b819357ad858777515635e8d59e624c0d2df3e40de6cbfc7cd8f",
@@ -8,8 +8,8 @@
         "call": "ThinkingModelClient.generate",
         "args": [
           {
-            "sha256": "04d5abffed5b3327",
-            "len": 11663
+            "sha256": "ee38116239766f58",
+            "len": 10267
           }
         ],
         "kwargs": {}
@@ -107,8 +107,8 @@
         "call": "ThinkingModelClient.generate",
         "args": [
           {
-            "sha256": "89f7af0c4567b693",
-            "len": 15077
+            "sha256": "83bb6ad38695c58b",
+            "len": 11694
           }
         ],
         "kwargs": {}
@@ -180,7 +180,7 @@
         "call": "CoderModelClient.generate_sql",
         "args": [
           {
-            "sha256": "fe1270a474881336",
+            "sha256": "9064c73de98335a7",
             "len": 2417
           }
         ],
@@ -193,8 +193,8 @@
         "call": "ThinkingModelClient.generate",
         "args": [
           {
-            "sha256": "053d5ad5442eb6df",
-            "len": 11209
+            "sha256": "f43de1759d2493b3",
+            "len": 12052
           }
         ],
         "kwargs": {}
@@ -266,7 +266,7 @@
         "call": "CoderModelClient.generate_sql",
         "args": [
           {
-            "sha256": "16808500d2bff74b",
+            "sha256": "8bca7643a36908e5",
             "len": 2415
           }
         ],
