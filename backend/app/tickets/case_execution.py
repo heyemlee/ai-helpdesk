@@ -7,8 +7,9 @@ from collections.abc import Awaitable, Callable
 
 from fastapi import HTTPException
 
+from app.attachments.review_failure import incomplete_image_message
 from app.core import admission
-from app.core.business_facts import collect_evidence, render_draft
+from app.core.business_facts import collect_evidence, label, render_draft
 from app.core.policy_scope import PolicyScope, bind_policy_scope
 from app.events import bind
 from app.runs.checkpoint import encode_result
@@ -24,6 +25,19 @@ FIELD_LABELS = {
     "expected_model": "应收型号", "received_model": "实收型号",
     "status": "业务状态", "date": "日期", "readability": "清晰图片", "review": "完成图片核对",
 }
+
+
+def pending_response(snapshot):
+    pending = snapshot["pending_fields"]
+    notice = incomplete_image_message(snapshot) if "image:readability" in pending else ""
+    if notice and snapshot.get("language") == "en":
+        fields = ", ".join(("Image review: " if f.startswith("image:") else "") +
+                           label(f.removeprefix("image:"), "en") for f in pending if f != "image:readability")
+        return notice + (" Still needed: " + fields + "." if fields else "")
+    fields = "、".join(("图片核实：" if f.startswith("image:") else "") +
+                      FIELD_LABELS.get(f.removeprefix("image:"), f.removeprefix("image:"))
+                      for f in pending if f != "image:readability")
+    return notice + (("仍需补充：" if notice else "材料已保存，请补充：") + fields + "。" if fields else "")
 
 
 class CaseExecutor:
@@ -66,10 +80,7 @@ class CaseExecutor:
                         except HTTPException:
                             proposal.update(material_access_changed=True, response="材料访问权限已变化。")
                     elif snapshot.get("pending_fields"):
-                        fields = "、".join(("图片核实：" if f.startswith("image:") else "") +
-                                          FIELD_LABELS.get(f.removeprefix("image:"), f.removeprefix("image:"))
-                                          for f in snapshot["pending_fields"])
-                        proposal.update(response=f"材料已保存，请补充：{fields}。", needs_clarification=True)
+                        proposal.update(response=pending_response(snapshot), needs_clarification=True)
                     else:
                         await ctx.publish("progress", {"stage": "helpdesk.gathering", "label": "正在核对工单材料"})
                         from app.core.fact_completion import bind_task, make_task
@@ -110,6 +121,15 @@ class CaseExecutor:
                         checkpoint["case_proposal_origin"] = ORIGIN
                     if not await ctx.commit(checkpoint):
                         raise RetryRun("Case proposal lost its lease")
+                # Old clarification checkpoints may predate failure reasons.
+                # Re-render this system-only blocked branch from its saved
+                # snapshot; do not turn incomplete review into a factual answer.
+                if (run.case_context.get("materials_reviewed") is True
+                        and run.case_context.get("image_review_complete") is False
+                        and "image:readability" in snapshot.get("pending_fields", [])
+                        and proposal.get("agent_type") == "system" and proposal.get("needs_clarification") is True
+                        and not proposal.get("handoff") and not proposal.get("escalated")):
+                    proposal = {**proposal, "response": pending_response(snapshot)}
                 # No model delta, ticket, notification or history has been published yet.
                 phase = "complete"
                 payload, applied = await self.service.complete(run, proposal)

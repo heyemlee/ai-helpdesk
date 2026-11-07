@@ -56,6 +56,14 @@ async function show() {
 }
 
 describe('Case employee workflow', () => {
+  it('shows an incomplete image review without blaming image clarity', async () => {
+    state.pending_fields = ['image:readability']
+    await show()
+    expect(screen.getByText(/Missing: Image review: Image verification incomplete/)).toBeInTheDocument()
+    expect(screen.queryByText(/Clear image/)).not.toBeInTheDocument()
+    expect(sent).toHaveLength(0)
+  })
+
   it('requires real employee sign-in and shows an actionable message', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => response({ detail: 'employee_identity_required' }, 401)))
     render(<CaseWorkbench base="/api" />, { lang: 'en' })

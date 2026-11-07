@@ -1,0 +1,95 @@
+{
+  "kind": "root_exact_d724_source_and_review_admission_v1",
+  "private_candidate": "d724cd8a0dc112eb4d2e539f08f84f37fcad4a94",
+  "source_file_count": 1405,
+  "source_manifest": {
+    "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-c/2026-11-06/fix-image-failure-explanation/sealed-v3/source-manifest.json",
+    "sha256": "1d6f1797ef29408554a9e6166a4fd170bfbf2972d596af8e878c6f12ee7b2cd3",
+    "bytes": 170709
+  },
+  "archive": {
+    "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-c/2026-11-06/fix-image-failure-explanation/sealed-v3/candidate-source.tar",
+    "sha256": "033b4616557c498cc7da87c275d4c9d89af07806d3093174a50a0f267e06b26b",
+    "bytes": 36239360
+  },
+  "patch": {
+    "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-c/2026-11-06/fix-image-failure-explanation/sealed-v3/review.patch",
+    "sha256": "0318a9a91055c83ffd173601fd257e9bbe74e2d91693ea08a666bf985bf5cc5b",
+    "bytes": 34384
+  },
+  "indices": [
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-c/2026-11-06/independent-fact-review-d724cd8-v1/review-index-v1.json",
+      "sha256": "c8b6c5ecf4027f2ae8dcc15d67aa1317a3ce7658c236a346e85a34c9c7d139f9",
+      "bytes": 30777,
+      "all_files_verified": 90
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/validation/independent-image-explanation-v3-d724cd8a-3a129d65/artifact-sha256.json",
+      "sha256": "246da16f7e323a98e6c87dc4f918f6776ba4ce0d8c5e56cf0c09f34d14ace4e1",
+      "bytes": 82920,
+      "all_files_verified": 433
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-c/2026-11-06/fix-image-failure-explanation/final-index-v3.json",
+      "sha256": "5fcb2619c16fa22c3f9b309333f70bd0bd37f0dda865811c9224dd39065d388e",
+      "bytes": 1814,
+      "all_files_verified": 16
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-d/2026-11-06/tooling-D-v7-index-v1.json",
+      "sha256": "5b5cc7cc3e7b05c997d2bebda48d117a4e7db3e1a2fe2e1e2d909aa8dcfad344",
+      "bytes": 6282,
+      "all_files_verified": 21
+    }
+  ],
+  "backend_full": {
+    "passed": 2540,
+    "skipped": 0,
+    "receipt": {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-c/2026-11-06/fix-image-failure-explanation/logs/final-backend-full-v3.json",
+      "sha256": "6ae96dc562bc23a2f75811b957c524b9570be6dc20042f8dffdf83a9e4ea1773",
+      "bytes": 169388
+    }
+  },
+  "independent74": {
+    "passed": 74,
+    "skipped": 0,
+    "report": {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-c/2026-11-06/independent-fact-review-d724cd8-v1/review-report-v1.json",
+      "sha256": "d54664535f39a5f2e7598100dc1ea6dcc38b5cdc298ef6b1e0d615dbfea10fc4",
+      "bytes": 23823
+    }
+  },
+  "independent86": {
+    "passed": 79,
+    "failed_preserved_legacy_locale": 7,
+    "R1_closed": true,
+    "report": {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/validation/independent-image-explanation-v3-d724cd8a-3a129d65/report.json",
+      "sha256": "12221ee876b18ebf7b77e733230259356510d680df1ad324d9575a4cc91d3bfc",
+      "bytes": 8555
+    }
+  },
+  "v7_root_offline_controls": {
+    "passed": 21,
+    "actual54": false,
+    "launch": {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-d/2026-11-06/development-v7-offline-launch-root-r1.json",
+      "sha256": "7ebb482869ac74162e3543199dbc695cf7b562d1e7b480b7efe233607652d9bf",
+      "bytes": 3383
+    },
+    "io": {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-d/2026-11-06/development-v7-offline-io-root-r1.json",
+      "sha256": "828393f2ea76fb873af510364fd3b2e452783860848c227ce772a1fe0f2def47",
+      "bytes": 1295
+    },
+    "review": "D v2 only; original full54 denominator/scoring/Run/receipts/helper/PG guards preserved, four raw checkpoints and exact cost floor retained; future candidate explicit binding still required"
+  },
+  "release_eligible": false,
+  "production_deployed": false,
+  "root_review": {
+    "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-d/2026-11-06/root-exact-d724-admission-v1.json",
+    "sha256": "a31043a586de7e29a6d71792f935d8502d459a5bfc1915e36b06110e60824f09"
+  }
+}

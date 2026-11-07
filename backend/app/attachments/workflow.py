@@ -6,6 +6,7 @@ import json
 
 from fastapi import HTTPException
 
+from app.attachments.review_failure import extraction_failure
 from app.attachments.verification import Extraction, order_context, verification_query, verify
 from app.runs.store import _NOW
 
@@ -22,6 +23,7 @@ class MaterialWorkflow:
         for material in ctx["snapshot"]["review_materials"]:
             attachment_id, sha = material["attachment_id"], material["sha256"]
             review = {"attachment_id": attachment_id, "sha256": sha, "fields": [], "query_outcome": "unavailable"}
+            stage = "material"
             try:
                 # Even cached extraction must reauthorize AND check original and
                 # preview bytes. An object URL is never stored in a Run.
@@ -30,6 +32,7 @@ class MaterialWorkflow:
                     raise HTTPException(409, {"code": "attachment_changed"})
                 preview, _ = await self.attachments.content(actor, attachment_id, preview=True)
                 version = self.extractor.version
+                stage = "extract"
                 cached = await self.attachments.db.fetchrow(
                     "SELECT result FROM attachment_extractions WHERE attachment_id=$1 AND sha256=$2 AND extractor_version=$3",
                     attachment_id, sha, version)
@@ -42,6 +45,7 @@ class MaterialWorkflow:
                     await self.attachments.db.execute(
                         f"INSERT INTO attachment_extractions VALUES($1,$2,$3,$4::jsonb,{_NOW}) ON CONFLICT DO NOTHING",
                         attachment_id, sha, version, extraction.model_dump_json())
+                stage = "verify"
                 ref, error = order_context(ctx["snapshot"], extraction)
                 data = {}
                 if ref and not error:
@@ -65,8 +69,9 @@ class MaterialWorkflow:
                     raise
                 review["query_outcome"] = (exc.detail.get("code", "unavailable")
                                            if isinstance(exc.detail, dict) else "unavailable")
-            except Exception:
+            except Exception as exc:
                 review["query_outcome"] = "extraction_failed"
+                review["failure_reason"] = extraction_failure(exc) if stage == "extract" else "incomplete"
             reviews.append(review)
         await self.attachments.actor(actor)
         return reviews

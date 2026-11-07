@@ -86,7 +86,7 @@ export const imageFieldLabel = (key: string, en: boolean) => {
   const fields: Record<string, [string, string]> = {
     order_ref: ['订单号', 'Order reference'], model: ['型号', 'Model'], quantity: ['数量', 'Quantity'],
     expected_model: ['应收型号', 'Expected model'], received_model: ['实收型号', 'Received model'],
-    status: ['业务状态', 'Business status'], date: ['日期', 'Date'], readability: ['清晰图片', 'Clear image'], review: ['完成图片核对', 'Complete image review'],
+    status: ['业务状态', 'Business status'], date: ['日期', 'Date'], readability: ['图片核验未完成', 'Image verification incomplete'], review: ['完成图片核对', 'Complete image review'],
   }
   return (key.startsWith('image:') ? (en ? 'Image review: ' : '图片待核实：') : '') +
     (fields[key.replace(/^image:/, '')]?.[en ? 1 : 0] || key)

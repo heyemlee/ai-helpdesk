@@ -904,13 +904,15 @@ class CaseService:
         # New stable message/run identity. Insertion and source terminal receipt
         # share the transaction, so a crash cannot strand the continuation.
         message_id, next_run = "verified_" + run.run_id, new_run_id()
+        from app.attachments.review_failure import review_failures
         from app.tickets.draft_decision import complete_order_image_review
         content = "图片核对已完成；请按已确认事实和待补字段继续处理。"
         snapshot = {**run.case_context["snapshot"], "facts": facts, "pending_fields": c["pending_fields"],
                     "status": c["status"], "review_materials": [],
                     "material_review_receipt": {"case_id": c["case_id"],
                                                 "request_message_id": run.case_context["message_id"],
-                                                "complete": complete_order_image_review(reviews)}}
+                                                "complete": complete_order_image_review(reviews),
+                                                "failures": review_failures(reviews)}}
         context = {**run.case_context, "message_id": message_id, "expected_case_version": c["version"],
                    "snapshot": snapshot, "materials_reviewed": True,
                    "image_review_complete": complete_order_image_review(reviews)}

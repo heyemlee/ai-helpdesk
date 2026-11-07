@@ -463,14 +463,15 @@ async def test_mixed_image_batch_keeps_readability_pending_until_clear_supplemen
     assert applied and c["facts"]["quantity"]["value"] == "2"
     assert c["pending_fields"] == ["image:readability"] and c["status"] == "waiting_for_info"
 
-    # The durable continuation asks for a readable image instead of preparing
+    # The durable continuation reports incomplete verification instead of preparing
     # a business answer from the other, successfully extracted image alone.
     ctx = AsyncMock()
     ctx.run = await claim(a, {"run_id": result["next_run_id"]})
     ctx.degrade.shed, ctx.scope, ctx.commit.return_value = False, None, True
     executor = CaseExecutor(a, prepare=AsyncMock(), answer=AsyncMock(), event_log=EventLog.disabled(), materials=workflow)
     outcome = await executor(ctx)
-    assert outcome.result["needs_clarification"] and "清晰图片" in outcome.result["response"]
+    assert outcome.result["needs_clarification"] and "核验" in outcome.result["response"]
+    assert "清晰图片" not in outcome.result["response"]
     executor.prepare.assert_not_awaited()
     executor.answer.assert_not_awaited()
 
