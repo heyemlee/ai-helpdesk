@@ -218,6 +218,7 @@ class SQLAgentClient:
         question: str,
         user_id: str = "",
         session_id: str = "",
+        *, lookup_dispatch=None,
     ) -> dict[str, Any]:
         """
         问一次业务数据。
@@ -232,6 +233,8 @@ class SQLAgentClient:
             raise RuntimeError("SQL_AGENT_URL 未配置，委派未启用")
 
         headers = {"X-API-Key": self._api_key} if self._api_key else {}
+        if lookup_dispatch:
+            headers["X-Trace-Id"] = lookup_dispatch["nonce"]
         payload = {
             # impersonate 关闭时一律报服务身份：对面 key 若没有 can_impersonate，
             # 传客户自己的 id 会被 403 挡掉，整条链路直接失效。
@@ -257,6 +260,8 @@ class SQLAgentClient:
         # 逐步骤日志的两个名字（`step_logs` / `steps`）在归一里一并处理，
         # 过渡期两个都认、`steps` 优先——见 core.evidence._steps_field。
         result = normalize_delegation_result(data, run_id=run_id)
+        from app.core.lookup_scope import bind_result
+        bind_result(result, lookup_dispatch)
 
         # 对面的 trace_id 落进本方日志，两个服务的链路才能对起来——出了问题
         # 拿这个 id 直接去 ai-sql-agent 的审计库里查那一次调用。
@@ -283,7 +288,7 @@ class SQLAgentClient:
         return self._a2a
 
     async def query_a2a(self, question: str, user_id: str = "", session_id: str = "",
-                        on_progress=None) -> dict[str, Any]:
+                        on_progress=None, *, lookup_dispatch=None) -> dict[str, Any]:
         """
         走 A2A。Card 说支持流式就先试 stream；服务端在**流打开之前**返回 -32004
         （开关关着）就改发 send——这不算重试，一个令牌都还没扣（契约 §5.4 的豁免）。
@@ -294,14 +299,17 @@ class SQLAgentClient:
         client = self._a2a_client()
         uid = (user_id or self._service_user_id) if self._impersonate else self._service_user_id
         sid = _downstream_session_id(user_id, session_id)
+        trace_args = {"trace_id": lookup_dispatch["nonce"]} if lookup_dispatch else {}
         if await client.streaming_supported():
             try:
-                result = await client.stream(question, uid, sid, on_progress=on_progress)
+                result = await client.stream(question, uid, sid, on_progress=on_progress, **trace_args)
             except StreamUnsupported:
                 logger.info("A2A 服务端返回 -32004（流打开之前），改发 message/send")
-                result = await client.send(question, uid, sid)
+                result = await client.send(question, uid, sid, **trace_args)
         else:
-            result = await client.send(question, uid, sid)
+            result = await client.send(question, uid, sid, **trace_args)
+        from app.core.lookup_scope import bind_result
+        bind_result(result, lookup_dispatch)
         v = assess(result)
         logger.info("sql_agent.a2a 完成 trace_id=%s run_id=%s session=%s route=%s queried_db=%s databases=%s "
                     "status=%s(%s) usable=%s",
@@ -315,7 +323,10 @@ class SQLAgentClient:
         question = params.get("query", "")
         user_id = params.get("user_id", "")
         session_id = params.get("session_id", "")
+        dispatch = context.get("lookup_dispatch") if isinstance(context, dict) else None
         if self._transport == "a2a":
             on_progress = (context or {}).get("progress_cb") if isinstance(context, dict) else None
-            return await self.query_a2a(question, user_id, session_id, on_progress=on_progress)
-        return await self.query(question=question, user_id=user_id, session_id=session_id)
+            return await self.query_a2a(question, user_id, session_id, on_progress=on_progress,
+                                        **({"lookup_dispatch": dispatch} if dispatch else {}))
+        return await self.query(question=question, user_id=user_id, session_id=session_id,
+                                **({"lookup_dispatch": dispatch} if dispatch else {}))

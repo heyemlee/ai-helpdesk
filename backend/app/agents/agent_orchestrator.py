@@ -260,6 +260,7 @@ class Request:
     # Typed query/policy metadata, never sources for delivery promises.
     reference_times: dict[str, list[str]] = field(default_factory=dict)
     fact_evidence: dict[str, Any] | None = None
+    lookup_goal: dict | None = None
     policy_ref_validator: Any = None
     response_language: str = ""
     request_id:  str = field(default_factory=lambda: str(uuid.uuid4())[:8])
@@ -400,7 +401,9 @@ class BaseAgent:
             verified_cells,
         )
         language = req.response_language or language_of(req.message)
-        selected = collect_evidence(req.fact_evidence, req.turn.trajectory if req.turn else [])
+        from app.core.lookup_scope import request_goal
+        goal = request_goal(req)
+        selected = collect_evidence(req.fact_evidence, req.turn.trajectory if req.turn else [], lookup_goal=goal)
         sources, business = selected["knowledge"]["sources"], selected["business_data"]
         if not sources and not business.get("attempted") and not (req.fact_evidence.get("knowledge") or {}).get("attempted"):
             return conversational_only(fallback, language)
@@ -411,7 +414,7 @@ class BaseAgent:
             business.update(evidence=cells, evidence_issues=issues)
         selected["knowledge"]["sources"] = sources
         req.fact_evidence.update(selected)
-        return render_draft(sources, business, language=language, knowledge_state=selected["knowledge"])
+        return render_draft(sources, business, language=language, knowledge_state=selected["knowledge"], lookup_goal=goal)
 
     async def _handle_inner(self, req: Request) -> AgentResponse:
         t0 = time.monotonic()
@@ -872,9 +875,11 @@ class BaseAgent:
         if req.grounding_sources or found_evidence:
             return True
         if req.fact_evidence:
-            from app.core.business_facts import collect_evidence, verified_lookup_receipt
-            selected = collect_evidence(req.fact_evidence, req.turn.trajectory if req.turn else [])
-            return verified_lookup_receipt(selected["business_data"].get("evidence_payload") or {}) is not None
+            from app.core.business_facts import collect_evidence
+            from app.core.lookup_scope import assess_lookup, request_goal
+            goal = request_goal(req)
+            selected = collect_evidence(req.fact_evidence, req.turn.trajectory if req.turn else [], lookup_goal=goal)
+            return assess_lookup(selected["business_data"], goal)["covers_goal"]
         return False
 
     @staticmethod

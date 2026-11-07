@@ -75,10 +75,12 @@ class CaseExecutor:
                                         knowledge_sources=evidence.pop("sources", []), knowledge=evidence,
                                         business_data=prepared.evidence.get("business_data") or {})
                         proposal["intent"] = proposal.get("intent") or "other"
-                        selected = collect_evidence(prepared.evidence, proposal.get("trajectory", []))
+                        goal = getattr(prepared.request, "lookup_goal", None)
+                        proposal["lookup_goal"] = goal
+                        selected = collect_evidence(prepared.evidence, proposal.get("trajectory", []), lookup_goal=goal)
                         proposal["knowledge_sources"] = selected["knowledge"]["sources"]
                         proposal["business_data"] = selected["business_data"]
-                        proposal["response"] = render_draft(proposal["knowledge_sources"], proposal["business_data"], snapshot.get("facts"), language=snapshot.get("language", "zh"), knowledge_state=proposal.get("knowledge"))
+                        proposal["response"] = render_draft(proposal["knowledge_sources"], proposal["business_data"], snapshot.get("facts"), language=snapshot.get("language", "zh"), knowledge_state=proposal.get("knowledge"), lookup_goal=goal)
                         if result.handoff:
                             proposal["handoff_review"] = handoff_review(prepared.request, result, proposal["response"])
                     if not await ctx.commit({"case_proposal": proposal}):

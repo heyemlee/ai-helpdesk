@@ -14,11 +14,14 @@ _ANCHORS = ("order_ref", "order_id", "order_no", "model", "sku", "expected_model
 _NUMERIC = re.compile(r"^[+-]?\d+(?:\.\d+)?$")
 
 
-def collect_evidence(evidence, trajectory=()):
+def collect_evidence(evidence, trajectory=(), *, lookup_goal=None):
     """One reference order shared by the reply, API, checkpoint and review card."""
     knowledge = dict(evidence.get("knowledge") or {})
     sources = list(knowledge.get("sources") or [])
     business = dict(evidence.get("business_data") or {})
+    from app.core.lookup_scope import assess_lookup, is_empty_trace, restrict_lookup
+    if is_empty_trace(business):
+        business = restrict_lookup(business, lookup_goal)
     for entry in trajectory:
         trace = entry.get("trace") or {}
         if entry.get("tool") == "knowledge_search":
@@ -26,12 +29,22 @@ def collect_evidence(evidence, trajectory=()):
             if trace.get("policy_lookup"):
                 knowledge.update({k: trace[k] for k in ("policy_lookup", "lookup_status", "lookup_scope", "degraded") if k in trace})
         elif entry.get("tool") == "order_data_query" and trace.get("attempted"):
-            business = dict(trace)
+            if is_empty_trace(trace) and not assess_lookup(trace, lookup_goal)["covers_goal"]:
+                limited = restrict_lookup(trace, lookup_goal)
+                if business.get("attempted"):
+                    business = {**business, "limited_lookups": [*business.get("limited_lookups", []), *limited["limited_lookups"]]}
+                else:
+                    business = limited
+            else:
+                business = restrict_lookup(trace, lookup_goal) if is_empty_trace(trace) else dict(trace)
     unique = {}
     for source in sources:
         key = json.dumps([source.get(k) for k in ("doc_id", "chunk_id", "policy_revision", "content", "excerpt")], sort_keys=True)
         unique.setdefault(key, source)
     knowledge["sources"] = list(unique.values())
+    if business.get("limited_lookups"):
+        limited = {json.dumps(v, sort_keys=True, ensure_ascii=False, default=str): v for v in business["limited_lookups"]}
+        business["limited_lookups"] = list(limited.values())
     return {"knowledge": knowledge, "business_data": business}
 
 
@@ -278,7 +291,7 @@ def rendered_images(facts):
             and fresh((fact.get("business_source") or {}).get("observed_at"))]
 
 
-def render_draft(knowledge, business, facts=None, language="zh", *, knowledge_state=None):
+def render_draft(knowledge, business, facts=None, language="zh", *, knowledge_state=None, lookup_goal=None):
     """Critical values are program rendered; identifiers live in evidence details."""
     english = language == "en"
     parts = []
@@ -288,9 +301,21 @@ def render_draft(knowledge, business, facts=None, language="zh", *, knowledge_st
             missing = verified_nulls(business.get("evidence_payload") or {})
             parts.append(render_cells([*cells, *missing], language))
         for issue in dict.fromkeys(issues):
-            if issue == "no_data" and not verified_empty(business.get("evidence_payload") or {}):
-                parts.append("The business query was not verified; absence of records is unconfirmed." if english else
-                             "业务查询结果未通过核验，不能据此认定没有记录。")
+            if issue == "no_data":
+                from app.core.lookup_scope import assess_lookup
+                checked = assess_lookup(business, lookup_goal)
+                if checked["covers_goal"]:
+                    scope = checked["scope"]
+                    predicates = ", ".join(f"{c} {op} {v}" for c, op, v in scope["predicates"])
+                    parts.append(("The query succeeded and found no records." if english else "查询成功，未找到记录。")
+                                 + f"\n{scope['database']}.{scope['table']} · {predicates} · {checked['receipt']['steps'][0]['as_of']}")
+                else:
+                    parts.append("The lookup scope for this question is unverified; absence is unconfirmed." if english else
+                                 "当前问题的查询范围尚未核实，不能据此认定没有记录。")
+                continue
+            if issue == "lookup_scope_unproved":
+                parts.append("The lookup scope for this question is unverified; limited tool results cannot answer it." if english else
+                             "当前问题的查询范围尚未核实；有限范围的其他查询结果不能代替本问题的答案。")
                 continue
             if issue in _OUTCOMES:
                 parts.append(_OUTCOMES_EN.get(issue, "The evidence needs verification.") if english else _OUTCOMES[issue])

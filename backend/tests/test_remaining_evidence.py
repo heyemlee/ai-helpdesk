@@ -93,6 +93,7 @@ async def test_projected_null_reaches_model_but_omitted_column_does_not_become_n
 
 @pytest.mark.parametrize("change", ["healthy", "risk", "truncated", "failed"])
 async def test_empty_lookup_needs_a_complete_non_risky_execution(change):
+    from test_lookup_scope import BoundDataTools
     r, data = record("orders-012"), payload("orders-012")
     data["has_risk"] = False
     data["steps"][0]["risk_findings"] = []
@@ -104,10 +105,10 @@ async def test_empty_lookup_needs_a_complete_non_risky_execution(change):
     elif change == "failed":
         data["execution_status"] = "failed"
         data["steps"][0].update(success=False, error="test failure")
-    turn = await prepare(r, dependencies(Tools(data)))
+    turn = await prepare(r, dependencies(BoundDataTools(data)))
     state = turn.evidence["business_data"]
     assert (state.get("lookup_status") == "empty" and state.get("lookup_verified") is True) is (change == "healthy")
-    draft = render_draft([], state)
+    draft = render_draft([], state, lookup_goal=turn.request.lookup_goal)
     assert ("查询成功，未找到记录。" in draft) is (change == "healthy")
 
 

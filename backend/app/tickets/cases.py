@@ -475,6 +475,18 @@ class CaseService:
                 cells, issues = verified_cells(entry.get("evidence_payload") or {})
                 if issues or cells != entry["evidence"]:
                     return False
+            if entry.get("source") == "business_query":
+                from app.core.lookup_scope import assess_lookup, goal_matches, is_empty_trace
+                if is_empty_trace(entry):
+                    goal = entry.get("lookup_goal") or {}
+                    saved = await (conn or self.db).fetchrow(
+                        "SELECT message,case_context FROM agent_runs WHERE run_id=$1 AND instance=$2",
+                        goal.get("owner", ""), self.run_instance)
+                    context = decode(saved["case_context"], {}) if saved else {}
+                    if (not saved or not case or context.get("case_id") != (case.get("case_id") or case.get("id"))
+                            or not goal_matches(goal, saved["message"], goal.get("owner"), context["case_id"])
+                            or not assess_lookup(entry, goal)["covers_goal"]):
+                        return False
             if entry.get("source") == "verified_image":
                 source = entry.get("business_source") or {}
                 if not fresh(source.get("observed_at")) or not entry.get("evidence_id") or entry.get("db_value") is None:
@@ -653,6 +665,17 @@ class CaseService:
                     reason = "material_access_changed"
             refs = list(result.get("knowledge_sources") or [])
             business = result.get("business_data") or {}
+            from app.core.lookup_scope import assess_lookup, goal_matches, is_empty_trace, restrict_lookup
+            if is_empty_trace(business):
+                goal = result.get("lookup_goal")
+                if (not goal_matches(goal, run.message, run.run_id, c["case_id"])
+                        or not assess_lookup(business, goal)["covers_goal"]):
+                    business = restrict_lookup(business, None)
+                    from app.core.business_facts import render_draft
+                    result = {**result, "business_data": business,
+                              "response": render_draft(refs, business, ctx["snapshot"].get("facts"),
+                                                       language=ctx["snapshot"].get("language", "zh"),
+                                                       knowledge_state=result.get("knowledge"))}
             check_evidence = refs + ([{"source": "business_query", **business}] if business else [])
             if "material_reviews" not in result:
                 check_evidence += [f for f in ctx["snapshot"].get("facts", {}).values() if f.get("source") == "verified_image"]

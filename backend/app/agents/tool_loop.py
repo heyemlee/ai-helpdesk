@@ -240,6 +240,7 @@ class TurnContext:
     config: LoopConfig
     intent: str | None = None
     policy_only: bool = False
+    lookup_goal: dict | None = None
     progress_cb: Callable[[dict[str, Any]], Any] | None = None
     memo: dict[tuple, asyncio.Future] = field(default_factory=dict)
     trajectory: list[dict[str, Any]] = field(default_factory=list)

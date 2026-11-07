@@ -1763,6 +1763,7 @@ async def _turn_frames(
                     "turn_id": turn.turn_id, "meta": meta, "routing": state.routing,
                     "shown": "".join(state.shown), "final": encode_result(final),
                     "policy_scope": req.policy_scope.model_dump(mode="json"),
+                    "lookup_goal": orch_req.lookup_goal,
                 }):
                     raise _LeaseLost()
                 state.committed = True
@@ -1882,6 +1883,12 @@ async def _resume_frames(req: ChatRequest, conv_id: str, user_id: str, checkpoin
     if business.get("evidence"):
         cells, issues = verified_cells(business.get("evidence_payload") or {})
         invalid = invalid or bool(issues) or cells != business["evidence"]
+    from app.core.lookup_scope import assess_lookup, goal_matches, is_empty_trace
+    if is_empty_trace(business):
+        goal = checkpoint.get("lookup_goal") or meta.get("lookup_goal")
+        run_scope = current_run()
+        invalid = (invalid or run_scope is None or not goal_matches(goal, req.message, run_scope.run_id)
+                   or not assess_lookup(business, goal)["covers_goal"])
     if invalid:
         safe = "此前依据已失效，请重新查询后核实。"
         # Revoke the answer and its reusable evidence, not the already

@@ -132,10 +132,10 @@ class A2AClient:
 
     # ── message/send ──────────────────────────────────────────────────────
 
-    async def send(self, question: str, user_id: str, session_id: str) -> dict[str, Any]:
+    async def send(self, question: str, user_id: str, session_id: str, *, trace_id="") -> dict[str, Any]:
         body = self._rpc("message/send", question, user_id, session_id)
         async with httpx.AsyncClient(timeout=self._send_timeout_s) as c:
-            r = await c.post(f"{self._base}/a2a", headers=self._headers(), json=body)
+            r = await c.post(f"{self._base}/a2a", headers={**self._headers(), **({"X-Trace-Id": trace_id} if trace_id else {})}, json=body)
         payload = self._parse_json(r)
         task = payload.get("result") or {}
         state = ((task.get("status") or {}).get("state") or "").lower()
@@ -150,9 +150,11 @@ class A2AClient:
     # ── message/stream ────────────────────────────────────────────────────
 
     async def stream(self, question: str, user_id: str, session_id: str,
-                     on_progress: ProgressCallback | None = None) -> dict[str, Any]:
+                     on_progress: ProgressCallback | None = None, *, trace_id="") -> dict[str, Any]:
         body = self._rpc("message/stream", question, user_id, session_id)
         headers = {**self._headers(), "Accept": "text/event-stream"}
+        if trace_id:
+            headers["X-Trace-Id"] = trace_id
         deadline = time.monotonic() + self._hard_s
         artifact: dict[str, Any] | None = None
         terminal: dict[str, Any] | None = None

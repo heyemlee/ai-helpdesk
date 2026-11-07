@@ -13,6 +13,7 @@ import asyncio
 import json
 import logging
 import time
+import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, NamedTuple
@@ -122,6 +123,12 @@ def _case_data_query(message: str) -> str:
             + message)
 
 
+async def _with_lookup_goal(goal, call):
+    from app.core.lookup_scope import bind_goal
+    with bind_goal(goal):
+        return await call
+
+
 async def prepare_turn(
     message: str,
     *,
@@ -145,10 +152,13 @@ async def prepare_turn(
     这一轮有没有查库，推断出来的也不能当事实显示。
     """
     from app.core.business_facts import language_of
+    from app.core.lookup_scope import make_goal
     from app.core.policy_scope import policy_reference_times
+    from app.runs.memo import current_run
     from app.tools.turn_tools import business_grounding, knowledge_grounding
     reference_times = policy_reference_times((case_context or {}).get("policy_scope"))
     response_language = (case_context or {}).get("language") or language_of(message)
+    original_message = message
     prefetch = deps.prefetch
     recorder = events()
     report_stage(progress_cb, STAGE_UNDERSTANDING)
@@ -181,6 +191,13 @@ async def prepare_turn(
             message = issue + "\n" + message
 
     intent_result = await deps.recognize_intent(message, history=history)
+    scope = current_run()
+    lookup_goal = make_goal(original_message, entities=intent_result.entities,
+                            case_refs=(case_context or {}).get("order_refs") or (),
+                            owner=scope.run_id if scope else "inline:" + uuid.uuid4().hex,
+                            case_id=(case_context or {}).get("case_id", ""))
+    lookup_goal["request_message"] = message
+    lookup_goal["queries"] = list(dict.fromkeys([original_message, message]))
     _record_intent(recorder, intent_result)
 
     knowledge_trace: dict[str, Any] = {}
@@ -210,6 +227,7 @@ async def prepare_turn(
             message, intent=intent_result.intent, entities=intent_result.entities)
         if querying and case_has_order:
             order_query = _case_data_query(message)
+        lookup_goal["queries"] = list(dict.fromkeys([*lookup_goal["queries"], order_query]))
         if searching or querying:
             report_stage(progress_cb, STAGE_GATHERING, knowledge=searching, order_data=querying)
         recorder.emit("prefetch_planned", {
@@ -232,7 +250,7 @@ async def prepare_turn(
                 fast_path=intent_result.fast_path,
                 trace=knowledge_trace,
             ), trace=knowledge_trace),
-            _rule_call(recorder, "order_data_query", querying, order_query, latency_ms, prefetch.order_data_context(
+            _rule_call(recorder, "order_data_query", querying, order_query, latency_ms, _with_lookup_goal(lookup_goal, prefetch.order_data_context(
                 order_query,
                 intent=intent_result.intent,
                 entities=intent_result.entities,
@@ -241,7 +259,7 @@ async def prepare_turn(
                 progress_cb=progress_cb,
                 trace=data_trace,
                 raw=raw,
-            ), trace=data_trace, raw=raw),
+            )), trace=data_trace, raw=raw),
         )
     orch_req = build_request(
         message, user_id=user_id, conv_id=conv_id, request_id=request_id, memory_text=memory_text,
@@ -250,6 +268,7 @@ async def prepare_turn(
         knowledge_evidence=knowledge_grounding(knowledge_text, knowledge_trace) if knowledge_used else "",
         order_evidence=business_grounding(order_text, data_trace) if order_is_evidence else "",
         reference_times=policy_reference_times((case_context or {}).get("policy_scope"), knowledge_trace.get("sources", [])),
+        lookup_goal=lookup_goal,
     )
     if deps.loop is not None:
         orch_req.turn = _turn_context(
@@ -259,7 +278,8 @@ async def prepare_turn(
             order_query=order_query,
             latency_ms=latency_ms,
         )
-    evidence_trace = {"knowledge": knowledge_trace, "business_data": data_trace}
+        orch_req.turn.lookup_goal = lookup_goal
+    evidence_trace = {"knowledge": knowledge_trace, "business_data": data_trace, "lookup_goal": lookup_goal}
     orch_req.fact_evidence = evidence_trace
     orch_req.response_language = response_language
     return PreparedTurn(orch_req, intent_result, knowledge_used, evidence_trace)
@@ -280,6 +300,7 @@ def build_request(
     knowledge_evidence: str | None = None,
     order_evidence: str | None = None,
     reference_times: dict[str, list[str]] | None = None,
+    lookup_goal: dict | None = None,
 ) -> Request:
     """
     准备阶段的产物 → 编排请求。上下文是记忆、知识、业务数据三段拼起来的；出处只算检索到的
@@ -304,6 +325,7 @@ def build_request(
         request_id=request_id,
         context=full_context,
         reference_times=reference_times or {},
+        lookup_goal=lookup_goal,
         history=history,
         entities=intent_result.entities,
         intent=intent_result.intent,

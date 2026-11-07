@@ -2,18 +2,20 @@
 import copy
 import hashlib
 import json
+import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 from conftest import make_request, stub_agents
-from test_case_followups import Tools
+from test_lookup_scope import BoundDataTools
 
 from app.agents.agent_orchestrator import BaseAgent
 from app.agents.turn_prep import _case_data_query
 from app.core.answer_policy import AnswerPolicy
 from app.core.business_facts import verified_lookup_receipt
 from app.core.intent_recognizer import IntentCategory
+from app.core.lookup_scope import make_goal
 from app.tools.turn_tools import delegate_order_query
 
 
@@ -25,6 +27,11 @@ def empty():
     data = copy.deepcopy(records()["development-orders-012"]["business_data"]["evidence_payload"])
     data["observed_at"] = datetime.now(UTC).isoformat()
     return data
+
+
+def lookup_goal():
+    message = records()["development-orders-012"]["message"]
+    return make_goal(message, entities={"order_id": [re.search(r"SO-[\w-]+", message)[0]]}, owner="control")
 
 
 @pytest.mark.parametrize("name", list(records()))
@@ -47,17 +54,18 @@ def test_delegation_preserves_requested_grain_without_an_unconditional_internal_
 
 async def test_verified_empty_receipt_binds_exact_source_scope_time_and_execution_identity():
     data, trace = empty(), {}
-    text, is_value_source = await delegate_order_query(Tools(data), "系统是否有记录", user_id="u", conv_id="c", trace=trace)
+    g = lookup_goal()
+    text, is_value_source = await delegate_order_query(BoundDataTools(data), g["message"], user_id="u", conv_id="c", trace=trace, lookup_goal=g)
     receipt = trace["lookup_evidence"]
     assert not is_value_source  # SQL IDs/timestamps must never ground a price or deadline.
-    assert receipt == verified_lookup_receipt(data)
+    assert receipt == verified_lookup_receipt(trace["evidence_payload"])
     step = receipt["steps"][0]
     assert step["database"] == data["steps"][0]["database"]
     assert step["final_sql"] == data["steps"][0]["final_sql"] and step["row_count"] == 0
     assert step["query_hash"] == hashlib.sha256(step["final_sql"].encode()).hexdigest()
     assert json.dumps(receipt, ensure_ascii=False) in text
     assert "存在记录" in text and "已回答该问题" in text
-    assert "不额外要求查明" in text and "审批或明确人工" in text
+    assert "审批或明确人工" in text and trace["lookup_coverage"]["covers_goal"]
 
 
 @pytest.mark.parametrize("change", ["failed", "risk", "truncated", "stale", "partial", "unqueried", "count_bool",
@@ -85,10 +93,11 @@ async def test_incomplete_or_failed_lookup_cannot_receive_absence_grounding(chan
         data["steps"][0]["database"] = {"name": "erp_db"}
     else:
         data["steps"][0]["final_sql"] = {"sql": "SELECT 1"} if change == "sql_object" else 123
-    text, _ = await delegate_order_query(Tools(data), "是否有记录", user_id="u", conv_id="c", trace=trace)
+    g = lookup_goal()
+    text, _ = await delegate_order_query(BoundDataTools(data), g["message"], user_id="u", conv_id="c", trace=trace, lookup_goal=g)
     assert not trace.get("lookup_evidence") and verified_lookup_receipt(data) is None
     assert "已回答该问题" not in text
-    request = make_request("是否有记录", IntentCategory.ORDER_STATUS, fact_evidence={"business_data": trace})
+    request = make_request(g["message"], IntentCategory.ORDER_STATUS, fact_evidence={"business_data": trace}, lookup_goal=g)
     assert not BaseAgent._answer_grounded(request, [])
 
 
@@ -97,9 +106,10 @@ async def test_incomplete_or_failed_lookup_cannot_receive_absence_grounding(chan
 @pytest.mark.parametrize("mode", ["plain", "stream", "tools"])
 async def test_typed_absence_grounding_does_not_cancel_yes_or_authorize_value_claims(orchestrator, monkeypatch, reply, expected, mode):
     data, trace = empty(), {}
-    text, _ = await delegate_order_query(Tools(data), "是否有记录", user_id="u", conv_id="c", trace=trace)
-    request = make_request("系统是否有状态记录", IntentCategory.ORDER_STATUS, context=text,
-                           fact_evidence={"business_data": trace})
+    g = lookup_goal()
+    text, _ = await delegate_order_query(BoundDataTools(data), g["message"], user_id="u", conv_id="c", trace=trace, lookup_goal=g)
+    request = make_request(g["message"], IntentCategory.ORDER_STATUS, context=text,
+                           fact_evidence={"business_data": trace}, lookup_goal=g)
     assert BaseAgent._answer_grounded(request, []) and not request.grounding_sources
     assert AnswerPolicy().enforce("保证2026年11月6日送达，费用998美元。", request.grounding_sources).blocked
     if mode == "stream":
@@ -114,6 +124,7 @@ async def test_typed_absence_grounding_does_not_cancel_yes_or_authorize_value_cl
             from conftest import ScriptedModel, text_step
             from test_agent_tool_loop import _Tools, _turn
             request.turn = _turn(_Tools())
+            request.turn.lookup_goal = g
             for agents in orchestrator._pool.values():
                 for agent in agents:
                     agent._client = ScriptedModel(text_step(reply))
