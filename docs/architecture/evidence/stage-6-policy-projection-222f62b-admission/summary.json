@@ -1,0 +1,35 @@
+{
+  "C1_duration12": {
+    "both_positive_requests_values_sources_and_receipts_valid": true,
+    "matches": 11,
+    "remaining_literal_difference": "Actual role substring处理时限 versus frozen full caption政策处理时限; original mismatch retained",
+    "total": 12
+  },
+  "C1_frozen49": {
+    "matches": 41,
+    "remaining8": "6 unsupported topic aliases plus2 fixture-only epoch/routing interfaces; all original mismatches retained",
+    "total": 49
+  },
+  "ERP_passed": 6,
+  "SQL_passed": 1317,
+  "actual_real54_passed": false,
+  "backend_full_passed": 2740,
+  "build": "passed",
+  "contract_confirmatory_passed": 41,
+  "frontend_passed": 438,
+  "independent_C4_passed": 220,
+  "independent_v10_controls_passed": 79,
+  "main_commit": "e5e453e054bfca746782e6d43e3367a99800d7de",
+  "main_export_files_with_root_historical_docs": 1430,
+  "original_handoff_and_risk_guards_retained": true,
+  "private_commit": "222f62bdedf659ae1e1be9a0d6204969488d0c02",
+  "production_deployed": false,
+  "release_eligible": false,
+  "root_C4_complete_index_sha256": "1ca0b2b25ac9828552971cc594c7b6f6d3766c9ae74dcf368a95a5401c0e2750",
+  "root_admission_sha256": "37f3a54ae0d2e53c53103c4ce52711f69453d2b49952a2cb958b6957c04d85be",
+  "skipped": 0,
+  "source_HMAC_current_document_fullchunks_candidate_set_ACL_lease_durable_modes": "reviewed; initial demonstrated defects retained and corrected before source admission",
+  "source_files": 1426,
+  "status": "local_and_independent_source_admission_only_not_release",
+  "typecheck": "passed"
+}
