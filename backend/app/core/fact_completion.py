@@ -20,7 +20,7 @@ from pathlib import Path
 import sqlglot
 from sqlglot import exp
 
-from app.core.business_facts import display, fresh, language_of, stamp, verified_cells
+from app.core.business_facts import fresh, language_of, render_draft, stamp, verified_cells
 from app.core.lookup_scope import digest
 from app.core.sql_sources import source_columns
 
@@ -297,20 +297,10 @@ def proposal(task, business):
     selected = projection(task, business)
     if selected is None:
         return None
-    lang = task["language"]
-    lines = [("系统记录已核对：订单 " if lang == "zh" else "Verified system records for order ") + display(task["entity"]["order_no"])]
-    groups = list(dict.fromkeys((c["database"], c["step_index"], c["row_index"]) for c in business["evidence"]))
-    for role, cell in selected.items():
-        reference = groups.index((cell["database"], cell["step_index"], cell["row_index"])) + 1
-        cap = FIELDS[role]
-        unit = " " + cell["unit"] if cell["unit"] else ""
-        lines.append(f"- {cap['labels'][lang]}：{display(cell['value'])}{unit} [{reference}]\n"
-                     + ("  数据时点：" if lang == "zh" else "  Data as of: ") + cell["as_of"])
-    if "planned_delivery_date" in selected:
-        lines.append("计划日期不代表实际送达日期。" if lang == "zh" else "The planned date is not the actual delivery date.")
-    lines.append("各项按各自来源时点列出；草稿仍需员工审批。" if lang == "zh" else
-                 "Each value has its own source time. This draft requires staff approval.")
-    response = "\n\n".join(lines)
+    # Scope validation above permits exactly the requested physical columns
+    # and order anchors. Keep every checked row and its original reference;
+    # the shared renderer owns field labels, times, meanings and review prose.
+    response = render_draft([], business, facts=None, language=task["language"])
     receipt = {"version": 1, "task": task, "dispatch_sha256": digest(business["evidence_payload"]["_fact_dispatch"]),
                "coverage": {r: c["evidence_id"] for r, c in selected.items()},
                "body_sha256": hashlib.sha256(response.encode()).hexdigest()}

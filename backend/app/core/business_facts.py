@@ -7,6 +7,7 @@ import re
 from datetime import UTC, datetime
 
 from app.core.evidence import assess
+from app.core.metadata_sources import metadata_columns
 from app.core.sql_sources import source_columns
 
 MAX_AGE_SECONDS = 300
@@ -160,7 +161,7 @@ def verified_column_metadata(step, field):
                 or entry["database"] != step.get("database") or entry["output_field"] != field or not step.get("final_sql")
                 or entry["query_hash"] != hashlib.sha256(step["final_sql"].encode()).hexdigest()):
             return {}
-        if dict(source_columns(step["final_sql"])).get(field) != (entry["table"], entry["column"]):
+        if dict(metadata_columns(step["final_sql"])).get(field) != (entry["table"], entry["column"]):
             return {}
         source = {k: v for k, v in entry.items() if k not in {"schema_revision", "query_hash", "output_field"}}
         revision = hashlib.sha256(json.dumps(source, ensure_ascii=False, sort_keys=True).encode()).hexdigest()

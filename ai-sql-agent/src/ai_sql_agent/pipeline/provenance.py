@@ -167,7 +167,7 @@ def column_metadata(semantic: Any, *, database: str, sql: str, dialect: str, col
     lookup = getattr(semantic, "column_description", None)
     if not callable(lookup):
         return {}
-    mapping = _output_column_sources(sql, dialect, direct_only=True, strict=True)
+    mapping = _metadata_column_sources(sql, dialect)
     result = {}
     for field in columns:
         if field not in mapping or columns.count(field) != 1:
@@ -181,6 +181,16 @@ def column_metadata(semantic: Any, *, database: str, sql: str, dialect: str, col
         result[field] = {**source, "output_field": field, "schema_revision": revision,
                          "query_hash": hashlib.sha256(sql.encode()).hexdigest()}
     return result
+
+
+def _metadata_column_sources(sql, dialect, *, unit_wrappers=False):
+    """Describe UNION positions without extending record/source identity."""
+    from ai_sql_agent.pipeline.metadata_sources import union_column_sources
+
+    compound = union_column_sources(sql, dialect)
+    if compound is not None:
+        return compound
+    return _output_column_sources(sql, dialect, direct_only=not unit_wrappers, strict=not unit_wrappers)
 
 
 def _unwrap_single_column(node, exp):
@@ -212,7 +222,7 @@ def column_units(
     if not callable(lookup):
         return {}
 
-    mapping = _output_column_sources(sql, dialect)
+    mapping = _metadata_column_sources(sql, dialect, unit_wrappers=True)
     units: Dict[str, str] = {}
     for column in columns:
         source = mapping.get(column)

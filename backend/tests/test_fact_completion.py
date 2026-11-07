@@ -172,7 +172,8 @@ def test_same_row_fields_share_the_persisted_source_reference():
     message = "请查询 UNIT-A73 的合同金额及订单状态。"
     task, business = execution(task_for(message), message=message)
     result = proposal(task, business)
-    assert result and result["response"].count("[1]") == 2 and "[2]" not in result["response"]
+    assert result and result["response"].count("[1]") == 1 and "[2]" not in result["response"]
+    assert "- 合同金额:" in result["response"] and "- 订单状态:" in result["response"]
 
 
 @pytest.mark.parametrize("changed", ["many_entities", "human", "pending", "image", "receipt", "wrong_case", "wrong_actor"])
