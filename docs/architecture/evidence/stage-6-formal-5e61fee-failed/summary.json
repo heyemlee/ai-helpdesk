@@ -1,0 +1,240 @@
+{
+  "candidate": {
+    "images": {
+      "backend": "sha256:c16da64da7a0d340ce38f50534b3a29c9ee0374bdf197acf670475be6cfec316",
+      "frontend": "sha256:5bbc4481ad30966952d1f27403170d5172d4181cd6e47ca8ceddfa8582d67fe5",
+      "sql": "sha256:d6a550884d617af675a02667e2e9879f998ff8a45781c6dd6eb5b5346ad3fb77"
+    },
+    "revision": "5e61fee6db635c89cfbf9cdb2144cfe5b76019b9"
+  },
+  "status": "failed_formal_round_not_release_qualified",
+  "summary": {
+    "accuracy": 0.995,
+    "business_resolved": 0,
+    "complete": true,
+    "correct": 199,
+    "error_counts": {},
+    "groups": {
+      "cross_message": {
+        "accuracy": 1.0,
+        "correct": 50,
+        "total": 50
+      },
+      "images": {
+        "accuracy": 1.0,
+        "correct": 40,
+        "total": 40
+      },
+      "orders": {
+        "accuracy": 1.0,
+        "correct": 60,
+        "total": 60
+      },
+      "policies": {
+        "accuracy": 0.98,
+        "correct": 49,
+        "total": 50
+      }
+    },
+    "image_extraction": {
+      "date/all": {
+        "correct": 40,
+        "total": 40
+      },
+      "date/clear": {
+        "correct": 39,
+        "total": 39
+      },
+      "date/unclear": {
+        "correct": 1,
+        "total": 1
+      },
+      "model/all": {
+        "correct": 40,
+        "total": 40
+      },
+      "model/clear": {
+        "correct": 39,
+        "total": 39
+      },
+      "model/unclear": {
+        "correct": 1,
+        "total": 1
+      },
+      "order_ref/all": {
+        "correct": 40,
+        "total": 40
+      },
+      "order_ref/clear": {
+        "correct": 38,
+        "total": 38
+      },
+      "order_ref/missing": {
+        "correct": 1,
+        "total": 1
+      },
+      "order_ref/unclear": {
+        "correct": 1,
+        "total": 1
+      },
+      "quantity/all": {
+        "correct": 40,
+        "total": 40
+      },
+      "quantity/clear": {
+        "correct": 39,
+        "total": 39
+      },
+      "quantity/missing": {
+        "correct": 1,
+        "total": 1
+      },
+      "status/all": {
+        "correct": 40,
+        "total": 40
+      },
+      "status/clear": {
+        "correct": 39,
+        "total": 39
+      },
+      "status/missing": {
+        "correct": 1,
+        "total": 1
+      }
+    },
+    "image_fields": {
+      "date/all": {
+        "correct": 40,
+        "total": 40
+      },
+      "date/conflict": {
+        "correct": 3,
+        "total": 3
+      },
+      "date/matched": {
+        "correct": 32,
+        "total": 32
+      },
+      "date/unclear": {
+        "correct": 1,
+        "total": 1
+      },
+      "date/unverified": {
+        "correct": 4,
+        "total": 4
+      },
+      "model/all": {
+        "correct": 40,
+        "total": 40
+      },
+      "model/conflict": {
+        "correct": 3,
+        "total": 3
+      },
+      "model/matched": {
+        "correct": 33,
+        "total": 33
+      },
+      "model/unclear": {
+        "correct": 1,
+        "total": 1
+      },
+      "model/unverified": {
+        "correct": 3,
+        "total": 3
+      },
+      "order_ref/all": {
+        "correct": 40,
+        "total": 40
+      },
+      "order_ref/conflict": {
+        "correct": 2,
+        "total": 2
+      },
+      "order_ref/matched": {
+        "correct": 31,
+        "total": 31
+      },
+      "order_ref/missing": {
+        "correct": 1,
+        "total": 1
+      },
+      "order_ref/unclear": {
+        "correct": 1,
+        "total": 1
+      },
+      "order_ref/unverified": {
+        "correct": 5,
+        "total": 5
+      },
+      "quantity/all": {
+        "correct": 40,
+        "total": 40
+      },
+      "quantity/conflict": {
+        "correct": 3,
+        "total": 3
+      },
+      "quantity/matched": {
+        "correct": 32,
+        "total": 32
+      },
+      "quantity/missing": {
+        "correct": 1,
+        "total": 1
+      },
+      "quantity/unverified": {
+        "correct": 4,
+        "total": 4
+      },
+      "status/all": {
+        "correct": 40,
+        "total": 40
+      },
+      "status/conflict": {
+        "correct": 3,
+        "total": 3
+      },
+      "status/matched": {
+        "correct": 32,
+        "total": 32
+      },
+      "status/missing": {
+        "correct": 1,
+        "total": 1
+      },
+      "status/unverified": {
+        "correct": 4,
+        "total": 4
+      }
+    },
+    "invariant_violations": 1,
+    "missing": [],
+    "run_terminal": 200,
+    "total": 200
+  },
+  "failures": [
+    {
+      "errors": [],
+      "id": "release-policies-047",
+      "invariant_violations": [
+        "unauthorized_or_duplicate_handoff"
+      ]
+    }
+  ],
+  "new_requests": 1930,
+  "lifetime_usage": {
+    "known_input_tokens": 48331165,
+    "known_output_tokens": 931398,
+    "new_requests": 2495,
+    "requests": 8868,
+    "unknown": 6
+  },
+  "supplier_calls_by_verifier": 0,
+  "all_7_components_passed_for_this_candidate": true,
+  "common_fact_review": "not completed for rejected candidate; automatic common scores recomputed only",
+  "rounds_2_and_3": "not admitted because invariant threshold failed",
+  "source_hash": "1e4ddab5f64d2450f575e189ab9d0aa576a46b5765796b7649147f0b314e3165",
+  "archive_index_sha256": "afe1a34b052f7562692060141bce41e88defc961e67050615ef2656c351e5718",
+  "deployed": false
+}
