@@ -61,6 +61,29 @@ def test_same_metadata_roles_and_financial_topics_keep_their_meaning(text):
 
 
 @pytest.mark.parametrize("text", [
+    "按所选时点2026-11-05T19:59:59Z，某产品的付款手续费的处理时限为77个工作日。",
+    "按所选时点2026-11-05T19:59:59Z，Juniper-47 cabinets 的付款手续费的处理时限为77个工作日。",
+    "按所选时点2026-11-05T19:59:59Z，政策规定付款手续费的处理时限为77个工作日。",
+])
+def test_fee_topic_preserves_product_and_policy_introductions(text):
+    check(text)
+
+
+def test_nominal_processing_caption_is_not_an_instruction_to_process_payment():
+    check("按所选日期2026-11-05T19:59:59Z，政策规定付款手续费办理时限为77个工作日。")
+
+
+@pytest.mark.parametrize("text", [
+    "按所选时点2026-11-05T19:59:59Z，办理付款手续费的处理时限为77个工作日。",
+    "按所选时点2026-11-05T19:59:59Z，我们会支付付款手续费的处理时限为77个工作日。",
+    "按所选时点2026-11-05T19:59:59Z，某产品的付款手续费的处理时限为78个工作日。",
+    "按所选时点2026-11-05T19:59:59Z，政策规定付款手续费处理时限为77个工作日，届时支付费用。",
+])
+def test_fee_introduction_does_not_hide_actions_or_ungrounded_limits(text):
+    check(text, blocked=True)
+
+
+@pytest.mark.parametrize("text", [
     "按所选时点2026-11-05T19:59:59Z，届时发货。",
     "按所选日期2026-11-05T19:59:59Z，于该时点退款。",
     "查询时点：2026-11-05T19:59:59Z，我们会于该时点支付。",
@@ -86,6 +109,8 @@ def test_metadata_does_not_authorize_actions_other_values_or_other_roles(text):
     "按所选日期2026-11-05T19:59:59Z，扣款费用。",
     "请按所选日期2026-11-05T19:59:59Z支付费用。",
     "按所选时点2026-11-05T19:59:59Z，我们会支付手续费。",
+    "按所选时点2026-11-05T19:59:59Z，收取手续费。",
+    "按所选时点2026-11-05T19:59:59Z，扣除费用。",
     "As of: 2026-11-05T19:59:59Z, pay the fee.",
 ])
 def test_same_time_financial_actions_are_not_fee_topics(text):

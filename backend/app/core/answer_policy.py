@@ -280,7 +280,7 @@ _COMMIT_RE = re.compile(
     # "什么时候能做好/送到/装好"和"多少钱"一样是说错就要赔的话术。
     r"|做好|做完|完工|出货|发出|补发|送到|送货|到货|到场|上门|安排好"
     r"|排产|开料|复尺|出图|装好|安装完|返工好|修好"
-    r"|费用|价格|收费|手续费|服务费|运费|邮费|差价|需支付|支付|付款"
+    r"|费用|价格|收费|手续费|服务费|运费|邮费|差价|需支付|支付|付款|扣款|办理"
     r"|只需|只要|仅需|报价|加价|金额为|金额是|一共|总共"
     # ── 英文 ──
     # will/we'll + 动词：英文承诺最常见的形状
@@ -293,6 +293,7 @@ _COMMIT_RE = re.compile(
     r"|(?:ship|deliver|dispatch|install|complete|replace|repair|resolve|schedule)"
     r"(?:s|d|ed|ing|ment|ry)?"
     r"|(?:cost|price|fee|total|surcharge|upcharge|freight|shipping|labor)s?"
+    r"|\b(?:pay|paid)\b"
     r"|no\s+charge|free\s+of\s+charge|at\s+no\s+cost"
     # "Production takes 6 weeks." —— 耗时陈述同样是时效承诺，
     # 主语是流程而不是"我们"，前面那组 will/we'll 覆盖不到。
@@ -309,29 +310,13 @@ _ABSOLUTE_RE = re.compile(
     re.I,
 )
 
-# Metadata may describe a financial policy without promising a payment. Keep
-# this action test separate from the unchanged global amount/time guard: a
-# remaining price or duration still needs its own grounding after timestamps
-# are removed. Payment verbs remain actions, including "pay the fee".
-_REFERENCE_ACTION_RE = re.compile(
-    r"到账|退回|退给|退款|返还|返给|发货|送达|签收|处理完|处理好|解决|完成"
-    r"|开好|开具|生效|恢复|收到|补偿|赔付|减免"
-    r"|做好|做完|完工|出货|发出|补发|送到|送货|到货|到场|上门|安排好"
-    r"|排产|开料|复尺|出图|装好|安装完|返工好|修好"
-    r"|付款|支付|收费|扣款"
-    r"|\b(?:pay|paid|refund\w*|reimburse\w*|credit\w*|charge\w*|ship\w*|deliver\w*|"
-    r"dispatch\w*|send|sent|arrive\w*|issue\w*|complete\w*|finish\w*|install\w*|"
-    r"replace\w*|repair\w*|fix\w*|resolve\w*|schedul\w*|process\w*|receive\w*|"
-    r"takes?|taking|production|fabrication|remake|turnaround|rework)\b",
-    re.I,
-)
-
-# Only an independent, noun-first statement of a fee's processing limit may
-# use a payment word as a topic. "Pay fees" and "we will pay the fee" do not
-# match this grammar. The limit/value itself is never removed or grounded here.
+# Only a complete fee-noun + processing-limit caption may use a payment word
+# as a topic. Product/policy introductions remain in the action check, as do
+# payment or processing instructions outside this nominal phrase. The numeric
+# limit/value itself is never removed or grounded here.
 _REFERENCE_FEE_TOPIC_RE = re.compile(
-    r"(?:^|[，,；;])\s*(?P<topic>(?:付款|支付|收费|扣款)(?:手续费|服务费))"
-    r"(?=(?:的)?(?:处理|办理)(?:时限|期限|时效)\s*(?:为|是|[:：]))"
+    r"(?P<topic>(?:(?:付款|支付|收费|扣款)?(?:手续费|服务费)|费用|价格|运费|邮费|差价)"
+    r"(?:的)?(?:处理|办理)(?:时限|期限|时效)\s*(?:为|是|[:：]))"
 )
 
 # One typed caption vocabulary serves both standalone fields and inline
@@ -621,7 +606,7 @@ class AnswerPolicy:
         for topic in reversed(list(_REFERENCE_FEE_TOPIC_RE.finditer(residue))):
             start, end = topic.span("topic")
             action_text = action_text[:start] + " " * (end - start) + action_text[end:]
-        if _REFERENCE_ACTION_RE.search(action_text) or _ABSOLUTE_RE.search(residue):
+        if _COMMIT_RE.search(action_text) or _ABSOLUTE_RE.search(residue):
             return sentence
         for start, end in sorted(set(spans), reverse=True):
             text = text[:start] + " " * (end - start) + text[end:]
