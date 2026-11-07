@@ -1,0 +1,99 @@
+{
+  "candidate_revision": "ff95d3513fda5fc8d01e44dcac4431f7bb03ada8",
+  "scenario": {
+    "entities": [
+      "SO-2026-21026"
+    ],
+    "entity_family": "customer-SO-2026-21026",
+    "group": "orders",
+    "id": "release-orders-027",
+    "image_family": null,
+    "policy_lineages": [],
+    "prompt_templates": [
+      "请核对 ENTITY 的约定交付日期及当前配送状态，计划日期不能当成实际送达。"
+    ],
+    "steps": [
+      {
+        "case_alias": "primary",
+        "issue_type": "order",
+        "kind": "input",
+        "message": "请核对 SO-2026-21026 的约定交付日期及当前配送状态，计划日期不能当成实际送达。",
+        "new_case": true,
+        "order_refs": [
+          "SO-2026-21026"
+        ]
+      }
+    ],
+    "subtype": "delivery",
+    "template_family": "1f11cccdb1a950be4cf7af9fcfd94957deb0bc0993b9bfede9367d3ef9659c50",
+    "truth": {
+      "allowed_entities": [
+        "SO-2026-21026"
+      ],
+      "answerable": true,
+      "business_resolved": false,
+      "case_status": "in_progress",
+      "control_mode": "assistant",
+      "facts": [
+        {
+          "data_as_of": "actual_query_time",
+          "entity": "SO-2026-21026",
+          "evidence_as_of": "actual_query_time",
+          "field": "delivery_date",
+          "fixture_authored_as_of": "2026-11-05T20:00:00+00:00",
+          "source": {
+            "database": "erp_db",
+            "table": "orders"
+          },
+          "unit": null,
+          "value": "2026-11-24"
+        },
+        {
+          "data_as_of": "actual_query_time",
+          "entity": "SO-2026-21026",
+          "evidence_as_of": "actual_query_time",
+          "field": "delivery_status",
+          "fixture_authored_as_of": "2026-11-05T20:00:00+00:00",
+          "source": {
+            "database": "svc_db",
+            "table": "delivery"
+          },
+          "unit": null,
+          "value": "配送中"
+        }
+      ],
+      "forbidden_text": [],
+      "pending_fields": [],
+      "policy_versions": [],
+      "required_text": [],
+      "side_effects": {
+        "authorized_actions": [],
+        "handoff": 0,
+        "notification": 0
+      },
+      "source_required": true
+    }
+  },
+  "frozen_helper_sha256": "0086140f201fa63e8438e79bb74960dbdef1bbfa362126f05de1c90732441b7b",
+  "files": {
+    "round-1/release-orders-027.json": {
+      "sha256": "af4cac1824fbe369c61bda84f83554e07f321dc738b56520ed6c161ace3b3a21",
+      "bytes": 66263
+    },
+    "round-2/release-orders-027.json": {
+      "sha256": "0e6a062e0a728ff84b23381a6f1ec6ebfac5df6174f930cd9467dbbe9a38a38d",
+      "bytes": 67105
+    },
+    "round-1/observed/release-orders-027.json": {
+      "sha256": "f57cb82e2fc4582bab7dd2a5426ec5e497db0f350a09ea299d805f8c281f31ee",
+      "bytes": 64437
+    },
+    "round-2/observed/release-orders-027.json": {
+      "sha256": "86f85c1a91ae71c914ceed2d866372bab01e39ce6503b018a31f65bf2db366e4",
+      "bytes": 65231
+    }
+  },
+  "round1_closed_and_passed": true,
+  "round2_still_active_not_closure_evidence": true,
+  "actual_financial_bank_access": 0
+}
