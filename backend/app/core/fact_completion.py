@@ -180,7 +180,7 @@ def _scope(step, task, roles):
     """Prove an entire current entity projection, including DISTINCT values.
 
     No row identity or same-snapshot claim follows from DISTINCT. Nulls and
-    multiple values fail below. Filters, limits, history and derived SQL fail.
+    multiple values fail below. Other filters, limits, history and derived SQL fail.
     """
     trees = sqlglot.parse(step["final_sql"])
     if len(trees) != 1 or not isinstance(trees[0], exp.Select):
@@ -213,10 +213,32 @@ def _scope(step, task, roles):
         return False
     where = tree.args.get("where")
     predicate = where.this if where else None
-    if (not isinstance(predicate, exp.EQ) or not isinstance(predicate.this, exp.Column)
-            or predicate.this.name != "order_no" or not isinstance(predicate.expression, exp.Literal)
-            or not predicate.expression.is_string or predicate.expression.this != task["entity"]["order_no"]):
-        return False
+    predicates = [predicate]
+    while predicates:
+        predicate = predicates.pop()
+        if isinstance(predicate, exp.Paren):
+            predicates.append(predicate.this)
+            continue
+        if isinstance(predicate, exp.And):
+            predicates.extend((predicate.this, predicate.expression))
+            continue
+        if isinstance(predicate, exp.EQ):
+            column, value = predicate.this, predicate.expression
+            if isinstance(value, exp.Column):
+                column, value = value, column
+            values = [value]
+        elif isinstance(predicate, exp.In):
+            # Every leaf must prove exactly this entity, even if a broader
+            # set happens to return no other rows. No SQL/receipt rewriting.
+            if any(v is not None and k not in {"this", "expressions"} for k, v in predicate.args.items()):
+                return False
+            column, values = predicate.this, predicate.expressions
+        else:
+            return False
+        if (not isinstance(column, exp.Column) or column.name != "order_no" or not values
+                or any(not isinstance(value, exp.Literal) or not value.is_string
+                       or value.this != task["entity"]["order_no"] for value in values)):
+            return False
     return all((step["database"], table.name) == (FIELDS[r]["source"]["database"], FIELDS[r]["source"]["table"])
                for r in roles)
 
