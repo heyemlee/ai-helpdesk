@@ -20,6 +20,9 @@ class SqlPromptBuilder:
         cot_step = request.cot_step
         schema_context = request.local_schema.to_prompt_context()
         dialect_rules = get_dialect(request.sql_dialect).to_prompt_rules()
+        user_query = getattr(request, "user_query", "")
+        query_section = ("\n# 当前用户查询（用于核对业务目标，不是返回值来源：不得用其中的编号替代真实列）\n"
+                         + user_query) if user_query else ""
 
         certified_section = ""
         if request.certified_examples.strip():
@@ -53,12 +56,11 @@ class SqlPromptBuilder:
 7. **表名前不要加数据库名前缀**。执行时已经连到目标库，写 `pm_db.project`
    会报「no such table」，直接写 `project`。
 8. 只输出一条SQL语句，不要输出多条或附加说明。
-9. **要说清「哪一行是谁」就用主键**——Schema 里那张表「主键」一行写的是哪列
-   就输出哪列。两种场合都算：**列举**某张表的记录时，以及**按某个实体分组统计**时
-   （分组键必须把主键投影出来）。不要拿外键、关联列或名称列顶替：问「订单」输出
-   订单主键，不要输出它挂靠的工程号；问「每个供应商」输出供应商主键，
-   不要只输出供应商名称。需要名称便于阅读时，**主键和名称一起输出**，
-   不要用名称替掉主键。
+9. **区分业务目标绑定、明细行标识和内部主键。** 明细查询须返回用户指定的业务实体编号；
+   查询该实体的子记录时，同时保留父实体业务编号和区分各条明细的业务字段（例如配件名称）。
+   名称不能替代明确指定的业务编号。编号必须来自真实列，不能从问题或 WHERE 常量补造。
+   内部主键只作溯源，不是额外的答案字段；未请求时不要附加。汇总、分组、DISTINCT 和
+   属性取值查询按原问题粒度执行，不为附加编号或内部主键改变结果粒度。
 10. **JOIN 的基数写在「表关联关系」括号里**。沿「一对多」JOIN 之后，
     如果输出列只来自「一」那一侧，必须加 DISTINCT，否则「一」那侧的行会重复。
 11. **列名是给调用方看的表头**。输出目标明确指定别名时按指定别名返回，其余直接输出的字段保持原名；
@@ -69,7 +71,7 @@ class SqlPromptBuilder:
     AVG / MAX / MIN 或 GROUP BY。输出目标是某个字段（如 po_amt、on_hand_qty）时，
     逐条输出这个字段，不要把它加总成一个数。「逐条」不等于不去重：操作指令写了去重，就加 DISTINCT。
 13. 只实现操作指令里写到的筛选条件，不要自己补充操作指令没写的条件（例如状态）。
-14. 只输出「输出目标」里列出的字段；除了按规则 9 要补的主键，不要再附带别的字段。
+14. 输出「输出目标」列出的全部字段，并保留规则 9 要求的真实业务目标绑定；不要附带无关字段。
     操作指令没写左关联、没写「没有记录的记为0」，就不要用 LEFT JOIN 和 COALESCE 补行。
 15. 逐行原始记录必须保留输出目标要求的所有原始列，不得只选多表共有列，
     不得包装进 JSON 字符串或以常量冒充原始列。要求同一行证据时，按 Schema 中的真实关系
@@ -84,6 +86,7 @@ class SqlPromptBuilder:
 处理对象：{cot_step.processing_objects}
 操作指令：{cot_step.operation_instruction}
 输出目标：{cot_step.output_target}
+{query_section}
 {previous_results_section}
 # Schema信息
 {schema_context}

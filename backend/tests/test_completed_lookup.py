@@ -63,7 +63,9 @@ async def test_verified_empty_receipt_binds_exact_source_scope_time_and_executio
     assert step["database"] == data["steps"][0]["database"]
     assert step["final_sql"] == data["steps"][0]["final_sql"] and step["row_count"] == 0
     assert step["query_hash"] == hashlib.sha256(step["final_sql"].encode()).hexdigest()
-    assert json.dumps(receipt, ensure_ascii=False) in text
+    assert trace["lookup_coverage"]["receipt"] == receipt
+    assert step["final_sql"] not in text and step["as_of"] not in text
+    assert "结构化证据" in text and "不是业务日期、交期或承诺" in text
     assert "存在记录" in text and "已回答该问题" in text
     assert "审批或明确人工" in text and trace["lookup_coverage"]["covers_goal"]
 

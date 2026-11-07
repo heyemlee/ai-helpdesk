@@ -99,7 +99,10 @@ async def test_recorded_followups_request_new_rows_without_promoting_history_to_
     tool = loop.tools["order_data_query"]
     # Both forms identify this turn's one operation, never a previous turn's result.
     for text in (query, turn.request.message):
-        assert tool.memo_key(tool.params(query=text)) in loop.memo
+        # Server context may exceed the model tool's public query limit. The
+        # public original question still uses the validated argument shape.
+        args = tool.params.model_construct(query=text) if text == query else tool.params(query=text)
+        assert tool.memo_key(args) in loop.memo
 
 
 async def test_followup_uses_new_observation_instead_of_the_previous_status():

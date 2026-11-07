@@ -136,6 +136,8 @@ class SqlGenerationRequest:
     表名、口径、join 路径都是这家公司的，不是通用示例。
     """
 
+    user_query: str = ""
+
 
 @dataclass
 class SqlGenerationResult:

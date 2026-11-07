@@ -1,0 +1,277 @@
+{
+  "base_snapshot_sha256": "3f240e906133b489274efae767df2bb1cd3d3b72cfa7c028f3a8cad9db23bb63",
+  "reason": "Business target binding and internal-key/grain prompt alignment; user_query added to generation, no model-call or SQL-execution sequence changes.",
+  "changes": {
+    "5": {
+      "before_sha256": "f117912d0ae3b819357ad858777515635e8d59e624c0d2df3e40de6cbfc7cd8f",
+      "after": {
+        "call": "ThinkingModelClient.generate",
+        "args": [
+          {
+            "sha256": "04d5abffed5b3327",
+            "len": 11663
+          }
+        ],
+        "kwargs": {}
+      }
+    },
+    "6": {
+      "before_sha256": "a2bed6016d315150e064a69a29458da71d22d9bdaa72aa8fbbd6c1f723b546db",
+      "after": {
+        "call": "SqlGenerator.generate",
+        "args": [
+          {
+            "__type__": "CotStep",
+            "database": "erp_db",
+            "processing_objects": "supplier.on_time_rate，supplier.supplier_name",
+            "operation_instruction": "在supplier表中筛选on_time_rate低于阈值的记录，输出supplier_name",
+            "output_target": "supplier.supplier_name",
+            "expected_cardinality": "数条"
+          }
+        ],
+        "kwargs": {
+          "certified_examples": "",
+          "previous_results": "",
+          "sql_dialect": "sqlite",
+          "user_query": "查询准时率低于0.9的供应商名称"
+        }
+      }
+    },
+    "7": {
+      "before_sha256": "d4ec41dd310f815ef8b68ff603ef150f277173753bb485129a9f09ca07b9665d",
+      "after": {
+        "call": "CoderModelClient.generate_sql",
+        "args": [
+          {
+            "sha256": "701f68d631228b43",
+            "len": 1919
+          }
+        ],
+        "kwargs": {}
+      }
+    },
+    "16": {
+      "before_sha256": "f607461310af4b2a1d5de728625232032fe1c6752e5ba690134bd788cbe88979",
+      "after": {
+        "call": "ThinkingModelClient.generate",
+        "args": [
+          {
+            "sha256": "158024861c406e21",
+            "len": 10645
+          }
+        ],
+        "kwargs": {}
+      }
+    },
+    "17": {
+      "before_sha256": "ac0a89717dd9f299f5c6fcbecf9a96a3edb499eed3ac4262e0daa8b630035ee9",
+      "after": {
+        "call": "SqlGenerator.generate",
+        "args": [
+          {
+            "__type__": "CotStep",
+            "database": "wms_db",
+            "processing_objects": {
+              "sha256": "301fe022e3536c13",
+              "len": 125
+            },
+            "operation_instruction": "先关联material与stock_snapshot表；再筛选on_hand_qty小于safety_stock的记录；最后输出material_name",
+            "output_target": "material.material_name",
+            "expected_cardinality": "数条"
+          }
+        ],
+        "kwargs": {
+          "certified_examples": "",
+          "previous_results": "",
+          "sql_dialect": "sqlite",
+          "user_query": "查询库存低于安全库存的物料名称"
+        }
+      }
+    },
+    "18": {
+      "before_sha256": "5c49e7a9290a2765aa5489876aad80e0970acf4dce3ea3ee304f744972c849e8",
+      "after": {
+        "call": "CoderModelClient.generate_sql",
+        "args": [
+          {
+            "sha256": "25dee50816ec0063",
+            "len": 2190
+          }
+        ],
+        "kwargs": {}
+      }
+    },
+    "27": {
+      "before_sha256": "77d87a2dc0d7fcd71bce49e58cd9faa91121aed4c649899f2378a1100a8462b5",
+      "after": {
+        "call": "ThinkingModelClient.generate",
+        "args": [
+          {
+            "sha256": "89f7af0c4567b693",
+            "len": 15077
+          }
+        ],
+        "kwargs": {}
+      }
+    },
+    "28": {
+      "before_sha256": "f84b42ca89bea9d8093582a96c117e93a9043c3e358b6c7ae03340de19e55679",
+      "after": {
+        "call": "SqlGenerator.generate",
+        "args": [
+          {
+            "__type__": "CotStep",
+            "database": "pm_db",
+            "processing_objects": "project.actual_cost，project.budget_amt，project.project_code",
+            "operation_instruction": "先在project表中筛选actual_cost大于budget_amt的项目；最后输出这些项目的project_code",
+            "output_target": "project.project_code",
+            "expected_cardinality": "数条"
+          }
+        ],
+        "kwargs": {
+          "certified_examples": "",
+          "previous_results": "",
+          "sql_dialect": "sqlite",
+          "user_query": "查询实际成本超过预算的各个项目的采购总金额"
+        }
+      }
+    },
+    "29": {
+      "before_sha256": "32290c89b9f0a9bcd4063baa3823481e1f5aac517bda8451bf4ed6d13dc0203c",
+      "after": {
+        "call": "CoderModelClient.generate_sql",
+        "args": [
+          {
+            "sha256": "52ba2f273bd92c1a",
+            "len": 1976
+          }
+        ],
+        "kwargs": {}
+      }
+    },
+    "32": {
+      "before_sha256": "305dbd591deea76118d8ebf8b96a323887ad84f08d99e4b2c878f9437f5716a4",
+      "after": {
+        "call": "SqlGenerator.generate",
+        "args": [
+          {
+            "__type__": "CotStep",
+            "database": "erp_db",
+            "processing_objects": "purchase_order.job_no，purchase_order.po_amt",
+            "operation_instruction": "先读取上一步结果中的project_code列表；再按命名约定对应到purchase_order的job_no；最后按job_no汇总po_amt",
+            "output_target": "purchase_order.po_amt",
+            "expected_cardinality": "数条"
+          }
+        ],
+        "kwargs": {
+          "certified_examples": "",
+          "previous_results": {
+            "sha256": "d39c944b5804c108",
+            "len": 240
+          },
+          "sql_dialect": "sqlite",
+          "user_query": "查询实际成本超过预算的各个项目的采购总金额"
+        }
+      }
+    },
+    "33": {
+      "before_sha256": "c1e17f05f4679cc5ee83683b57f6e8cda27f23434a6c69d76da19eeca98df920",
+      "after": {
+        "call": "CoderModelClient.generate_sql",
+        "args": [
+          {
+            "sha256": "fe1270a474881336",
+            "len": 2417
+          }
+        ],
+        "kwargs": {}
+      }
+    },
+    "42": {
+      "before_sha256": "f239bbe0a530aef7dcf9e2ada4c6aae146f4d3ff2c39f61999dac61d05e4ff6e",
+      "after": {
+        "call": "ThinkingModelClient.generate",
+        "args": [
+          {
+            "sha256": "053d5ad5442eb6df",
+            "len": 11209
+          }
+        ],
+        "kwargs": {}
+      }
+    },
+    "43": {
+      "before_sha256": "f84b42ca89bea9d8093582a96c117e93a9043c3e358b6c7ae03340de19e55679",
+      "after": {
+        "call": "SqlGenerator.generate",
+        "args": [
+          {
+            "__type__": "CotStep",
+            "database": "pm_db",
+            "processing_objects": "project.actual_cost，project.budget_amt，project.project_code",
+            "operation_instruction": "先在project表中筛选actual_cost大于budget_amt的项目；最后输出这些项目的project_code",
+            "output_target": "project.project_code",
+            "expected_cardinality": "数条"
+          }
+        ],
+        "kwargs": {
+          "certified_examples": "",
+          "previous_results": "",
+          "sql_dialect": "sqlite",
+          "user_query": "查询采购状态为ordered的采购单号"
+        }
+      }
+    },
+    "44": {
+      "before_sha256": "0429e21cd9a85a8dbb778fd869b1087ecba947034b4226b6bec3a5ac1bfaba87",
+      "after": {
+        "call": "CoderModelClient.generate_sql",
+        "args": [
+          {
+            "sha256": "4eb1efaf846bdbcb",
+            "len": 1842
+          }
+        ],
+        "kwargs": {}
+      }
+    },
+    "47": {
+      "before_sha256": "305dbd591deea76118d8ebf8b96a323887ad84f08d99e4b2c878f9437f5716a4",
+      "after": {
+        "call": "SqlGenerator.generate",
+        "args": [
+          {
+            "__type__": "CotStep",
+            "database": "erp_db",
+            "processing_objects": "purchase_order.job_no，purchase_order.po_amt",
+            "operation_instruction": "先读取上一步结果中的project_code列表；再按命名约定对应到purchase_order的job_no；最后按job_no汇总po_amt",
+            "output_target": "purchase_order.po_amt",
+            "expected_cardinality": "数条"
+          }
+        ],
+        "kwargs": {
+          "certified_examples": "",
+          "previous_results": {
+            "sha256": "d39c944b5804c108",
+            "len": 240
+          },
+          "sql_dialect": "sqlite",
+          "user_query": "查询采购状态为ordered的采购单号"
+        }
+      }
+    },
+    "48": {
+      "before_sha256": "c1e17f05f4679cc5ee83683b57f6e8cda27f23434a6c69d76da19eeca98df920",
+      "after": {
+        "call": "CoderModelClient.generate_sql",
+        "args": [
+          {
+            "sha256": "16808500d2bff74b",
+            "len": 2415
+          }
+        ],
+        "kwargs": {}
+      }
+    }
+  }
+}

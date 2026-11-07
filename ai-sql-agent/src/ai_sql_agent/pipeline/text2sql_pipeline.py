@@ -824,6 +824,7 @@ class Text2SQLPipeline:
                     sql_dialect=step_dialect,
                     previous_results=previous_results,
                     certified_examples=certified_examples,
+                    user_query=effective_query,
                 )
             except RawProjectionError as exc:
                 return self._raw_projection_failure(sql_cot_step, local_schema, exc)
@@ -850,6 +851,7 @@ class Text2SQLPipeline:
                     previous_results=previous_results,
                     step_index=step_index,
                     certified_examples=certified_examples,
+                    user_query=effective_query,
                 )
             except RawProjectionError as exc:
                 return self._raw_projection_failure(sql_cot_step, local_schema, exc)
@@ -1072,6 +1074,7 @@ class Text2SQLPipeline:
         previous_results: str,
         step_index: int,
         certified_examples: str = "",
+        user_query: str = "",
     ):
         """
         校验 SQL 只引用当前步骤目标库的表；越界则带提示重生成一次。
@@ -1122,6 +1125,7 @@ class Text2SQLPipeline:
                 sql_dialect=dialect,
                 previous_results=previous_results,
                 certified_examples=certified_examples,
+                **({"user_query": user_query} if user_query else {}),
             )
         except ModelCallError:
             return sql_result

@@ -49,7 +49,10 @@ def test_same_goal_and_bounded_natural_rewording_are_covered():
         t = trace(g, query=query)
         assert assess_lookup(t, g)["covers_goal"]
         body = render_draft([], t, lookup_goal=g)
-        assert "查询成功，未找到记录。" in body and "erp_db.orders" in body and "CONTROL-A" in body
+        assert "查询成功，未找到记录。" in body
+        assert "erp_db.orders" not in body and "order_no =" not in body
+        assert t["evidence_payload"]["steps"][0]["as_of"] not in body
+        assert assess_lookup(t, g)["scope"]["predicates"] == [("order_no", "=", "CONTROL-A")]
 
 
 def test_current_case_followup_uses_its_selected_case_target():

@@ -305,10 +305,9 @@ def render_draft(knowledge, business, facts=None, language="zh", *, knowledge_st
                 from app.core.lookup_scope import assess_lookup
                 checked = assess_lookup(business, lookup_goal)
                 if checked["covers_goal"]:
-                    scope = checked["scope"]
-                    predicates = ", ".join(f"{c} {op} {v}" for c, op, v in scope["predicates"])
-                    parts.append(("The query succeeded and found no records." if english else "查询成功，未找到记录。")
-                                 + f"\n{scope['database']}.{scope['table']} · {predicates} · {checked['receipt']['steps'][0]['as_of']}")
+                    # Scope and execution details remain in the structured
+                    # receipt; employee-facing prose describes the outcome.
+                    parts.append("The query succeeded and found no records." if english else "查询成功，未找到记录。")
                 else:
                     parts.append("The lookup scope for this question is unverified; absence is unconfirmed." if english else
                                  "当前问题的查询范围尚未核实，不能据此认定没有记录。")

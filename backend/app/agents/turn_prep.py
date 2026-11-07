@@ -112,14 +112,18 @@ def _case_memory(case_context: dict[str, Any]) -> str:
     return "\n".join(parts)
 
 
-def _case_data_query(message: str) -> str:
+def _case_data_query(message: str, *, case_refs=()) -> str:
     """A Case draft requires rows observed in this turn, not a history-only answer."""
+    binding = ("当前工单选择由上游服务处理；本次选定工单关联的业务查询目标为："
+               + json.dumps(list(case_refs), ensure_ascii=False)
+               + "。原文中的工单切换/指代已由该选择定位，不要求业务数据库再次查询客服工单或其流程状态。"
+               "这些编号仅作查询目标，不证明业务记录存在或状态；返回值必须来自本轮真实业务列，不能用目标常量补造。\n") if case_refs else ""
     return ("本轮重新查询业务库（只读），按原问题字段、范围和粒度取数。"
-            "返回所问真实业务标识，不从问题补造。内部主键只作溯源，不因未投影而追加业务条件或改变粒度。"
+            "明细返回所问真实业务标识，不从问题补造；汇总/属性取值按原粒度。内部主键只作溯源，不因未投影而追加业务条件或改变粒度。"
             "SQL只输出业务数据列，来源/单位/定义/时点由服务元数据附带。"
             "历史和工单状态不替代业务证据。"
             "不要求 SQL 服务读取附件、比对图片、标记核对结果；客服回复与业务操作亦由上游完成。"
-            "原始任务背景：\n\n"
+            + binding + "原始任务背景：\n\n"
             + message)
 
 
@@ -226,7 +230,7 @@ async def prepare_turn(
         querying = prefetch.will_query(
             message, intent=intent_result.intent, entities=intent_result.entities)
         if querying and case_has_order:
-            order_query = _case_data_query(message)
+            order_query = _case_data_query(message, case_refs=refs)
         lookup_goal["queries"] = list(dict.fromkeys([*lookup_goal["queries"], order_query]))
         if searching or querying:
             report_stage(progress_cb, STAGE_GATHERING, knowledge=searching, order_data=querying)
