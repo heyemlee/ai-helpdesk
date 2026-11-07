@@ -1,0 +1,46 @@
+{
+  "kind": "failed_complete_development_revalidation_v1",
+  "candidate_revision": "aaee9bc3a810dd9a991d360aab3b827a42b82ffb",
+  "correct": 48,
+  "total": 54,
+  "invariant_violations": 0,
+  "image_extraction_fields_correct": 75,
+  "image_extraction_fields_total": 75,
+  "failed_scenarios": [
+    "development-images-001",
+    "development-images-008",
+    "development-images-012",
+    "development-images-013",
+    "development-images-014",
+    "development-images-015"
+  ],
+  "request_accounting": {
+    "all_requests_have_successful_receipts": false,
+    "known_input_tokens": 2724411,
+    "known_output_tokens": 49602,
+    "ledger_end": 5038,
+    "ledger_start": 4541,
+    "new": 497,
+    "successful_real_receipts": 496,
+    "unknown_usage": 1
+  },
+  "stage6_cumulative": {
+    "known_input_subtotal": 68789423,
+    "known_output_subtotal": 1295698,
+    "reserved_requests": 12550,
+    "unknown_usage_requests": 11
+  },
+  "root_proof": {
+    "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-d/2026-11-06/development-aaee9bc-full/root-development-audit-v7/proof.json",
+    "sha256": "e09da671797c34b808925ec4324bea42f6015ab1bcd57b491a6387a6bb9c6229"
+  },
+  "checkpoint5038": {
+    "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-d/2026-11-06/development-checkpoint-5038.json",
+    "sha256": "9045f9e8e64a4f84cb05b32ad9949bda86166f60c59a6891c56a1a7f5ec2c22c"
+  },
+  "archive_index_sha256": "11444c2e65d686cd55a848dbad27ecaf845c0375f37efc6395b13affef2fb34f",
+  "status": "failed_development_preserved_no_formal_rounds_started",
+  "diagnosis": "Six extracted images reached SQL execution success but unverified result with has_risk. At least images008 generated no requested model column and validation reported semantic_mismatch. Independent root-cause review in progress. One keyword extraction HTTP524 has unknown usage; no refund or automatic retry.",
+  "release_eligible": false,
+  "production_deployed": false
+}
