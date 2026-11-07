@@ -84,7 +84,10 @@ class CaseExecutor:
                     else:
                         await ctx.publish("progress", {"stage": "helpdesk.gathering", "label": "正在核对工单材料"})
                         from app.core.fact_completion import bind_task, make_task
-                        task = make_task(run.message, run.case_context, run.run_id, run.attempt) if self.complete_facts else None
+                        from app.core.policy_completion import make_task as make_policy_task
+                        task = ((make_task(run.message, run.case_context, run.run_id, run.attempt)
+                                 or make_policy_task(run.message, run.case_context, run.run_id, run.attempt))
+                                if self.complete_facts else None)
                         with bind_task(task):
                             prepared = await self.prepare(run, snapshot, ctx.degrade)
                         facts = await self.complete_facts(prepared.request) if self.complete_facts else None
@@ -110,15 +113,16 @@ class CaseExecutor:
                             proposal["lookup_goal"] = goal
                             selected = collect_evidence(prepared.evidence, proposal.get("trajectory", []), lookup_goal=goal)
                             proposal["knowledge_sources"] = selected["knowledge"]["sources"]
+                            proposal["knowledge"] = {k: v for k, v in selected["knowledge"].items() if k != "sources"}
                             proposal["business_data"] = selected["business_data"]
                             proposal["response"] = render_draft(proposal["knowledge_sources"], proposal["business_data"], snapshot.get("facts"), language=snapshot.get("language", "zh"), knowledge_state=proposal.get("knowledge"), lookup_goal=goal)
                             if result.handoff:
                                 proposal["handoff_review"] = handoff_review(prepared.request, result, proposal["response"])
                     phase = "checkpoint"
                     checkpoint = {"case_proposal": proposal}
-                    from app.core.fact_completion import ORIGIN
-                    if proposal.get("answer_origin") == ORIGIN:
-                        checkpoint["case_proposal_origin"] = ORIGIN
+                    from app.core.fact_completion import ORIGINS
+                    if proposal.get("answer_origin") in ORIGINS:
+                        checkpoint["case_proposal_origin"] = proposal["answer_origin"]
                     if not await ctx.commit(checkpoint):
                         raise RetryRun("Case proposal lost its lease")
                 # Old clarification checkpoints may predate failure reasons.

@@ -261,7 +261,7 @@ def _result(evs, turn_id, conv_id, routing, started) -> dict[str, Any]:
                                         "original_handoff_reason": body.get("original_handoff_reason", "")}
     if data.get("answer_model_invoked") is False:
         result["answer_model_invoked"] = False
-        if data.get("answer_origin") == "verified_fact_projection":
+        if data.get("answer_origin") in {"verified_fact_projection", "verified_policy_projection"}:
             result["answer_origin"] = data["answer_origin"]
         result.pop("answer_confidence", None)
     return result

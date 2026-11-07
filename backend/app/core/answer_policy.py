@@ -329,6 +329,35 @@ _REFERENCE_TIME_LABELS = {
                         r"expires at|expiry date",
 }
 
+# Closed metadata-comparison grammar, never a general negation/date exemption.
+# An omitted applicability subject needs the immediately preceding, complete
+# selected-query-time clause. Unparsed prose or an action cannot join a match.
+_APPLICABILITY = r"(?:以上|上述|该|本|此|其)?(?:政策|规则|条款|版本)?的?(?:适用性|是否适用|有效性|是否有效)"
+_ASOF_DECISION = r"(?:来)?(?:判断|判定|确定|核定)"
+_ASOF_BY = r"(?:按|以|根据|依据)"
+_ASOF_NEGATION = r"(?:并非|而非|而不是|不是|不能|不可|不应当?|不要|不)"
+_CURRENT_DATE = r"(?:今天|今日)(?:的?(?:日期|时点))?"
+_SELECTED_TIME = rf"(?:{_REFERENCE_TIME_LABELS['policy_as_of']})"
+_EN_APPLICABILITY = r"(?:policy\s+applicability|applicability|whether\s+(?:the\s+)?policy\s+applies)"
+_ASOF_POSITIVE_RE = re.compile(
+    rf"(?:{_APPLICABILITY}(?:应当?|需要|须|必须|仅|只)?{_ASOF_BY}{_SELECTED_TIME}(?:{_ASOF_DECISION})?"
+    rf"|(?:应当?|需要|须|必须|仅|只)?{_ASOF_BY}{_SELECTED_TIME}{_ASOF_DECISION}{_APPLICABILITY}"
+    rf"|(?:判断|判定)依据(?:是|为){_SELECTED_TIME}"
+    r"|(?:本次|此次)?(?:只|仅)?(?:说明|介绍|查阅)(?:历史|所选|指定)(?:查询)?(?:时点|日期)的?(?:适用|有效)政策"
+    r"|(?:(?:this|the)\s+)?policy\s+selection\s+uses\s+(?:the\s+)?(?:selected|requested)\s+(?:historical\s+)?timestamp"
+    rf"|{_EN_APPLICABILITY}\s+(?:is\s+)?(?:determined|assessed|evaluated|judged)\s+"
+    r"(?:by|at|using)\s+(?:the\s+)?(?:selected\s+(?:(?:query|as-of)\s+)?(?:date|time)|query\s+time))", re.I)
+_ASOF_NEGATIVE_RE = re.compile(
+    rf"(?:{_ASOF_NEGATION}{_ASOF_BY}{_CURRENT_DATE}{_ASOF_DECISION}{_APPLICABILITY}"
+    rf"|{_APPLICABILITY}{_ASOF_NEGATION}{_ASOF_BY}{_CURRENT_DATE}{_ASOF_DECISION}"
+    rf"|(?:do\s+not|don't)\s+use\s+today(?:'s\s+date)?\s+to\s+"
+    rf"(?:determine|assess|evaluate|judge)\s+{_EN_APPLICABILITY})", re.I)
+_ASOF_ELLIPSIS_RE = re.compile(
+    rf"(?:{_ASOF_NEGATION}(?:{_ASOF_BY})?{_CURRENT_DATE}(?:{_ASOF_DECISION})?"
+    r"|(?:and\s+)?(?:not|rather\s+than)\s+(?:(?:by|at|using)\s+)?today(?:'s\s+date)?)", re.I)
+
+_ASOF_INLINE_RE = re.compile(rf"(?:{_ASOF_POSITIVE_RE.pattern})\s*(?:{_ASOF_ELLIPSIS_RE.pattern})", re.I)
+
 # 对冲措辞：SOP 要求的保守表达，命中即认为 Agent 已经守住了边界
 _HEDGE_RE = re.compile(
     r"通常|一般|预计|大约|大概|可能|不确定|视.{0,8}而定|以.{0,14}为准|具体以"
@@ -518,15 +547,7 @@ class AnswerPolicy:
                 rebuilt.append(chunk)
                 continue
 
-            checked_sentence = sentence
-            if (reference_times or {}).get("policy_as_of"):
-                # A warning not to use today's clock for a historical policy
-                # lookup is not a promise to perform a business action today.
-                # Remove only this closed comparison; every other date, amount
-                # and action in the same sentence is still checked normally.
-                checked_sentence = re.sub(
-                    r"(?:不能|不可|不应|不要)(?:按|以|根据|依据)(?:今天|今日)的?日期"
-                    r"(?:来)?(?:判断|判定)(?:其|该政策|本政策)?是否适用", "", sentence)
+            checked_sentence = self._without_asof_comparisons(sentence, reference_times or {})
             checked_sentence = self._without_reference_times(checked_sentence, reference_times or {})
             hit = None if self._reference_time(sentence, reference_times or {}) else self._check_sentence(checked_sentence, normalized_sources)
             if hit is None:
@@ -561,6 +582,38 @@ class AnswerPolicy:
         }
 
     # ── 内部实现 ──────────────────────────────────────────────────────────────
+
+    def _without_asof_comparisons(self, sentence, reference_times):
+        """Exclude proven applicability comparisons, retaining every other claim."""
+        values = reference_times.get("policy_as_of", ())
+        if not isinstance(values, (list, tuple)):
+            return sentence
+        valid = False
+        for value in values:
+            try:
+                valid |= datetime.fromisoformat(value.replace("Z", "+00:00")).tzinfo is not None
+            except (ValueError, TypeError, AttributeError):
+                continue
+        if not valid:
+            return sentence
+        text = re.sub(r"[*`]", "", sentence)
+        spans, previous_selected = [], False
+        for match in re.finditer(r"[^，,；;]+", text):
+            clause = match[0].strip().rstrip("。.!！?？")
+            if (_ASOF_NEGATIVE_RE.fullmatch(clause) or _ASOF_INLINE_RE.fullmatch(clause)
+                    or previous_selected and _ASOF_ELLIPSIS_RE.fullmatch(clause)):
+                spans.append(match.span())
+            previous_selected = bool(_ASOF_POSITIVE_RE.fullmatch(clause))
+        residue = text
+        for start, end in reversed(spans):
+            residue = residue[:start] + " " * (end - start) + residue[end:]
+        # An action sharing an implicit clock cannot borrow metadata authority.
+        # Independent amounts/dates still go through the unchanged value checks.
+        if ((_ABSOLUTE_RE.search(residue) or _COMMIT_RE.search(residue)) and (
+                not (_PRICE_RE.search(residue) or _LEAD_TIME_RE.search(residue))
+                or re.search(r"届时|该时点|上述时间|at\s+that\s+time", residue, re.I))):
+            return sentence
+        return residue
 
     def _without_reference_times(self, sentence, reference_times):
         """Remove only source-checked metadata timestamp spans; check the rest.

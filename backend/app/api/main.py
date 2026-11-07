@@ -1302,6 +1302,7 @@ async def _prepare_request(req: "ChatRequest", conv_id: str, user_id: str, progr
             outage_reason=_model_unavailable_reason,
             prefetch=prefetch,
             loop=_loop_setup(prefetch, degrade),
+            bind_policy_projection=getattr(_knowledge_base, "bind_policy_projection", None),
         ),
         progress_cb=progress_cb,
         case_context=case_context,

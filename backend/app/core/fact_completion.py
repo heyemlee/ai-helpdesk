@@ -25,6 +25,7 @@ from app.core.lookup_scope import digest
 from app.core.sql_sources import source_columns
 
 ORIGIN = "verified_fact_projection"
+ORIGINS = {ORIGIN, "verified_policy_projection"}
 CATALOG = json.loads(Path(__file__).with_name("fact_capabilities.json").read_text())
 CATALOG_REVISION = digest(CATALOG)
 FIELDS = CATALOG["fields"]
@@ -77,11 +78,20 @@ def fact_checkpoint(value):
 
 
 def valid_fact_header(value):
-    return bool(isinstance(value, dict) and value.get("answer_origin") == ORIGIN
+    if isinstance(value, dict) and value.get("answer_origin") == "verified_policy_projection":
+        from app.core.policy_completion import blocked_evidence
+        if any(blocked_evidence(item) for item in (value, value.get("knowledge"), value.get("business_data"))):
+            return False
+    return bool(isinstance(value, dict) and value.get("answer_origin") in ORIGINS
                 and value.get("answer_model_invoked") is False and isinstance(value.get("fact_receipt"), dict)
                 and value["fact_receipt"] and value.get("handoff") is False and value.get("escalated") is False
-                and not any(value.get(k) for k in ("needs_clarification", "trajectory", "knowledge_sources", "policy_violations"))
-                and not any(k in value for k in ("answer_confidence", "answer_handoff_declared", "handoff_review")))
+                and not any(value.get(k) for k in ("needs_clarification", "trajectory", "policy_violations"))
+                and not any(k in value for k in ("answer_confidence", "answer_handoff_declared", "handoff_review"))
+                and ((value["answer_origin"] == ORIGIN and not value.get("knowledge_sources")
+                      and "kind" not in value["fact_receipt"])
+                     or (value["answer_origin"] == "verified_policy_projection"
+                         and isinstance(value.get("knowledge_sources"), list) and value["knowledge_sources"]
+                         and value["fact_receipt"].get("kind") == "policy_excerpt_v1")))
 
 
 def make_task(message, context, run_id, attempt):

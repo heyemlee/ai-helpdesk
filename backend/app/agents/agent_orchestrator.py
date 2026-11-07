@@ -1561,7 +1561,16 @@ class AgentOrchestrator:
         if decision is None or knowledge.get("degraded") or knowledge.get("evidence_ok") is False:
             return None
         business = evidence.get("business_data") or {}
-        result = proposal(retained_execution_task(task, business), business)
+        from app.core import policy_completion as pc
+        if task.get("kind") == pc.KIND:
+            if (business.get("attempted") or pc.blocked_evidence(evidence)
+                    or pc.blocked_evidence(knowledge) or pc.blocked_evidence(business)):
+                return None
+            result = pc.proposal(task, knowledge)
+        elif "kind" in task:
+            return None
+        else:
+            result = proposal(retained_execution_task(task, business), business)
         if result:
             result.update(routing_reason=decision.reason, routing_confidence=decision.confidence,
                           primary_agent=decision.primary_agent.value, supporting_agents=[])

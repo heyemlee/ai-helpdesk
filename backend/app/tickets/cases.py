@@ -467,9 +467,63 @@ class CaseService:
             await self._event(conn, c, body.operation, actor.actor_id, {"status": c["status"], "reason": body.reason})
         return await self.get(actor, case_id)
 
+    async def _policy_evidence_valid(self, evidence, *, conn, case, body, run_id,
+                                     saved, applied, checkpoint, completing, lock):
+        from app.core import policy_completion as pc
+        from app.core.fact_completion import valid_fact_header
+        from app.core.policy_scope import PolicyScope
+        entries = [e for e in evidence if e.get("source") == "fact_projection"]
+        refs = [e for e in evidence if e.get("doc_id")]
+        try:
+            if (len(entries) != 1 or not refs or len(evidence) != len(refs) + 1 or not saved or not case
+                    or self.knowledge_base is None or self.actors is None):
+                return False
+            receipt = entries[0]["receipt"]
+            task = receipt["task"]
+            context = decode(saved["case_context"], {})
+            case_id = case.get("case_id") or case.get("id")
+            proposal = checkpoint.get("case_proposal") or {}
+            if (receipt.get("kind") != pc.KIND or task.get("run_id") != run_id
+                    or context.get("case_id") != case_id or task.get("instance") != case.get("instance")
+                    or case.get("control_mode") != "assistant"
+                    or task.get("case_version") != case["version"] - (0 if completing else 1)
+                    or task.get("control_version") != case["control_version"]
+                    or task.get("scope") != PolicyScope.model_validate(decode(case.get("policy_scope"), {})).model_dump(mode="json")
+                    or checkpoint.get("case_proposal_origin") != pc.ORIGIN or not valid_fact_header(proposal)
+                    or proposal["fact_receipt"] != receipt or proposal["response"] != body
+                    or proposal.get("knowledge_sources") != refs or proposal.get("business_data")):
+                return False
+            if pc.projection(task, {**proposal.get("knowledge", {}), "sources": refs}) is None:
+                return False
+            if task["execution_attempt"] != saved["attempt"] and proposal.get("fact_receipt") != receipt:
+                return False
+            if not completing:
+                if not applied or applied["applied"] is not True or applied["case_id"] != case_id:
+                    return False
+                for value in (decode(saved["result"], {}), decode(applied["result"], {})):
+                    if (not valid_fact_header(value) or value.get("answer_origin") != pc.ORIGIN
+                            or value["fact_receipt"] != receipt or value.get("response") != body
+                            or value.get("knowledge_sources") != refs or value.get("business_data")
+                            or value.get("knowledge") != proposal.get("knowledge")
+                            or value.get("case_id") != case_id or value.get("case_applied") is not True
+                            or (value.get("run") or {}).get("run_id") != run_id
+                            or value.get("case_version") != case["version"]
+                            or value.get("control_version") != case["control_version"]):
+                        return False
+            actor = await self.actors.from_snapshot(context, conn=conn)
+            actor.require_policy(task["scope"])
+            if not pc.receipt_valid(receipt, refs, message=saved["message"], context=context,
+                                    run_id=run_id, attempt=saved["attempt"], body=body):
+                return False
+            return await self.knowledge_base.validate_policy_projection(receipt, refs, conn=conn, lock=lock)
+        except (KeyError, TypeError, ValueError, AttributeError, HTTPException):
+            return False
+
     async def _evidence_valid(self, evidence, *, conn=None, actor=None, case=None, lock=True, body=None,
                               run_id=None, completing=False):
         from app.core.fact_completion import ORIGIN, fact_checkpoint, fact_mode, receipt_valid, valid_fact_header
+        if not isinstance(evidence, list) or any(not isinstance(entry, dict) for entry in evidence):
+            return False
         fact_entries = [e for e in evidence if e.get("source") == "fact_projection"]
         saved = applied = None
         if run_id:
@@ -482,6 +536,15 @@ class CaseService:
         run_result = decode(saved["result"], {}) if saved else {}
         applied_result = decode(applied["result"], {}) if applied else {}
         checkpoint = decode(saved["checkpoint"], {}) if saved else {}
+        from app.core.policy_completion import ORIGIN as POLICY_ORIGIN
+        policy_mode = (checkpoint.get("case_proposal_origin") == POLICY_ORIGIN
+                       or any(value.get("answer_origin") == POLICY_ORIGIN
+                              for value in (run_result, applied_result, checkpoint.get("case_proposal") or {}))
+                       or any(isinstance(entry.get("receipt"), dict) and entry["receipt"].get("kind") is not None
+                              for entry in fact_entries))
+        if policy_mode:
+            return await self._policy_evidence_valid(evidence, conn=conn, case=case, body=body, run_id=run_id,
+                saved=saved, applied=applied, checkpoint=checkpoint, completing=completing, lock=lock)
         # Mode authority is outside the editable evidence list. Either durable
         # result can require the fact receipt even if every evidence item is lost.
         if fact_entries or fact_mode(run_result) or fact_mode(applied_result) or fact_checkpoint(checkpoint):
@@ -741,12 +804,13 @@ class CaseService:
                                                        language=ctx["snapshot"].get("language", "zh"),
                                                        knowledge_state=result.get("knowledge"))}
             check_evidence = refs + ([{"source": "business_query", **business}] if business else [])
-            from app.core.fact_completion import ORIGIN, fact_checkpoint, fact_mode, valid_fact_header
+            from app.core.fact_completion import ORIGINS, fact_checkpoint, fact_mode, valid_fact_header
             saved_checkpoint = decode(r["checkpoint"], {}) or {}
             fact_result = fact_mode(result) or fact_checkpoint(saved_checkpoint)
             if fact_result:
                 if (not valid_fact_header(result) or dead
-                        or ("case_proposal_origin" in saved_checkpoint and saved_checkpoint["case_proposal_origin"] != ORIGIN)):
+                        or ("case_proposal_origin" in saved_checkpoint
+                            and saved_checkpoint["case_proposal_origin"] != result.get("answer_origin"))):
                     reason = reason or "draft_evidence_stale"
                 check_evidence.append({"source": "fact_projection", "receipt": result.get("fact_receipt")})
             if "material_reviews" not in result:
@@ -767,7 +831,7 @@ class CaseService:
                 if fact_result:
                     payload.pop("answer_origin", None)
                     payload.pop("fact_receipt", None)
-                    if saved_checkpoint.get("case_proposal_origin") == ORIGIN:
+                    if saved_checkpoint.get("case_proposal_origin") in ORIGINS:
                         # The trusted envelope records that no answer model ran,
                         # even when all inner header fields were lost. Preserve
                         # that execution fact without restoring a valid origin.

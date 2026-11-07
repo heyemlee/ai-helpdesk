@@ -413,6 +413,34 @@ class LocalStore:
                 return cur.rowcount > 0
         return await asyncio.to_thread(_w)
 
+    async def kb_fact_document(self, doc_id, *, conn=None, lock=True):
+        """Read one policy and every actual chunk in the same local snapshot."""
+        def read():
+            with self._lock:
+                row = self._db.execute("SELECT * FROM policy_documents WHERE id=?", (doc_id,)).fetchone()
+                chunks = self._db.execute(
+                    "SELECT id,doc_id,title,content,chunk_index,total_chunks FROM policy_chunks "
+                    "WHERE doc_id=? ORDER BY chunk_index,id", (doc_id,)).fetchall()
+                return {"document": dict(row), "chunks": [dict(c) for c in chunks]} if row else None
+        return await asyncio.to_thread(read)
+
+    async def kb_fact_candidates(self, scope, *, conn=None, lock=True):
+        """Read the complete applicable set without retrieval ranking or LIMIT."""
+        predicate, args = sql_filter(scope)
+        def read():
+            with self._lock:
+                self._db.execute("SAVEPOINT policy_fact_candidates")
+                try:
+                    rows = self._db.execute(
+                        "SELECT d.* FROM policy_documents d WHERE " + predicate + " ORDER BY d.id", args).fetchall()
+                    records = [{"document": dict(row), "chunks": [dict(c) for c in self._db.execute(
+                        "SELECT id,doc_id,title,content,chunk_index,total_chunks FROM policy_chunks "
+                        "WHERE doc_id=? ORDER BY chunk_index,id", (row["id"],)).fetchall()]} for row in rows]
+                    return records
+                finally:
+                    self._db.execute("RELEASE SAVEPOINT policy_fact_candidates")
+        return await asyncio.to_thread(read)
+
     async def kb_doc_get(self, doc_id: str) -> dict[str, Any] | None:
         def _q() -> dict[str, Any] | None:
             with self._lock:
@@ -904,6 +932,40 @@ class PgStore:
                 doc.get("category", ""), json.dumps(doc.get("policy", {})), doc.get("policy_revision", "legacy"),
             )
             return row is not None
+
+    async def kb_fact_document(self, doc_id, *, conn=None, lock=True):
+        """Lock authoritative document and chunk rows for projection adoption."""
+        if conn is None:
+            async with self._db.transaction() as connection:
+                return await self.kb_fact_document(doc_id, conn=connection, lock=lock)
+        suffix = " FOR SHARE" if lock else ""
+        row = await conn.fetchrow("SELECT * FROM policy_documents WHERE id=$1" + suffix, doc_id)
+        chunks = await conn.fetch(
+            "SELECT id,doc_id,title,content,chunk_index,total_chunks FROM policy_chunks "
+            "WHERE doc_id=$1 ORDER BY chunk_index,id" + suffix, doc_id)
+        return {"document": dict(row), "chunks": [dict(c) for c in chunks]} if row else None
+
+    async def kb_fact_candidates(self, scope, *, conn=None, lock=True):
+        """Protect the applicable set, including absent rows, until adoption commits."""
+        if conn is None:
+            async with self._db.transaction() as connection:
+                if not lock:
+                    await connection.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+                return await self.kb_fact_candidates(scope, conn=connection, lock=lock)
+        if lock:
+            # Row locks cannot prevent a second applicable version being inserted.
+            # Match deletion's chunks-before-documents order; Case/actor locks are
+            # already held by the caller. GET uses its read-only snapshot instead.
+            await conn.execute("LOCK TABLE policy_chunks, policy_documents IN SHARE MODE")
+        predicate, args = sql_filter(scope, postgres=True)
+        rows = await conn.fetch("SELECT d.* FROM policy_documents d WHERE " + predicate + " ORDER BY d.id", *args)
+        chunks = await conn.fetch(
+            "SELECT id,doc_id,title,content,chunk_index,total_chunks FROM policy_chunks "
+            "WHERE doc_id=ANY($1::text[]) ORDER BY doc_id,chunk_index,id", [r["id"] for r in rows])
+        grouped = {row["id"]: [] for row in rows}
+        for chunk in chunks:
+            grouped[chunk["doc_id"]].append(dict(chunk))
+        return [{"document": dict(row), "chunks": grouped[row["id"]]} for row in rows]
 
     async def kb_doc_get(self, doc_id: str) -> dict[str, Any] | None:
         row = await self._db.fetchrow(

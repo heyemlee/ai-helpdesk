@@ -74,6 +74,7 @@ class TurnDeps:
     # 工具循环：打开时是这一轮能用的工具和边界，编排请求上会挂一份 TurnContext；
     # 关着（默认）为 None，专家照旧只做一次生成
     loop: LoopSetup | None = None
+    bind_policy_projection: Callable[..., Awaitable[Any]] | None = None
 
 
 class PreparedTurn(NamedTuple):
@@ -233,6 +234,11 @@ async def prepare_turn(
         searching = prefetch.will_search(message, intent=intent_result.intent)
         querying = prefetch.will_query(
             message, intent=intent_result.intent, entities=intent_result.entities)
+        from app.core.policy_completion import KIND as POLICY_KIND
+        if task and task.get("kind") == POLICY_KIND:
+            # The original message was closed to policy-document fields before
+            # intent/rewrite. A policy subject is not an order/payment lookup.
+            querying = False
         if querying and case_has_order:
             order_query = _case_data_query(message, case_refs=refs)
         lookup_goal["queries"] = list(dict.fromkeys([*lookup_goal["queries"], order_query]))
@@ -269,6 +275,15 @@ async def prepare_turn(
                 raw=raw,
             )), trace=data_trace, raw=raw),
         )
+    from app.core.policy_completion import KIND as POLICY_KIND
+    if task and task.get("kind") == POLICY_KIND and deps.bind_policy_projection:
+        bound = await deps.bind_policy_projection(task, knowledge_trace)
+        if bound:
+            knowledge_trace = bound
+        if knowledge_trace.get("lookup_status") == "conflict":
+            from app.core.business_facts import render_draft
+            knowledge_text = render_draft([], {}, language=response_language, knowledge_state=knowledge_trace)
+            knowledge_used = False
     orch_req = build_request(
         message, user_id=user_id, conv_id=conv_id, request_id=request_id, memory_text=memory_text,
         history=history, intent_result=intent_result, knowledge_text=knowledge_text,

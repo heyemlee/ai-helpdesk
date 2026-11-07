@@ -18,6 +18,7 @@ _NUMERIC = re.compile(r"^[+-]?\d+(?:\.\d+)?$")
 def collect_evidence(evidence, trajectory=(), *, lookup_goal=None):
     """One reference order shared by the reply, API, checkpoint and review card."""
     knowledge = dict(evidence.get("knowledge") or {})
+    policy_conflict = dict(knowledge) if knowledge.get("policy_lookup") and knowledge.get("lookup_status") == "conflict" else None
     sources = list(knowledge.get("sources") or [])
     business = dict(evidence.get("business_data") or {})
     from app.core.lookup_scope import assess_lookup, is_empty_trace, restrict_lookup
@@ -27,6 +28,8 @@ def collect_evidence(evidence, trajectory=(), *, lookup_goal=None):
         trace = entry.get("trace") or {}
         if entry.get("tool") == "knowledge_search":
             sources.extend(trace.get("sources") or [])
+            if trace.get("policy_lookup") and trace.get("lookup_status") == "conflict":
+                policy_conflict = trace
             if trace.get("policy_lookup"):
                 knowledge.update({k: trace[k] for k in ("policy_lookup", "lookup_status", "lookup_scope", "degraded") if k in trace})
         elif entry.get("tool") == "order_data_query" and trace.get("attempted"):
@@ -43,6 +46,12 @@ def collect_evidence(evidence, trajectory=(), *, lookup_goal=None):
         key = json.dumps([source.get(k) for k in ("doc_id", "chunk_id", "policy_revision", "content", "excerpt")], sort_keys=True)
         unique.setdefault(key, source)
     knowledge["sources"] = list(unique.values())
+    if policy_conflict is not None:
+        # A later limited retrieval cannot resolve a known catalog ambiguity.
+        knowledge.update({k: policy_conflict[k] for k in
+                          ("policy_lookup", "lookup_status", "evidence_ok", "evidence_issues", "conflicts")
+                          if k in policy_conflict})
+        knowledge["sources"] = []
     if business.get("limited_lookups"):
         limited = {json.dumps(v, sort_keys=True, ensure_ascii=False, default=str): v for v in business["limited_lookups"]}
         business["limited_lookups"] = list(limited.values())
@@ -320,7 +329,11 @@ def render_draft(knowledge, business, facts=None, language="zh", *, knowledge_st
             if issue in _OUTCOMES:
                 parts.append(_OUTCOMES_EN.get(issue, "The evidence needs verification.") if english else _OUTCOMES[issue])
     state = knowledge_state or {}
-    if state.get("policy_lookup") and not knowledge:
+    if state.get("policy_lookup") and state.get("lookup_status") == "conflict":
+        knowledge = []
+        parts.append("Multiple policy versions apply to the selected scope and time. Which version to use remains unverified and requires employee review."
+                     if english else "所选范围和时点存在多个适用政策版本，当前尚未核实应采用哪个版本，需由员工审核。")
+    if state.get("policy_lookup") and not knowledge and state.get("lookup_status") != "conflict":
         if state.get("lookup_status") == "empty" and not state.get("degraded"):
             parts.append("No applicable published policy was found for the selected scope and time. Unpublished drafts cannot be cited as policy."
                          if english else "本次未检索到符合所选范围和时点的已发布政策；未发布草稿不能作为政策依据。")

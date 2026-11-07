@@ -944,6 +944,99 @@ class KnowledgeBase:
             raise ValueError("policy_revision_changed")
         return await self.get_document(doc_id)
 
+    async def _policy_projection_candidates(self, task, *, conn=None, lock=True):
+        from app.core import policy_completion as pc
+        scope = PolicyScope.model_validate(task["scope"])
+        records = await self._store.kb_fact_candidates(scope, conn=conn, lock=lock)
+        documents = []
+        for record in records:
+            document = pc.document_payload(record)
+            if not pc.subject_matches(task, document):
+                continue
+            if (not eligible(metadata(document["policy"]), scope)
+                    or not pc.document_valid(document, self._chunk_text)):
+                return None
+            documents.append(document)
+        return documents
+
+    async def bind_policy_projection(self, task, knowledge_trace):
+        """Sign only an authentic, complete current document at the RAG boundary."""
+        from app.core import policy_completion as pc
+        from app.core.fact_completion import current_task
+        if not isinstance(knowledge_trace, dict):
+            return None
+        if (pc.blocked_evidence(knowledge_trace) or knowledge_trace.get("attempted") is not True
+                or knowledge_trace.get("policy_lookup") is not True or knowledge_trace.get("lookup_status") != "found"
+                or (knowledge_trace.get("evidence_ok") is not None and knowledge_trace.get("evidence_ok") is not True)
+                or not pc.valid_task(task) or current_task() != task
+                or current_scope().model_dump(mode="json") != task["scope"]):
+            return None
+        candidates = {}
+        for ref in knowledge_trace.get("sources", []):
+            try:
+                # Authority is resolved before looking at any claimed title or
+                # version: a malformed same-target reference is never unrelated.
+                record = await self._store.kb_fact_document(ref["doc_id"])
+                if not record:
+                    return None
+                document = pc.document_payload(record)
+                if (not pc.document_valid(document, self._chunk_text)
+                        or not pc.source_valid(task, ref, document, require_subject=False)):
+                    return None
+                if not pc.subject_matches(task, document):
+                    requested, actual = pc.subject_name(task["subject"]), pc.document_subject(task, document)
+                    if requested in actual or actual in requested:
+                        return None  # qualified/partial names do not prove unrelatedness
+                    continue  # authenticated but genuinely different literal policy name
+                entry = candidates.setdefault(document["id"], {"document": document, "sources": []})
+                entry["sources"].append(pc.canonical_source(ref, document))
+            except (KeyError, TypeError, ValueError, AttributeError):
+                return None
+        try:
+            documents = await self._policy_projection_candidates(task)
+            if documents is not None and len(documents) > 1:
+                # This is an authoritative catalog finding, not a retrieval
+                # failure. Preserve it when the caller takes the answer path.
+                knowledge_trace.update(sources=[], lookup_status="conflict", evidence_ok=False,
+                    evidence_issues=["ambiguous_applicable_policy_versions"],
+                    conflicts=[{"kind": "applicable_policy_versions",
+                                "candidate_set": pc.candidate_snapshot(task, documents)}])
+                knowledge_trace.pop("_policy_dispatch", None)
+                return None
+            if len(candidates) != 1:
+                return None
+            entry = next(iter(candidates.values()))
+            if documents != [entry["document"]]:
+                return None
+        except (KeyError, TypeError, ValueError, AttributeError):
+            return None
+        proof = pc.bind_sources(task, entry["sources"], entry["document"],
+            candidates=pc.candidate_snapshot(task, documents), state=pc.trace_state(knowledge_trace))
+        return ({**knowledge_trace, "sources": entry["sources"], "_policy_dispatch": proof}
+                if proof else None)
+
+    async def validate_policy_projection(self, receipt, refs, *, conn=None, lock=True):
+        """Re-read actual body/chunks/metadata; revision equality alone is insufficient."""
+        from app.core import policy_completion as pc
+        try:
+            task, proof = receipt["task"], receipt["proof"]
+            if receipt["kind"] != pc.KIND or not pc.valid_task(task) or refs != proof["sources"]:
+                return False
+            knowledge = {**proof["state"], "sources": refs, "_policy_dispatch": proof}
+            if pc.projection(task, knowledge) is None:
+                return False
+            if conn is not None and self._store.backend != "postgres_pgvector":
+                return False
+            documents = await self._policy_projection_candidates(task, conn=conn, lock=lock)
+            if (documents is None or len(documents) != 1
+                    or pc.candidate_snapshot(task, documents) != proof["candidate_set"]):
+                return False
+            document = documents[0]
+            return (document == proof["document"] and pc.document_valid(document, self._chunk_text)
+                    and all(pc.source_valid(task, ref, document) for ref in refs))
+        except (KeyError, TypeError, ValueError, AttributeError):
+            return False
+
     async def validate_policy_refs(self, refs, *, conn=None, lock=True):
         for ref in refs:
             if not ref.get("policy_revision") or not ref.get("policy_scope"):
