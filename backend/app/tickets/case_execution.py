@@ -75,8 +75,9 @@ class CaseExecutor:
                     elif self.materials and snapshot.get("review_materials") and not run.case_context.get("materials_reviewed"):
                         await ctx.publish("progress", {"stage": "helpdesk.images", "label": "正在读取图片并核对业务记录"})
                         try:
+                            from app.attachments.review_failure import review_failures
                             proposal["material_reviews"] = await self.materials.review(run)
-                            proposal["response"] = "图片核对已完成。"
+                            proposal["response"] = "图片核对未完成。" if review_failures(proposal["material_reviews"]) else "图片核对已完成。"
                         except HTTPException:
                             proposal.update(material_access_changed=True, response="材料访问权限已变化。")
                     elif snapshot.get("pending_fields"):
