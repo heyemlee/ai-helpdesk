@@ -136,7 +136,7 @@ class MemoryRunStore:
     async def checkpoint(self, run_id: str, owner: str, attempt: int, data: dict[str, Any]) -> bool:
         async with self._lock:
             run = self._fenced(run_id, owner, attempt)
-            if run is None:
+            if run is None or run.lease_until <= self._clock():
                 return False
             run.checkpoint = json.loads(json.dumps(data, ensure_ascii=False))
             run.updated_at = self._clock()
@@ -333,7 +333,7 @@ class PgRunStore:
             f" jsonb_set(history, ARRAY[(jsonb_array_length(history) - 1)::text],"
             f" (history -> -1) || jsonb_build_object('committed', true)) END"
             f" WHERE run_id = $1 AND instance = $5 AND lease_owner = $2 AND attempt = $3"
-            f" AND status = 'running'",
+            f" AND status = 'running' AND lease_until > {_NOW}",
             run_id, owner, attempt, json.dumps(data, ensure_ascii=False), self.instance,
         )
         return status.endswith(" 1")

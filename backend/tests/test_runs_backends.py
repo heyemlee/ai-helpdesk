@@ -256,6 +256,21 @@ async def test_store_release_and_sweep(run_store):
     assert await run_store.due_for_dispatch(idle_s=1, lease_grace_s=0) == []
 
 
+async def test_checkpoint_requires_live_owner_and_preserves_saved_data_across_takeover(run_store):
+    run, _ = await run_store.create(RunRecord(new_run_id(), "x", "checkpoint", "u", "query"))
+    first = await run_store.claim(run.run_id, "first", .2)
+    assert await run_store.heartbeat(run.run_id, "first", first.attempt, .2)
+    assert await run_store.checkpoint(run.run_id, "first", first.attempt, {"saved": "live"})
+    await asyncio.sleep(.3)
+    assert not await run_store.checkpoint(run.run_id, "first", first.attempt, {"saved": "expired"})
+    assert (await run_store.get(run.run_id)).checkpoint == {"saved": "live"}
+    second = await run_store.claim(run.run_id, "second", 30)
+    assert second.checkpoint == {"saved": "live"}
+    assert not await run_store.checkpoint(run.run_id, "first", first.attempt, {"saved": "old owner"})
+    assert await run_store.checkpoint(run.run_id, "second", second.attempt, {"saved": "resumed"})
+    assert (await run_store.get(run.run_id)).checkpoint == {"saved": "resumed"}
+
+
 @needs_pg
 async def test_another_instance_cannot_read_or_claim_a_run():
     from app.core.embedder import Embedder

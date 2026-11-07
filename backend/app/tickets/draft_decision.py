@@ -16,8 +16,18 @@ def complete_order_image_review(reviews):
     Extraction may omit fields entirely. Require the full order-image record in
     every attachment, not merely no unresolved candidates or an order number.
     """
+    def order_record(review):
+        if review.get("document_type") == "order":
+            return True
+        fields = {item["field"]: item for item in review.get("fields", [])}
+        # A delivery-looking screenshot may explicitly contain order facts.
+        # A genuine delivery status or label quantity is a different record.
+        return (review.get("document_type") == "delivery"
+                and all(fields.get(field, {}).get("kind") == kind for field, kind in
+                        {"status": "order", "quantity": "ordered", "date": "delivery"}.items()))
+
     return bool(reviews) and all(
-        review.get("document_type") == "order" and review.get("query_outcome") == "checked"
+        order_record(review) and review.get("query_outcome") == "checked"
         and ORDER_IMAGE_FIELDS <= {item["field"] for item in review["fields"]}
         and all(item.get("outcome") == "matched" and item.get("readability") == "clear"
                 and item.get("db_value") is not None for item in review["fields"])

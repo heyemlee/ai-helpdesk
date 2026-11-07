@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import contextlib
+import logging
 from collections.abc import Awaitable, Callable
 
 from fastapi import HTTPException
@@ -15,6 +16,8 @@ from app.runs.memo import bind_run
 from app.runs.records import SUCCEEDED
 from app.runs.worker import RetryRun, RunContext, RunOutcome
 from app.tickets.draft_decision import handoff_review
+
+logger = logging.getLogger(__name__)
 
 FIELD_LABELS = {
     "order_ref": "订单号", "model": "缺件型号", "quantity": "缺件数量",
@@ -39,6 +42,7 @@ class CaseExecutor:
                 payload, _ = await self.service.complete(run, {"response": "员工授权已失效", "actor_access_changed": True})
                 return RunOutcome(SUCCEEDED, ("result", payload), result=payload, persisted=True)
         turn = self.event_log.open_turn(conv_id=run.conv_id, request_id=run.request_id)
+        phase = "prepare"
         try:
             with bind_policy_scope(PolicyScope.model_validate(run.case_context["snapshot"].get("policy_scope") or {})), bind_run(ctx.scope), bind(turn), (admission.shed() if ctx.degrade.shed else contextlib.nullcontext()):
                 await ctx.set_turn(turn.turn_id)
@@ -83,9 +87,11 @@ class CaseExecutor:
                         proposal["response"] = render_draft(proposal["knowledge_sources"], proposal["business_data"], snapshot.get("facts"), language=snapshot.get("language", "zh"), knowledge_state=proposal.get("knowledge"), lookup_goal=goal)
                         if result.handoff:
                             proposal["handoff_review"] = handoff_review(prepared.request, result, proposal["response"])
+                    phase = "checkpoint"
                     if not await ctx.commit({"case_proposal": proposal}):
                         raise RetryRun("Case proposal lost its lease")
                 # No model delta, ticket, notification or history has been published yet.
+                phase = "complete"
                 payload, applied = await self.service.complete(run, proposal)
                 review = dict(payload.get("handoff_review") or {})
                 original_reason = review.pop("original_handoff_reason", "")
@@ -102,7 +108,19 @@ class CaseExecutor:
                            "policy_violations": payload.get("policy_violations", [])})
                 return RunOutcome(SUCCEEDED, ("result", payload), result=payload, persisted=True)
         except Exception as exc:
-            turn.emit("turn_failed", {"error_type": type(exc).__name__})
+            details = {"http_status": exc.status_code} if isinstance(exc, HTTPException) else {}
+            body = ({"error_detail": exc.detail,
+                     "error_code": exc.detail.get("code", "") if isinstance(exc.detail, dict) else ""}
+                    if isinstance(exc, HTTPException) else None)
+            turn.emit("turn_failed", {"error_type": type(exc).__name__, "phase": phase, **details}, body)
+            if isinstance(exc, HTTPException):
+                # Keep the throw site, but exception prose belongs to the
+                # redacted event body rather than the structural/log message.
+                diagnostic = HTTPException(exc.status_code, "Details retained in turn event body")
+                logger.error("Case run %s failed during %s", run.run_id, phase,
+                             exc_info=(type(exc), diagnostic, exc.__traceback__))
+            else:
+                logger.exception("Case run %s failed during %s", run.run_id, phase)
             # Input and checkpoint survive. Retrying has the same Case fences.
             raise RetryRun(f"Case execution failed: {type(exc).__name__}") from exc
         finally:

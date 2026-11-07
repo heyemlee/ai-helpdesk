@@ -208,8 +208,12 @@ def test_recorded_image_date_keeps_source_meaning_in_context_and_review():
     fields = []
     for field, fact in record["snapshot"]["facts"].items():
         if fact.get("source") == "verified_image":
+            if field == "status":
+                # This is a constructed replay of an already verified order
+                # field, not unknown OCR semantics inferred from its value.
+                assert fact["business_source"]["column"] == "order_status"
             fields.append(dict(field=field, value=str(fact["value"]), unit=fact.get("unit"),
-                               kind={"quantity":"ordered", "date":"delivery"}.get(field, "unknown"),
+                               kind={"quantity":"ordered", "date":"delivery", "status":"order"}.get(field, "unknown"),
                                readability="clear", location="recorded image"))
     extraction = Extraction(document_type="order", fields=fields)
     review = verify(extraction, data, record["snapshot"]["order_refs"][0])
