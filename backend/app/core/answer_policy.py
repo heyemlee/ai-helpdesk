@@ -309,6 +309,41 @@ _ABSOLUTE_RE = re.compile(
     re.I,
 )
 
+# Metadata may describe a financial policy without promising a payment. Keep
+# this action test separate from the unchanged global amount/time guard: a
+# remaining price or duration still needs its own grounding after timestamps
+# are removed. Payment verbs remain actions, including "pay the fee".
+_REFERENCE_ACTION_RE = re.compile(
+    r"到账|退回|退给|退款|返还|返给|发货|送达|签收|处理完|处理好|解决|完成"
+    r"|开好|开具|生效|恢复|收到|补偿|赔付|减免"
+    r"|做好|做完|完工|出货|发出|补发|送到|送货|到货|到场|上门|安排好"
+    r"|排产|开料|复尺|出图|装好|安装完|返工好|修好"
+    r"|付款|支付|收费|扣款"
+    r"|\b(?:pay|paid|refund\w*|reimburse\w*|credit\w*|charge\w*|ship\w*|deliver\w*|"
+    r"dispatch\w*|send|sent|arrive\w*|issue\w*|complete\w*|finish\w*|install\w*|"
+    r"replace\w*|repair\w*|fix\w*|resolve\w*|schedul\w*|process\w*|receive\w*|"
+    r"takes?|taking|production|fabrication|remake|turnaround|rework)\b",
+    re.I,
+)
+
+# Only an independent, noun-first statement of a fee's processing limit may
+# use a payment word as a topic. "Pay fees" and "we will pay the fee" do not
+# match this grammar. The limit/value itself is never removed or grounded here.
+_REFERENCE_FEE_TOPIC_RE = re.compile(
+    r"(?:^|[，,；;])\s*(?P<topic>(?:付款|支付|收费|扣款)(?:手续费|服务费))"
+    r"(?=(?:的)?(?:处理|办理)(?:时限|期限|时效)\s*(?:为|是|[:：]))"
+)
+
+# One typed caption vocabulary serves both standalone fields and inline
+# metadata references. Matching a date under another role never authorizes it.
+_REFERENCE_TIME_LABELS = {
+    "policy_as_of": r"所选日期|所选时点|所选查询时点|适用日期|适用时点|适用性判定时点|判定时点|"
+                    r"查询基准|查询时间点|查询时点|selected date|as of|query time",
+    "policy_effective_at": r"政策生效日期|生效日期|生效时间|生效时点|effective date|effective at",
+    "policy_expires_at": r"政策失效日期|失效日期|失效时间|失效时点|(?:政策)?到期(?:日期|时间|时点)|"
+                        r"expires at|expiry date",
+}
+
 # 对冲措辞：SOP 要求的保守表达，命中即认为 Agent 已经守住了边界
 _HEDGE_RE = re.compile(
     r"通常|一般|预计|大约|大概|可能|不确定|视.{0,8}而定|以.{0,14}为准|具体以"
@@ -552,17 +587,19 @@ class AnswerPolicy:
         # A shared timestamp can also be a deadline: "we guarantee shipment at
         # query time: ...". Only independent metadata statements may lose a
         # timestamp. Ambiguous action-bearing prose stays fully guarded.
-        if not re.match(r"^\s*(?:-\s*)?(?:按(?:所选)?(?:查询)?时点|查询时点|所选时点|适用性判定时点|适用性依据|有效版本|生效时间|生效时点|自)", text):
+        captions = "|".join(_REFERENCE_TIME_LABELS.values())
+        if not re.match(rf"^\s*(?:-\s*)?(?:按(?:所选)?(?:查询)?(?:时点|日期)|{captions}|适用性依据|有效版本|自)", text, re.I):
             return sentence
         date = r"(?:\d{4}-\d{1,2}-\d{1,2}|\d{4}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日)"
         clock = r"(?:[ T]*\d{2}:\d{2}(?::\d{2})?)?"
         zone = r"(?:\s*[（(]?\s*(?:UTC|Z|\+00:00)\s*[）)]?)?"
         stamp = rf"{date}{clock}{zone}"
         patterns = (
-            ("policy_as_of", rf"(?:所选查询时点|所选时点|查询时点|适用性判定时点|判定时点|适用时点)\s*(?:为|[:：])?\s*(?P<stamp>{stamp})", "所选日期："),
+            ("policy_as_of", rf"(?:{_REFERENCE_TIME_LABELS['policy_as_of']})\s*(?:为|[:：])?\s*(?P<stamp>{stamp})", "所选日期："),
             ("policy_effective_at", rf"(?:自\s*(?P<stamp>{stamp})\s*(?:起)?生效)", "生效日期："),
             ("policy_effective_at", rf"(?P<stamp>{stamp})\s*生效", "生效日期："),
-            ("policy_effective_at", rf"(?:生效时间|生效时点)\s*(?:为|[:：])?\s*(?P<stamp>{stamp})", "生效日期："),
+            ("policy_effective_at", rf"(?:{_REFERENCE_TIME_LABELS['policy_effective_at']})\s*(?:为|[:：])?\s*(?P<stamp>{stamp})", "生效日期："),
+            ("policy_expires_at", rf"(?:{_REFERENCE_TIME_LABELS['policy_expires_at']})\s*(?:为|[:：])?\s*(?P<stamp>{stamp})", "失效日期："),
         )
         spans, metadata_spans = [], []
         for kind, pattern, label in patterns:
@@ -573,13 +610,18 @@ class AnswerPolicy:
                 if self._reference_time(label + match["stamp"], times):
                     spans.append(match.span("stamp"))
                     metadata_spans.append(match.span())
-        # Reuse the guard's complete action vocabulary. Only an explicitly
-        # verified metadata phrase (including its "effective" caption) may be
-        # removed before checking for actions that share the same timestamp.
+        # Only an explicitly verified metadata phrase (including its caption)
+        # may be removed before checking for actions sharing the timestamp.
+        # A fee topic is not an action; all remaining numeric claims below
+        # still pass through the unchanged _check_sentence grounding rules.
         residue = text
         for start, end in sorted(set(metadata_spans), reverse=True):
             residue = residue[:start] + " " * (end - start) + residue[end:]
-        if _COMMIT_RE.search(residue) or _ABSOLUTE_RE.search(residue):
+        action_text = residue
+        for topic in reversed(list(_REFERENCE_FEE_TOPIC_RE.finditer(residue))):
+            start, end = topic.span("topic")
+            action_text = action_text[:start] + " " * (end - start) + action_text[end:]
+        if _REFERENCE_ACTION_RE.search(action_text) or _ABSOLUTE_RE.search(residue):
             return sentence
         for start, end in sorted(set(spans), reverse=True):
             text = text[:start] + " " * (end - start) + text[end:]
@@ -603,12 +645,7 @@ class AnswerPolicy:
                         and self._reference_time("失效日期：" + validity[2], {"policy_expires_at": [end]})):
                     return True
             return False
-        labels = {
-            "policy_as_of": r"所选日期|所选时点|适用日期|适用时点|查询基准|查询时间点|查询时点|selected date|as of|query time",
-            "policy_effective_at": r"政策生效日期|生效日期|生效时间|生效时点|effective date|effective at",
-            "policy_expires_at": r"政策失效日期|失效日期|失效时间|失效时点|expires at|expiry date",
-        }
-        for kind, names in labels.items():
+        for kind, names in _REFERENCE_TIME_LABELS.items():
             field = re.fullmatch(rf"(?:{names})\s*[:：|]\s*(.+)", text, re.I)
             if not field or not reference_times.get(kind):
                 continue
