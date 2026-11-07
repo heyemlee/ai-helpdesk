@@ -1,0 +1,233 @@
+{
+  "archive_file_count": 179,
+  "candidate_revision": "d1e154e76b87338dce7db994fb8d2b69a762ebe9",
+  "execution_helper_preserved_files": 45,
+  "formal_candidate_rounds_completed": 0,
+  "next": "Existing fixed-candidate components, three formal rounds and final assembly only; no expanded peripheral audits.",
+  "production_deployed": false,
+  "release_eligible": false,
+  "requests": {
+    "all_requests_have_successful_receipts": true,
+    "all_run_bindings_verified": true,
+    "input_tokens": 2856846,
+    "known_real_receipts_verified": true,
+    "ledger_end": 2473,
+    "ledger_start": 1953,
+    "new": 520,
+    "output_tokens": 54168,
+    "successful_real_receipts": 520,
+    "unattributed": 0,
+    "unfinished": 0,
+    "unknown_usage": 0
+  },
+  "root_drain_verification_sha256": "dfced01237a17dc4fc83aca5fdff6764c104a21d92feab78b5ffc4fcb3393b7c",
+  "root_verification_sha256": "cd3f043fe0e940a979831ef5e35781f4ce482e7d00849b286eac9bb84fc2fb2f",
+  "score": {
+    "accuracy": 1.0,
+    "business_resolved": 0,
+    "complete": true,
+    "correct": 54,
+    "error_counts": {},
+    "groups": {
+      "cross_message": {
+        "accuracy": 1.0,
+        "correct": 10,
+        "total": 10
+      },
+      "images": {
+        "accuracy": 1.0,
+        "correct": 15,
+        "total": 15
+      },
+      "orders": {
+        "accuracy": 1.0,
+        "correct": 14,
+        "total": 14
+      },
+      "policies": {
+        "accuracy": 1.0,
+        "correct": 15,
+        "total": 15
+      }
+    },
+    "image_extraction": {
+      "date/all": {
+        "correct": 15,
+        "total": 15
+      },
+      "date/clear": {
+        "correct": 14,
+        "total": 14
+      },
+      "date/missing": {
+        "correct": 1,
+        "total": 1
+      },
+      "model/all": {
+        "correct": 15,
+        "total": 15
+      },
+      "model/clear": {
+        "correct": 14,
+        "total": 14
+      },
+      "model/missing": {
+        "correct": 1,
+        "total": 1
+      },
+      "order_ref/all": {
+        "correct": 15,
+        "total": 15
+      },
+      "order_ref/clear": {
+        "correct": 14,
+        "total": 14
+      },
+      "order_ref/unclear": {
+        "correct": 1,
+        "total": 1
+      },
+      "quantity/all": {
+        "correct": 15,
+        "total": 15
+      },
+      "quantity/clear": {
+        "correct": 14,
+        "total": 14
+      },
+      "quantity/unclear": {
+        "correct": 1,
+        "total": 1
+      },
+      "status/all": {
+        "correct": 15,
+        "total": 15
+      },
+      "status/clear": {
+        "correct": 14,
+        "total": 14
+      },
+      "status/unclear": {
+        "correct": 1,
+        "total": 1
+      }
+    },
+    "image_fields": {
+      "date/all": {
+        "correct": 15,
+        "total": 15
+      },
+      "date/conflict": {
+        "correct": 2,
+        "total": 2
+      },
+      "date/matched": {
+        "correct": 8,
+        "total": 8
+      },
+      "date/missing": {
+        "correct": 1,
+        "total": 1
+      },
+      "date/unverified": {
+        "correct": 4,
+        "total": 4
+      },
+      "model/all": {
+        "correct": 15,
+        "total": 15
+      },
+      "model/conflict": {
+        "correct": 2,
+        "total": 2
+      },
+      "model/matched": {
+        "correct": 9,
+        "total": 9
+      },
+      "model/missing": {
+        "correct": 1,
+        "total": 1
+      },
+      "model/unverified": {
+        "correct": 3,
+        "total": 3
+      },
+      "order_ref/all": {
+        "correct": 15,
+        "total": 15
+      },
+      "order_ref/conflict": {
+        "correct": 1,
+        "total": 1
+      },
+      "order_ref/matched": {
+        "correct": 8,
+        "total": 8
+      },
+      "order_ref/unclear": {
+        "correct": 1,
+        "total": 1
+      },
+      "order_ref/unverified": {
+        "correct": 5,
+        "total": 5
+      },
+      "quantity/all": {
+        "correct": 15,
+        "total": 15
+      },
+      "quantity/conflict": {
+        "correct": 2,
+        "total": 2
+      },
+      "quantity/matched": {
+        "correct": 8,
+        "total": 8
+      },
+      "quantity/unclear": {
+        "correct": 1,
+        "total": 1
+      },
+      "quantity/unverified": {
+        "correct": 4,
+        "total": 4
+      },
+      "status/all": {
+        "correct": 15,
+        "total": 15
+      },
+      "status/conflict": {
+        "correct": 2,
+        "total": 2
+      },
+      "status/matched": {
+        "correct": 8,
+        "total": 8
+      },
+      "status/unclear": {
+        "correct": 1,
+        "total": 1
+      },
+      "status/unverified": {
+        "correct": 4,
+        "total": 4
+      }
+    },
+    "invariant_violations": 0,
+    "missing": [],
+    "run_terminal": 54,
+    "total": 54
+  },
+  "stage6_cumulative": {
+    "dollar_cost": null,
+    "full_token_totals": null,
+    "known_input_subtotal": 23420836,
+    "known_output_subtotal": 463194,
+    "other_chats_excluded": true,
+    "reserved_requests": 4479,
+    "unknown_usage_requests": 5
+  },
+  "status": "full_development_passed_components_then_formal_pending",
+  "temporary_stack_closed": true
+}
