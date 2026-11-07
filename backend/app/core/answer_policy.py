@@ -22,7 +22,7 @@ import logging
 import re
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from typing import Any
 
 from app.core.text_lang import detect_language
@@ -322,7 +322,7 @@ _REFERENCE_FEE_TOPIC_RE = re.compile(
 # One typed caption vocabulary serves both standalone fields and inline
 # metadata references. Matching a date under another role never authorizes it.
 _REFERENCE_TIME_LABELS = {
-    "policy_as_of": r"所选日期|所选时点|所选查询时点|适用日期|适用时点|适用性判定时点|判定时点|"
+    "policy_as_of": r"所选日期|所选时点|所选查询时点|适用日期|适用时点|适用性判定时点|有效性判定时点|截至时点|判定时点|"
                     r"查询基准|查询时间点|查询时点|selected date|as of|query time",
     "policy_effective_at": r"政策生效日期|生效日期|生效时间|生效时点|effective date|effective at",
     "policy_expires_at": r"政策失效日期|失效日期|失效时间|失效时点|(?:政策)?到期(?:日期|时间|时点)|"
@@ -622,16 +622,32 @@ class AnswerPolicy:
         subject to the normal guard. Metadata is never a grounding source.
         """
         text = re.sub(r"[*`]", "", sentence)
+        text = re.sub(r"^\s*>\s?", "", text)
+        date = r"(?:\d{4}-\d{1,2}-\d{1,2}|\d{4}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日)"
+        clock = r"(?:[ T]*\d{2}:\d{2}(?::\d{2})?)?"
+        zone = r"(?:\s*[（(]?\s*(?:UTC|Z|[+-]\d{2}:\d{2})\s*[）)]?)?"
+        # Never match only the date/UTC-looking prefix of a different or
+        # malformed full timestamp. The role check below compares instants.
+        stamp = rf"{date}{clock}{zone}(?![A-Za-z0-9:+-]|\s*[（(]?\s*(?:[A-Za-z]|[+-]\d))"
+        # A whole, bounded retrieval observation may contain action nouns in
+        # the missing policy's subject. It is not an instruction or deadline.
+        # Keep every other value for the ordinary guard, and never accept an
+        # operational tail merely because it shares the selected timestamp.
+        lookup = re.fullmatch(
+            rf"截至\s*(?P<stamp>{stamp})\s*[，,]\s*"
+            r"(?:本次|此次)(?:针对[^。；;!?！？\n]{1,200}的)?(?:政策)?检索[，,]\s*"
+            r"未(?:找到|检索到|取得)(?:可引用的)?已发布[^。；;!?！？\n]{1,100}?(?:条款|政策|资料)"
+            r"(?:[，,]故暂无可列示的有效版本及条款引用)?[。.]?", text)
+        if lookup and self._reference_time("所选日期：" + lookup["stamp"], reference_times):
+            start, end = lookup.span("stamp")
+            return text[:start] + " " * (end - start) + text[end:]
         # A shared timestamp can also be a deadline: "we guarantee shipment at
         # query time: ...". Only independent metadata statements may lose a
         # timestamp. Ambiguous action-bearing prose stays fully guarded.
         captions = "|".join(_REFERENCE_TIME_LABELS.values())
-        if not re.match(rf"^\s*(?:-\s*)?(?:按(?:所选)?(?:查询)?(?:时点|日期)|{captions}|适用性依据|有效版本|自)", text, re.I):
+        if not re.match(rf"^\s*(?:-\s*)?(?:按(?:所选)?(?:查询)?(?:时点|日期)|{captions}|适用性依据|有效版本|"
+                        r"(?:(?:该|本|此)(?:政策|规则|条款|版本))?自)", text, re.I):
             return sentence
-        date = r"(?:\d{4}-\d{1,2}-\d{1,2}|\d{4}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日)"
-        clock = r"(?:[ T]*\d{2}:\d{2}(?::\d{2})?)?"
-        zone = r"(?:\s*[（(]?\s*(?:UTC|Z|\+00:00)\s*[）)]?)?"
-        stamp = rf"{date}{clock}{zone}"
         patterns = (
             ("policy_as_of", rf"(?:{_REFERENCE_TIME_LABELS['policy_as_of']})\s*(?:为|[:：])?\s*(?P<stamp>{stamp})", "所选日期："),
             ("policy_effective_at", rf"(?:自\s*(?P<stamp>{stamp})\s*(?:起)?生效)", "生效日期："),
@@ -685,7 +701,8 @@ class AnswerPolicy:
             return False
         for kind, names in _REFERENCE_TIME_LABELS.items():
             field = re.fullmatch(rf"(?:{names})\s*[:：|]\s*(.+)", text, re.I)
-            if not field or not reference_times.get(kind):
+            values = reference_times.get(kind)
+            if not field or not isinstance(values, (list, tuple)) or not values:
                 continue
             value = field[1]
             if kind == "policy_effective_at":
@@ -702,15 +719,32 @@ class AnswerPolicy:
             if date is None or date[0] is None or date[1] is None:
                 return False
             rest = value[:dates[0].start()] + value[dates[0].end():]
-            rest = re.sub(r"\+00:00(?=\s*[|）)]*\s*$)", "Z", rest)
+            zones = re.findall(r"UTC|Z|[+-]\d{2}:\d{2}", rest)
+            if len(zones) > 1:
+                return False
+            rest = re.sub(r"UTC|Z|[+-]\d{2}:\d{2}", "", rest)
             # The closed grammar permits only a clock and its metadata caption.
             # Any promise, second date, duration, or other prose falls through.
-            if not re.fullmatch(r"(?:[\s|（）():：.,，T]|查询基准|查询时间点|为|UTC|Z|\d{2}:\d{2}(?::\d{2})?)*", rest):
+            if not re.fullmatch(r"(?:[\s|（）():：.,，T]|查询基准|查询时间点|为|\d{2}:\d{2}(?::\d{2})?)*", rest):
                 return False
             clocks = re.findall(r"\d{2}:\d{2}(?::\d{2})?", rest)
-            if len(clocks) > 1:
+            if len(clocks) > 1 or zones and not clocks and zones[0] not in {"UTC", "Z", "+00:00", "-00:00"}:
                 return False
-            for raw in reference_times[kind]:
+            stated = None
+            if clocks:
+                try:
+                    tz = UTC
+                    if zones and zones[0] not in {"UTC", "Z"}:
+                        offset = zones[0]
+                        hours, minutes = map(int, offset[1:].split(":"))
+                        if hours > 23 or minutes > 59:
+                            return False
+                        tz = timezone(timedelta(minutes=(hours * 60 + minutes) * (-1 if offset[0] == "-" else 1)))
+                    parts = [int(part) for part in clocks[0].split(":")]
+                    stated = datetime(*date, *parts, tzinfo=tz).astimezone(UTC)
+                except ValueError:
+                    return False
+            for raw in values:
                 try:
                     at = datetime.fromisoformat(raw.replace("Z", "+00:00"))
                     if at.tzinfo is None:
@@ -718,12 +752,11 @@ class AnswerPolicy:
                     at = at.astimezone(UTC)
                 except (ValueError, AttributeError, TypeError):
                     continue
-                if date != (at.year, at.month, at.day):
-                    continue
-                if clocks and clocks[0] != at.strftime("%H:%M:%S") and not (
-                        at.second == 0 and clocks[0] == at.strftime("%H:%M")):
-                    continue
-                return True
+                if stated is not None:
+                    if stated == at:
+                        return True
+                elif date == (at.year, at.month, at.day):
+                    return True
         return False
 
     def _drop_mojibake(self, text: str) -> str:
