@@ -1,0 +1,532 @@
+{
+  "all_owned_temporary_stacks_closed": true,
+  "all_six_child_deliveries_returned_and_frozen": true,
+  "api_mode": "responses",
+  "archive_file_count": 4374,
+  "archive_index": {
+    "path": "docs/architecture/evidence/stage-6-closeout-d1e154e/archive-index.json",
+    "sha256": "f13f47fe548c5f059623a96b96470fc02e21f2a115177ff79b20b77554868311"
+  },
+  "automatic_http_retries": 0,
+  "automation_enabled": false,
+  "candidate": {
+    "path": ".stage6/evaluation/2026-11-06/candidate-d1e154e.json",
+    "sha256": "ea7c9f4af9c659a883005a401e1553fe31432e66bc8230504fd2d7d781e85528"
+  },
+  "candidate_revision": "d1e154e76b87338dce7db994fb8d2b69a762ebe9",
+  "common_facts": {
+    "baseline": {
+      "accuracy": 0.5076923076923077,
+      "correct": 66,
+      "incorrect": 64,
+      "pending_or_unmeasured": 0,
+      "total": 130
+    },
+    "baseline_reused_by_accepted_hash": true,
+    "baseline_reviewer_model": "gpt-6-astra",
+    "candidate_first_round": {
+      "accuracy": 1.0,
+      "correct": 130,
+      "incorrect": 0,
+      "pending_or_unmeasured": 0,
+      "total": 130
+    },
+    "contract_failures_unchanged": true,
+    "current_reviewer_model": "gpt-6.1-sol",
+    "different_reviewer_models_limit_controlled_comparison": true,
+    "does_not_cover_case_state_side_effects_or_images": true,
+    "fully_blind": false,
+    "independent_reviews_validated": 130
+  },
+  "components": {
+    "all_owned_temporary_resources_closed": true,
+    "invariants": {
+      "classification": "Unresolved Case completion/run exception in this simulated campaign. Current artifacts do not expose the HTTP status/detail/throw site, so they do not prove a new SQL product defect or a simulated prompt-parser incompatibility. This is an incomplete invariants component and must not be counted as full acceptance.",
+      "executed_assertions": 42,
+      "not_executed_categories": [
+        "evidence_integrity",
+        "source_contract"
+      ],
+      "passed": false,
+      "recorded_categories": 8,
+      "required_assertions": 51,
+      "required_categories": 10,
+      "root_verification": {
+        "path": ".stage6/evaluation/2026-11-06/components-d1e154e/invariants/root-verification.json",
+        "sha256": "c073be187bb8055398be561817843b5dff053996f8316de8cf521b6f1843b77c"
+      },
+      "violations_in_executed_assertions": 0
+    },
+    "recovery": {
+      "recovery_local": {
+        "attachment_count": 100,
+        "case_count": 200,
+        "cleanup_sha256": "f86e91690373e36f8dcbaf1755382c818156091b443e10df54a26d1c261a0d2d",
+        "component_sha256": "832524ffb7c0cf1b2b63b1ad9cc7b47321e3d7a0e0ce7d6e995708644b407e7e",
+        "operations_sources": 9,
+        "passed": true,
+        "raw_sha256": "3900814f7e01b097e139d2c334456440daf0f42f6d07d1ec311d22a455c8133d",
+        "recovery_seconds": 17.435921907424927,
+        "resources_absent": true,
+        "rollback_seconds": 14.993618965148926,
+        "tables": 21,
+        "verification_sha256": "8f1035736a57749f071d409a73c7af015f926099544012237e4f781491f811d7"
+      },
+      "recovery_s3": {
+        "attachment_count": 100,
+        "case_count": 200,
+        "cleanup_sha256": "5d22bc8185c0940078b8212ede70f17a2817e51a6cb4dc91208f02d30767966a",
+        "component_sha256": "f6bbd4808532c97007f4ddde820d43a0f10a32a5a6436d1f6dd0a17c8855987f",
+        "operations_sources": 9,
+        "passed": true,
+        "raw_sha256": "f5736edbec56827c66cb1219cb7030e3254ee5281d0b341ca651ccabeaf20b33",
+        "recovery_seconds": 14.998494863510132,
+        "resources_absent": true,
+        "rollback_seconds": 13.047163009643555,
+        "tables": 21,
+        "verification_sha256": "f6b1e2e8462422607300b49164295803a9ff674d9affd3cdb3c03d1e4b2fa881"
+      }
+    },
+    "recovery_root_verification": {
+      "path": ".stage6/evaluation/2026-11-06/components-d1e154e/root-recovery-verification.json",
+      "sha256": "b35c9b0b91e2e5e19cb288b74b230dd057535709172dfdb838ff39b4e39ef20a"
+    },
+    "supplier_requests": 0
+  },
+  "date": "2026-11-06",
+  "development": {
+    "accepted_proof": {
+      "path": ".stage6/evaluation/2026-11-06/development-v3-d1e154e-full/root-verification.json",
+      "sha256": "cd3f043fe0e940a979831ef5e35781f4ce482e7d00849b286eac9bb84fc2fb2f"
+    },
+    "correct": 54,
+    "invariant_violations": 0,
+    "total": 54
+  },
+  "formal": {
+    "completed_rounds": 1,
+    "failure_records": [
+      {
+        "category": "supplier_connection_failure",
+        "errors": [
+          "case_status_mismatch",
+          "image_field:date",
+          "image_field:model",
+          "image_field:order_ref",
+          "image_field:quantity",
+          "image_field:status",
+          "pending_fields_mismatch",
+          "required_fact_missing:model",
+          "required_sources_missing",
+          "unproven_visible_prose:材料已保存，请补充：图片核实：清晰图片。"
+        ],
+        "extraction_passed": 0,
+        "id": "release-images-021",
+        "invariant_violations": [],
+        "verification_passed": 0
+      },
+      {
+        "category": "image_database_verification_and_case_state",
+        "errors": [
+          "case_status_mismatch",
+          "image_field:date",
+          "image_field:model",
+          "image_field:order_ref",
+          "image_field:quantity",
+          "image_field:status",
+          "pending_fields_mismatch",
+          "required_fact_missing:model",
+          "unproven_visible_prose:材料已保存，请补充：图片核实：日期、图片核实：缺件型号、图片核实：订单号、图片核实：缺件数量、图片核实：业务状态。"
+        ],
+        "extraction_passed": 5,
+        "id": "release-images-023",
+        "invariant_violations": [],
+        "verification_passed": 0
+      },
+      {
+        "category": "image_database_verification_and_case_state",
+        "errors": [
+          "case_status_mismatch",
+          "image_field:date",
+          "image_field:model",
+          "image_field:order_ref",
+          "image_field:quantity",
+          "image_field:status",
+          "pending_fields_mismatch",
+          "required_fact_missing:model",
+          "unproven_visible_prose:材料已保存，请补充：图片核实：日期、图片核实：缺件型号、图片核实：订单号、图片核实：缺件数量、图片核实：业务状态。"
+        ],
+        "extraction_passed": 5,
+        "id": "release-images-024",
+        "invariant_violations": [],
+        "verification_passed": 0
+      },
+      {
+        "category": "image_database_verification_and_case_state",
+        "errors": [
+          "case_status_mismatch",
+          "image_field:date",
+          "image_field:model",
+          "image_field:order_ref",
+          "image_field:quantity",
+          "image_field:status",
+          "pending_fields_mismatch",
+          "required_fact_missing:model",
+          "unproven_visible_prose:材料已保存，请补充：图片核实：日期、图片核实：缺件型号、图片核实：订单号、图片核实：缺件数量、图片核实：业务状态。"
+        ],
+        "extraction_passed": 5,
+        "id": "release-images-025",
+        "invariant_violations": [],
+        "verification_passed": 0
+      },
+      {
+        "category": "image_database_verification_and_case_state",
+        "errors": [
+          "case_status_mismatch",
+          "image_field:date",
+          "image_field:model",
+          "image_field:order_ref",
+          "image_field:quantity",
+          "image_field:status",
+          "pending_fields_mismatch",
+          "required_fact_missing:model",
+          "unproven_visible_prose:材料已保存，请补充：图片核实：日期、图片核实：缺件型号、图片核实：订单号、图片核实：缺件数量、图片核实：业务状态。"
+        ],
+        "extraction_passed": 5,
+        "id": "release-images-026",
+        "invariant_violations": [],
+        "verification_passed": 0
+      },
+      {
+        "category": "image_database_verification_and_case_state",
+        "errors": [
+          "case_status_mismatch",
+          "image_field:date",
+          "image_field:model",
+          "image_field:order_ref",
+          "image_field:quantity",
+          "image_field:status",
+          "pending_fields_mismatch",
+          "required_fact_missing:model",
+          "unproven_visible_prose:材料已保存，请补充：图片核实：日期、图片核实：缺件型号、图片核实：订单号、图片核实：缺件数量、图片核实：业务状态。"
+        ],
+        "extraction_passed": 5,
+        "id": "release-images-028",
+        "invariant_violations": [],
+        "verification_passed": 0
+      },
+      {
+        "category": "unauthorized_handoff",
+        "errors": [],
+        "extraction_passed": 0,
+        "id": "release-orders-026",
+        "invariant_violations": [
+          "unauthorized_or_duplicate_handoff"
+        ],
+        "verification_passed": 0
+      }
+    ],
+    "raw_score_and_common_score_independently_recomputed": true,
+    "required_rounds": 3,
+    "root_verification": {
+      "path": ".stage6/evaluation/2026-11-06/formal-v3-d1e154e/root-round-1-audit-v2/root-verification.json",
+      "sha256": "3fd92e46a2da2ec0b3de36e6d5d0780e55b0af2260579635492acb845447e4df"
+    },
+    "score": {
+      "accuracy": 0.965,
+      "business_resolved": 0,
+      "complete": true,
+      "correct": 193,
+      "error_counts": {
+        "case_status_mismatch": 6,
+        "image_field:date": 6,
+        "image_field:model": 6,
+        "image_field:order_ref": 6,
+        "image_field:quantity": 6,
+        "image_field:status": 6,
+        "pending_fields_mismatch": 6,
+        "required_fact_missing:model": 6,
+        "required_sources_missing": 1,
+        "unproven_visible_prose:材料已保存，请补充：图片核实：日期、图片核实：缺件型号、图片核实：订单号、图片核实：缺件数量、图片核实：业务状态。": 5,
+        "unproven_visible_prose:材料已保存，请补充：图片核实：清晰图片。": 1
+      },
+      "groups": {
+        "cross_message": {
+          "accuracy": 1.0,
+          "correct": 50,
+          "total": 50
+        },
+        "images": {
+          "accuracy": 0.85,
+          "correct": 34,
+          "total": 40
+        },
+        "orders": {
+          "accuracy": 0.9833333333333333,
+          "correct": 59,
+          "total": 60
+        },
+        "policies": {
+          "accuracy": 1.0,
+          "correct": 50,
+          "total": 50
+        }
+      },
+      "image_extraction": {
+        "date/all": {
+          "correct": 39,
+          "total": 40
+        },
+        "date/clear": {
+          "correct": 38,
+          "total": 39
+        },
+        "date/unclear": {
+          "correct": 1,
+          "total": 1
+        },
+        "model/all": {
+          "correct": 39,
+          "total": 40
+        },
+        "model/clear": {
+          "correct": 38,
+          "total": 39
+        },
+        "model/unclear": {
+          "correct": 1,
+          "total": 1
+        },
+        "order_ref/all": {
+          "correct": 39,
+          "total": 40
+        },
+        "order_ref/clear": {
+          "correct": 37,
+          "total": 38
+        },
+        "order_ref/missing": {
+          "correct": 1,
+          "total": 1
+        },
+        "order_ref/unclear": {
+          "correct": 1,
+          "total": 1
+        },
+        "quantity/all": {
+          "correct": 39,
+          "total": 40
+        },
+        "quantity/clear": {
+          "correct": 38,
+          "total": 39
+        },
+        "quantity/missing": {
+          "correct": 1,
+          "total": 1
+        },
+        "status/all": {
+          "correct": 39,
+          "total": 40
+        },
+        "status/clear": {
+          "correct": 38,
+          "total": 39
+        },
+        "status/missing": {
+          "correct": 1,
+          "total": 1
+        }
+      },
+      "image_fields": {
+        "date/all": {
+          "correct": 34,
+          "total": 40
+        },
+        "date/conflict": {
+          "correct": 3,
+          "total": 3
+        },
+        "date/matched": {
+          "correct": 26,
+          "total": 32
+        },
+        "date/unclear": {
+          "correct": 1,
+          "total": 1
+        },
+        "date/unverified": {
+          "correct": 4,
+          "total": 4
+        },
+        "model/all": {
+          "correct": 34,
+          "total": 40
+        },
+        "model/conflict": {
+          "correct": 3,
+          "total": 3
+        },
+        "model/matched": {
+          "correct": 27,
+          "total": 33
+        },
+        "model/unclear": {
+          "correct": 1,
+          "total": 1
+        },
+        "model/unverified": {
+          "correct": 3,
+          "total": 3
+        },
+        "order_ref/all": {
+          "correct": 34,
+          "total": 40
+        },
+        "order_ref/conflict": {
+          "correct": 2,
+          "total": 2
+        },
+        "order_ref/matched": {
+          "correct": 25,
+          "total": 31
+        },
+        "order_ref/missing": {
+          "correct": 1,
+          "total": 1
+        },
+        "order_ref/unclear": {
+          "correct": 1,
+          "total": 1
+        },
+        "order_ref/unverified": {
+          "correct": 5,
+          "total": 5
+        },
+        "quantity/all": {
+          "correct": 34,
+          "total": 40
+        },
+        "quantity/conflict": {
+          "correct": 3,
+          "total": 3
+        },
+        "quantity/matched": {
+          "correct": 26,
+          "total": 32
+        },
+        "quantity/missing": {
+          "correct": 1,
+          "total": 1
+        },
+        "quantity/unverified": {
+          "correct": 4,
+          "total": 4
+        },
+        "status/all": {
+          "correct": 34,
+          "total": 40
+        },
+        "status/conflict": {
+          "correct": 3,
+          "total": 3
+        },
+        "status/matched": {
+          "correct": 26,
+          "total": 32
+        },
+        "status/missing": {
+          "correct": 1,
+          "total": 1
+        },
+        "status/unverified": {
+          "correct": 4,
+          "total": 4
+        }
+      },
+      "invariant_violations": 1,
+      "missing": [],
+      "run_terminal": 200,
+      "total": 200
+    },
+    "successful_supplier_receipt_coverage": {
+      "all_scenarios_have_successful_real_receipts": false,
+      "attempted_scenarios": 200,
+      "correctly_bound_scenarios": 199,
+      "failed_connection_scenario": "release-images-021"
+    }
+  },
+  "full_release_gate_executed": false,
+  "further_automatic_work_stopped": true,
+  "harness_sha256": "0086140f201fa63e8438e79bb74960dbdef1bbfa362126f05de1c90732441b7b",
+  "implementation_stages_1_to_5_accepted": true,
+  "kind": "stage6_finite_closeout_unreleased",
+  "limitations": [
+    "This is a finite unreleased closeout, not a successful complete release-gate result.",
+    "The single formal round counts a supplier connection failure as failed; it is not 200 successful real-provider samples.",
+    "Five image cases extracted all fields but failed database verification and expected case-state checks; no new root-cause repair loop was started.",
+    "The simulated invariant campaign stopped after 42 of 51 assertions due to an unresolved Case completion HTTPException; HTTP status/detail/throw site are unavailable.",
+    "Recovery evidence is synthetic local and local S3-compatible storage, not production/cloud recovery.",
+    "Older component evidence retains its original candidate attribution and is not relabeled.",
+    "Six usage records remain unknown; known token subtotals are not complete totals or monetary charges."
+  ],
+  "max_output_tokens": 2048,
+  "model": "gpt-6.1-sol",
+  "original_inputs_verified_in_formal_closeout": 474,
+  "production_deployed": false,
+  "pushed": false,
+  "release_eligible": false,
+  "release_package_created": false,
+  "requests": {
+    "all_run_bindings_verified": true,
+    "all_scenarios_have_successful_real_receipts": false,
+    "failed_attempts_without_success": [
+      {
+        "error": "SSLError",
+        "finished": 1794018867.8741024,
+        "id": 3102,
+        "scenario": "round-1:release-images-021",
+        "service": "helpdesk",
+        "status": null,
+        "usage": null
+      }
+    ],
+    "known_input_tokens": 10763107,
+    "known_output_tokens": 199989,
+    "ledger_end": 3273,
+    "ledger_start": 1379,
+    "new": 1894,
+    "prior_1379_exactly_unchanged": true,
+    "scenarios_with_successful_real_receipts": 199,
+    "scenarios_without_successful_real_receipts": [
+      "round-1:release-images-021"
+    ],
+    "successful_real_receipts": 1893,
+    "unfinished": 0,
+    "unknown_usage": 1
+  },
+  "stage6_cumulative": {
+    "dollar_cost": null,
+    "full_token_totals": null,
+    "known_input_subtotal": 34183943,
+    "known_output_subtotal": 663183,
+    "other_chats_excluded": true,
+    "reserved_requests": 6373,
+    "unknown_usage_requests": 6
+  },
+  "status": "closed_at_user_requested_scope_release_not_qualified",
+  "supplier_base_url": "https://api.kabi.pro/v1",
+  "unexecuted": [
+    "formal_round_2",
+    "formal_round_3",
+    "candidate_browser_acceptance",
+    "candidate_simulated_load",
+    "candidate_real_load",
+    "full_final_release_gate",
+    "release_package_generation"
+  ],
+  "verification_attempts": {
+    "first_interpreter": "System Python 3.9 could not import itertools.pairwise; no evidence audit was performed.",
+    "first_python312_attempt": "Frozen score/source checks passed, then the wrapper correctly stopped at its all-scenarios-positive receipt assumption. This v2 closeout preserves the sole SSLError scenario as failed, one unknown usage and 199/200 successful-receipt coverage; it does not admit the round for release."
+  }
+}
