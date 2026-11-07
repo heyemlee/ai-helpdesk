@@ -393,8 +393,13 @@ _ABBREVIATIONS = frozenset({
     "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec",
 })
 _WORD_BEFORE_DOT_RE = re.compile(r"([A-Za-z][A-Za-z.]*)\.$")
+_TIMESTAMP_BEFORE_DOT_RE = re.compile(
+    r"(?:\d{4}-\d{1,2}-\d{1,2}|\d{4}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日)"
+    r"[ T]*\d{2}:\d{2}(?::\d{2})?"
+    r"(?:\s*[（(]?\s*(?:UTC|Z|[+-]\d{2}:\d{2})\s*[）)]?)?$"
+)
 
-def _is_sentence_period(text: str, idx: int) -> bool:
+def _is_sentence_period(text: str, idx: int, *, final: bool = True) -> bool:
     """
     text[idx] 是 '.'。判断它是句末还是缩写点。
 
@@ -403,6 +408,25 @@ def _is_sentence_period(text: str, idx: int) -> bool:
     （"The total is $980. We will ship tomorrow."）必须切得开，所以这里
     不能因为句号前是数字就一律否掉。
     """
+    if _TIMESTAMP_BEFORE_DOT_RE.search(re.sub(r"[*`]", "", text[:idx])):
+        tail = text[idx + 1:]
+        line = tail.split("\n", 1)[0]
+        if not line.strip():
+            # A stream ending at "timestamp. " has not revealed whether the
+            # next token is a fractional continuation. A real line end or
+            # final flush can still finish an ordinary timestamp sentence.
+            return final or "\n" in tail
+        continuation = re.match(r"[ \t]*(\d\S*)[ \t]*(.*)", line)
+        if continuation:
+            token, following = continuation.groups()
+            if re.search(r"Z|UTC|[+-]", token):
+                return False
+            following = following.strip()
+            if not following:
+                return "\n" in tail
+            if (re.match(r"Z|UTC|[+-]", following) or "UTC".startswith(following)):
+                return False
+            # A separate numeric sentence ("500 items ...") is not a clock.
     head = re.search(_WORD_BEFORE_DOT_RE, text[: idx + 1])
     return not (head and head.group(1).rstrip(".").lower() in _ABBREVIATIONS)
 
@@ -419,7 +443,7 @@ def split_sentences(text: str, final: bool = True) -> tuple[list[str], str]:
     out: list[str] = []
     start = 0
     for m in pattern.finditer(text):
-        if m.group(0) == "." and not _is_sentence_period(text, m.start()):
+        if m.group(0) == "." and not _is_sentence_period(text, m.start(), final=final):
             continue
         out.append(text[start : m.end()])
         start = m.end()
@@ -628,7 +652,9 @@ class AnswerPolicy:
         zone = r"(?:\s*[（(]?\s*(?:UTC|Z|[+-]\d{2}:\d{2})\s*[）)]?)?"
         # Never match only the date/UTC-looking prefix of a different or
         # malformed full timestamp. The role check below compares instants.
-        stamp = rf"{date}{clock}{zone}(?![A-Za-z0-9:+-]|\s*[（(]?\s*(?:[A-Za-z]|[+-]\d))"
+        # Fractional clocks are unsupported; their decimal continuation must
+        # not turn a trusted integral prefix into a complete metadata value.
+        stamp = rf"{date}{clock}{zone}(?![A-Za-z0-9:+-]|\s*[.,]\s*\d|\s*[（(]?\s*(?:[A-Za-z]|[+-]\d))"
         # A whole, bounded retrieval observation may contain action nouns in
         # the missing policy's subject. It is not an instruction or deadline.
         # Keep every other value for the ordinary guard, and never accept an
