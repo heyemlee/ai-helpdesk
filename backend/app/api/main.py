@@ -2103,7 +2103,8 @@ async def _start_cases() -> None:
         # material wrapper must not abandon it earlier (the old fixed 90s did).
         materials = MaterialWorkflow(attachments, extractor, query_images,
                                      query_timeout_s=outer_tool_timeout_s() + 1)
-    executor = CaseExecutor(_cases, prepare=prepare, answer=_orchestrator.run, event_log=_case_event_log, materials=materials)
+    executor = CaseExecutor(_cases, prepare=prepare, answer=_orchestrator.run, event_log=_case_event_log,
+                            materials=materials, complete_facts=getattr(_orchestrator, "complete_facts", None))
     if config.runs_worker:
         _case_worker = RunWorker(store=store, broker=broker, channel=channel, memo=RedisMemo(_infra_redis),
                                  execute=executor, config=config, policy=DegradePolicy.from_env(), on_dead=executor.dead)

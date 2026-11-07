@@ -123,7 +123,9 @@ export interface ChatResponse {
     original_answer_confidence: number
   }
   needs_clarification: boolean
-  answer_confidence: number
+  answer_confidence?: number
+  answer_origin?: 'verified_fact_projection'
+  answer_model_invoked?: boolean
   policy_violations: PolicyViolation[]
   /** 请求追踪 id，与响应头 X-Request-ID 一致，报障时携带 */
   request_id?: string

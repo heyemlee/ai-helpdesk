@@ -1539,6 +1539,34 @@ class AgentOrchestrator:
             result.answer_usage = req.turn.usage()
         return result
 
+    def fact_preflight(self, req: Request) -> RoutingDecision | None:
+        """Reuse routing safeguards without answering or emitting model events."""
+        if (req.intent is None or req.intent_degraded or self._unavailable_before_answer(req)
+                or self._needs_clarification(req) or req.intent_confidence < self.INTENT_MIN_CONFIDENCE):
+            return None
+        decision = self._route_decision(req)
+        if (decision.primary_agent == AgentType.HANDOFF or decision.multi_agent
+                or decision.confidence < self.ROUTING_MIN_CONFIDENCE):
+            return None
+        return decision
+
+    async def complete_facts(self, req: Request) -> dict | None:
+        from app.core.fact_completion import proposal, retained_execution_task
+        task = (req.lookup_goal or {}).get("fact_task")
+        if not task:
+            return None
+        decision = self.fact_preflight(req)
+        evidence = req.fact_evidence or {}
+        knowledge = evidence.get("knowledge") or {}
+        if decision is None or knowledge.get("degraded") or knowledge.get("evidence_ok") is False:
+            return None
+        business = evidence.get("business_data") or {}
+        result = proposal(retained_execution_task(task, business), business)
+        if result:
+            result.update(routing_reason=decision.reason, routing_confidence=decision.confidence,
+                          primary_agent=decision.primary_agent.value, supporting_agents=[])
+        return result
+
     async def _run(self, req: Request) -> OrchestratorResult:
         """run() 的实现体。出口很多，轨迹统一由 run() 挂上。"""
         t0 = time.monotonic()

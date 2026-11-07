@@ -202,6 +202,10 @@ async def prepare_turn(
                             case_id=(case_context or {}).get("case_id", ""))
     lookup_goal["request_message"] = message
     lookup_goal["queries"] = list(dict.fromkeys([original_message, message]))
+    from app.core.fact_completion import current_task
+    task = current_task()
+    if task and task["case_id"] == (case_context or {}).get("case_id") and scope and task["run_id"] == scope.run_id:
+        lookup_goal["fact_task"] = task
     _record_intent(recorder, intent_result)
 
     knowledge_trace: dict[str, Any] = {}

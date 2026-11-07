@@ -73,7 +73,7 @@ def test_the_event_types_are_a_fixed_list():
         "turn_started", "memory_loaded", "intent_voted", "prefetch_planned", "tool_started",
         "tool_call", "model_call", "routed", "agent_started", "agent_fallback",
         "preamble_discarded", "loop_ended", "loop_fallback", "guard_replaced", "agent_answered",
-        "handoff", "ticket_created", "turn_completed", "turn_failed", "turn_aborted", "turn_abandoned",
+        "handoff", "ticket_created", "fact_proposed", "turn_completed", "turn_failed", "turn_aborted", "turn_abandoned",
     }
     assert TERMINAL_TYPES == {"turn_completed", "turn_failed", "turn_aborted"} <= EVENT_TYPES
     # turn_abandoned 不是终结事件（不是跑这一轮的进程自己发的），但这一轮也算结束了

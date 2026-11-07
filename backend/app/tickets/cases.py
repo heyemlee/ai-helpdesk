@@ -399,7 +399,8 @@ class CaseService:
             d["evidence"] = decode(d["evidence"], [])
             d["valid"] = (d["status"] != "invalid" and d["version"] == c["version"] and d["control_version"] == c["control_version"]
                           and d["evidence_version"] == 1
-                          and await self._evidence_valid(d["evidence"], conn=conn, actor=actor, case=c, lock=False))
+                          and await self._evidence_valid(d["evidence"], conn=conn, actor=actor, case=c, lock=False,
+                                                        body=d["body"], run_id=d["run_id"]))
         c["materials"] = [dict(r) for r in await conn.fetch(
             "SELECT attachment_id,sha256,message_id,version FROM case_materials WHERE case_id=$1", case_id)]
         if self.attachments:
@@ -466,7 +467,69 @@ class CaseService:
             await self._event(conn, c, body.operation, actor.actor_id, {"status": c["status"], "reason": body.reason})
         return await self.get(actor, case_id)
 
-    async def _evidence_valid(self, evidence, *, conn=None, actor=None, case=None, lock=True):
+    async def _evidence_valid(self, evidence, *, conn=None, actor=None, case=None, lock=True, body=None,
+                              run_id=None, completing=False):
+        from app.core.fact_completion import ORIGIN, fact_checkpoint, fact_mode, receipt_valid, valid_fact_header
+        fact_entries = [e for e in evidence if e.get("source") == "fact_projection"]
+        saved = applied = None
+        if run_id:
+            saved = await (conn or self.db).fetchrow(
+                "SELECT message,case_context,attempt,checkpoint,result FROM agent_runs WHERE run_id=$1 AND instance=$2",
+                run_id, self.run_instance)
+            if not completing:
+                applied = await (conn or self.db).fetchrow(
+                    "SELECT case_id,applied,result FROM case_run_receipts WHERE run_id=$1", run_id)
+        run_result = decode(saved["result"], {}) if saved else {}
+        applied_result = decode(applied["result"], {}) if applied else {}
+        checkpoint = decode(saved["checkpoint"], {}) if saved else {}
+        # Mode authority is outside the editable evidence list. Either durable
+        # result can require the fact receipt even if every evidence item is lost.
+        if fact_entries or fact_mode(run_result) or fact_mode(applied_result) or fact_checkpoint(checkpoint):
+            business = [e for e in evidence if e.get("source") == "business_query"]
+            if len(fact_entries) != 1 or len(business) != 1 or body is None or not case or not saved:
+                return False
+            receipt = fact_entries[0].get("receipt") or {}
+            if not isinstance(receipt, dict) or not isinstance(receipt.get("task"), dict):
+                return False
+            task = receipt.get("task") or {}
+            if type(task.get("case_version")) is not int or type(task.get("execution_attempt")) is not int:
+                return False
+            if task.get("run_id") != run_id:
+                return False
+            context = decode(saved["case_context"], {}) if saved else {}
+            case_id = case.get("case_id") or case.get("id")
+            trace = {k: v for k, v in business[0].items() if k != "source"}
+            if "case_proposal_origin" in checkpoint and checkpoint["case_proposal_origin"] != ORIGIN:
+                return False
+            if not completing:
+                if not applied or applied["applied"] is not True or applied["case_id"] != case_id:
+                    return False
+                for value in (run_result, applied_result):
+                    if (not valid_fact_header(value) or value["fact_receipt"] != receipt
+                            or value.get("response") != body or value.get("business_data") != trace
+                            or value.get("case_id") != case_id or value.get("case_applied") is not True
+                            or (value.get("run") or {}).get("run_id") != run_id
+                            or value.get("case_version") != case["version"]
+                            or value.get("control_version") != case["control_version"]):
+                        return False
+            # A later worker may adopt a checkpoint from the same execution.
+            # It must retain the original signed attempt and source clocks.
+            if (not saved or context.get("case_id") != (case.get("case_id") or case.get("id"))
+                    or task["case_version"] != case["version"] - (0 if completing else 1)
+                    or task.get("control_version") != case["control_version"]):
+                return False
+            if task.get("execution_attempt") != saved["attempt"]:
+                if (checkpoint.get("case_proposal") or {}).get("fact_receipt") != receipt:
+                    return False
+            if self.actors:
+                try:
+                    owner = await self.actors.from_snapshot(context, conn=conn)
+                    owner.require_policy(decode(case.get("policy_scope"), {}))
+                except HTTPException:
+                    return False
+            if not receipt_valid(receipt, trace, message=saved["message"], context=context,
+                                 run_id=task["run_id"], attempt=saved["attempt"], body=body):
+                return False
         refs = [e for e in evidence if e.get("doc_id")]
         if refs and (self.knowledge_base is None or not await self.knowledge_base.validate_policy_refs(refs, conn=conn, lock=lock)):
             return False
@@ -533,7 +596,8 @@ class CaseService:
             if (d["status"] == "invalid" or d["version"] != c["version"] or
                     d["control_version"] != c["control_version"] or d["body_hash"] != body.body_hash or c["status"] not in ACTIVE):
                 raise conflict("draft_stale")
-            if d["evidence_version"] != 1 or not await self._evidence_valid(decode(d["evidence"], []), conn=conn, actor=actor, case=c):
+            if d["evidence_version"] != 1 or not await self._evidence_valid(decode(d["evidence"], []), conn=conn, actor=actor,
+                                                                        case=c, body=d["body"], run_id=d["run_id"]):
                 raise conflict("draft_evidence_stale")
             if d["status"] != "approved":
                 await conn.execute("SELECT set_config('ai_helpdesk.evidence_approval','on',true)")
@@ -677,9 +741,18 @@ class CaseService:
                                                        language=ctx["snapshot"].get("language", "zh"),
                                                        knowledge_state=result.get("knowledge"))}
             check_evidence = refs + ([{"source": "business_query", **business}] if business else [])
+            from app.core.fact_completion import ORIGIN, fact_checkpoint, fact_mode, valid_fact_header
+            saved_checkpoint = decode(r["checkpoint"], {}) or {}
+            fact_result = fact_mode(result) or fact_checkpoint(saved_checkpoint)
+            if fact_result:
+                if (not valid_fact_header(result) or dead
+                        or ("case_proposal_origin" in saved_checkpoint and saved_checkpoint["case_proposal_origin"] != ORIGIN)):
+                    reason = reason or "draft_evidence_stale"
+                check_evidence.append({"source": "fact_projection", "receipt": result.get("fact_receipt")})
             if "material_reviews" not in result:
                 check_evidence += [f for f in ctx["snapshot"].get("facts", {}).values() if f.get("source") == "verified_image"]
-            if not reason and not await self._evidence_valid(check_evidence, conn=conn, case=c):
+            if not reason and not await self._evidence_valid(check_evidence, conn=conn, case=c, body=result.get("response"),
+                                                            run_id=run.run_id, completing=True):
                 reason = "draft_evidence_stale"
             if result.get("material_access_changed") or material_access_error:
                 reason = "material_access_changed"
@@ -691,6 +764,17 @@ class CaseService:
                        "case_version": c["version"], "control_version": c["control_version"],
                        "run": {"run_id": run.run_id, "attempt": run.attempt}, "case_applied": not reason}
             if reason:
+                if fact_result:
+                    payload.pop("answer_origin", None)
+                    payload.pop("fact_receipt", None)
+                    if saved_checkpoint.get("case_proposal_origin") == ORIGIN:
+                        # The trusted envelope records that no answer model ran,
+                        # even when all inner header fields were lost. Preserve
+                        # that execution fact without restoring a valid origin.
+                        payload["answer_model_invoked"] = False
+                    for key in ("answer_confidence", "answer_handoff_declared", "handoff_review"):
+                        payload.pop(key, None)
+                    payload["policy_violations"] = []
                 CASE_REJECTIONS.labels(reason=reason).inc()
                 response = ("此问题已由人工接管，材料已保存。" if reason == "human_control" else
                             "服务暂时不可用，材料已保存。" if reason == "service_unavailable" else
@@ -719,6 +803,8 @@ class CaseService:
                     evidence += list(result.get("knowledge_sources") or [])
                     if result.get("business_data"):
                         evidence.append({"source": "business_query", **result["business_data"]})
+                    if fact_result:
+                        evidence.append({"source": "fact_projection", "receipt": result["fact_receipt"]})
                     evidence += [{"source": "tool_trace", "trace": entry} for entry in result.get("trajectory", [])]
                     await conn.execute(
                         f"INSERT INTO case_drafts(id,case_id,run_id,version,control_version,body,body_hash,evidence,evidence_version,created_at)"

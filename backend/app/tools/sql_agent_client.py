@@ -260,7 +260,12 @@ class SQLAgentClient:
         # 逐步骤日志的两个名字（`step_logs` / `steps`）在归一里一并处理，
         # 过渡期两个都认、`steps` 优先——见 core.evidence._steps_field。
         result = normalize_delegation_result(data, run_id=run_id)
+        from app.core.fact_completion import bind_result as bind_fact_result
         from app.core.lookup_scope import bind_result
+        # A stale caller dispatch cannot attest a question absent from this
+        # actual HTTP request. Negative lookup handling stays separate below.
+        bind_fact_result(result, lookup_dispatch if (lookup_dispatch or {}).get("query") == question else None,
+                         key=self._api_key)
         bind_result(result, lookup_dispatch)
 
         # 对面的 trace_id 落进本方日志，两个服务的链路才能对起来——出了问题
@@ -308,7 +313,10 @@ class SQLAgentClient:
                 result = await client.send(question, uid, sid, **trace_args)
         else:
             result = await client.send(question, uid, sid, **trace_args)
+        from app.core.fact_completion import bind_result as bind_fact_result
         from app.core.lookup_scope import bind_result
+        bind_fact_result(result, lookup_dispatch if (lookup_dispatch or {}).get("query") == question else None,
+                         key=self._api_key)
         bind_result(result, lookup_dispatch)
         v = assess(result)
         logger.info("sql_agent.a2a 完成 trace_id=%s run_id=%s session=%s route=%s queried_db=%s databases=%s "

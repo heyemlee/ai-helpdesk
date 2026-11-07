@@ -28,9 +28,10 @@ FIELD_LABELS = {
 
 class CaseExecutor:
     def __init__(self, service, *, prepare: Callable[..., Awaitable], answer: Callable[..., Awaitable], event_log,
-                 materials=None):
+                 materials=None, complete_facts: Callable[..., Awaitable] | None = None):
         self.service, self.prepare, self.answer, self.event_log = service, prepare, answer, event_log
         self.materials = materials
+        self.complete_facts = complete_facts
 
     async def __call__(self, ctx: RunContext) -> RunOutcome:
         run = ctx.run
@@ -71,24 +72,43 @@ class CaseExecutor:
                         proposal.update(response=f"材料已保存，请补充：{fields}。", needs_clarification=True)
                     else:
                         await ctx.publish("progress", {"stage": "helpdesk.gathering", "label": "正在核对工单材料"})
-                        prepared = await self.prepare(run, snapshot, ctx.degrade)
-                        result = await self.answer(prepared.request)
-                        evidence = dict(prepared.evidence.get("knowledge") or {})
-                        proposal.update(encode_result(result), intent_group=prepared.intent.intent_group,
+                        from app.core.fact_completion import bind_task, make_task
+                        task = make_task(run.message, run.case_context, run.run_id, run.attempt) if self.complete_facts else None
+                        with bind_task(task):
+                            prepared = await self.prepare(run, snapshot, ctx.degrade)
+                        facts = await self.complete_facts(prepared.request) if self.complete_facts else None
+                        if facts:
+                            proposal.update(facts, intent_group=prepared.intent.intent_group,
+                                            intent=prepared.intent.intent.value)
+                            turn.emit("fact_proposed", {"task_id": facts["fact_receipt"]["task"]["id"], "delivery_task_id": task["id"],
+                                                       "receipt_id": facts["fact_receipt"]["id"],
+                                                       "answer_origin": facts["answer_origin"], "answer_model_invoked": False,
+                                                       "primary": facts.get("primary_agent", ""), "supporting": [],
+                                                       "reason": facts.get("routing_reason", ""),
+                                                       "confidence": facts.get("routing_confidence", 0.0)},
+                                      {"fact_receipt": facts["fact_receipt"]})
+                        else:
+                            result = await self.answer(prepared.request)
+                            evidence = dict(prepared.evidence.get("knowledge") or {})
+                            proposal.update(encode_result(result), intent_group=prepared.intent.intent_group,
                                         knowledge_used=prepared.knowledge_used,
                                         knowledge_sources=evidence.pop("sources", []), knowledge=evidence,
                                         business_data=prepared.evidence.get("business_data") or {})
-                        proposal["intent"] = proposal.get("intent") or "other"
-                        goal = getattr(prepared.request, "lookup_goal", None)
-                        proposal["lookup_goal"] = goal
-                        selected = collect_evidence(prepared.evidence, proposal.get("trajectory", []), lookup_goal=goal)
-                        proposal["knowledge_sources"] = selected["knowledge"]["sources"]
-                        proposal["business_data"] = selected["business_data"]
-                        proposal["response"] = render_draft(proposal["knowledge_sources"], proposal["business_data"], snapshot.get("facts"), language=snapshot.get("language", "zh"), knowledge_state=proposal.get("knowledge"), lookup_goal=goal)
-                        if result.handoff:
-                            proposal["handoff_review"] = handoff_review(prepared.request, result, proposal["response"])
+                            proposal["intent"] = proposal.get("intent") or "other"
+                            goal = getattr(prepared.request, "lookup_goal", None)
+                            proposal["lookup_goal"] = goal
+                            selected = collect_evidence(prepared.evidence, proposal.get("trajectory", []), lookup_goal=goal)
+                            proposal["knowledge_sources"] = selected["knowledge"]["sources"]
+                            proposal["business_data"] = selected["business_data"]
+                            proposal["response"] = render_draft(proposal["knowledge_sources"], proposal["business_data"], snapshot.get("facts"), language=snapshot.get("language", "zh"), knowledge_state=proposal.get("knowledge"), lookup_goal=goal)
+                            if result.handoff:
+                                proposal["handoff_review"] = handoff_review(prepared.request, result, proposal["response"])
                     phase = "checkpoint"
-                    if not await ctx.commit({"case_proposal": proposal}):
+                    checkpoint = {"case_proposal": proposal}
+                    from app.core.fact_completion import ORIGIN
+                    if proposal.get("answer_origin") == ORIGIN:
+                        checkpoint["case_proposal_origin"] = ORIGIN
+                    if not await ctx.commit(checkpoint):
                         raise RetryRun("Case proposal lost its lease")
                 # No model delta, ticket, notification or history has been published yet.
                 phase = "complete"
@@ -99,7 +119,7 @@ class CaseExecutor:
                                              "case_version": payload["case_version"],
                                              **{k: payload[k] for k in ("agent_type", "agent_types", "handoff", "escalated",
                                                 "needs_clarification", "answer_confidence", "service_unavailable",
-                                                "unavailable_reason", "latency_ms") if k in payload},
+                                                "unavailable_reason", "latency_ms", "answer_origin", "answer_model_invoked") if k in payload},
                                              "primary": payload.get("primary_agent", ""),
                                              "supporting": payload.get("supporting_agents", []),
                                              **({"handoff_review": review} if review else {})},

@@ -54,7 +54,8 @@ def bind_goal(goal):
 
 def dispatch_for(goal, query):
     return {"goal_id": goal["id"], "owner": goal["owner"], "query": query,
-            "nonce": uuid.uuid4().hex, "sent_at": datetime.now(UTC).isoformat()}
+            "nonce": uuid.uuid4().hex, "sent_at": datetime.now(UTC).isoformat(),
+            **({"fact_task": goal["fact_task"]} if goal.get("fact_task") else {})}
 
 
 def bind_result(data, dispatch):
