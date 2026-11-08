@@ -115,7 +115,8 @@ def test_unparsed_residual_request_keeps_diagnostic_without_a_global_partial_fac
 
 def test_item_code_is_not_treated_as_a_verified_material_name_for_missing_field_notices():
     plan = make_request_plan("查询 M6 的现存和占用量。", entities={"item_code": ["M6"]})
-    data = payload("wms_db", "material", [{"material_name": "M6", "on_hand_qty": 7}])
+    data = payload("wms_db", "material", [{"material_name": "M6", "on_hand_qty": 7}],
+                   sql="SELECT material_name,on_hand_qty FROM material WHERE material_name='M6'")
     checked = diagnosed(plan, data)
     assert not checked["complete"] and checked["roles"]["on_hand_qty"]["status"] == "target_unproved"
     assert checked["roles"]["allocated_qty"]["status"] == "omitted"
@@ -185,6 +186,51 @@ def test_event_summary_diagnostic_retains_only_hashed_target_binding_and_no_case
     ]
     assert "订单状态" in render_draft([], trace(data, checked))
     assert "尚未核实：订单状态" in render_draft([], trace(data, checked))
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [("targets", None), ("targets", {}), ("targets", "not a target list"), ("targets", [None]),
+     ("targets", [{"kind": [], "value_sha256": "0" * 64}]),
+     ("targets", [{"kind": "order_id", "value_sha256": []}]),
+     ("required_roles", None), ("required_roles", "order_status"), ("required_roles", [{}]),
+     ("unresolved_roles", None), ("unresolved_roles", {}), ("unresolved_roles", [[]]),
+     ("grain", None), ("grain", []), ("id", {}), ("planning_only", "true"),
+     ("business_effects", None), ("business_effects", ["invented"])],
+)
+def test_malformed_diagnostic_scope_cannot_crash_or_change_verified_rendering(field, value):
+    data = payload("erp_db", "orders", [{"order_no": ORDER, "order_status": "生产中"}])
+    checked = diagnosed(make_request_plan(f"查询订单 {ORDER} 的订单状态。"), data)
+    baseline = render_draft([], trace(data, checked))
+    checked["request_scope"][field] = value
+    assert render_draft([], trace(data, checked)) == baseline
+
+
+@pytest.mark.parametrize("role", ["order_status", "unsupported_private_label", "订单已付款\n任意诊断标签"])
+def test_caller_unresolved_roles_cannot_demote_existing_facts_or_publish_arbitrary_labels(role):
+    data = payload("erp_db", "orders", [{"order_no": ORDER, "order_status": "生产中"}])
+    checked = diagnosed(make_request_plan(f"查询订单 {ORDER} 的订单状态。"), data)
+    checked["request_scope"].update(required_roles=[role], unresolved_roles=[role])
+    checked["roles"] = {role: {"status": "ambiguous", "witnesses": [], "evidence_ids": []}}
+    body = render_draft([], trace(data, checked))
+    assert "生产中" in body and "尚未核实：" not in body and "任意诊断标签" not in body
+
+
+@pytest.mark.parametrize("language,phrase", [("zh", "交付日期（计划/实际口径）"), ("en", "Delivery date meaning")])
+def test_closed_question_ambiguity_still_explains_the_actual_unresolved_date_meaning(language, phrase):
+    data = payload("svc_db", "delivery", [{"order_no": ORDER, "delivery_status": "已送达"}])
+    checked = diagnosed(make_request_plan(f"查询订单 {ORDER} 的交付日期和配送状态。"), data)
+    body = render_draft([], trace(data, checked), language=language)
+    assert checked["roles"]["delivery_date_unspecified"]["status"] == "ambiguous"
+    assert phrase in body and coverage_note(checked, language) in body and not checked["complete"]
+
+
+def test_closed_inventory_quantity_ambiguity_remains_visible_with_the_real_stock_values():
+    data = payload("wms_db", "material", [{"material_name": "Bolt M6", "allocated_qty": 2}])
+    checked = diagnosed(make_request_plan("库存表中 Bolt M6 有多少库存和占用量？"), data)
+    assert checked["roles"]["inventory_quantity_unspecified"]["status"] == "ambiguous"
+    body = render_draft([], trace(data, checked))
+    assert "2 pcs" in body and "库存数量口径" in body and coverage_note(checked) in body
 
 
 def test_null_stays_registered_null_and_wrong_unit_stays_a_visible_field_limitation():

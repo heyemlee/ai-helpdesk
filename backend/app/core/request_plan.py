@@ -502,11 +502,44 @@ def _request_coverage(plan, data, cells, nulls, issues, *, outcome="", at=None):
     }
 
 
+_QUESTION_AMBIGUITIES = {"delivery_date_unspecified", "inventory_quantity_unspecified"}
+_UNRESOLVED_CODES = _QUESTION_AMBIGUITIES | {
+    "aggregate_scope", "time_scope", "case_target_conflict", "filter_scope", "source_scope", "unparsed_request",
+}
+
+
+def _supported_coverage_scope(scope):
+    """Closed diagnostic schema, not authority for any business assertion."""
+    if not isinstance(scope, dict) or set(scope) != {
+        "id", "planning_only", "grain", "targets", "required_roles", "unresolved_roles", "business_effects",
+    }:
+        return False
+    if (not isinstance(scope["id"], str) or not re.fullmatch(r"[0-9a-f]{64}", scope["id"])
+            or scope["planning_only"] is not True or not isinstance(scope["grain"], str)
+            or scope["grain"] not in {"order_values", "current_order_scalar_values", "material_inventory",
+                                      "replacement_records", "registered_contact", "aggregate", "unsupported"}):
+        return False
+    for name, allowed in (("required_roles", ROLES.keys() | _QUESTION_AMBIGUITIES),
+                          ("unresolved_roles", _UNRESOLVED_CODES)):
+        values = scope[name]
+        if not isinstance(values, list) or not all(isinstance(v, str) and v in allowed for v in values):
+            return False
+    targets = scope["targets"]
+    return (
+        isinstance(targets, list)
+        and all(isinstance(t, dict) and set(t) == {"kind", "value_sha256"}
+                and isinstance(t["kind"], str) and t["kind"] in {"order_id", "material_name", "item_code"}
+                and isinstance(t["value_sha256"], str) and re.fullmatch(r"[0-9a-f]{64}", t["value_sha256"])
+                for t in targets)
+        and isinstance(scope["business_effects"], list) and scope["business_effects"] in ([], ["requested"])
+    )
+
+
 def visible_coverage_note(coverage, business, language="zh", *, at=None):
     """Recheck concrete limitations; a saved planner verdict cannot publish facts."""
     from app.core.business_facts import verified_cells, verified_nulls
 
-    if not isinstance(coverage, dict) or not isinstance(plan := coverage.get("request_scope"), dict):
+    if not isinstance(coverage, dict) or not _supported_coverage_scope(plan := coverage.get("request_scope")):
         return ""
     data = business.get("evidence_payload") or {}
     cells, issues = verified_cells(data, at=at)
@@ -551,7 +584,8 @@ def visible_coverage_note(coverage, business, language="zh", *, at=None):
             role: value for role, value in checked["roles"].items()
             if (value["status"] in {"omitted", "wrong_target"} and observed_scope(role, value["status"]))
             or (value["status"] == "unsupported" and invalid_value(role) and observed_scope(role, "value"))
-            or (value["status"] == "ambiguous" and role in plan.get("unresolved_roles", []))
+            or (value["status"] == "ambiguous" and role in _QUESTION_AMBIGUITIES
+                and role in plan["unresolved_roles"])
         }
         if missing:
             return coverage_note({"roles": missing}, language)
