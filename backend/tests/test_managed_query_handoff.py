@@ -35,6 +35,8 @@ CORRECTION = f"{ORDER} 的现场材料有更新，重新核验状态后出审核
 PRODUCTION = f"另开一案，检索业务 {SECOND} 对应的生产记录状态值。"
 PARTS = f"订单 {ORDER} 的补件申请现在什么状态？补件数量也请查清。"
 PART_ROLES = {"part_name", "part_quantity", "part_status"}
+MATERIAL = "Hinge BX-842-24"
+STOCK = {"on_hand_qty", "allocated_qty"}
 
 
 def context(*, ref=ORDER, operation="continued"):
@@ -147,6 +149,52 @@ def test_replacement_part_actions_and_unnamed_records_keep_the_existing_handoff_
 def test_service_failures_and_direct_routes_still_hand_off_a_replacement_part_query(change):
     original = proposal(**change)
     assert restrict_query_handoff(original, message=PARTS, context=context()) is original
+
+
+@pytest.mark.parametrize("message,refs,roles", [
+    (f"系统是否有 {ORDER} 的状态记录？", [ORDER], set()),
+    (f"系统里有没有 {ORDER} 的状态记录？", [ORDER], set()),
+    (f"提供 {ORDER} 的登记联系电话。", [ORDER], {"registered_phone"}),
+    (f"查询订单 {ORDER} 的手机号。", [ORDER], {"registered_phone"}),
+    (f"Please show the registered phone for order {ORDER}.", [ORDER], {"registered_phone"}),
+    (f"订单 {ORDER} 对应物料 {MATERIAL} 的现有库存和已占用库存分别是多少？", [ORDER], STOCK),
+    (f"库存表中 {MATERIAL} 有多少现存与占用件数？", [], STOCK),
+    (f"Please show on-hand and allocated quantities of “{MATERIAL}”.", [], STOCK),
+])
+@pytest.mark.parametrize("operation", ["created", "continued"])
+def test_record_existence_phone_and_inventory_queries_do_not_authorize_a_model_handoff(message, refs, roles, operation):
+    saved = context(operation=operation)
+    saved["snapshot"]["order_refs"] = refs
+    assert read_only_staff_query(message, saved)
+    result = restrict_query_handoff(proposal(), message=message, context=saved)
+    assert result["handoff"] is False and result["escalated"] is False
+    assert result["handoff_review"]["outcome"] == "not_authorized_for_read_only_case"
+    plan = make_request_plan(message, case_refs=refs)
+    assert roles <= set(plan["required_roles"]) and not plan["business_effects"]
+
+
+@pytest.mark.parametrize("message,refs", [
+    (f"系统是否有 {ORDER} 的状态记录？没有就转人工。", [ORDER]),
+    (f"提供 {ORDER} 的登记联系电话，并通知客户。", [ORDER]),
+    (f"把订单 {ORDER} 的联系电话改成 13800000000。", [ORDER]),
+    (f"打电话给订单 {ORDER} 的客户。", [ORDER]),
+    (f"库存表中 {MATERIAL} 有多少现存？请转人工。", []),
+    (f"库存表中 {MATERIAL} 请转人工 有多少现存？", []),
+    (f"物料 {MATERIAL} escalate 的库存是多少？", []),
+    (f"物料 refund {MATERIAL} 的库存是多少？", []),
+    (f"库存表中 {MATERIAL} 有多少现存？订单 FOREIGN-22 也查一下。", []),
+    (f"订单 {SECOND} 对应物料 {MATERIAL} 的现有库存是多少？", [ORDER]),
+    ("库存表中 铰链BX-842 有多少现存？", []),
+    (f"{MATERIAL} 的库存是多少？", []),
+    (f"库存表中 {MATERIAL} 有多少现存？并安排补发。", [ORDER]),
+    (f"系统是否有 {ORDER} 的状态记录？", []),
+])
+def test_lookup_actions_hidden_requests_and_unreferenced_cases_keep_the_existing_handoff_workflow(message, refs):
+    saved = context()
+    saved["snapshot"]["order_refs"] = refs
+    original = proposal()
+    assert not read_only_staff_query(message, saved)
+    assert restrict_query_handoff(original, message=message, context=saved) is original
 
 
 @pytest.mark.parametrize("change", ["wrong_case", "wrong_message", "wrong_operation", "foreign_reference"])
