@@ -83,42 +83,53 @@ class CaseExecutor:
                     elif snapshot.get("pending_fields"):
                         proposal.update(response=pending_response(snapshot), needs_clarification=True)
                     else:
-                        await ctx.publish("progress", {"stage": "helpdesk.gathering", "label": "正在核对工单材料"})
-                        from app.core.fact_completion import bind_task, make_task
-                        from app.core.policy_completion import make_task as make_policy_task
-                        task = ((make_task(run.message, run.case_context, run.run_id, run.attempt)
-                                 or make_policy_task(run.message, run.case_context, run.run_id, run.attempt))
-                                if self.complete_facts else None)
-                        with bind_task(task):
-                            prepared = await self.prepare(run, snapshot, ctx.degrade)
-                        facts = await self.complete_facts(prepared.request) if self.complete_facts else None
-                        if facts:
-                            proposal.update(facts, intent_group=prepared.intent.intent_group,
-                                            intent=prepared.intent.intent.value)
-                            turn.emit("fact_proposed", {"task_id": facts["fact_receipt"]["task"]["id"], "delivery_task_id": task["id"],
-                                                       "receipt_id": facts["fact_receipt"]["id"],
-                                                       "answer_origin": facts["answer_origin"], "answer_model_invoked": False,
-                                                       "primary": facts.get("primary_agent", ""), "supporting": [],
-                                                       "reason": facts.get("routing_reason", ""),
-                                                       "confidence": facts.get("routing_confidence", 0.0)},
-                                      {"fact_receipt": facts["fact_receipt"]})
+                        image_projector = getattr(self.service, "image_projection", None)
+                        image = await image_projector(run) if image_projector else None
+                        if image:
+                            proposal.update(image)
+                            if image.get("fact_receipt"):
+                                turn.emit("fact_proposed", {"task_id": image["fact_receipt"]["task"]["id"],
+                                                       "receipt_id": image["fact_receipt"]["id"],
+                                                       "answer_origin": image["answer_origin"], "answer_model_invoked": False,
+                                                       "primary": "", "supporting": [], "reason": "已核对图片材料"},
+                                          {"fact_receipt": image["fact_receipt"]})
                         else:
-                            result = await self.answer(prepared.request)
-                            evidence = dict(prepared.evidence.get("knowledge") or {})
-                            proposal.update(encode_result(result), intent_group=prepared.intent.intent_group,
-                                        knowledge_used=prepared.knowledge_used,
-                                        knowledge_sources=evidence.pop("sources", []), knowledge=evidence,
-                                        business_data=prepared.evidence.get("business_data") or {})
-                            proposal["intent"] = proposal.get("intent") or "other"
-                            goal = getattr(prepared.request, "lookup_goal", None)
-                            proposal["lookup_goal"] = goal
-                            selected = collect_evidence(prepared.evidence, proposal.get("trajectory", []), lookup_goal=goal)
-                            proposal["knowledge_sources"] = selected["knowledge"]["sources"]
-                            proposal["knowledge"] = {k: v for k, v in selected["knowledge"].items() if k != "sources"}
-                            proposal["business_data"] = selected["business_data"]
-                            proposal["response"] = render_draft(proposal["knowledge_sources"], proposal["business_data"], snapshot.get("facts"), language=snapshot.get("language", "zh"), knowledge_state=proposal.get("knowledge"), lookup_goal=goal)
-                            if result.handoff:
-                                proposal["handoff_review"] = handoff_review(prepared.request, result, proposal["response"])
+                            await ctx.publish("progress", {"stage": "helpdesk.gathering", "label": "正在核对工单材料"})
+                            from app.core.fact_completion import bind_task, make_task
+                            from app.core.policy_completion import make_task as make_policy_task
+                            task = ((make_task(run.message, run.case_context, run.run_id, run.attempt)
+                                     or make_policy_task(run.message, run.case_context, run.run_id, run.attempt))
+                                    if self.complete_facts else None)
+                            with bind_task(task):
+                                prepared = await self.prepare(run, snapshot, ctx.degrade)
+                            facts = await self.complete_facts(prepared.request) if self.complete_facts else None
+                            if facts:
+                                proposal.update(facts, intent_group=prepared.intent.intent_group,
+                                                intent=prepared.intent.intent.value)
+                                turn.emit("fact_proposed", {"task_id": facts["fact_receipt"]["task"]["id"], "delivery_task_id": task["id"],
+                                                           "receipt_id": facts["fact_receipt"]["id"],
+                                                           "answer_origin": facts["answer_origin"], "answer_model_invoked": False,
+                                                           "primary": facts.get("primary_agent", ""), "supporting": [],
+                                                           "reason": facts.get("routing_reason", ""),
+                                                           "confidence": facts.get("routing_confidence", 0.0)},
+                                          {"fact_receipt": facts["fact_receipt"]})
+                            else:
+                                result = await self.answer(prepared.request)
+                                evidence = dict(prepared.evidence.get("knowledge") or {})
+                                proposal.update(encode_result(result), intent_group=prepared.intent.intent_group,
+                                            knowledge_used=prepared.knowledge_used,
+                                            knowledge_sources=evidence.pop("sources", []), knowledge=evidence,
+                                            business_data=prepared.evidence.get("business_data") or {})
+                                proposal["intent"] = proposal.get("intent") or "other"
+                                goal = getattr(prepared.request, "lookup_goal", None)
+                                proposal["lookup_goal"] = goal
+                                selected = collect_evidence(prepared.evidence, proposal.get("trajectory", []), lookup_goal=goal)
+                                proposal["knowledge_sources"] = selected["knowledge"]["sources"]
+                                proposal["knowledge"] = {k: v for k, v in selected["knowledge"].items() if k != "sources"}
+                                proposal["business_data"] = selected["business_data"]
+                                proposal["response"] = render_draft(proposal["knowledge_sources"], proposal["business_data"], snapshot.get("facts"), language=snapshot.get("language", "zh"), knowledge_state=proposal.get("knowledge"), lookup_goal=goal)
+                                if result.handoff:
+                                    proposal["handoff_review"] = handoff_review(prepared.request, result, proposal["response"])
                     phase = "checkpoint"
                     checkpoint = {"case_proposal": proposal}
                     from app.core.fact_completion import ORIGINS

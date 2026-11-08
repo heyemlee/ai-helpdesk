@@ -124,7 +124,7 @@ export interface ChatResponse {
   }
   needs_clarification: boolean
   answer_confidence?: number
-  answer_origin?: 'verified_fact_projection' | 'verified_policy_projection'
+  answer_origin?: 'verified_fact_projection' | 'verified_policy_projection' | 'verified_image_projection'
   answer_model_invoked?: boolean
   policy_violations: PolicyViolation[]
   /** 请求追踪 id，与响应头 X-Request-ID 一致，报障时携带 */

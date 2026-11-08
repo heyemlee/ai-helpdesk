@@ -467,6 +467,182 @@ class CaseService:
             await self._event(conn, c, body.operation, actor.actor_id, {"status": c["status"], "reason": body.reason})
         return await self.get(actor, case_id)
 
+    async def _image_authority(self, saved, case, run_id, *, conn=None, completing=True, lock=False):
+        """Reload the original input and immutable review, not a caller's proof.
+
+        This authority is a server-owned PG record. No SQL-dispatch HMAC is
+        created or inferred from its hashes. Storage bytes are reauthorized too.
+        """
+        from app.attachments.objects import ObjectFailure
+        from app.core import image_completion as ic
+        store = conn or self.db
+        try:
+            context = decode(saved["case_context"], {})
+            origin = await store.fetchrow(
+                "SELECT m.actor_id,m.run_id,m.version,l.role,l.content FROM case_messages m"
+                " JOIN conversation_log l ON l.seq=m.seq WHERE m.case_id=$1 AND m.message_id=$2",
+                context["case_id"], context["snapshot"]["input_receipt"]["message_id"])
+            if not origin or origin["role"] != "user":
+                return None
+            task = ic.make_task(origin["content"], context, run_id, saved["attempt"])
+            if (task is None or self.attachments is None or case is None
+                    or case["instance"] != task["instance"] or case["control_mode"] != "assistant"
+                    or case["status"] not in ACTIVE or decode(case["pending_fields"], [])
+                    or case["version"] != task["case_version"] + (0 if completing else 1)
+                    or case["control_version"] != task["control_version"]
+                    or decode(case["facts"], {}) != context["snapshot"]["facts"]
+                    or case["issue_type"] != context["snapshot"]["issue_type"]
+                    or decode(case["order_refs"], []) != context["snapshot"]["order_refs"]
+                    or decode(case.get("policy_scope"), {}) != task["policy_scope"]
+                    or hashlib.sha256(saved["message"].encode()).hexdigest() != task["continuation_message_sha256"]
+                    or saved["message"] != origin["content"]):
+                return None
+            actor = await self.attachments.actors.from_snapshot(context, conn=conn)
+            actor.require_policy(decode(case.get("policy_scope"), {}))
+            parent = await store.fetchrow(
+                "SELECT message,case_context,status,result,started_at,finished_at FROM agent_runs WHERE run_id=$1 AND instance=$2",
+                task["review_run_id"], self.run_instance)
+            receipt = await store.fetchrow("SELECT case_id,applied,result FROM case_run_receipts WHERE run_id=$1",
+                                           task["review_run_id"])
+            original = decode(parent["case_context"], {}) if parent else {}
+            if (not parent or parent["status"] != "succeeded" or parent["message"] != origin["content"]
+                    or not receipt or receipt["applied"] is not True or receipt["case_id"] != task["case_id"]
+                    or decode(parent["result"], {}) != decode(receipt["result"], {})
+                    or decode(receipt["result"], {}).get("next_run_id") != run_id
+                    or any(original.get(k) != context.get(k) for k in ("case_id", "actor_id", "auth_version", "instance"))
+                    or original.get("message_id") != task["input_receipt"]["message_id"]
+                    or original.get("expected_case_version") != task["case_version"] - 1
+                    or original.get("expected_control_version") != task["control_version"]
+                    or original.get("snapshot", {}).get("review_materials") != task["materials"]
+                    or original.get("snapshot", {}).get("input_receipt") != task["input_receipt"]):
+                return None
+            message = await store.fetchrow(
+                "SELECT m.actor_id,m.run_id,m.version,l.role,l.content FROM case_messages m"
+                " JOIN conversation_log l ON l.seq=m.seq WHERE m.case_id=$1 AND m.message_id=$2",
+                task["case_id"], task["input_receipt"]["message_id"])
+            if (not message or message["actor_id"] != task["actor_id"] or message["role"] != "user"
+                    or message["run_id"] != task["review_run_id"] or message["content"] != origin["content"]
+                    or message["version"] != task["case_version"] - 1
+                    or await store.fetchval("SELECT count(*) FROM case_messages m JOIN conversation_log l ON l.seq=m.seq"
+                                            " WHERE m.case_id=$1 AND l.role='user'", task["case_id"]) != 1):
+                return None
+            continuation = await store.fetchrow(
+                "SELECT m.run_id,m.version,l.role,l.content,m.request_hash FROM case_messages m"
+                " JOIN conversation_log l ON l.seq=m.seq WHERE m.case_id=$1 AND m.message_id=$2",
+                task["case_id"], context["message_id"])
+            text = "图片核对已完成；请按已确认事实和待补字段继续处理。"
+            if (not continuation or continuation["run_id"] != run_id or continuation["role"] != "system"
+                    or continuation["version"] != task["case_version"] or continuation["content"] != text
+                    or continuation["request_hash"] != hashlib.sha256(text.encode()).hexdigest()):
+                return None
+            materials = [dict(row) for row in await store.fetch(
+                "SELECT attachment_id,sha256,message_id FROM case_materials WHERE case_id=$1 ORDER BY attachment_id",
+                task["case_id"])]
+            attached = [dict(row) for row in await store.fetch(
+                "SELECT attachment_id,sha256 FROM message_attachments WHERE message_id=$1 ORDER BY attachment_id",
+                task["input_receipt"]["message_id"])]
+            if (materials != task["materials"]
+                    or attached != [{k: materials[0][k] for k in ("attachment_id", "sha256")}]):
+                return None
+            material = materials[0]
+            row = await self.attachments.get(actor, material["attachment_id"], conn=conn, lock=lock)
+            if row["sha256"] != material["sha256"]:
+                return None
+            for key, expected in (("object_key", "sha256"), ("preview_key", "preview_sha256")):
+                if hashlib.sha256(await self.attachments.objects.get(row[key])).hexdigest() != row[expected]:
+                    return None
+            reviews = [dict(row) for row in await store.fetch(
+                "SELECT * FROM case_image_reviews WHERE case_id=$1 AND run_id=$2 ORDER BY attachment_id"
+                + (" FOR SHARE" if lock else ""), task["case_id"], task["review_run_id"])]
+            for review in reviews:
+                review["result"] = decode(review["result"])
+                review["execution"] = {k: parent[k] for k in ("started_at", "finished_at")}
+            return task, reviews, decode(case["facts"], {})
+        except (KeyError, TypeError, ValueError, AttributeError, HTTPException, OSError, ObjectFailure):
+            return None
+
+    async def image_projection(self, run):
+        """Optional projection; a selected mode cannot fall back after a crash."""
+        from app.core import image_completion as ic
+        pinned = run.case_context.get("image_projection_origin") == ic.ORIGIN
+        blocked = {"answer_origin": ic.ORIGIN, "answer_model_invoked": False, "fact_receipt": {},
+                   "response": "", "handoff": False, "escalated": False}
+        if (run.case_context.get("materials_reviewed") is not True
+                or not run.case_context.get("message_id", "").startswith("verified_")):
+            return blocked if pinned else None
+        saved = await self.db.fetchrow("SELECT message,case_context,attempt FROM agent_runs WHERE run_id=$1 AND instance=$2",
+                                       run.run_id, self.run_instance)
+        case = await self.db.fetchrow("SELECT * FROM ticket_case_state WHERE case_id=$1 AND instance=$2",
+                                      run.case_context["case_id"], self.instance)
+        if (not saved or saved["message"] != run.message or saved["attempt"] != run.attempt
+                or decode(saved["case_context"], {}) != run.case_context):
+            return blocked if pinned else None
+        authority = await self._image_authority(saved, case, run.run_id)
+        proposed = ic.proposal(*authority) if authority else None
+        if not proposed:
+            return blocked if pinned else None
+        # This durable authority survives removal of every checkpoint header.
+        context = await self.db.fetchval(
+            f"UPDATE agent_runs SET case_context=jsonb_set(case_context,'{{image_projection_origin}}',to_jsonb($1::text))"
+            f" WHERE run_id=$2 AND instance=$3 AND status='running' AND lease_owner=$4 AND attempt=$5"
+            f" AND lease_until>{_NOW} AND (case_context->>'image_projection_origin' IS NULL"
+            f" OR case_context->>'image_projection_origin'=$1) RETURNING case_context",
+            ic.ORIGIN, run.run_id, self.run_instance, run.lease_owner, run.attempt)
+        if context is None:
+            raise conflict("run_lease_lost")
+        run.case_context = decode(context)
+        return proposed
+
+    async def _image_evidence_valid(self, evidence, *, conn, case, body, run_id,
+                                    saved, applied, checkpoint, completing, lock):
+        from app.core import image_completion as ic
+        from app.core.fact_completion import valid_fact_header
+        entries = [e for e in evidence if e.get("source") == "fact_projection"]
+        proposal = checkpoint.get("case_proposal") or {}
+        try:
+            if (len(entries) != 1 or not saved or not case or checkpoint.get("case_proposal_origin") != ic.ORIGIN
+                    or decode(saved["case_context"], {}).get("image_projection_origin") != ic.ORIGIN
+                    or not valid_fact_header(proposal) or proposal.get("answer_origin") != ic.ORIGIN
+                    or proposal["response"] != body or proposal["fact_receipt"] != entries[0]["receipt"]
+                    or proposal.get("knowledge_sources") != [] or proposal.get("knowledge") != {}
+                    or proposal.get("business_data") != {}):
+                return False
+            authority = await self._image_authority(saved, case, run_id, conn=conn, completing=completing, lock=lock)
+            if authority is None:
+                return False
+            task, reviews, facts = authority
+            actual = [e for e in evidence if e.get("source") == "verified_image"]
+            # No other source or extra fact can enter this closed projection.
+            if (len(evidence) != 6 or len(actual) != 5
+                    or {e.get("field") for e in actual} != ic.FIELDS
+                    or any(e != ({"field": e["field"], **facts[e["field"]]}
+                                  | ({} if completing else {"reply_reference": "I"+str(sorted(ic.FIELDS).index(e["field"])+1)}))
+                           for e in actual)):
+                return False
+            receipt = entries[0]["receipt"]
+            original_message = await (conn or self.db).fetchval(
+                "SELECT l.content FROM case_messages m JOIN conversation_log l ON l.seq=m.seq"
+                " WHERE m.case_id=$1 AND m.message_id=$2 AND l.role='user'",
+                task["case_id"], task["input_receipt"]["message_id"])
+            if not ic.receipt_valid(receipt, reviews, facts, message=original_message, context=decode(saved["case_context"], {}),
+                                    run_id=run_id, attempt=saved["attempt"], body=body):
+                return False
+            if not completing:
+                if not applied or applied["applied"] is not True or applied["case_id"] != task["case_id"]:
+                    return False
+                for value in (decode(saved["result"], {}), decode(applied["result"], {})):
+                    if (not valid_fact_header(value) or value.get("answer_origin") != ic.ORIGIN
+                            or value.get("fact_receipt") != receipt or value.get("response") != body
+                            or value.get("case_id") != task["case_id"] or value.get("case_applied") is not True
+                            or (value.get("run") or {}).get("run_id") != run_id
+                            or value.get("case_version") != case["version"]
+                            or value.get("control_version") != case["control_version"]
+                            or value.get("business_data") != {} or value.get("knowledge_sources") != []):
+                        return False
+            return True
+        except (KeyError, TypeError, ValueError, AttributeError):
+            return False
+
     async def _policy_evidence_valid(self, evidence, *, conn, case, body, run_id,
                                      saved, applied, checkpoint, completing, lock):
         from app.core import policy_completion as pc
@@ -536,12 +712,23 @@ class CaseService:
         run_result = decode(saved["result"], {}) if saved else {}
         applied_result = decode(applied["result"], {}) if applied else {}
         checkpoint = decode(saved["checkpoint"], {}) if saved else {}
+        from app.core import image_completion as ic
+        from app.core.policy_completion import KIND as POLICY_KIND
         from app.core.policy_completion import ORIGIN as POLICY_ORIGIN
+        modes = [value.get("answer_origin") for value in (run_result, applied_result, checkpoint.get("case_proposal") or {})]
+        kinds = [(entry.get("receipt") or {}).get("kind") for entry in fact_entries
+                 if isinstance(entry.get("receipt"), dict)]
+        image_mode = (decode(saved["case_context"], {}).get("image_projection_origin") == ic.ORIGIN if saved else False)
+        image_mode = image_mode or checkpoint.get("case_proposal_origin") == ic.ORIGIN or ic.ORIGIN in modes or ic.KIND in kinds
+        if image_mode:
+            return await self._image_evidence_valid(evidence, conn=conn, case=case, body=body, run_id=run_id,
+                saved=saved, applied=applied, checkpoint=checkpoint, completing=completing, lock=lock)
+        if any(kind is not None and kind != POLICY_KIND for kind in kinds):
+            return False
         policy_mode = (checkpoint.get("case_proposal_origin") == POLICY_ORIGIN
                        or any(value.get("answer_origin") == POLICY_ORIGIN
                               for value in (run_result, applied_result, checkpoint.get("case_proposal") or {}))
-                       or any(isinstance(entry.get("receipt"), dict) and entry["receipt"].get("kind") is not None
-                              for entry in fact_entries))
+                       or POLICY_KIND in kinds)
         if policy_mode:
             return await self._policy_evidence_valid(evidence, conn=conn, case=case, body=body, run_id=run_id,
                 saved=saved, applied=applied, checkpoint=checkpoint, completing=completing, lock=lock)
@@ -806,15 +993,20 @@ class CaseService:
             check_evidence = refs + ([{"source": "business_query", **business}] if business else [])
             from app.core.fact_completion import ORIGINS, fact_checkpoint, fact_mode, valid_fact_header
             saved_checkpoint = decode(r["checkpoint"], {}) or {}
-            fact_result = fact_mode(result) or fact_checkpoint(saved_checkpoint)
+            from app.core.image_completion import ORIGIN as IMAGE_ORIGIN
+            image_pinned = decode(r["case_context"], {}).get("image_projection_origin") == IMAGE_ORIGIN
+            fact_result = fact_mode(result) or fact_checkpoint(saved_checkpoint) or image_pinned
             if fact_result:
                 if (not valid_fact_header(result) or dead
+                        or (image_pinned and (saved_checkpoint.get("case_proposal_origin") != IMAGE_ORIGIN
+                                              or result.get("answer_origin") != IMAGE_ORIGIN))
                         or ("case_proposal_origin" in saved_checkpoint
                             and saved_checkpoint["case_proposal_origin"] != result.get("answer_origin"))):
                     reason = reason or "draft_evidence_stale"
                 check_evidence.append({"source": "fact_projection", "receipt": result.get("fact_receipt")})
             if "material_reviews" not in result:
-                check_evidence += [f for f in ctx["snapshot"].get("facts", {}).values() if f.get("source") == "verified_image"]
+                check_evidence += [({"field": field, **f} if image_pinned else f)
+                                   for field, f in ctx["snapshot"].get("facts", {}).items() if f.get("source") == "verified_image"]
             if not reason and not await self._evidence_valid(check_evidence, conn=conn, case=c, body=result.get("response"),
                                                             run_id=run.run_id, completing=True):
                 reason = "draft_evidence_stale"
@@ -829,9 +1021,11 @@ class CaseService:
                        "run": {"run_id": run.run_id, "attempt": run.attempt}, "case_applied": not reason}
             if reason:
                 if fact_result:
+                    if image_pinned:
+                        payload["escalated"] = False
                     payload.pop("answer_origin", None)
                     payload.pop("fact_receipt", None)
-                    if saved_checkpoint.get("case_proposal_origin") in ORIGINS:
+                    if image_pinned or saved_checkpoint.get("case_proposal_origin") in ORIGINS:
                         # The trusted envelope records that no answer model ran,
                         # even when all inner header fields were lost. Preserve
                         # that execution fact without restoring a valid origin.
@@ -860,7 +1054,11 @@ class CaseService:
                     draft_id = "dr_" + run.run_id
                     evidence = [{"field": field, **value} for field, value in decode(c["facts"], {}).items()]
                     from app.core.business_facts import rendered_images
-                    image_refs = {field: f"I{i}" for i, (field, _) in enumerate(rendered_images(decode(c["facts"], {})), 1)}
+                    display_facts = decode(c["facts"], {})
+                    if image_pinned:
+                        from app.core.image_completion import ordered_facts
+                        display_facts = ordered_facts(display_facts)
+                    image_refs = {field: f"I{i}" for i, (field, _) in enumerate(rendered_images(display_facts), 1)}
                     for item in evidence:
                         if item["field"] in image_refs:
                             item["reply_reference"] = image_refs[item["field"]]
@@ -980,7 +1178,8 @@ class CaseService:
                                                 "failures": failures}}
         context = {**run.case_context, "message_id": message_id, "expected_case_version": c["version"],
                    "snapshot": snapshot, "materials_reviewed": True,
-                   "image_review_complete": complete_order_image_review(reviews)}
+                   "image_review_complete": complete_order_image_review(reviews),
+                   "image_continuation_message_sha256": hashlib.sha256(run.message.encode()).hexdigest()}
         seq = await conn.fetchval(f"INSERT INTO conversation_log(conv_id,user_id,role,content,created_at)"
                                   f" VALUES($1,$2,'system',$3,{_NOW}) RETURNING seq", run.conv_id, run.user_id, content)
         await conn.execute("INSERT INTO conversation_log_turns(seq,instance) VALUES($1,$2)", seq, self.run_instance)

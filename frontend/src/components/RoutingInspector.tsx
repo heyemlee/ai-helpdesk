@@ -37,6 +37,7 @@ export function RoutingInspector({ message, thresholds, base }: {
   }
 
   const { meta, routing, result } = message
+  const imageProjected = result?.answer_origin === 'verified_image_projection' && result.answer_model_invoked === false
   const replaced = result?.handoff_review?.outcome === 'replaced_by_verified_draft'
   const scores = routing?.domain_scores ?? {}
   const sourceScores = meta?.intent_source_scores ?? {}
@@ -131,10 +132,10 @@ export function RoutingInspector({ message, thresholds, base }: {
       <section>
         <SectionLabel>{t('in.disp')}</SectionLabel>
         <div className="chip-row">
-          {routing?.confidence !== undefined && (
+          {!imageProjected && routing?.confidence !== undefined && (
             <Chip tone={confidenceTone(routing.confidence)}>{t('in.route')} {num(routing.confidence)}</Chip>
           )}
-          {result?.answer_confidence !== undefined && (
+          {!imageProjected && result?.answer_confidence !== undefined && (
             <Chip tone={confidenceTone(result.answer_confidence)}>
               {t(replaced ? 'in.originalConfidence' : 'in.combined')} {num(result.answer_confidence)}
             </Chip>

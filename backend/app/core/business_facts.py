@@ -295,13 +295,13 @@ def conversational_only(text, language="zh"):
             "Please share the question and relevant records. Business facts require applicable policy or verified records.")
 
 
-def rendered_images(facts):
+def rendered_images(facts, *, at=None):
     return [(field, fact) for field, fact in (facts or {}).items()
             if fact.get("source") == "verified_image" and fact.get("db_value") is not None
-            and fresh((fact.get("business_source") or {}).get("observed_at"))]
+            and fresh((fact.get("business_source") or {}).get("observed_at"), at)]
 
 
-def render_draft(knowledge, business, facts=None, language="zh", *, knowledge_state=None, lookup_goal=None):
+def render_draft(knowledge, business, facts=None, language="zh", *, knowledge_state=None, lookup_goal=None, at=None):
     """Critical values are program rendered; identifiers live in evidence details."""
     english = language == "en"
     parts = []
@@ -354,7 +354,7 @@ def render_draft(knowledge, business, facts=None, language="zh", *, knowledge_st
             expiry = policy.get("expires_at") if (ref.get("policy") or {}).get("expires_at") else ("Not set" if english else "未设置")
             parts.append(f"Effective: {policy.get('effective_at', '')}; expires: {expiry}" if english else
                          f"生效时点：{policy.get('effective_at', '')}；失效时点：{expiry}")
-    for index, (field, fact) in enumerate(rendered_images(facts), 1):
+    for index, (field, fact) in enumerate(rendered_images(facts, at=at), 1):
         source = fact.get("business_source") or {}
         prefix = "Image verified" if english else "图片已核实"
         parts.append(f"{prefix} [I{index}] · {label(field, language)}: {display(fact['db_value'])}"

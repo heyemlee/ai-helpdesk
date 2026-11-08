@@ -25,7 +25,7 @@ from app.core.lookup_scope import digest
 from app.core.sql_sources import source_columns
 
 ORIGIN = "verified_fact_projection"
-ORIGINS = {ORIGIN, "verified_policy_projection"}
+ORIGINS = {ORIGIN, "verified_policy_projection", "verified_image_projection"}
 CATALOG = json.loads(Path(__file__).with_name("fact_capabilities.json").read_text())
 CATALOG_REVISION = digest(CATALOG)
 FIELDS = CATALOG["fields"]
@@ -87,7 +87,7 @@ def valid_fact_header(value):
         proof = receipt.get("proof") if isinstance(receipt, dict) else None
         if value.get("knowledge_sources") == [] and isinstance(proof, dict) and proof.get("outcome") == "empty":
             verified_empty_policy = projection(receipt.get("task"), {**(value.get("knowledge") or {}), "sources": []}) is not None
-    return bool(isinstance(value, dict) and value.get("answer_origin") in ORIGINS
+    return bool(isinstance(value, dict) and isinstance(value.get("answer_origin"), str) and value["answer_origin"] in ORIGINS
                 and value.get("answer_model_invoked") is False and isinstance(value.get("fact_receipt"), dict)
                 and value["fact_receipt"] and value.get("handoff") is False and value.get("escalated") is False
                 and not any(value.get(k) for k in ("needs_clarification", "trajectory", "policy_violations"))
@@ -96,7 +96,13 @@ def valid_fact_header(value):
                       and "kind" not in value["fact_receipt"])
                      or (value["answer_origin"] == "verified_policy_projection"
                          and isinstance(value.get("knowledge_sources"), list) and (value["knowledge_sources"] or verified_empty_policy)
-                         and value["fact_receipt"].get("kind") == "policy_excerpt_v1")))
+                         and value["fact_receipt"].get("kind") == "policy_excerpt_v1")
+                     or (value["answer_origin"] == "verified_image_projection"
+                         and value["fact_receipt"].get("kind") == "image_review_projection_v1"
+                         and value.get("knowledge_sources") == [] and value.get("knowledge") == {}
+                         and value.get("business_data") == {} and value.get("agent_type") == "system"
+                         and value.get("agent_types") == []
+                         and not any(k in value for k in ("routing_confidence", "primary_agent", "supporting_agents", "answer_usage")))))
 
 
 def make_task(message, context, run_id, attempt):

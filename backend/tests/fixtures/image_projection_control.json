@@ -1,0 +1,13 @@
+{
+  "provenance": "Synthetic control derived from the closed image-013 failure shape; no production identifiers, clocks, receipts or signatures.",
+  "message": "请读取这份订单材料并核对业务库，模糊或不一致的字段请明确待核实，不要推测缺件数量。",
+  "document_type": "label",
+  "row": {"order_ref": "UNIT-IMAGE-53", "model": "CAB-CONTROL", "ordered_qty": 4, "delivery_date": "2031-06-18", "order_status": "已交付"},
+  "meanings": {
+    "order_ref": {"table": "orders", "column": "order_no", "description": "订单号。"},
+    "model": {"table": "order_item", "column": "model", "description": "产品型号。"},
+    "ordered_qty": {"table": "order_item", "column": "quantity", "description": "订单明细订购数量，不是缺件数量。"},
+    "delivery_date": {"table": "orders", "column": "delivery_date", "description": "计划送货日期，不是实际送达或安装日期。"},
+    "order_status": {"table": "orders", "column": "order_status", "description": "订单状态，不是签收证明。"}
+  }
+}
