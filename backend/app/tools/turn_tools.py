@@ -139,6 +139,7 @@ class Prefetch:
         progress_cb=None,
         trace: dict[str, Any] | None = None,
         raw: dict[str, Any] | None = None,
+        query_planned: bool = False,
     ) -> tuple[str, bool]:
         """
         为 /chat 主链路构建业务数据上下文：把问题委派给 ai-sql-agent 查真实数据。
@@ -161,7 +162,10 @@ class Prefetch:
         info.update(self.not_queried())
         if self.tool_manager is None or not self.data_enabled or self.data_paused:
             return "", False
-        if not should_query_business_data(message, intent=intent, entities=entities):
+        # prepare_turn already made this routing decision from the enhanced
+        # application context. Only source-bound entities reach this execution
+        # call; do not use their narrower set to silently change that routing.
+        if not query_planned and not should_query_business_data(message, intent=intent, entities=entities):
             return "", False
         return await delegate_order_query(
             self.tool_manager, message, user_id=user_id, conv_id=conv_id,
@@ -383,9 +387,32 @@ async def delegate_order_query(
     info.update(attempted=True, outcome="error")
     from app.core.lookup_scope import assess_lookup, current_goal, dispatch_for
     goal = lookup_goal or current_goal()
+    request_plan = goal.get("request_plan") if isinstance(goal, dict) else None
     dispatch = dispatch_for(goal, query) if goal else None
     context = {**({"progress_cb": progress_cb} if progress_cb else {}),
-               **({"lookup_dispatch": dispatch} if dispatch else {})}
+               **({"lookup_dispatch": dispatch} if dispatch else {}),
+               **({"request_plan": request_plan} if request_plan else {})}
+    coverage_observations = None
+    data = {}
+
+    def with_coverage(text, usable, *, annotate=True):
+        if isinstance(request_plan, dict):
+            from app.core.business_facts import verified_cells, verified_nulls
+            from app.core.request_plan import coverage_note, request_coverage
+
+            # Failures have no positive observations; diagnostics never supply
+            # an alternate validator or upgrade the original usable flag.
+            if coverage_observations is None:
+                values, limits = verified_cells(data)
+                missing = verified_nulls(data)
+            else:
+                values, missing, limits = coverage_observations
+            coverage = request_coverage(request_plan, data, values, missing, limits, outcome=info.get("outcome", ""))
+            info["request_coverage"] = coverage
+            if annotate and (note := coverage_note(coverage)):
+                text += "\n原问核对说明：" + note + "仅说明本次核对范围，不授权业务操作或改变处理方式。"
+        return text, usable
+
 
     try:
         result = await tool_manager.call(
@@ -406,14 +433,14 @@ async def delegate_order_query(
         if data.get("unavailable") or (not result.success and not data):
             reason = str(data.get("error") or result.error or "未知原因")
             info.update(outcome="unavailable", reason=reason, evidence_issues=["failed"])
-            return "\n".join([
+            return with_coverage("\n".join([
                 "[业务系统查询未完成]",
                 f"本轮尝试查询订单/生产/库存/账款系统，但没有拿到结果（{reason}）。",
                 "回答时必须做到两点：",
                 "1. 不要给出任何具体的订单状态、日期、金额、库存数字——这些本轮没有系统依据；",
                 "2. 明确告诉客户这次没能查到系统记录，建议由人工跟进核实，不要让客户以为"
                 "你说的内容已经过系统核对。",
-            ]), False
+            ]), False)
 
         # 信任判定（契约 §4.6）。**唯一的一处**——三个承载者
         # （stream / send / 直连 /query）走的是同一个 assess()，
@@ -425,7 +452,7 @@ async def delegate_order_query(
         # 那段 answer 是模型说的话不是数据，连上下文都不该进。
         if verdict.execution_status == evidence.NOT_APPLICABLE:
             info.update(outcome="not_applicable")
-            return "", False
+            return with_coverage("", False, annotate=False)
 
         trace_id = str(data.get("trace_id", "") or "")
         info.update(
@@ -448,17 +475,19 @@ async def delegate_order_query(
                 "；".join(verdict.reasons) or "-",
             )
             info.update(outcome="failed", reasons=list(verdict.reasons), evidence_issues=["failed"])
-            return "\n".join([
+            return with_coverage("\n".join([
                 "[业务系统查询未成功]",
                 f"本轮查询业务系统的每一个步骤都没有成功执行（trace_id: {trace_id or '未知'}）。",
                 "回答时必须做到两点：",
                 "1. 不要给出任何具体的订单状态、日期、金额、库存数字——这些本轮没有系统依据；",
                 "2. 明确告诉客户这次没能查到系统记录，建议由人工跟进核实，不要让客户以为"
                 "你说的内容已经过系统核对。",
-            ]), False
+            ]), False)
 
         from app.core.business_facts import render_cells, verified_cells, verified_lookup_receipt, verified_nulls
         cells, issues = verified_cells(data)
+        nulls = verified_nulls(data)
+        coverage_observations = cells, nulls, issues
         receipt = verified_lookup_receipt(data)
         if receipt:
             if goal:
@@ -473,27 +502,27 @@ async def delegate_order_query(
             info.update(lookup_verified=checked["covers_goal"], execution_verified=True, lookup_coverage=checked)
             scope_note = ("本次执行范围与当前目标的实体和筛选范围一致。若本轮仅问是否存在记录，这个有限的否定结果已回答该问题。"
                           if checked["covers_goal"] else "执行健康，但尚未证明该范围覆盖当前问题；不能据此回答当前目标没有记录。")
-            return ("[本轮业务查询回执] 状态 no_data：有限范围的成功零行执行凭据已保存在结构化证据中。\n"
+            return with_coverage(("[本轮业务查询回执] 状态 no_data：有限范围的成功零行执行凭据已保存在结构化证据中。\n"
                     + scope_note + "结论仅适用于上述来源、SQL筛选条件和时点，不证明其他范围不存在记录。"
                     "正文只说明本次查询目标内未找到记录，不复述原始SQL、库表名或执行时间。"
                     "查询时点是执行观测元数据，不是业务日期、交期或承诺。"
                     "若要求实际状态、业务操作、审批或明确人工，仍须保留所缺事实及人工处理要求。"
-                    "该凭据只证明查询范围内的零行结果，不授权金额、日期、交期或其他业务承诺。"), False
+                    "该凭据只证明查询范围内的零行结果，不授权金额、日期、交期或其他业务承诺。"), False)
         info.update(outcome="evidence" if cells else "unverified", evidence=cells, evidence_issues=issues,
                     evidence_payload=data, has_risk=verdict.has_risk, degraded=verdict.degraded,
                     reasons=list(verdict.reasons))
-        text = render_cells([*cells, *verified_nulls(data)], model_context=True)
+        text = render_cells([*cells, *nulls], model_context=True)
         if cells and not issues:
             text = ("[本轮业务查询回执] 以下是针对本次请求新执行并通过核验的业务库结果，不是历史回答。"
                     "NULL 明确表示该字段未登记，与未返回该字段不同。仅报告所查记录及其限制，"
                     "不自行发起查找缺失值、变更记录或业务审批；准备待审核草稿不等于执行审批。\n" + text)
         if issues:
             text += "\n业务证据限制：" + ", ".join(issues)
-        return text, bool(cells)
+        return with_coverage(text, bool(cells))
     except Exception as ex:
         logger.warning(f"构建业务数据上下文失败: {ex}")
         info.update(outcome="error", reason=str(ex) or type(ex).__name__)
-        return "", False
+        return with_coverage("", False)
 
 
 # ── 工具循环里模型能调的两个工具 ──────────────────────────────────────────────

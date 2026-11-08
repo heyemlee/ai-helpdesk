@@ -113,19 +113,42 @@ def _case_memory(case_context: dict[str, Any]) -> str:
     return "\n".join(parts)
 
 
-def _case_data_query(message: str, *, case_refs=()) -> str:
+def _case_data_query(message: str, *, case_refs=(), request_plan=None, issue_type="") -> str:
     """A Case draft requires rows observed in this turn, not a history-only answer."""
-    binding = ("当前工单选择由上游服务处理；本次选定工单关联的业务查询目标为："
-               + json.dumps(list(case_refs), ensure_ascii=False)
-               + "。原文中的工单切换/指代已由该选择定位，不要求业务数据库再次查询客服工单或其流程状态。"
-               "这些编号仅作查询目标，不证明业务记录存在或状态；返回值必须来自本轮真实业务列，不能用目标常量补造。\n") if case_refs else ""
-    return ("本轮重新查询业务库（只读），按原问题字段、范围和粒度取数。"
-            "明细返回所问真实业务标识，不从问题补造；汇总/属性取值按原粒度。内部主键只作溯源，不因未投影而追加业务条件或改变粒度。"
-            "SQL只输出业务数据列，来源/单位/定义/时点由服务元数据附带。"
-            "历史和工单状态不替代业务证据。"
-            "不要求 SQL 服务读取附件、比对图片、标记核对结果；客服回复与业务操作亦由上游完成。"
-            + binding + "原始任务背景：\n\n"
-            + message)
+    from app.core.request_plan import make_request_plan, query_guidance
+
+    plan = request_plan or make_request_plan(message, case_refs=case_refs, issue_type=issue_type)
+    resolved = [t["value"] for t in plan["targets"] if t["provenance"] == "case_reference"]
+    # A clearly independent request must not send background order literals or
+    # issue labels to SQL's keyword/identifier routing. Ambiguous legacy model
+    # followups retain their existing contextual rendering, never goal entities.
+    background = not plan["targets"] and plan["grain"] != "material_inventory"
+    issue = {"order": "订单问题", "missing_parts": "缺件问题", "wrong_item": "错货问题"}.get(issue_type, issue_type)
+    binding = (
+        "工单背景（context_only，不是业务查询目标或筛选条件）："
+        + json.dumps(list(case_refs), ensure_ascii=False)
+        + ("；" + issue if issue else "")
+        + "。编号只供理解未明确的后续问题，不证明业务记录或自动形成筛选条件。\n"
+    ) if case_refs and background else ""
+    if resolved:
+        binding = (
+            "当前工单选择由上游服务处理；本次选定工单关联的业务查询目标为："
+            + json.dumps(resolved, ensure_ascii=False)
+            + "。原文中的指代由该选择定位，不要求业务数据库再次查询客服工单。"
+            "这些编号不证明记录存在或状态；不能用目标常量补造。\n"
+        )
+        message = (issue + "\n" if issue else "") + "订单 " + ", ".join(resolved) + "\n" + message
+    return (
+        "本轮重新查询业务库（只读），按原问题字段、范围和粒度取数。"
+        "明细返回所问真实业务标识，不从问题补造；汇总/属性取值按原粒度。内部主键只作溯源，不因未投影而追加业务条件或改变粒度。"
+        "SQL只输出业务数据列，来源/单位/定义/时点由服务元数据附带。"
+        "历史和工单状态不替代业务证据。"
+        "不要求 SQL 服务读取附件、比对图片、标记核对结果；客服回复与业务操作亦由上游完成。"
+        + binding
+        + query_guidance(plan)
+        + "\n原始任务背景：\n\n"
+        + message
+    )
 
 
 async def _with_lookup_goal(goal, call):
@@ -167,7 +190,6 @@ async def prepare_turn(
     prefetch = deps.prefetch
     recorder = events()
     report_stage(progress_cb, STAGE_UNDERSTANDING)
-    case_has_order = False
 
     # 1. 读取记忆上下文
     if case_context is None:
@@ -189,7 +211,6 @@ async def prepare_turn(
         refs = case_context.get("order_refs") or [facts.get("order_ref", {}).get("value", "")]
         issue = {"order": "订单问题", "missing_parts": "缺件问题", "wrong_item": "错货问题"}.get(case_context.get("issue_type"), "")
         refs = [r for r in refs if r]
-        case_has_order = bool(refs)
         if refs:
             message = "订单 " + ", ".join(refs) + "\n" + message
         if issue:
@@ -197,17 +218,39 @@ async def prepare_turn(
 
     intent_result = await deps.recognize_intent(message, history=history)
     scope = current_run()
-    lookup_goal = make_goal(original_message, entities=intent_result.entities,
-                            case_refs=(case_context or {}).get("order_refs") or (),
-                            owner=scope.run_id if scope else "inline:" + uuid.uuid4().hex,
-                            case_id=(case_context or {}).get("case_id", ""))
+    from app.core.fact_completion import current_task
+
+    task = current_task()
+    task = (
+        task
+        if (
+            task and task["case_id"] == (case_context or {}).get("case_id") and scope and task["run_id"] == scope.run_id
+        )
+        else None
+    )
+    from app.core.request_plan import make_request_plan
+
+    request_plan = make_request_plan(
+        original_message,
+        entities=intent_result.entities,
+        case_refs=refs if case_context else (),
+        fact_task=task,
+        issue_type=(case_context or {}).get("issue_type", ""),
+    )
+    lookup_goal = make_goal(
+        original_message,
+        entities=request_plan["lookup_entities"],
+        owner=scope.run_id if scope else "inline:" + uuid.uuid4().hex,
+        case_id=(case_context or {}).get("case_id", ""),
+    )
+    if case_context is not None:
+        lookup_goal["request_plan"] = request_plan
     lookup_goal["request_message"] = message
     lookup_goal["queries"] = list(dict.fromkeys([original_message, message]))
-    from app.core.fact_completion import current_task
-    task = current_task()
     from app.core import policy_completion as pc
+
     policy_task = pc.current_request(original_message, case_id=(case_context or {}).get("case_id", ""))
-    if task and task["case_id"] == (case_context or {}).get("case_id") and scope and task["run_id"] == scope.run_id:
+    if task:
         lookup_goal["fact_task"] = task
     _record_intent(recorder, intent_result)
 
@@ -240,8 +283,9 @@ async def prepare_turn(
             # The original message was closed to policy-document fields before
             # intent/rewrite. A policy subject is not an order/payment lookup.
             querying = False
-        if querying and case_has_order:
-            order_query = _case_data_query(message, case_refs=refs)
+        if querying and case_context is not None:
+            order_query = _case_data_query(original_message, case_refs=refs, request_plan=request_plan,
+                                           issue_type=case_context.get("issue_type", ""))
         lookup_goal["queries"] = list(dict.fromkeys([*lookup_goal["queries"], order_query]))
         if searching or querying:
             report_stage(progress_cb, STAGE_GATHERING, knowledge=searching, order_data=querying)
@@ -268,7 +312,8 @@ async def prepare_turn(
             _rule_call(recorder, "order_data_query", querying, order_query, latency_ms, _with_lookup_goal(lookup_goal, prefetch.order_data_context(
                 order_query,
                 intent=intent_result.intent,
-                entities=intent_result.entities,
+                entities=request_plan["lookup_entities"],
+                query_planned=querying,
                 user_id=user_id,
                 conv_id=conv_id,
                 progress_cb=progress_cb,

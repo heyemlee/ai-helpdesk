@@ -328,6 +328,9 @@ def render_draft(knowledge, business, facts=None, language="zh", *, knowledge_st
                 continue
             if issue in _OUTCOMES:
                 parts.append(_OUTCOMES_EN.get(issue, "The evidence needs verification.") if english else _OUTCOMES[issue])
+        from app.core.request_plan import coverage_note
+        if note := coverage_note(business.get("request_coverage"), language):
+            parts.append(note)
     state = knowledge_state or {}
     if state.get("policy_lookup") and state.get("lookup_status") == "conflict":
         knowledge = []

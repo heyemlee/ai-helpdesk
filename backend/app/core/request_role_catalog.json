@@ -1,0 +1,150 @@
+{
+  "planning_only": true,
+  "source_definition": "ai-sql-agent/tools/simple_erp/schema.py + semantic.py",
+  "roles": {
+    "part_name": {
+      "source": {
+        "database": "svc_db",
+        "table": "replacement_part",
+        "column": "part_name",
+        "label_zh": "补件名称",
+        "label_en": "Part name",
+        "description": "补件名称。补件名称包含规格，通过名称对应仓储物料。",
+        "semantic_role": "join_key",
+        "business_usage": "补件名称包含规格，通过名称对应仓储物料。"
+      },
+      "schema_revision": "4f9660b4688af411679919f67d3edec046453738141958143fa0820f40035a06",
+      "type": "text",
+      "labels": {
+        "zh": "补件名称",
+        "en": "Part name"
+      }
+    },
+    "part_quantity": {
+      "source": {
+        "database": "svc_db",
+        "table": "replacement_part",
+        "column": "quantity",
+        "label_zh": "补件数量",
+        "label_en": "Part quantity",
+        "description": "补件数量。",
+        "semantic_role": "metric",
+        "business_usage": "查询和展示补件数量。"
+      },
+      "schema_revision": "793d99ed1ef3efe2dd9a6dd5a0a162bbd6ba1fb31e106897309258cb0a60ceaf",
+      "type": "number",
+      "labels": {
+        "zh": "补件数量",
+        "en": "Part quantity"
+      }
+    },
+    "part_status": {
+      "source": {
+        "database": "svc_db",
+        "table": "replacement_part",
+        "column": "part_status",
+        "label_zh": "补件状态",
+        "label_en": "Part status",
+        "description": "补件状态；选项：待处理、处理中、已解决。",
+        "semantic_role": "filter",
+        "business_usage": "查询和展示补件状态。"
+      },
+      "schema_revision": "65c6998b2a4ad0361909623f284556fbda5f116b0b3d731ee28eefe1e5c245af",
+      "type": "text",
+      "labels": {
+        "zh": "补件状态",
+        "en": "Part status"
+      }
+    },
+    "material_name": {
+      "source": {
+        "database": "wms_db",
+        "table": "material",
+        "column": "material_name",
+        "label_zh": "物料名称",
+        "label_en": "Material name",
+        "description": "物料名称。名称包含规格。同名、同计量单位的原物料合并库存。",
+        "semantic_role": "join_key",
+        "business_usage": "名称包含规格。同名、同计量单位的原物料合并库存。"
+      },
+      "schema_revision": "8116cd5f95a429353a82d3e19023f23ff972855e496ffa07b60d6f9006a19ea5",
+      "type": "text",
+      "labels": {
+        "zh": "物料名称",
+        "en": "Material name"
+      }
+    },
+    "on_hand_qty": {
+      "source": {
+        "database": "wms_db",
+        "table": "material",
+        "column": "on_hand_qty",
+        "label_zh": "现有库存",
+        "label_en": "On-hand quantity",
+        "description": "现有库存。",
+        "semantic_role": "metric",
+        "business_usage": "查询和展示现有库存。"
+      },
+      "schema_revision": "3a28b2124bc2b1ddab1f1d84829bf725b143516f73d58a835545a61608813abc",
+      "type": "number",
+      "labels": {
+        "zh": "现有库存",
+        "en": "On-hand quantity"
+      }
+    },
+    "allocated_qty": {
+      "source": {
+        "database": "wms_db",
+        "table": "material",
+        "column": "allocated_qty",
+        "label_zh": "已占用库存",
+        "label_en": "Allocated quantity",
+        "description": "已占用库存。",
+        "semantic_role": "metric",
+        "business_usage": "查询和展示已占用库存。"
+      },
+      "schema_revision": "556f7acf6dbd7138045bd22f59cc3fbf5a6544ad1e3653ba09399024523fe38e",
+      "type": "number",
+      "labels": {
+        "zh": "已占用库存",
+        "en": "Allocated quantity"
+      }
+    },
+    "registered_phone": {
+      "source": {
+        "database": "erp_db",
+        "table": "orders",
+        "column": "phone",
+        "label_zh": "手机号",
+        "label_en": "Customer phone",
+        "description": "手机号。按文本保存，支持国家区号。原始模拟数据没有号码，迁移后为空。",
+        "semantic_role": "text",
+        "business_usage": "按文本保存，支持国家区号。原始模拟数据没有号码，迁移后为空。"
+      },
+      "schema_revision": "6aa14688d41154d218ad4c91d81a2fed7264622ed10fbc1f87e4abfdacf21c7f",
+      "type": "text",
+      "labels": {
+        "zh": "手机号",
+        "en": "Customer phone"
+      }
+    },
+    "delivery_phone": {
+      "source": {
+        "database": "svc_db",
+        "table": "delivery",
+        "column": "phone",
+        "label_zh": "联系电话",
+        "label_en": "Delivery phone",
+        "description": "联系电话。",
+        "semantic_role": "text",
+        "business_usage": "查询和展示联系电话。"
+      },
+      "schema_revision": "7951caafad1e09611f146dd023e0d66e6a106ec0f14e7d0e7356d19d42d2a561",
+      "type": "text",
+      "labels": {
+        "zh": "联系电话",
+        "en": "Delivery phone"
+      }
+    }
+  }
+}
