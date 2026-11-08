@@ -1014,7 +1014,11 @@ class CaseService:
                 reason = "material_access_changed"
             if not reason and not dead:
                 from app.tickets.draft_decision import reconcile_handoff
+                from app.tickets.query_handoff import restrict_query_handoff
                 result = reconcile_handoff(result, ctx)
+                # Use the locked persisted input, not rewritten/model text or
+                # mutable worker context, to bound model-proposed Case effects.
+                result = restrict_query_handoff(result, message=r["message"], context=decode(r["case_context"], {}))
             payload = {**{k: v for k, v in result.items() if k != "material_reviews"}, "case_id": c["case_id"], "ticket_id": c["case_id"],
                        "turn_id": r["turn_id"],
                        "case_version": c["version"], "control_version": c["control_version"],

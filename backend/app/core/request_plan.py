@@ -216,10 +216,12 @@ def _role_label(role, language):
 
 
 def query_guidance(plan):
-    """Internal model guidance; no technical descriptor is shown in the draft."""
+    """Positive query hints; parser gaps are not facts about the user's request."""
     labels = [_role_label(r, "zh") for r in plan["required_roles"]]
-    target = "；".join(t["value"] for t in plan["targets"]) or "原问未明确，不能从工单背景猜测"
-    text = f"原问业务目标：{target}。原问所需字段：{'、'.join(labels) or '尚未明确'}；不得仅凭部分字段宣称整问已回答。"
+    target = "；".join(t["value"] for t in plan["targets"])
+    text = f"业务目标定位提示：{target}。" if target else ""
+    if labels:
+        text += "从原问识别的字段提示：" + "、".join(labels) + "。提示不替代原始问题的完整字段、筛选和粒度要求。"
     if plan["grain"] == "replacement_records":
         text += "逐条补件记录保留名称及关联订单，数量和状态不得跨记录拼接。"
     elif plan["grain"] == "material_inventory":
@@ -229,7 +231,7 @@ def query_guidance(plan):
     elif plan["grain"] == "aggregate":
         text += "保留原问汇总粒度，不为增加标识而改成明细。"
     if "delivery_date_unspecified" in plan["unresolved_roles"]:
-        text += "交付日期口径未明确；计划日期和实际送达日期须按各自真实来源分别标明，不能互相替代。"
+        text += "计划日期和实际送达日期须按各自真实来源分别标明，不能互相替代。"
     return text
 
 
@@ -580,29 +582,44 @@ def visible_coverage_note(coverage, business, language="zh", *, at=None):
         ))
 
     try:
+        date_meanings = None
+        if "delivery_date_unspecified" in plan["unresolved_roles"] and cells == business.get("evidence") and not issues:
+            # The user's choice of date meaning can remain open while both
+            # meanings have already been independently observed and rendered.
+            # Recheck concrete physical fields, including real NULLs, without
+            # upgrading or mutating the saved planning-only coverage verdict.
+            dates = request_coverage(
+                {**plan, "required_roles": ["planned_delivery_date", "actual_delivery_date"],
+                 "unresolved_roles": [], "grain": "current_order_scalar_values"},
+                data, cells, nulls, issues, at=at,
+            )
+            if len(dates["roles"]) == 2 and all(v["status"] in {"value", "proven_null"} for v in dates["roles"].values()):
+                date_meanings = dates
         missing = {
             role: value for role, value in checked["roles"].items()
             if (value["status"] in {"omitted", "wrong_target"} and observed_scope(role, value["status"]))
             or (value["status"] == "unsupported" and invalid_value(role) and observed_scope(role, "value"))
             or (value["status"] == "ambiguous" and role in _QUESTION_AMBIGUITIES
-                and role in plan["unresolved_roles"])
+                and role in plan["unresolved_roles"]
+                and not (role == "delivery_date_unspecified" and date_meanings))
         }
         if missing:
             return coverage_note({"roles": missing}, language)
         # Concrete row mismatches or actual query restrictions retain the old
         # partial-range notice. An unhandled query/parser shape alone does not.
-        reasons = checked.get("reasons", [])
-        if "grain_mismatch" in reasons and any(v["witnesses"] for v in checked["roles"].values()):
-            return coverage_note({"roles": {}}, language)
-        if "range_unproved" in reasons:
-            indices = {w[2] for v in checked["roles"].values() for w in v["witnesses"]}
-            for si in indices:
-                step = data["steps"][si]
-                tree = sqlglot.parse_one(step["final_sql"])
-                if (step.get("truncated") is True or data.get("result_truncated") is True
-                        or any(tree.args.get(k) is not None for k in ("limit", "offset", "group", "having", "qualify"))
-                        or isinstance((tree.args.get("where") or exp.Where()).this, exp.And)):
-                    return coverage_note({"roles": {}}, language)
+        for scope in [checked, *([date_meanings] if date_meanings else [])]:
+            reasons = scope.get("reasons", [])
+            if "grain_mismatch" in reasons and any(v["witnesses"] for v in scope["roles"].values()):
+                return coverage_note({"roles": {}}, language)
+            if "range_unproved" in reasons:
+                indices = {w[2] for v in scope["roles"].values() for w in v["witnesses"]}
+                for si in indices:
+                    step = data["steps"][si]
+                    tree = sqlglot.parse_one(step["final_sql"])
+                    if (step.get("truncated") is True or data.get("result_truncated") is True
+                            or any(tree.args.get(k) is not None for k in ("limit", "offset", "group", "having", "qualify"))
+                            or isinstance((tree.args.get("where") or exp.Where()).this, exp.And)):
+                        return coverage_note({"roles": {}}, language)
     except (KeyError, TypeError, ValueError, AttributeError, IndexError, sqlglot.errors.SqlglotError):
         return ""
     return ""
