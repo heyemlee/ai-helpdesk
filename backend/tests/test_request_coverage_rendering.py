@@ -113,6 +113,16 @@ def test_unparsed_residual_request_keeps_diagnostic_without_a_global_partial_fac
     assert "生产中" in body and "原问的完整目标" not in body
 
 
+def test_item_code_is_not_treated_as_a_verified_material_name_for_missing_field_notices():
+    plan = make_request_plan("查询 M6 的现存和占用量。", entities={"item_code": ["M6"]})
+    data = payload("wms_db", "material", [{"material_name": "M6", "on_hand_qty": 7}])
+    checked = diagnosed(plan, data)
+    assert not checked["complete"] and checked["roles"]["on_hand_qty"]["status"] == "target_unproved"
+    assert checked["roles"]["allocated_qty"]["status"] == "omitted"
+    body = render_draft([], trace(data, checked))
+    assert "7 pcs" in body and "尚未核实：" not in body
+
+
 @pytest.mark.parametrize("restriction", ["LIMIT 1", "GROUP BY id,order_no,order_status", "AND order_status='生产中'"])
 def test_witnessed_partial_range_still_publishes_its_limitation(restriction):
     data = payload(

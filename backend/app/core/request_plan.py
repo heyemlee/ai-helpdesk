@@ -517,7 +517,7 @@ def visible_coverage_note(coverage, business, language="zh", *, at=None):
 
     def observed_scope(role, status):
         cap = ROLES.get(role)
-        if not cap or not target:
+        if not cap or not target or target.get("kind") not in {"order_id", "material_name"}:
             return False
         source = cap["source"]
         for si, step in enumerate(data.get("steps", [])):
