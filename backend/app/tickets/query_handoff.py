@@ -20,13 +20,19 @@ _FIELDS = re.compile(
     )), re.I,
 )
 _GLUE = re.compile(
-    r"请帮我|查一下|查询|查看|核对|核验|检索|汇报|告诉我|提供|请|只|重新|"
+    r"请帮我|查一下|查询|查看|查清楚|查清|核对|核验|检索|汇报|告诉我|提供|请|只|重新|"
     r"订单编号|订单号|订单|编号确定为|编号|业务|系统中|对应记录|对应|记录|生产|"
     r"沿用上文编号|这笔业务|这个订单|该订单|这笔|这个|该|此|其|它|"
-    r"的|在|及|与|和|分别|是什么|是多少|什么|多少|目前|现在|"
+    r"的|在|及|与|和|也|分别|是什么|是多少|什么|多少|目前|现在|"
     r"\b(?:please|check|show|tell me|what|is|are|the|for|of|order|and|current)\b|"
     r"[\s，,、。.;；:：?？]+", re.I,
 )
+# Replacement-part records (request_role_catalog.json: part_name, part_quantity,
+# part_status) are named the way make_request_plan names them. Their bare role
+# words count as fields only after such a record is named, so "数量" or "进度"
+# never widen another record family, and a record name alone is not a query.
+_PART_RECORDS = re.compile(r"补件申请|补发配件|补件|配件|\breplacement parts?\b|\bparts\b", re.I)
+_PART_FIELDS = re.compile(r"件数|数量|名称|进度|\b(?:name|quantity|quantities|progress|status)\b", re.I)
 
 
 def read_only_staff_query(message, context):
@@ -63,7 +69,13 @@ def read_only_staff_query(message, context):
         # A sentence-ending period is punctuation, while a period followed by
         # another identifier character still belongs to a different reference.
         text = re.sub(r"(?<![A-Za-z0-9_.-])" + re.escape(ref) + r"(?![A-Za-z0-9_-]|\.[A-Za-z0-9_.-])", " ", text)
+    parts = _PART_RECORDS.search(text) is not None
+    if parts:
+        text = _PART_RECORDS.sub(" ", text)
     text, fields = _FIELDS.subn(" ", text)
+    if parts:
+        text, part_fields = _PART_FIELDS.subn(" ", text)
+        fields += part_fields
     return bool(fields and not _GLUE.sub("", text))
 
 

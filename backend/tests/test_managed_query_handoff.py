@@ -33,6 +33,8 @@ REFERENCE = "沿用上文编号，这笔业务在系统中的状态值是什么�
 RETURN = "切回第一个工单；只汇报它对应记录的状态。"
 CORRECTION = f"{ORDER} 的现场材料有更新，重新核验状态后出审核稿。"
 PRODUCTION = f"另开一案，检索业务 {SECOND} 对应的生产记录状态值。"
+PARTS = f"订单 {ORDER} 的补件申请现在什么状态？补件数量也请查清。"
+PART_ROLES = {"part_name", "part_quantity", "part_status"}
 
 
 def context(*, ref=ORDER, operation="continued"):
@@ -108,6 +110,43 @@ def test_explicit_staff_actions_and_unknown_scopes_keep_the_existing_handoff_wor
     original = proposal()
     assert not read_only_staff_query(message, context())
     assert restrict_query_handoff(original, message=message, context=context()) is original
+
+
+@pytest.mark.parametrize("message", [
+    PARTS, f"请提供 {ORDER} 补发配件的件数及进度。", f"查询订单 {ORDER} 的补件状态和补件数量。",
+    f"订单 {ORDER} 的补件名称是什么？", f"{ORDER} 补发配件数量是多少？",
+    f"Please show replacement part status and quantity for order {ORDER}.",
+])
+@pytest.mark.parametrize("operation", ["created", "continued"])
+def test_replacement_part_status_and_quantity_queries_do_not_authorize_a_model_handoff(message, operation):
+    saved = context(operation=operation)
+    assert read_only_staff_query(message, saved)
+    result = restrict_query_handoff(proposal(), message=message, context=saved)
+    assert result["handoff"] is False and result["escalated"] is False and result["handoff_reason"] == ""
+    assert result["handoff_review"]["outcome"] == "not_authorized_for_read_only_case"
+    # The boundary recognizes a parts record only where the planner plans parts roles.
+    plan = make_request_plan(message, case_refs=[ORDER])
+    assert set(plan["required_roles"]) & PART_ROLES and not plan["business_effects"]
+
+
+@pytest.mark.parametrize("message", [
+    PARTS + "请转人工。", f"订单 {ORDER} 安排补件，数量 3 件。", f"给订单 {ORDER} 补发配件。",
+    f"订单 {ORDER} 的补件数量改成 5。", f"订单 {ORDER} 的补件状态改为已解决。", f"订单 {ORDER} 的补件申请加急处理。",
+    f"订单 {ORDER} 补件申请状态，如果未处理就申请退款。",
+    f"Please escalate the replacement part status for order {ORDER}.",
+    f"订单 {ORDER} 的补件申请。", f"查询订单 {ORDER} 的数量和进度。", f"Please show part quantity for order {ORDER}.",
+    "查询订单 FOREIGN-22 的补件状态。",
+])
+def test_replacement_part_actions_and_unnamed_records_keep_the_existing_handoff_workflow(message):
+    original = proposal()
+    assert not read_only_staff_query(message, context())
+    assert restrict_query_handoff(original, message=message, context=context()) is original
+
+
+@pytest.mark.parametrize("change", [{"service_unavailable": True}, {"agent_type": "handoff", "answer_handoff_declared": None}])
+def test_service_failures_and_direct_routes_still_hand_off_a_replacement_part_query(change):
+    original = proposal(**change)
+    assert restrict_query_handoff(original, message=PARTS, context=context()) is original
 
 
 @pytest.mark.parametrize("change", ["wrong_case", "wrong_message", "wrong_operation", "foreign_reference"])
