@@ -63,8 +63,16 @@ CONTRACT="$COPY/a2a-contract"
 [ -f "$CONTRACT/fixtures/index.json" ] || fail "副本里没有 a2a-contract/fixtures/index.json"
 RUN_ENV+=("A2A_CONTRACT_DIR=$CONTRACT" A2A_CONTRACT_REQUIRED=1)
 
-free_port() {
-    "$PY" -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])'
+free_ports() {
+    # Hold all four binds until selection finishes so this invocation cannot
+    # select the same port twice. Other processes can still race after release.
+    "$PY" -c 'import socket
+from contextlib import ExitStack
+with ExitStack() as held:
+    sockets = [held.enter_context(socket.socket()) for _ in range(4)]
+    for sock in sockets:
+        sock.bind(("127.0.0.1", 0))
+    print(*(sock.getsockname()[1] for sock in sockets))'
 }
 
 wait_for() {
@@ -82,10 +90,8 @@ wait_for() {
 if [ "$FULL" = 1 ]; then
     step "起一次性的 pgvector、Redis、Kafka"
     STARTED=1
-    PG_PORT="$(free_port)"
-    REDIS_PORT="$(free_port)"
-    KAFKA_PORT="$(free_port)"
-    S3_PORT="$(free_port)"
+    SERVICE_PORTS="$(free_ports)"
+    read -r PG_PORT REDIS_PORT KAFKA_PORT S3_PORT <<<"$SERVICE_PORTS"
     PG_PASSWORD="$(openssl rand -hex 12)"
 
     docker run -d --rm --name "$SERVICES-pg" \
