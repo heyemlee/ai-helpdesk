@@ -262,11 +262,11 @@ def _target_matches(cell, target, data, all_cells):
     )
 
 
-def _full_simple_range(data, witnesses, target):
+def _full_simple_range(data, witnesses, target, *, value_grain=False):
     """Exact unlimited single-table entity query, not an inferred row count."""
     try:
         indices = {c["step_index"] for c in witnesses}
-        if len(indices) != 1 or data.get("result_truncated") is not False:
+        if len(indices) != 1 or data.get("result_truncated", False) is not False:
             return False
         step = data["steps"][indices.pop()]
         statements = sqlglot.parse(step["final_sql"])
@@ -276,23 +276,38 @@ def _full_simple_range(data, witnesses, target):
         if (
             not isinstance(tree, exp.Select)
             or len(list(tree.find_all(exp.Select))) != 1
-            or any(v is not None and k not in {"expressions", "from", "where"} for k, v in tree.args.items())
+            or any(
+                v is not None and k not in {"expressions", "from", "where", "order", "distinct"}
+                for k, v in tree.args.items()
+            )
             or step.get("truncated") is not False
             or step.get("row_count") != len(step["rows"])
         ):
             return False
         tables = list(tree.find_all(exp.Table))
-        if len(tables) != 1:
+        if len(tables) != 1 or any(v is not None and k not in {"this", "alias"} for k, v in tables[0].args.items()):
+            return False
+        # Sampling and set-returning projections can omit actual source rows
+        # even without a LIMIT. Only direct columns prove this small full range.
+        if any(not isinstance(p.this if isinstance(p, exp.Alias) else p, exp.Column) for p in tree.selects):
+            return False
+        distinct = tree.args.get("distinct")
+        if distinct and (not value_grain or not isinstance(distinct, exp.Distinct) or distinct.args.get("on")):
             return False
         where = tree.args["where"].this
         key = "order_no" if target["kind"] == "order_id" else "material_name"
+        if not isinstance(where, exp.EQ):
+            return False
+        column, literal = where.this, where.expression
+        if isinstance(literal, exp.Column):
+            column, literal = literal, column
         return bool(
-            isinstance(where, exp.EQ)
-            and isinstance(where.this, exp.Column)
-            and where.this.name == key
-            and isinstance(where.expression, exp.Literal)
-            and where.expression.is_string
-            and where.expression.this == target["value"]
+            isinstance(column, exp.Column)
+            and column.name == key
+            and column.table in {"", tables[0].name, tables[0].alias}
+            and isinstance(literal, exp.Literal)
+            and literal.is_string
+            and literal.this == target["value"]
         )
     except (KeyError, TypeError, AttributeError, ValueError, sqlglot.errors.SqlglotError):
         return False
@@ -360,7 +375,7 @@ def _request_coverage(plan, data, cells, nulls, issues, *, outcome="", at=None):
             else None
         )
     )
-    witnesses = []
+    observations = {}
     for role in plan.get("required_roles", []):
         cap = ROLES.get(role)
         selected = []
@@ -387,7 +402,8 @@ def _request_coverage(plan, data, cells, nulls, issues, *, outcome="", at=None):
                 values = {_digest([c["value"], c.get("unit")]) for c in matches}
                 status = (
                     "ambiguous"
-                    if len(values) > 1 and plan["grain"] not in {"replacement_records", "material_inventory"}
+                    if len(values) > 1
+                    and plan["grain"] not in {"order_values", "replacement_records", "material_inventory"}
                     else ("proven_null" if all(c.get("null_observation") is True for c in matches) else "value")
                 )
         status = status or "unsupported"
@@ -396,7 +412,7 @@ def _request_coverage(plan, data, cells, nulls, issues, *, outcome="", at=None):
             "evidence_ids": [c["evidence_id"] for c in selected],
             "witnesses": [list(_row_key(c)) for c in selected],
         }
-        witnesses.extend(selected)
+        observations[role] = selected
     if not targets:
         reasons.append("target_unresolved")
     if len(targets) > 1:
@@ -412,18 +428,33 @@ def _request_coverage(plan, data, cells, nulls, issues, *, outcome="", at=None):
     if plan["grain"] in {"aggregate", "unsupported"}:
         reasons.append("grain_unsupported")
     if roles and all(v["status"] in {"value", "proven_null"} for v in roles.values()):
-        if plan["grain"] in {"replacement_records", "material_inventory", "registered_contact"}:
-            sets = [{tuple(w) for w in value["witnesses"]} for value in roles.values()]
-            mismatch = not sets or any(s != sets[0] for s in sets)
-            if plan["grain"] == "replacement_records":
+        # Every physical source can contain multiple records. Verify its full
+        # target range, and keep roles from that source on the same actual rows.
+        # Different tables may independently supply different requested roles.
+        groups = {}
+        for role in roles:
+            source = ROLES[role]["source"]
+            groups.setdefault((source["database"], source["table"]), []).append(role)
+        for source, members in groups.items():
+            sets = [{tuple(w) for w in roles[role]["witnesses"]} for role in members]
+            mismatch = any(s != sets[0] for s in sets)
+            if source == ("svc_db", "replacement_part"):
                 named = {_row_key(c) for c in cells if _physical(c) == ("svc_db", "replacement_part", "part_name")}
                 mismatch = mismatch or not sets[0] <= named
             if mismatch:
-                reasons.append("grain_mismatch")
-                for value in roles.values():
-                    value["status"] = "grain_mismatch"
-            if not target or not _full_simple_range(data, witnesses, target):
-                reasons.append("range_unproved")
+                if "grain_mismatch" not in reasons:
+                    reasons.append("grain_mismatch")
+                for role in members:
+                    roles[role]["status"] = "grain_mismatch"
+            witnesses = [cell for role in members for cell in observations[role]]
+            if not target or not _full_simple_range(
+                data,
+                witnesses,
+                target,
+                value_grain=plan["grain"] in {"order_values", "current_order_scalar_values"},
+            ):
+                if "range_unproved" not in reasons:
+                    reasons.append("range_unproved")
     complete = bool(roles and not reasons and all(v["status"] in {"value", "proven_null"} for v in roles.values()))
     return {
         "version": 1,

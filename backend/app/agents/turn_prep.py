@@ -228,18 +228,20 @@ async def prepare_turn(
         )
         else None
     )
-    from app.core.request_plan import make_request_plan
+    request_plan = None
+    if case_context is not None:
+        from app.core.request_plan import make_request_plan
 
-    request_plan = make_request_plan(
-        original_message,
-        entities=intent_result.entities,
-        case_refs=refs if case_context else (),
-        fact_task=task,
-        issue_type=(case_context or {}).get("issue_type", ""),
-    )
+        request_plan = make_request_plan(
+            original_message, entities=intent_result.entities, case_refs=refs,
+            fact_task=task, issue_type=case_context.get("issue_type", ""),
+        )
+    # Ordinary chat retains its existing history-resolved goal and prefetch
+    # inputs. The original-text restriction is a Case-only enhancement.
+    query_entities = request_plan["lookup_entities"] if request_plan else intent_result.entities
     lookup_goal = make_goal(
         original_message,
-        entities=request_plan["lookup_entities"],
+        entities=query_entities,
         owner=scope.run_id if scope else "inline:" + uuid.uuid4().hex,
         case_id=(case_context or {}).get("case_id", ""),
     )
@@ -312,8 +314,8 @@ async def prepare_turn(
             _rule_call(recorder, "order_data_query", querying, order_query, latency_ms, _with_lookup_goal(lookup_goal, prefetch.order_data_context(
                 order_query,
                 intent=intent_result.intent,
-                entities=request_plan["lookup_entities"],
-                query_planned=querying,
+                entities=query_entities,
+                **({"query_planned": querying} if request_plan else {}),
                 user_id=user_id,
                 conv_id=conv_id,
                 progress_cb=progress_cb,
