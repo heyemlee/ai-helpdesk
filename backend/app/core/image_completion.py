@@ -176,7 +176,16 @@ def _scope(sql, entity, bindings):
             or any(v is not None and k not in {"expressions", "from", "joins", "where"} for k, v in tree.args.items())
             or any(i.args.get("quoted") for i in tree.find_all(exp.Identifier))
             or len(tree.selects) != 5
-            or dict(source_columns(sql)) != {bindings[f]: physical for f, physical in _PHYSICAL.items()}
+        ):
+            return False
+        physical = dict(source_columns(sql))
+        order_keys = {("orders", "order_no"), ("order_item", "order_no")}
+        if (
+            set(physical) != set(bindings.values())
+            or physical.get(bindings["order_ref"]) not in order_keys
+            or any(
+                physical.get(bindings[field]) != origin for field, origin in _PHYSICAL.items() if field != "order_ref"
+            )
         ):
             return False
         tables = list(tree.find_all(exp.Table))
@@ -198,21 +207,33 @@ def _scope(sql, entity, bindings):
             )
 
         joins = tree.args.get("joins") or []
-        if len(joins) != 1 or any(joins[0].args.get(k) for k in ("side", "kind", "using", "method")):
+        if len(joins) != 1:
             return False
-        on = joins[0].args.get("on")
-        if not isinstance(on, exp.EQ) or {column(on.this), column(on.expression)} != {
-            ("orders", "order_no"),
-            ("order_item", "order_no"),
-        }:
+        join = joins[0]
+        if (join.args.get("side") or "", join.args.get("kind") or "") not in {
+            ("", ""),
+            ("", "INNER"),
+            ("LEFT", ""),
+            ("LEFT", "OUTER"),
+        } or any(value is not None for key, value in join.args.items() if key not in {"this", "on", "side", "kind"}):
+            return False
+        on = join.args.get("on")
+        if not isinstance(on, exp.EQ) or {column(on.this), column(on.expression)} != order_keys:
             return False
         where = tree.args["where"].this
+        if not isinstance(where, exp.EQ):
+            return False
+        # Either physical order key is equivalent only under the exact join
+        # above. _coverage separately requires all five matched non-NULL values
+        # on the same witnessed row, including both header and detail fields.
         return bool(
-            isinstance(where, exp.EQ)
-            and column(where.this) == ("orders", "order_no")
-            and isinstance(where.expression, exp.Literal)
-            and where.expression.is_string
-            and where.expression.this == entity
+            any(
+                column(key) in order_keys
+                and isinstance(value, exp.Literal)
+                and value.is_string
+                and value.this == entity
+                for key, value in ((where.this, where.expression), (where.expression, where.this))
+            )
         )
     except (KeyError, TypeError, AttributeError, ValueError, sqlglot.errors.SqlglotError):
         return False
@@ -269,6 +290,8 @@ def _coverage(task, reviews, facts, *, at=None):
                 item["outcome"] != "matched"
                 or item["readability"] != "clear"
                 or item["kind"] not in _KINDS[field]
+                or not isinstance(item["value"], str)
+                or not item["value"].strip()
                 or not isinstance(item["db_value"], str)
                 or not item["db_value"]
                 or normalized(item["value"], field) != item["db_value"]
