@@ -49,7 +49,7 @@ from typing import TYPE_CHECKING, Any
 
 from app.core.embedder import cosine
 from app.core.lexical import bm25_scores
-from app.core.policy_scope import current_scope, sql_filter
+from app.core.policy_scope import current_scope, identity_sql_filter, sql_filter
 from app.core.staff_auth import authorize_admin
 
 if TYPE_CHECKING:
@@ -424,9 +424,9 @@ class LocalStore:
                 return {"document": dict(row), "chunks": [dict(c) for c in chunks]} if row else None
         return await asyncio.to_thread(read)
 
-    async def kb_fact_candidates(self, scope, *, conn=None, lock=True):
+    async def kb_fact_candidates(self, scope, *, conn=None, lock=True, identity=False):
         """Read the complete applicable set without retrieval ranking or LIMIT."""
-        predicate, args = sql_filter(scope)
+        predicate, args = identity_sql_filter(scope) if identity else sql_filter(scope)
         def read():
             with self._lock:
                 self._db.execute("SAVEPOINT policy_fact_candidates")
@@ -945,19 +945,19 @@ class PgStore:
             "WHERE doc_id=$1 ORDER BY chunk_index,id" + suffix, doc_id)
         return {"document": dict(row), "chunks": [dict(c) for c in chunks]} if row else None
 
-    async def kb_fact_candidates(self, scope, *, conn=None, lock=True):
+    async def kb_fact_candidates(self, scope, *, conn=None, lock=True, identity=False):
         """Protect the applicable set, including absent rows, until adoption commits."""
         if conn is None:
             async with self._db.transaction() as connection:
                 if not lock:
                     await connection.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
-                return await self.kb_fact_candidates(scope, conn=connection, lock=lock)
+                return await self.kb_fact_candidates(scope, conn=connection, lock=lock, identity=identity)
         if lock:
             # Row locks cannot prevent a second applicable version being inserted.
             # Match deletion's chunks-before-documents order; Case/actor locks are
             # already held by the caller. GET uses its read-only snapshot instead.
             await conn.execute("LOCK TABLE policy_chunks, policy_documents IN SHARE MODE")
-        predicate, args = sql_filter(scope, postgres=True)
+        predicate, args = (identity_sql_filter if identity else sql_filter)(scope, postgres=True)
         rows = await conn.fetch("SELECT d.* FROM policy_documents d WHERE " + predicate + " ORDER BY d.id", *args)
         chunks = await conn.fetch(
             "SELECT id,doc_id,title,content,chunk_index,total_chunks FROM policy_chunks "

@@ -322,7 +322,7 @@ _REFERENCE_FEE_TOPIC_RE = re.compile(
 # One typed caption vocabulary serves both standalone fields and inline
 # metadata references. Matching a date under another role never authorizes it.
 _REFERENCE_TIME_LABELS = {
-    "policy_as_of": r"所选日期|所选时点|所选查询时点|适用日期|适用时点|适用性判定时点|有效性判定时点|截至时点|判定时点|"
+    "policy_as_of": r"所选日期|所选时点|所选查询时点|政策时点|适用日期|适用时点|适用性判定时点|有效性判定时点|截至时点|判定时点|"
                     r"查询基准|查询时间点|查询时点|selected date|as of|query time",
     "policy_effective_at": r"政策生效日期|生效日期|生效时间|生效时点|effective date|effective at",
     "policy_expires_at": r"政策失效日期|失效日期|失效时间|失效时点|(?:政策)?到期(?:日期|时间|时点)|"
@@ -671,8 +671,20 @@ class AnswerPolicy:
         # query time: ...". Only independent metadata statements may lose a
         # timestamp. Ambiguous action-bearing prose stays fully guarded.
         captions = "|".join(_REFERENCE_TIME_LABELS.values())
+        # A retrieved eligible revision may be cited by its exact quoted title.
+        # Only its title's nominal wording is excluded from the action test;
+        # timestamps still need their own role/instant proof and other values
+        # remain in the ordinary guard. No arbitrary quoted subject is trusted.
+        titles = reference_times.get("policy_titles", [])
+        quoted_titles = []
+        if isinstance(titles, (list, tuple)):
+            for title in titles:
+                if isinstance(title, str) and title:
+                    for left, right in (("《", "》"), ("「", "」"), ("“", "”")):
+                        quoted_titles.extend(re.finditer(re.escape(left + title + right), text))
+        title_caption = any(re.fullmatch(r"\s*(?:\[\d+\]\s*)?", text[:m.start()]) for m in quoted_titles)
         if not re.match(rf"^\s*(?:-\s*)?(?:按(?:所选)?(?:查询)?(?:时点|日期)|{captions}|适用性依据|有效版本|"
-                        r"(?:(?:该|本|此)(?:政策|规则|条款|版本))?自)", text, re.I):
+                        r"(?:(?:该|本|此)(?:政策|规则|条款|版本))?自)", text, re.I) and not title_caption:
             return sentence
         patterns = (
             ("policy_as_of", rf"(?:{_REFERENCE_TIME_LABELS['policy_as_of']})\s*(?:为|[:：])?\s*(?P<stamp>{stamp})", "所选日期："),
@@ -698,6 +710,9 @@ class AnswerPolicy:
         for start, end in sorted(set(metadata_spans), reverse=True):
             residue = residue[:start] + " " * (end - start) + residue[end:]
         action_text = residue
+        for title in quoted_titles:
+            start, end = title.span()
+            action_text = action_text[:start] + " " * (end - start) + action_text[end:]
         for topic in reversed(list(_REFERENCE_FEE_TOPIC_RE.finditer(residue))):
             start, end = topic.span("topic")
             action_text = action_text[:start] + " " * (end - start) + action_text[end:]

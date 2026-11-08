@@ -78,10 +78,15 @@ def fact_checkpoint(value):
 
 
 def valid_fact_header(value):
+    verified_empty_policy = False
     if isinstance(value, dict) and value.get("answer_origin") == "verified_policy_projection":
-        from app.core.policy_completion import blocked_evidence
+        from app.core.policy_completion import blocked_evidence, projection
         if any(blocked_evidence(item) for item in (value, value.get("knowledge"), value.get("business_data"))):
             return False
+        receipt = value.get("fact_receipt") or {}
+        proof = receipt.get("proof") if isinstance(receipt, dict) else None
+        if value.get("knowledge_sources") == [] and isinstance(proof, dict) and proof.get("outcome") == "empty":
+            verified_empty_policy = projection(receipt.get("task"), {**(value.get("knowledge") or {}), "sources": []}) is not None
     return bool(isinstance(value, dict) and value.get("answer_origin") in ORIGINS
                 and value.get("answer_model_invoked") is False and isinstance(value.get("fact_receipt"), dict)
                 and value["fact_receipt"] and value.get("handoff") is False and value.get("escalated") is False
@@ -90,7 +95,7 @@ def valid_fact_header(value):
                 and ((value["answer_origin"] == ORIGIN and not value.get("knowledge_sources")
                       and "kind" not in value["fact_receipt"])
                      or (value["answer_origin"] == "verified_policy_projection"
-                         and isinstance(value.get("knowledge_sources"), list) and value["knowledge_sources"]
+                         and isinstance(value.get("knowledge_sources"), list) and (value["knowledge_sources"] or verified_empty_policy)
                          and value["fact_receipt"].get("kind") == "policy_excerpt_v1")))
 
 

@@ -1,0 +1,126 @@
+{
+  "provenance": "Preliminary closed individual case cuts; whole round PG/model bodies/HMAC are PENDING. Sentences are exact recorded guard violations, not a reconstruction of the complete model answer.",
+  "input_index_sha256": "2b7326ba4632b9ed6a739720684b62ec97bf8884dbd224361e813043aaadf15b",
+  "records": [
+    {
+      "id": "release-policies-024",
+      "sha256": "c95fc0b1e8a368c3d57909aea1c8db143116f3a5199ae12f465569cb82c18a83",
+      "scope": {
+        "as_of": "2026-11-05T20:00:01Z",
+        "audience": "employee",
+        "product": "Juniper-24 cabinets",
+        "region": "CA"
+      },
+      "message": "我在整理 CA 地区 Juniper-24 cabinets 客服答复。按所选日期和适用范围，取消订单的处理时限有什么规定？请说明有效版本并保留引用。",
+      "sources": [],
+      "knowledge": {
+        "attempted": true,
+        "corrected": false,
+        "degraded": false,
+        "evidence_ok": null,
+        "lookup_scope": {
+          "as_of": "2026-11-05T20:00:01Z",
+          "audience": "employee",
+          "product": "Juniper-24 cabinets",
+          "region": "CA"
+        },
+        "lookup_status": "empty",
+        "mode": "direct",
+        "policy_lookup": true,
+        "reranked": false
+      },
+      "sentences": [
+        "- **政策时点**：2026 年 11 月 5 日 20:00:01（UTC）"
+      ],
+      "original_declared_handoff": true,
+      "original_confidence": 0.4,
+      "original_handoff": true,
+      "original_policy_violations": [
+        {
+          "evidence": "2026 年 11 月 5 日",
+          "reason": "无依据的时效承诺：'2026 年 11 月 5 日' 未出现在本轮知识库检索结果或 Skill SOP 中，且句子使用了承诺性表述。",
+          "rule": "lead_time_commitment",
+          "sentence": "- **政策时点**：2026 年 11 月 5 日 20:00:01（UTC）"
+        }
+      ]
+    },
+    {
+      "id": "release-policies-050",
+      "sha256": "9ef31af7e6c19a1a713cdea689a4ab76af98e99a8fe7d58ae190dfe760ad868f",
+      "scope": {
+        "as_of": "2026-11-05T20:00:01Z",
+        "audience": "employee",
+        "product": "Juniper-50 cabinets",
+        "region": "CA"
+      },
+      "message": "我在整理 CA 地区 Juniper-50 cabinets 客服答复。按所选日期和适用范围，付款手续费的办理步骤有什么规定？请说明有效版本并保留引用。",
+      "sources": [
+        {
+          "chunk_id": "fc64b43bbf8f48ae4de07ef4f5037ca6",
+          "content": "Juniper-50 cabinets 的付款手续费：先登记订单号，再核对现场记录，最后由运营审核。未完成审核不能承诺赔偿。",
+          "doc_id": "doc_237897717d1ca8ba1036",
+          "doc_title": "Juniper-50 cabinets 付款手续费 2026-B",
+          "excerpt": "Juniper-50 cabinets 的付款手续费：先登记订单号，再核对现场记录，最后由运营审核。未完成审核不能承诺赔偿。",
+          "passage": 0,
+          "policy": {
+            "audience": "employee",
+            "effective_at": "2026-11-05T20:00:00Z",
+            "expires_at": null,
+            "product": "Juniper-50 cabinets",
+            "region": "CA",
+            "status": "published",
+            "version": "2026-B"
+          },
+          "policy_as_of": "2026-11-05T20:00:01+00:00",
+          "policy_revision": "237897717d1ca8ba1036bb7cc2be125abeea6742d115aa216fd32591b06a4007",
+          "policy_scope": {
+            "as_of": "2026-11-05T20:00:01Z",
+            "audience": "employee",
+            "product": "Juniper-50 cabinets",
+            "region": "CA"
+          },
+          "retrieval": "hybrid",
+          "score": 0.3633,
+          "title": "Juniper-50 cabinets 付款手续费 2026-B"
+        }
+      ],
+      "knowledge": {
+        "attempted": true,
+        "corrected": false,
+        "degraded": false,
+        "evidence_ok": true,
+        "lookup_scope": {
+          "as_of": "2026-11-05T20:00:01Z",
+          "audience": "employee",
+          "product": "Juniper-50 cabinets",
+          "region": "CA"
+        },
+        "lookup_status": "found",
+        "mode": "rewrite_rerank",
+        "policy_lookup": true,
+        "reranked": true
+      },
+      "sentences": [
+        "按所选时点 **2026-11-05 20:00:01 UTC**，适用于 **CA 地区、Juniper-50 cabinets、员工范围**的已发布有效条款为 **《Juniper-50 cabinets 付款手续费 2026-B》**。",
+        "[1]《Juniper-50 cabinets 付款手续费 2026-B》；版本：**2026-B**；状态：已发布；生效时间：**2026-11-05 20:00:00 UTC**；未设置失效时间。"
+      ],
+      "original_declared_handoff": false,
+      "original_confidence": 0.5,
+      "original_handoff": true,
+      "original_policy_violations": [
+        {
+          "evidence": "2026-11-05",
+          "reason": "无依据的时效承诺：'2026-11-05' 未出现在本轮知识库检索结果或 Skill SOP 中，且句子使用了承诺性表述。",
+          "rule": "lead_time_commitment",
+          "sentence": "按所选时点 **2026-11-05 20:00:01 UTC**，适用于 **CA 地区、Juniper-50 cabinets、员工范围**的已发布有效条款为 **《Juniper-50 cabinets 付款手续费 2026-B》**。"
+        },
+        {
+          "evidence": "2026-11-05",
+          "reason": "无依据的时效承诺：'2026-11-05' 未出现在本轮知识库检索结果或 Skill SOP 中，且句子使用了承诺性表述。",
+          "rule": "lead_time_commitment",
+          "sentence": "[1]《Juniper-50 cabinets 付款手续费 2026-B》；版本：**2026-B**；状态：已发布；生效时间：**2026-11-05 20:00:00 UTC**；未设置失效时间。"
+        }
+      ]
+    }
+  ]
+}

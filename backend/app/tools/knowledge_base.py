@@ -959,6 +959,21 @@ class KnowledgeBase:
             documents.append(document)
         return documents
 
+    async def _policy_subject_identity(self, task, *, conn=None, lock=True):
+        from app.core import policy_completion as pc
+        records = await self._store.kb_fact_candidates(
+            PolicyScope.model_validate(task["scope"]), conn=conn, lock=lock, identity=True)
+        documents = []
+        for record in records:
+            document = pc.document_payload(record)
+            if not pc.subject_matches(task, document):
+                continue
+            if (document["policy"]["version"] == "legacy-unreviewed"
+                    or not pc.document_valid(document, self._chunk_text)):
+                return None
+            documents.append(document)
+        return pc.candidate_snapshot(task, documents) if documents else None
+
     async def bind_policy_projection(self, task, knowledge_trace):
         """Sign only an authentic, complete current document at the RAG boundary."""
         from app.core import policy_completion as pc
@@ -966,11 +981,20 @@ class KnowledgeBase:
         if not isinstance(knowledge_trace, dict):
             return None
         if (pc.blocked_evidence(knowledge_trace) or knowledge_trace.get("attempted") is not True
-                or knowledge_trace.get("policy_lookup") is not True or knowledge_trace.get("lookup_status") != "found"
+                or knowledge_trace.get("policy_lookup") is not True or knowledge_trace.get("lookup_status") not in {"found", "empty"}
                 or (knowledge_trace.get("evidence_ok") is not None and knowledge_trace.get("evidence_ok") is not True)
                 or not pc.valid_task(task) or current_task() != task
                 or current_scope().model_dump(mode="json") != task["scope"]):
             return None
+        if knowledge_trace.get("lookup_status") == "empty":
+            if pc.empty_state(task, knowledge_trace) is None:
+                return None
+            documents = await self._policy_projection_candidates(task)
+            if documents != []:
+                return None
+            identity = await self._policy_subject_identity(task)
+            proof = pc.bind_empty(task, knowledge_trace, candidates=pc.candidate_snapshot(task, documents), identity=identity)
+            return ({**knowledge_trace, "_policy_dispatch": proof} if proof else None)
         candidates = {}
         for ref in knowledge_trace.get("sources", []):
             try:
@@ -1028,8 +1052,12 @@ class KnowledgeBase:
             if conn is not None and self._store.backend != "postgres_pgvector":
                 return False
             documents = await self._policy_projection_candidates(task, conn=conn, lock=lock)
-            if (documents is None or len(documents) != 1
-                    or pc.candidate_snapshot(task, documents) != proof["candidate_set"]):
+            if documents is None or pc.candidate_snapshot(task, documents) != proof["candidate_set"]:
+                return False
+            if proof.get("outcome") == "empty":
+                return (documents == [] and refs == [] and proof["document"] is None
+                        and await self._policy_subject_identity(task, conn=conn, lock=lock) == proof.get("subject_identity"))
+            if len(documents) != 1:
                 return False
             document = documents[0]
             return (document == proof["document"] and pc.document_valid(document, self._chunk_text)

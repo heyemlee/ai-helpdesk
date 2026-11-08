@@ -475,7 +475,7 @@ class CaseService:
         entries = [e for e in evidence if e.get("source") == "fact_projection"]
         refs = [e for e in evidence if e.get("doc_id")]
         try:
-            if (len(entries) != 1 or not refs or len(evidence) != len(refs) + 1 or not saved or not case
+            if (len(entries) != 1 or len(evidence) != len(refs) + 1 or not saved or not case
                     or self.knowledge_base is None or self.actors is None):
                 return False
             receipt = entries[0]["receipt"]

@@ -205,6 +205,8 @@ async def prepare_turn(
     lookup_goal["queries"] = list(dict.fromkeys([original_message, message]))
     from app.core.fact_completion import current_task
     task = current_task()
+    from app.core import policy_completion as pc
+    policy_task = pc.current_request(original_message, case_id=(case_context or {}).get("case_id", ""))
     if task and task["case_id"] == (case_context or {}).get("case_id") and scope and task["run_id"] == scope.run_id:
         lookup_goal["fact_task"] = task
     _record_intent(recorder, intent_result)
@@ -234,8 +236,7 @@ async def prepare_turn(
         searching = prefetch.will_search(message, intent=intent_result.intent)
         querying = prefetch.will_query(
             message, intent=intent_result.intent, entities=intent_result.entities)
-        from app.core.policy_completion import KIND as POLICY_KIND
-        if task and task.get("kind") == POLICY_KIND:
+        if policy_task:
             # The original message was closed to policy-document fields before
             # intent/rewrite. A policy subject is not an order/payment lookup.
             querying = False
@@ -275,9 +276,8 @@ async def prepare_turn(
                 raw=raw,
             )), trace=data_trace, raw=raw),
         )
-    from app.core.policy_completion import KIND as POLICY_KIND
-    if task and task.get("kind") == POLICY_KIND and deps.bind_policy_projection:
-        bound = await deps.bind_policy_projection(task, knowledge_trace)
+    if policy_task and deps.bind_policy_projection:
+        bound = await deps.bind_policy_projection(policy_task, knowledge_trace)
         if bound:
             knowledge_trace = bound
         if knowledge_trace.get("lookup_status") == "conflict":
@@ -300,6 +300,7 @@ async def prepare_turn(
             order=(order_text, order_is_evidence, data_trace),
             order_query=order_query,
             latency_ms=latency_ms,
+            policy_only=bool(policy_task),
         )
         orch_req.turn.lookup_goal = lookup_goal
     evidence_trace = {"knowledge": knowledge_trace, "business_data": data_trace, "lookup_goal": lookup_goal}
@@ -381,6 +382,7 @@ def _turn_context(
     order: tuple[str, bool, dict[str, Any]],
     order_query: str | None = None,
     latency_ms: dict[str, float] | None = None,
+    policy_only: bool = False,
 ) -> TurnContext:
     """工具循环这一轮共用的上下文：可信身份、可用工具，轨迹和去重表从规则预取开始。"""
     from app.agents.tool_loop import TurnContext
@@ -394,7 +396,7 @@ def _turn_context(
         tools=dict(loop.tools),
         config=loop.config,
         intent=getattr(intent, "value", intent),
-        policy_only=policy_only_query(message, intent_result.entities),
+        policy_only=policy_only or policy_only_query(message, intent_result.entities),
         progress_cb=progress_cb,
     )
     seed_from_prefetch(turn, message, knowledge=knowledge, order=order, order_query=order_query, latency_ms=latency_ms)

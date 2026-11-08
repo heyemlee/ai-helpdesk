@@ -26,7 +26,7 @@ _ROLES = {
     "cite the applicable published policy": "citation",
     "selected date": "as_of", "selected time": "as_of", "scope": "scope", "citations": "citation",
 }
-_GLUE = re.compile(r"说明|介绍|提供|附|是多少|多少|是什么|请|和|及|与|以及|并|内|的|在|[\s，,、。.;；:：!?！？]+|"
+_GLUE = re.compile(r"说明|介绍|提供|保留|列出|列明|附|是多少|多少|是什么|请|和|及|与|以及|并|内|的|在|[\s，,、。.;；:：!?！？]+|"
                    r"\b(?:please|show|explain|provide|and|the|a|within|for|of)\b", re.I)
 
 
@@ -52,6 +52,48 @@ def trace_state(knowledge):
             ("attempted", "policy_lookup", "lookup_status", "evidence_ok", "degraded", "has_risk", "evidence_issues", "conflicts")}
 
 
+def _informational_request(message, scope):
+    """Close a natural information envelope; every unparsed clause rejects it.
+
+    Scope names are exact authenticated values, not aliases inferred from prose.
+    This adapter only supplies the existing document-role grammar below.
+    """
+    text = message.strip()
+    product, region = re.escape(scope.product), re.escape(scope.region)
+    framing = re.match(
+        rf"(?:(?:我|我们)(?:正在|在|需要|想要)?|请(?:帮我|协助我)?)"
+        rf"(?:整理|准备|编写|起草)\s*(?:{region}\s*(?:地区|区域)?\s*)?"
+        rf"{product}\s*的?(?:客服)?(?:答复|回复|说明|资料|材料)[。；;]\s*", text)
+    if framing:
+        text = text[framing.end():]
+    selected = re.match(r"(?:按|依据|根据)(?:所选|指定)(?:日期|时点|时间)(?:和|及|与)(?:适用|所选)?范围[，,]\s*", text)
+    if selected:
+        text = text[selected.end():]
+    question = re.match(
+        rf"(?:请(?:说明|介绍|解释)|请问)?\s*(?P<product>{product}\s*的?)?"
+        r"(?P<subject>[^，,。；;！!？?\n]{1,100}?)的"
+        r"(?P<role>处理时限|办理时限|办理步骤|操作步骤|办理流程|办理程序)"
+        r"(?:有什么规定|有哪些规定|有何规定|是什么|是多少|如何规定)[？?。]\s*", text)
+    if (question is None or not (framing or question["product"])
+            or re.search(r"^请|帮我|替我|给我|立即|现在|直接|执行|发起|实际|记录|我的|我这|这批|这笔|本单|该单|"
+                         r"(?:当前|这|该|此)(?:笔|个)?(?:订单|申请|业务)|订单(?:号|状态|记录)|"
+                         r"并|然后|同时|另外|我(?:要|想|需要)|\b(?:SO|PO|WO)[-\d]", question["subject"], re.I)):
+        return None
+    # This Chinese question adapter accepts a nominal Han subject only. Scope
+    # clauses, dates and unconsumed identifiers must take the ordinary path;
+    # they cannot become a new unknown topic under the selected server scope.
+    subject = question["subject"].strip()
+    if (not re.fullmatch(r"[\u3400-\u9fff]{1,100}", subject)
+            or re.search(r"地区|区域|国家|省|市|州|日期|时点|时间|今天|明天|昨天|今年|明年|去年|"
+                         r"截至|截止|按照|依据|根据|适用|范围|产品|型号|规格|系列|(?:另一|其他|这|那|某)(?:一)?款|"
+                         r"(?:本|当|每)[年月日周天]|(?:上|下)个?[月周]|"
+                         r"员工|客户|用户|人群|受众|[一二三四五六七八九十〇零]+[年月日]", subject)):
+        return None
+    role = "办理步骤" if question["role"] in {"操作步骤", "办理流程", "办理程序"} else question["role"]
+    # The existing residual-role check consumes the complete remaining request.
+    return f"请查{scope.product}的{question['subject']}政策，所选时点和适用范围，{role}，" + text[question.end():]
+
+
 def make_task(message, context, run_id, attempt):
     try:
         snap, receipt = context["snapshot"], context["snapshot"]["input_receipt"]
@@ -68,7 +110,7 @@ def make_task(message, context, run_id, attempt):
                 or not all((scope.product, scope.region, scope.audience, scope.as_of))
                 or re.search(r"\b(?:SO|PO|WO)[-\d]", message, re.I)):
             return None
-        text = message.strip()
+        text = _informational_request(message, scope) or message.strip()
         product = re.escape(scope.product)
         match = re.match(rf"(?:请)?(?:查询|查阅|查看|查|说明|介绍)\s*{product}\s*的?\s*"
                          r"(?P<subject>[^，,。；;！？\n]{1,100}?)政策(?=[的，,。；;\s]|$)", text)
@@ -128,6 +170,27 @@ def valid_task(task):
                         (("execution_attempt", 1), ("case_version", 1), ("control_version", 0), ("auth_version", 0))))
     except (KeyError, TypeError, AttributeError, ValueError):
         return False
+
+
+def current_request(message, *, case_id=""):
+    """The same server-closed task controls preparation and downstream gates."""
+    from app.core.fact_completion import current_task
+    from app.core.lookup_scope import current_goal
+    from app.core.policy_scope import current_scope
+    from app.runs.memo import current_run
+    task, run = current_task(), current_run()
+    if not case_id:
+        goal = current_goal()
+        if not (isinstance(goal, dict) and run and goal.get("owner") == run.run_id
+                and goal.get("message") == message):
+            return None
+        case_id = goal.get("case_id")
+    return (task if isinstance(task, dict) and valid_task(task) and run
+            and task["run_id"] == run.run_id
+            and task["execution_attempt"] == run.attempt
+            and case_id and task["case_id"] == case_id
+            and task["message_sha256"] == hashlib.sha256(message.encode()).hexdigest()
+            and task["scope"] == current_scope().model_dump(mode="json") else None)
 
 
 def subject_name(value):
@@ -239,6 +302,39 @@ def bind_sources(task, refs, document, *, candidates, key=None, state=None):
     return {**proof, "signature": _signature(proof, key)}
 
 
+def empty_state(task, knowledge):
+    """Only a healthy current scoped lookup can describe its empty outcome."""
+    try:
+        if (blocked_evidence(knowledge) or knowledge.get("attempted") is not True
+                or knowledge.get("policy_lookup") is not True or knowledge.get("lookup_status") != "empty"
+                or knowledge.get("sources") != []
+                or PolicyScope.model_validate(knowledge["lookup_scope"]).model_dump(mode="json") != task["scope"]):
+            return None
+        return {**trace_state(knowledge), "lookup_scope": copy.deepcopy(task["scope"])}
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def known_subject(task, identity):
+    return bool(isinstance(identity, dict) and identity.get("scope") == task["scope"]
+                and identity.get("subject") == subject_name(task["subject"])
+                and isinstance(identity.get("documents"), list) and identity["documents"]
+                and all(isinstance(row, dict) and set(row) == {"id", "revision", "sha256"}
+                        and all(isinstance(row[k], str) and row[k] for k in row)
+                        and re.fullmatch(r"[a-f0-9]{64}", row["sha256"]) for row in identity["documents"]))
+
+
+def bind_empty(task, knowledge, *, candidates, identity, key=None):
+    key, state = _key(key), empty_state(task, knowledge)
+    if (not key or not valid_task(task) or state is None or candidates != candidate_snapshot(task, [])
+            or not known_subject(task, identity)):
+        return None
+    proof = {"kind": KIND, "task": copy.deepcopy(task), "state": state, "sources": [], "document": None,
+             "outcome": "empty", "candidate_set": copy.deepcopy(candidates),
+             "subject_identity": copy.deepcopy(identity), "retrieved_at": utc_now().isoformat()}
+    return {**proof, "signature": _signature(proof, key)}
+
+
 def field_witnesses(task, document):
     """Recomputable source paths and exact spans, never inferred missing fields."""
     body = document["content"]
@@ -277,7 +373,7 @@ def field_witnesses(task, document):
         markers = list(re.finditer(r"第([一二三四五六七八九十\d]+)步|(?:^|\n)\s*(\d+)[.、)]", section))
         ordered, imperative = False, False
         if not markers:
-            markers = list(re.finditer(r"(?:^|[，,；;\n])\s*(首先|先|接着|再|然后|最后)", section))
+            markers = list(re.finditer(r"(?:^|[：:，,；;\n])\s*(首先|先|接着|再|然后|最后)", section))
             ordered = True
         if not markers and head and re.match(
                 r"\s*(?:登记|核对|填写|提交|交由|收集|联系|检查|确认|查阅|保存|记录|审核|审批|通知|准备|上传|提供)"
@@ -320,14 +416,19 @@ def projection(task, knowledge, *, key=None, at=None):
     try:
         proof = copy.deepcopy(knowledge["_policy_dispatch"])
         signature = proof.pop("signature")
+        empty = proof.get("outcome") == "empty"
+        expected_state = empty_state(task, knowledge) if empty else trace_state(knowledge)
         if (blocked_evidence(knowledge) or not valid_task(task) or not _key(key) or proof["kind"] != KIND or proof["task"] != task
                 or not hmac.compare_digest(signature, _signature(proof, _key(key)))
-                or proof["state"] != trace_state(knowledge)
+                or expected_state is None or proof["state"] != expected_state
                 or not fresh(proof["retrieved_at"], at or utc_now())
-                or knowledge.get("attempted") is not True or knowledge.get("lookup_status") != "found"
+                or knowledge.get("attempted") is not True or knowledge.get("lookup_status") != ("empty" if empty else "found")
                 or knowledge.get("policy_lookup") is not True or (knowledge.get("evidence_ok") is not None and knowledge.get("evidence_ok") is not True)
                 or [source_payload(r) for r in knowledge["sources"]] != proof["sources"]):
             return None
+        if empty:
+            return proof if (proof["document"] is None and proof["candidate_set"] == candidate_snapshot(task, [])
+                             and known_subject(task, proof.get("subject_identity"))) else None
         document = proof["document"]
         from app.tools.knowledge_base import KnowledgeBase
         if (not document_valid(document, KnowledgeBase._chunk_text)
@@ -346,15 +447,17 @@ def proposal(task, knowledge, *, key=None, at=None):
     proof = projection(task, knowledge, key=key, at=at)
     if proof is None:
         return None
-    ref = {**proof["sources"][0], "content": proof["document"]["content"]}
-    response = render_draft([ref], {}, language=task["language"])
+    empty = proof.get("outcome") == "empty"
+    refs = [] if empty else [{**proof["sources"][0], "content": proof["document"]["content"]}]
+    response = render_draft(refs, {}, language=task["language"], knowledge_state=knowledge if empty else None)
     receipt = {"kind": KIND, "version": 1, "task": task, "proof": proof | {"signature": knowledge["_policy_dispatch"]["signature"]},
                "body_sha256": hashlib.sha256(response.encode()).hexdigest(),
-               "coverage": field_witnesses(task, proof["document"])}
+               "coverage": ({"lookup_observation": {"scope": task["scope"], "subject": task["subject"], "outcome": "empty"}}
+                            if empty else field_witnesses(task, proof["document"]))}
     receipt["id"] = digest(receipt)
     return {"response": response, "answer_origin": ORIGIN, "answer_model_invoked": False,
             "fact_receipt": receipt, "agent_type": "system", "agent_types": [], "handoff": False, "escalated": False,
-            "knowledge_used": True, "knowledge_sources": knowledge["sources"],
+            "knowledge_used": not empty, "knowledge_sources": knowledge["sources"],
             "knowledge": {k:v for k,v in knowledge.items() if k != "sources"}, "business_data": {}, "policy_violations": []}
 
 

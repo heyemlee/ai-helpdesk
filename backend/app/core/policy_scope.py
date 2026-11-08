@@ -172,6 +172,7 @@ def policy_source_metadata(source):
 
 def policy_reference_times(scope=None, sources=()):
     times = {}
+    title_references = set()
     try:
         selected = PolicyScope.model_validate(scope or {}).as_of
         if selected:
@@ -182,6 +183,8 @@ def policy_reference_times(scope=None, sources=()):
         verified = policy_source_metadata(source)
         if not verified:
             continue
+        title = source.get("title")
+        title_references.add((policy_digest(verified), title if isinstance(title, str) else ""))
         policy = verified["policy"]
         if policy["effective_at"]:
             kind = "policy_validity_ranges" if policy["expires_at"] else "policy_open_ended_at"
@@ -194,7 +197,25 @@ def policy_reference_times(scope=None, sources=()):
                            "policy_expires_at": verified["policy"]["expires_at"]}.items():
             if value and value not in times.setdefault(key, []):
                 times[key].append(value)
+    # Do not let a title borrow another document/revision's clock. Repeated
+    # chunks of one identical metadata reference are one authority; mixed
+    # references retain the ordinary guard rather than infer title/time pairs.
+    if len(title_references) == 1:
+        _, title = next(iter(title_references))
+        if title:
+            times["policy_titles"] = [title]
     return times
+
+
+def identity_sql_filter(scope: PolicyScope, *, postgres=False):
+    """Catalog identity only: authorized dimensions, without publication facts."""
+    clauses, args = [], []
+    for i, key in enumerate(("product", "region", "audience"), 1):
+        col = f"d.policy->>'{key}'" if postgres else f"json_extract(d.policy, '$.{key}')"
+        mark = f"${i}" if postgres else f"?{i}"
+        clauses.append(f"({col}='*' OR ({mark}<>'' AND {col}={mark}))")
+        args.append(getattr(scope, key))
+    return " AND ".join(clauses), args
 
 
 def sql_filter(scope: PolicyScope, *, postgres=False, start=1, at=None):
