@@ -10,7 +10,6 @@ import hashlib
 import json
 import math
 import re
-from copy import deepcopy
 from datetime import date
 from pathlib import Path
 
@@ -243,6 +242,12 @@ def _row_key(cell):
     return cell["database"], cell["query_hash"], cell["step_index"], cell["row_index"], cell["as_of"]
 
 
+def _target_value_matches(value, target):
+    if "value_sha256" in target:
+        return isinstance(value, str) and hashlib.sha256(value.encode()).hexdigest() == target["value_sha256"]
+    return value == target["value"]
+
+
 def _target_matches(cell, target, data, all_cells):
     step = data["steps"][cell["step_index"]]
     physical = dict(source_columns(step["final_sql"]))
@@ -260,7 +265,7 @@ def _target_matches(cell, target, data, all_cells):
         for c in all_cells
         if _row_key(c) == _row_key(cell) and physical.get(c["field"]) == (_physical(cell)[1], column)
     ]
-    return any(c["value"] == target["value"] for c in anchors) if anchors else None
+    return any(_target_value_matches(c["value"], target) for c in anchors) if anchors else None
 
 
 def _full_simple_range(data, witnesses, target, *, value_grain=False):
@@ -308,7 +313,7 @@ def _full_simple_range(data, witnesses, target, *, value_grain=False):
             and column.table in {"", tables[0].name, tables[0].alias}
             and isinstance(literal, exp.Literal)
             and literal.is_string
-            and literal.this == target["value"]
+            and _target_value_matches(literal.this, target)
         )
     except (KeyError, TypeError, AttributeError, ValueError, sqlglot.errors.SqlglotError):
         return False
@@ -478,7 +483,18 @@ def _request_coverage(plan, data, cells, nulls, issues, *, outcome="", at=None):
         "version": 1,
         "planning_only": True,
         "plan_id": plan["id"],
-        "request_plan": deepcopy(plan),
+        # This diagnostic enters event summaries. Keep only the fields needed
+        # to recheck limitations, never the original target/message/context.
+        "request_scope": {
+            "id": plan["id"],
+            "planning_only": True,
+            "grain": plan["grain"],
+            "targets": [{"kind": t["kind"], "value_sha256": t.get("value_sha256")
+                         or hashlib.sha256(t["value"].encode()).hexdigest()} for t in targets],
+            "required_roles": list(plan.get("required_roles", [])),
+            "unresolved_roles": list(plan.get("unresolved_roles", [])),
+            "business_effects": ["requested"] if plan.get("business_effects") else [],
+        },
         "grain": plan["grain"],
         "complete": complete,
         "roles": roles,
@@ -490,7 +506,7 @@ def visible_coverage_note(coverage, business, language="zh", *, at=None):
     """Recheck concrete limitations; a saved planner verdict cannot publish facts."""
     from app.core.business_facts import verified_cells, verified_nulls
 
-    if not isinstance(coverage, dict) or not isinstance(plan := coverage.get("request_plan"), dict):
+    if not isinstance(coverage, dict) or not isinstance(plan := coverage.get("request_scope"), dict):
         return ""
     data = business.get("evidence_payload") or {}
     cells, issues = verified_cells(data, at=at)

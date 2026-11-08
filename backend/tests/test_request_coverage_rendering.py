@@ -1,6 +1,8 @@
 """Planner uncertainty cannot publish negative facts or hide real limitations."""
 
 import copy
+import hashlib
+import json
 from datetime import UTC, datetime
 
 import pytest
@@ -159,6 +161,20 @@ def test_caller_edited_diagnostic_status_cannot_invent_missing_business_facts():
     checked["roles"]["order_status"]["status"] = "wrong_target"
     body = render_draft([], trace(data, checked))
     assert "生产中" in body and "尚未核实：" not in body and "原问的完整目标" not in body
+
+
+def test_event_summary_diagnostic_retains_only_hashed_target_binding_and_no_case_context():
+    message = f"查询订单 {ORDER} 的订单状态。"
+    plan = make_request_plan(message, case_refs=["PRIVATE-CASE-982"])
+    data = payload("erp_db", "orders", [{"order_no": ORDER}])
+    checked = diagnosed(plan, data)
+    encoded = json.dumps(checked, ensure_ascii=False)
+    assert ORDER not in encoded and message not in encoded and "PRIVATE-CASE-982" not in encoded
+    assert checked["request_scope"]["targets"] == [
+        {"kind": "order_id", "value_sha256": hashlib.sha256(ORDER.encode()).hexdigest()}
+    ]
+    assert "订单状态" in render_draft([], trace(data, checked))
+    assert "尚未核实：订单状态" in render_draft([], trace(data, checked))
 
 
 def test_null_stays_registered_null_and_wrong_unit_stays_a_visible_field_limitation():
