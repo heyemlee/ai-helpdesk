@@ -10,6 +10,7 @@ import hashlib
 import json
 import math
 import re
+from copy import deepcopy
 from datetime import date
 from pathlib import Path
 
@@ -248,18 +249,18 @@ def _target_matches(cell, target, data, all_cells):
     # Source-column metadata alone cannot prove which side of a join owns the
     # target row, including a self-join. Leave such targets unproved here.
     if len(list(sqlglot.parse_one(step["final_sql"]).find_all(exp.Table))) != 1:
-        return False
+        return None
     column = (
         "order_no" if target["kind"] == "order_id" else "material_name" if target["kind"] == "material_name" else None
     )
     if column is None:
-        return False
-    return any(
-        _row_key(c) == _row_key(cell)
-        and physical.get(c["field"]) == (_physical(cell)[1], column)
-        and c["value"] == target["value"]
+        return None
+    anchors = [
+        c
         for c in all_cells
-    )
+        if _row_key(c) == _row_key(cell) and physical.get(c["field"]) == (_physical(cell)[1], column)
+    ]
+    return any(c["value"] == target["value"] for c in anchors) if anchors else None
 
 
 def _full_simple_range(data, witnesses, target, *, value_grain=False):
@@ -342,7 +343,7 @@ def _typed(role, cell, cap):
 def request_coverage(plan, data, cells, nulls, issues, *, outcome="", at=None):
     try:
         return _request_coverage(plan, data, cells, nulls, issues, outcome=outcome, at=at)
-    except (KeyError, TypeError, ValueError, AttributeError, IndexError, OverflowError):
+    except (KeyError, TypeError, ValueError, AttributeError, IndexError, OverflowError, sqlglot.errors.SqlglotError):
         return {
             "version": 1,
             "planning_only": True,
@@ -390,9 +391,9 @@ def _request_coverage(plan, data, cells, nulls, issues, *, outcome="", at=None):
             ):
                 status = "unsupported"
             elif target is None:
-                status = "ambiguous"
-            elif not all(_target_matches(c, target, data, cells) for c in matches):
-                status = "wrong_target"
+                status = "target_unproved"
+            elif not all(targets_checked := [_target_matches(c, target, data, cells) for c in matches]):
+                status = "wrong_target" if False in targets_checked else "target_unproved"
             elif any(not fresh(c.get("observed_at"), at) or not fresh(c.get("as_of"), at) for c in matches):
                 status = "stale"
             elif not all(_typed(role, c, cap) for c in matches):
@@ -477,11 +478,81 @@ def _request_coverage(plan, data, cells, nulls, issues, *, outcome="", at=None):
         "version": 1,
         "planning_only": True,
         "plan_id": plan["id"],
+        "request_plan": deepcopy(plan),
         "grain": plan["grain"],
         "complete": complete,
         "roles": roles,
         "reasons": reasons,
     }
+
+
+def visible_coverage_note(coverage, business, language="zh", *, at=None):
+    """Recheck concrete limitations; a saved planner verdict cannot publish facts."""
+    from app.core.business_facts import verified_cells, verified_nulls
+
+    if not isinstance(coverage, dict) or not isinstance(plan := coverage.get("request_plan"), dict):
+        return ""
+    data = business.get("evidence_payload") or {}
+    cells, issues = verified_cells(data, at=at)
+    nulls = verified_nulls(data)
+    checked = request_coverage(plan, data, cells, nulls, issues, at=at)
+    targets = plan.get("targets", [])
+    target = targets[0] if len(targets) == 1 else None
+
+    def observed_scope(role, status):
+        cap = ROLES.get(role)
+        if not cap or not target:
+            return False
+        source = cap["source"]
+        for si, step in enumerate(data.get("steps", [])):
+            if step.get("database") != source["database"] or not step.get("rows"):
+                continue
+            tables = list(sqlglot.parse_one(step["final_sql"]).find_all(exp.Table))
+            if len(tables) != 1 or tables[0].name != source["table"]:
+                continue
+            row_checks = [
+                [_target_matches(c, target, data, cells) for c in cells
+                 if c["step_index"] == si and c["row_index"] == ri and _physical(c)[1] == source["table"]]
+                for ri in range(len(step["rows"]))
+            ]
+            if all(any(v is (False if status == "wrong_target" else True) for v in row) for row in row_checks):
+                return True
+        return False
+
+    def invalid_value(role):
+        cap = ROLES.get(role)
+        return bool(cap and any(
+            _physical(c) == (cap["source"]["database"], cap["source"]["table"], cap["source"]["column"])
+            and (c["column_metadata"].get("schema_revision") != cap["schema_revision"] or not _typed(role, c, cap))
+            for c in [*cells, *nulls]
+        ))
+
+    try:
+        missing = {
+            role: value for role, value in checked["roles"].items()
+            if (value["status"] in {"omitted", "wrong_target"} and observed_scope(role, value["status"]))
+            or (value["status"] == "unsupported" and invalid_value(role) and observed_scope(role, "value"))
+            or (value["status"] == "ambiguous" and role in plan.get("unresolved_roles", []))
+        }
+        if missing:
+            return coverage_note({"roles": missing}, language)
+        # Concrete row mismatches or actual query restrictions retain the old
+        # partial-range notice. An unhandled query/parser shape alone does not.
+        reasons = checked.get("reasons", [])
+        if "grain_mismatch" in reasons and any(v["witnesses"] for v in checked["roles"].values()):
+            return coverage_note({"roles": {}}, language)
+        if "range_unproved" in reasons:
+            indices = {w[2] for v in checked["roles"].values() for w in v["witnesses"]}
+            for si in indices:
+                step = data["steps"][si]
+                tree = sqlglot.parse_one(step["final_sql"])
+                if (step.get("truncated") is True or data.get("result_truncated") is True
+                        or any(tree.args.get(k) is not None for k in ("limit", "offset", "group", "having", "qualify"))
+                        or isinstance((tree.args.get("where") or exp.Where()).this, exp.And)):
+                    return coverage_note({"roles": {}}, language)
+    except (KeyError, TypeError, ValueError, AttributeError, IndexError, sqlglot.errors.SqlglotError):
+        return ""
+    return ""
 
 
 def coverage_note(coverage, language="zh"):
