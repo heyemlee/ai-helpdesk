@@ -616,9 +616,12 @@ def visible_coverage_note(coverage, business, language="zh", *, at=None):
                 for si in indices:
                     step = data["steps"][si]
                     tree = sqlglot.parse_one(step["final_sql"])
+                    predicate = (tree.args.get("where") or exp.Where()).this
+                    while isinstance(predicate, exp.Paren):
+                        predicate = predicate.this
                     if (step.get("truncated") is True or data.get("result_truncated") is True
                             or any(tree.args.get(k) is not None for k in ("limit", "offset", "group", "having", "qualify"))
-                            or isinstance((tree.args.get("where") or exp.Where()).this, exp.And)):
+                            or isinstance(predicate, exp.And)):
                         return coverage_note({"roles": {}}, language)
     except (KeyError, TypeError, ValueError, AttributeError, IndexError, sqlglot.errors.SqlglotError):
         return ""

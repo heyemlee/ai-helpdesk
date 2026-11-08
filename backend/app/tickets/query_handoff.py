@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import re
 
+from app.agents.agent_orchestrator import AgentType
 from app.core.fact_completion import _PHRASES
 
+_ANSWER_AGENTS = {agent.value for agent in AgentType if agent not in {AgentType.HANDOFF, AgentType.SYSTEM}}
 _FIELDS = re.compile(
     "|".join(re.escape(p) for p in sorted(
         {p for phrases in _PHRASES.values() for p in phrases}
@@ -58,7 +60,9 @@ def read_only_staff_query(message, context):
     if not isinstance(refs, list) or not refs or not all(isinstance(ref, str) and ref for ref in refs):
         return False
     for ref in sorted(refs, key=len, reverse=True):
-        text = re.sub(r"(?<![A-Za-z0-9_.-])" + re.escape(ref) + r"(?![A-Za-z0-9_.-])", " ", text)
+        # A sentence-ending period is punctuation, while a period followed by
+        # another identifier character still belongs to a different reference.
+        text = re.sub(r"(?<![A-Za-z0-9_.-])" + re.escape(ref) + r"(?![A-Za-z0-9_-]|\.[A-Za-z0-9_.-])", " ", text)
     text, fields = _FIELDS.subn(" ", text)
     return bool(fields and not _GLUE.sub("", text))
 
@@ -66,16 +70,18 @@ def read_only_staff_query(message, context):
 def restrict_query_handoff(result, *, message, context):
     """Apply at the Case transaction's side-effect boundary, before _handoff.
 
-    Typed answer fields identify model proposals; confidence values and review
-    classifications never authorize actions. Existing untyped internal service
-    commands are not model proposals. A model answer remains identifiable even
-    if its optional handoff_review was absent in an older checkpoint.
+    A typed declaration or an executed answer-agent role identifies an answer
+    stage. A serialized None, a review object, or the HANDOFF role does not:
+    direct server routing never invokes an answer agent. Confidence values and
+    review classifications do not authorize actions. Existing untyped internal
+    service commands remain outside the model-proposal path.
     """
     model_proposal = (
-        "answer_handoff_declared" in result or "handoff_review" in result
-        or result.get("agent_type") not in {None, "system"}
+        type(result.get("answer_handoff_declared")) is bool
+        or result.get("agent_type") in _ANSWER_AGENTS
     )
-    if not result.get("handoff") or not model_proposal or not read_only_staff_query(message, context):
+    if (not result.get("handoff") or result.get("service_unavailable") is True
+            or not model_proposal or not read_only_staff_query(message, context)):
         return result
     review = result.get("handoff_review") or {}
     return {

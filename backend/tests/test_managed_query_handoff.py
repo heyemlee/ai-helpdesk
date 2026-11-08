@@ -5,6 +5,7 @@ they make no prediction about a supplier model or a fresh full54 campaign.
 """
 import copy
 import uuid
+from dataclasses import replace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -17,7 +18,8 @@ from test_request_plan import payload
 
 from app.agents.agent_orchestrator import AgentType, OrchestratorResult
 from app.agents.turn_prep import _case_data_query, prepare_turn
-from app.core.intent_recognizer import IntentCategory
+from app.core.fact_completion import _PHRASES
+from app.core.intent_recognizer import IntentCategory, UrgencyLevel
 from app.core.request_plan import make_request_plan, query_guidance
 from app.events import EventLog
 from app.tickets.case_execution import CaseExecutor
@@ -74,6 +76,27 @@ def test_older_model_checkpoint_remains_model_identifiable_without_optional_revi
     del value["handoff_review"]
     del value["answer_handoff_declared"]
     assert restrict_query_handoff(value, message=BOUND, context=context())["handoff"] is False
+
+
+@pytest.mark.parametrize("field", [phrase for phrases in _PHRASES.values() for phrase in phrases if phrase.isascii()])
+def test_english_capability_fields_and_sentence_period_keep_the_selected_reference(field):
+    message = f"Please show {field} for order {ORDER}."
+    assert read_only_staff_query(message, context(operation="created"))
+    assert not restrict_query_handoff(proposal(), message=message, context=context(operation="created"))["handoff"]
+
+
+@pytest.mark.parametrize("suffix", [".9", ".other", "-other", "_other"])
+def test_sentence_punctuation_fix_never_accepts_a_longer_foreign_reference(suffix):
+    message = f"Please show order status for order {ORDER}{suffix}."
+    assert not read_only_staff_query(message, context())
+    original = proposal()
+    assert restrict_query_handoff(original, message=message, context=context()) is original
+
+
+@pytest.mark.parametrize("agent", ["handoff", "system"])
+def test_serialized_none_and_review_presence_do_not_prove_an_answer_model_ran(agent):
+    original = proposal(agent_type=agent, answer_handoff_declared=None, handoff_review={"basis": "direct"})
+    assert restrict_query_handoff(original, message=BOUND, context=context()) is original
 
 
 @pytest.mark.parametrize("message", [
@@ -259,6 +282,46 @@ async def test_query_action_boundary_cannot_bypass_new_case_control_version(pair
     assert not applied and not result["handoff"] and result["draft_id"] is None
     assert result["case_rejection"] == "case_control_changed"
     assert await scalar(a.db, "SELECT count(*) FROM case_actions") == 0
+
+
+@pytest.mark.skipif(not PG, reason="TEST_POSTGRES_DSN is required")
+async def test_actual_critical_upstream_route_without_answer_model_keeps_its_case_action(pair, orchestrator, recognizer):
+    a, _ = pair
+    reference = "URGENT-842"
+    message = f"查询订单 {reference} 的订单状态。"
+    receipt = await input_to(a, message=message, ref=reference)
+    tools = Tools(payload("erp_db", "orders", [{"order_no": reference, "order_status": "生产中"}],
+                          sql=f"SELECT order_no,order_status FROM orders WHERE order_no='{reference}'"))
+    # The unchanged real recognizer takes its rule fast path and derives
+    # CRITICAL from this valid identifier. Never stub the urgency or final route.
+    deps = replace(dependencies(tools), recognize_intent=recognizer.recognize)
+    recognizer._llm_recognize = AsyncMock(side_effect=AssertionError("Rule fast path must not call an intent model"))
+    recognizer._embedding_recognize = AsyncMock(side_effect=AssertionError("Rule fast path must not embed"))
+    orchestrator._execute = AsyncMock(side_effect=AssertionError("Direct route must not invoke an answer agent"))
+    requests = []
+
+    async def prepare(run, snapshot, degrade):
+        prepared = await prepare_turn(run.message, user_id=run.user_id, conv_id=run.conv_id, request_id=run.request_id,
+                                      deps=deps, case_context=snapshot)
+        requests.append(prepared.request)
+        return prepared
+
+    executor = CaseExecutor(a, prepare=prepare, answer=orchestrator.run, event_log=EventLog.disabled())
+    worker = worker_for(a, executor)
+    await worker._handle(await delivery(worker, receipt["run_id"]), False)
+    run = await a.run(receipt["run_id"])
+    assert run.status == "succeeded" and run.result["case_applied"]
+    assert read_only_staff_query(message, run.case_context)
+    assert requests[0].urgency is UrgencyLevel.CRITICAL and recognizer.fast_path_hits == 1
+    assert orchestrator._execute.await_count == 0
+    assert recognizer._llm_recognize.await_count == recognizer._embedding_recognize.await_count == 0
+    assert run.result["agent_type"] == "handoff" and run.result["answer_handoff_declared"] is None
+    assert run.result["handoff_review"]["basis"] == "direct" and run.result["handoff_review"]["outcome"] == "retained"
+    assert run.result["handoff"] and run.result["escalated"]
+    replay, applied = await a.complete(run, run.checkpoint["case_proposal"])
+    assert applied and replay == run.result
+    assert await scalar(a.db, "SELECT count(*) FROM case_actions") == 1
+    assert await scalar(a.db, "SELECT count(*) FROM ticket_notifications") == 1
 
 
 async def test_non_case_orchestrator_keeps_its_existing_model_handoff(orchestrator):

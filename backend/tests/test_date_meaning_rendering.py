@@ -96,3 +96,27 @@ def test_payload_dates_not_in_the_published_evidence_cannot_cancel_the_date_noti
     body = render_draft([], business)
     assert "2032-04-17" not in body and "交付日期（计划/实际口径）" in body
     assert checked["complete"] is False
+
+
+@pytest.mark.parametrize("actual", ["2032-04-12", None])
+@pytest.mark.parametrize("depth", [0, 1, 3])
+def test_equivalent_parenthesized_extra_filters_keep_real_date_range_limitations(actual, depth):
+    data = dates(actual)
+    predicate = f"order_no='{ORDER}' AND delivery_date>'2032-01-01'"
+    data["steps"][0]["final_sql"] = "SELECT order_no,delivery_date FROM orders WHERE " + "(" * depth + predicate + ")" * depth
+    body, checked, business = render(rebuild(data))
+    assert not business["evidence_issues"] and business["evidence"]
+    assert "2032-04-17" in body and (actual or "未登记") in body
+    assert "原问的完整目标、记录范围或口径仍未核实" in body
+    assert checked["planning_only"] and checked["complete"] is False
+
+
+@pytest.mark.parametrize("actual", ["2032-04-12", None])
+def test_parenthesized_simple_equality_alone_does_not_invent_an_extra_filter(actual):
+    data = dates(actual)
+    data["steps"][0]["final_sql"] = f"SELECT order_no,delivery_date FROM orders WHERE ((order_no='{ORDER}'))"
+    body, checked, business = render(rebuild(data))
+    assert not business["evidence_issues"] and business["evidence"]
+    assert "2032-04-17" in body and (actual or "未登记") in body
+    assert "原问的完整目标、记录范围或口径仍未核实" not in body and "交付日期（计划/实际口径）" not in body
+    assert checked["complete"] is False
