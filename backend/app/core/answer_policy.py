@@ -730,6 +730,12 @@ class AnswerPolicy:
         """
         text = sentence.strip().strip("|").strip().removeprefix("- ")
         text = re.sub(r"[*`]", "", text).rstrip("。.!！?？")
+        short = re.fullmatch(r"(生效|到期)\s*[:：|]\s*(.+)", text)
+        if short:
+            # A complete independent short caption has the same value semantics
+            # as its long form; the inline metadata/action grammar is unchanged.
+            label = "生效日期：" if short[1] == "生效" else "失效日期："
+            return self._reference_time(label + short[2], reference_times)
         validity = re.fullmatch(r"(?:版本有效时间|版本有效期)\s*[:：|]\s*(.+?)\s*生效\s*[；;]\s*(.+?)\s*到期", text)
         if validity:
             # Pair the endpoints from one verified policy; never splice dates
