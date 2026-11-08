@@ -1,6 +1,8 @@
 # 阶段 6 统一验收交付与历史记录
 
-当前闭档：候选 `4568888` 正式首轮199/200、第二轮198/200且不变量2条，发布被拒绝；第三轮未启动。私有修复和新候选准备继续进行，未部署。详见[当前恢复记录](upgrade-release-readiness.zh-CN.md)及[闭档摘要](evidence/stage-6-formal-4568888-closed-rejected/summary.json)。
+最新闭档：候选 `e171048` 完整开发54/54和七项组件均通过；正式首轮199/200、关键不变量1条，原调度器停止，第二、三轮未启动，发布被拒绝。`release-policies-017` 的合法政策元数据短标签被误拦并触发转人工。隔离修复 `ac77908` 已完成定向验证，最终完整检查及新候选复验仍待完成；未发布或部署。详见[当前恢复记录](upgrade-release-readiness.zh-CN.md)及[本次闭档摘要](evidence/stage-6-formal-e171048-closed-rejected/summary.json)。
+
+历史闭档：候选 `4568888` 正式首轮199/200、第二轮198/200且不变量2条，发布被拒绝；第三轮未启动。私有修复和新候选准备继续进行，未部署。详见[当前恢复记录](upgrade-release-readiness.zh-CN.md)及[闭档摘要](evidence/stage-6-formal-4568888-closed-rejected/summary.json)。
 
 最新指令：用户要求“继续做做到可发布标准”，实施与发布前验收已恢复；见[恢复记录](upgrade-release-readiness.zh-CN.md)。下述“最终收尾”是恢复前的历史状态，不代表当前已停止工作或已经通过发布验收。
 
