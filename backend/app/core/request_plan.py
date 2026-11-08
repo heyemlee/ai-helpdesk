@@ -526,9 +526,12 @@ def visible_coverage_note(coverage, business, language="zh", *, at=None):
             tables = list(sqlglot.parse_one(step["final_sql"]).find_all(exp.Table))
             if len(tables) != 1 or tables[0].name != source["table"]:
                 continue
+            columns = dict(source_columns(step["final_sql"]))
+            key = "order_no" if target["kind"] == "order_id" else "material_name"
             row_checks = [
-                [_target_matches(c, target, data, cells) for c in cells
-                 if c["step_index"] == si and c["row_index"] == ri and _physical(c)[1] == source["table"]]
+                [_target_value_matches(c["value"], target) for c in cells
+                 if c["step_index"] == si and c["row_index"] == ri
+                 and columns.get(c["field"]) == (source["table"], key)]
                 for ri in range(len(step["rows"]))
             ]
             if all(any(v is (False if status == "wrong_target" else True) for v in row) for row in row_checks):
