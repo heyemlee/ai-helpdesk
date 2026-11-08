@@ -79,7 +79,7 @@ def test_older_model_checkpoint_remains_model_identifiable_without_optional_revi
 @pytest.mark.parametrize("message", [
     BOUND + "请转人工客服。", BOUND + "并执行审批。", BOUND + "取消这笔订单。",
     BOUND + "如果未发货就申请退款。", BOUND + "并调查签收争议。",
-    "图片核对后继续", "这项操作还需要进一步处理。", f"查询订单 FOREIGN-22 的状态。",
+    "图片核对后继续", "这项操作还需要进一步处理。", "查询订单 FOREIGN-22 的状态。",
 ])
 def test_explicit_staff_actions_and_unknown_scopes_keep_the_existing_handoff_workflow(message):
     original = proposal()
