@@ -437,7 +437,18 @@ def _request_coverage(plan, data, cells, nulls, issues, *, outcome="", at=None):
             groups.setdefault((source["database"], source["table"]), []).append(role)
         for source, members in groups.items():
             sets = [{tuple(w) for w in roles[role]["witnesses"]} for role in members]
-            mismatch = any(s != sets[0] for s in sets)
+            witnesses = [cell for role in members for cell in observations[role]]
+            indices = {cell["step_index"] for cell in witnesses}
+            expected = {
+                (step["database"], hashlib.sha256(step["final_sql"].encode()).hexdigest(), si, ri, step["as_of"])
+                for si in indices
+                for step in [data["steps"][si]]
+                for ri, _ in enumerate(step["rows"])
+            }
+            # Compare every role with the actual returned rows, including rows
+            # where all requested columns are absent. Equal partial sets alone
+            # cannot establish coverage. No projected primary key is required.
+            mismatch = len(indices) != 1 and any(s != sets[0] for s in sets)
             if source == ("svc_db", "replacement_part"):
                 named = {_row_key(c) for c in cells if _physical(c) == ("svc_db", "replacement_part", "part_name")}
                 mismatch = mismatch or not sets[0] <= named
@@ -446,7 +457,13 @@ def _request_coverage(plan, data, cells, nulls, issues, *, outcome="", at=None):
                     reasons.append("grain_mismatch")
                 for role in members:
                     roles[role]["status"] = "grain_mismatch"
-            witnesses = [cell for role in members for cell in observations[role]]
+            for role, actual in zip(members, sets):
+                if missing := expected - actual:
+                    if "row_coverage_incomplete" not in reasons:
+                        reasons.append("row_coverage_incomplete")
+                    roles[role]["missing_rows"] = [list(row) for row in sorted(missing)]
+                    if len(indices) == 1:
+                        roles[role]["status"] = "omitted"
             if not target or not _full_simple_range(
                 data,
                 witnesses,
