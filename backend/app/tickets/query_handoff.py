@@ -1,8 +1,16 @@
-"""A closed read-only staff query cannot authorize a model's Case action.
+"""A staff lookup with no action intent cannot authorize a model's Case action.
 
 This is an action boundary, not a fact capability or a confidence classifier.
-Unknown requests keep the existing workflow. Query evidence, image/policy
-adoption, explicit staff actions and non-Case routing remain independently gated.
+A message counts as a lookup when it names a business target (the selected
+Case's saved order, an order or material named in the message) and asks for
+information, and it carries no request to act: escalate or hand over, cancel,
+refund, compensate, arrange, approve, change a record, contact the customer,
+investigate, expedite or otherwise handle something. Any such request keeps the
+existing handoff workflow, as do service failures and direct routes. A lookup
+whose evidence could not be verified still answers "unverified" in the draft; the
+model's low confidence about it is recorded, not executed as a Case action. Query
+evidence, image/policy adoption, explicit staff actions and non-Case routing
+remain independently gated.
 """
 from __future__ import annotations
 
@@ -10,60 +18,56 @@ import re
 
 from app.agents.agent_orchestrator import AgentType
 from app.core.fact_completion import _PHRASES
-from app.core.request_plan import _EFFECTS, _MATERIAL, make_request_plan
+from app.core.request_plan import _MATERIAL, make_request_plan
 
 _ANSWER_AGENTS = {agent.value for agent in AgentType if agent not in {AgentType.HANDOFF, AgentType.SYSTEM}}
-# Contact phones (request_role_catalog.json: registered_phone, delivery_phone) use
-# the phrases make_request_plan reads as those roles.
-_PHONES = {"登记联系电话", "登记电话", "配送联系电话", "送货联系电话", "配送电话", "送货电话", "联系电话",
-           "手机号码", "手机号", "手机", "电话", "registered phone", "delivery phone", "phone number", "phone"}
-_FIELDS = re.compile(
-    "|".join(re.escape(p) for p in sorted(
-        {p for phrases in _PHRASES.values() for p in phrases}
-        | {"交付日期", "送货日期", "生产记录状态值", "状态字段", "状态值", "状态"} | _PHONES,
-        key=len, reverse=True,
-    )), re.I,
-)
-_GLUE = re.compile(
-    r"请帮我|查一下|查询|查看|查清楚|查清|核对|核验|检索|汇报|告诉我|提供|请|只|重新|"
-    r"订单编号|订单号|订单|编号确定为|编号|业务|系统中|系统里|系统内|系统|对应记录|对应|记录|生产|"
-    r"沿用上文编号|这笔业务|这个订单|该订单|这笔|这个|该|此|其|它|是否有|是否存在|有没有|"
-    r"的|在|及|与|和|也|分别|是什么|是多少|有多少|什么|多少|目前|现在|"
-    r"\b(?:please|check|show|tell me|what|is|are|the|for|of|order|and|current)\b|"
-    r"[\s，,、。.;；:：?？\"“”'「」]+", re.I,
-)
-# Replacement-part records (request_role_catalog.json: part_name, part_quantity,
-# part_status) are named the way make_request_plan names them. Their bare role
-# words count as fields only after such a record is named, so "数量" or "进度"
-# never widen another record family, and a record name alone is not a query.
-_PART_RECORDS = re.compile(r"补件申请|补发配件|补件|配件|\breplacement parts?\b|\bparts\b", re.I)
-_PART_FIELDS = re.compile(r"件数|数量|名称|进度|\b(?:name|quantity|quantities|progress|status)\b", re.I)
-# Material inventory (request_role_catalog.json: on_hand_qty, allocated_qty) is
-# recognized where make_request_plan plans it (_MATERIAL), with the same scoping
-# as replacement parts. The material name is the planner's own target, accepted
-# only as at most two words and a spec code with no business effect, so no
-# request can hide inside it.
-_INVENTORY_RECORDS = re.compile(r"库存表中|库存表|物料名称|物料|\bmaterials?\b", re.I)
-_INVENTORY_FIELDS = re.compile(
-    r"现有库存|已占用库存|已占用量|占用量|已占用|占用|现存|现有|库存数量|库存量|库存|件数|数量|"
-    r"\b(?:on.hand|allocated|inventory|stock|quantity|quantities)\b", re.I,
-)
-_MATERIAL_NAME = re.compile(r"(?:[A-Za-z]+ ){0,2}(?=[A-Za-z0-9./-]*\d)[A-Za-z0-9]+(?:[-./][A-Za-z0-9]+)+")
 
-
-def _material_names(message, refs):
-    """The planner's material names, or None when one of them is not a closed name."""
-    names = []
-    for target in make_request_plan(message, case_refs=refs)["targets"]:
-        if target["kind"] != "material_name":
-            continue
-        # Text the planner kept after the name (for example "现有") stays in the
-        # query and must still parse as fields or glue.
-        name = re.match(r"[A-Za-z0-9 ./-]*", target["value"]).group().strip()
-        if not _MATERIAL_NAME.fullmatch(name) or _EFFECTS.search(name):
-            return None
-        names.append(name)
-    return names
+# Field and record words name information, so an action word inside one of them
+# ("处理进度", "退款状态") is part of the question, not a request to act.
+_FIELD_PHRASES = sorted(
+    {p for phrases in _PHRASES.values() for p in phrases}
+    | {"交付日期", "送货日期", "生产记录状态值", "状态字段", "状态值",
+       "登记联系电话", "登记电话", "配送联系电话", "送货联系电话", "配送电话", "送货电话", "联系电话",
+       "手机号码", "手机号", "registered phone", "delivery phone", "phone number"},
+    key=len, reverse=True,
+)
+_FIELDS = re.compile("|".join(re.escape(p) for p in _FIELD_PHRASES), re.I)
+_INFO = re.compile(
+    r"状态|记录|信息|情况|进展|进度|结果|详情|资料|数量|件数|日期|时间|名称|型号|金额|地址|电话|手机|库存|现存|占用|工序|"
+    r"什么|多少|几[个件天号]|哪|怎么样|如何|是否|有没有|有无|吗|[？?]|"
+    r"查询|查一下|查看|查清|查|检索|汇报|告诉我|提供|列出|说明|显示|"
+    r"\b(?:status|state|record|records|details?|information|progress|quantity|quantities|date|name|model|amount|"
+    r"address|phone|inventory|stock|what|which|when|where|how|whether|show|check|list|tell|lookup|look up)\b",
+    re.I,
+)
+# An action word directly followed by one of these nouns asks about that record.
+_ABOUT = r"(?!\s*(?:状态|结果|进度|进展|记录|情况|时限|时间|日期|单号|编号|金额|数量|件数|名称|信息|申请单|原因))"
+_ACTIONS = re.compile(
+    "|".join(word + _ABOUT for word in (
+        r"转人工", r"人工客服", r"人工处理", r"转给", r"转交", r"转接", r"升级处理", r"上报", r"找主管", r"找经理", r"投诉",
+        r"取消(?=订单|这|该|此|它|掉)", r"撤销", r"撤回", r"退款", r"退货", r"退钱", r"赔偿", r"补偿", r"赔付",
+        r"安排", r"办理", r"发起", r"执行", r"审批", r"批准", r"驳回", r"争议", r"纠纷", r"调查",
+        r"修改", r"更改", r"改成", r"改为", r"改到", r"改一下", r"更正为", r"更新为", r"更新成", r"调整", r"变更",
+        r"延期", r"加急", r"催", r"通知", r"联系客户", r"联系一下", r"致电", r"打电话", r"回电", r"发短信", r"发邮件", r"发送",
+        r"下单", r"创建", r"删除", r"关闭(?:这个|该|此)?(?:工单|案件)", r"结案", r"提交", r"登记一下", r"(?<![已未])解决",
+        r"承诺", r"保证", r"补发(?!配件)", r"(?:给|为|帮)[^，,。；;？?]{0,12}补件",
+        r"处理(?!时限)",
+    ))
+    + r"|\b(?:cancel|refund|return|compensate|compensation|escalate|escalation|human|transfer|supervisor|manager|"
+      r"complain|complaint|arrange|approve|reject|change|update|modify|edit|correct|expedite|notify|contact|call|"
+      r"email|send|create|delete|close|submit|resolve|fix|dispute|investigate|handle)\b",
+    re.I,
+)
+_NEGATION = re.compile(r"(?:不要|不用|无需|不需要|不必|别|先别|暂不|暂时不要|do not|don't|no need to)\s*$", re.I)
+# Case navigation, selection and material updates already happened upstream
+# under the input receipt; repeating their words does not request them again.
+_CASE_OPERATIONS = re.compile(
+    r"另开一案|新建工单|新开工单|切回第[一二三四五六七八九十0-9]+个工单|"
+    r"(?:重新打开|重开|再次打开)(?:这个|该|此|之前的|刚才的)?(?:工单|案件)?|"
+    r"(?:的)?(?:现场|工单)?材料(?:有|已)?更新|(?:后)?(?:出|生成|提供)审核稿|"
+    r"(?:刚才|之前|上面)?(?:单号|订单号|编号)?(?:说错了?|写错了?|搞错了?|有误)|更正(?![为成])|纠正(?![为成])",
+    re.I,
+)
 
 
 def _without(text, value):
@@ -72,14 +76,19 @@ def _without(text, value):
     return re.sub(r"(?<![A-Za-z0-9_.-])" + re.escape(value) + r"(?![A-Za-z0-9_-]|\.[A-Za-z0-9_.-])", " ", text)
 
 
+def _requests_action(text):
+    for match in _ACTIONS.finditer(text):
+        if not _NEGATION.search(text[max(0, match.start() - 8):match.start()]):
+            return True
+    return False
+
+
 def read_only_staff_query(message, context):
-    """Accept only complete query/draft grammar, using the saved selected Case.
+    """A lookup about a business target with no request to act, using the saved selected Case.
 
     Case selection/material updates already happened upstream. Recognizing their
     context does not execute them again or resolve a different Case from prose.
     This function grants neither field coverage nor business evidence authority.
-    Only a material inventory query may come without a saved order reference;
-    any order reference it carries then stays unrecognized.
     """
     if not isinstance(context, dict) or not isinstance(snapshot := context.get("snapshot"), dict):
         return False
@@ -91,37 +100,28 @@ def read_only_staff_query(message, context):
             or receipt.get("message_id") != context.get("message_id")
             or receipt.get("operation") not in {"created", "continued"}):
         return False
-    text = message
-    if receipt["operation"] == "created":
-        text = re.sub(r"^\s*(?:另开一案|新建工单|新开工单)[，,；;。\s]*", "", text)
-    else:
-        text = re.sub(r"^\s*切回第[一二三四五六七八九十0-9]+个工单[，,；;。\s]*", "", text)
-    # A material update is already committed as Case input; producing a review
-    # draft is not authority to notify/transfer or mutate a business record.
-    text = re.sub(r"(?:的)?(?:现场|工单)?材料(?:有|已)?更新[，,；;。\s]*", "", text)
-    text = re.sub(r"(?:后)?(?:出|生成|提供)审核稿", "", text)
-    text = re.sub(r"不要转人工|无需转人工|do not (?:transfer|escalate)(?: me)?", "", text, flags=re.I)
     refs = snapshot.get("order_refs") or []
-    inventory = _MATERIAL.search(text) is not None
-    if not isinstance(refs, list) or not all(isinstance(ref, str) and ref for ref in refs) or not (refs or inventory):
+    if not isinstance(refs, list) or not all(isinstance(ref, str) and ref for ref in refs):
         return False
+    plan = make_request_plan(message, case_refs=refs)
+    if plan["business_effects"]:
+        return False
+    text = message
     for ref in sorted(refs, key=len, reverse=True):
+        # A correction that points at the saved reference only fixes the input.
+        text = re.sub(r"(?:应该是|应为|改成|改为|更正为|更正成)\s*(?=" + re.escape(ref) + r")", " ", text)
         text = _without(text, ref)
-    if inventory:
-        if (names := _material_names(message, refs)) is None:
-            return False
-        for name in sorted(names, key=len, reverse=True):
-            text = _without(text, name)
-        text = _INVENTORY_RECORDS.sub(" ", text)
-    parts = _PART_RECORDS.search(text) is not None
-    if parts:
-        text = _PART_RECORDS.sub(" ", text)
+    for target in plan["targets"]:
+        if target["kind"] == "material_name":
+            text = text.replace(target["value"], " ")
+    # Only the planner's own order reading names a target; product or policy
+    # names such as "Juniper-47 cabinets" are not orders.
+    named = bool(plan["lookup_entities"].get("order_id"))
+    text = _CASE_OPERATIONS.sub(" ", text)
     text, fields = _FIELDS.subn(" ", text)
-    for named, role_words in ((parts, _PART_FIELDS), (inventory, _INVENTORY_FIELDS)):
-        if named:
-            text, count = role_words.subn(" ", text)
-            fields += count
-    return bool(fields and not _GLUE.sub("", text))
+    if not (refs or named or _MATERIAL.search(message)):
+        return False
+    return bool(fields or _INFO.search(text)) and not _requests_action(text)
 
 
 def restrict_query_handoff(result, *, message, context):

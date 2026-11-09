@@ -203,7 +203,7 @@ async def test_membership_runs_before_answer_and_persists_no_handoff(pair, sql):
 
 
 @pytest.mark.skipif(not PG, reason="TEST_POSTGRES_DSN is required")
-async def test_unproven_membership_preserves_an_answer_models_handoff(pair):
+async def test_unproven_membership_keeps_the_model_answer_and_records_its_handoff_proposal(pair):
     from conftest import ScriptedModel, text_step
 
     from app.agents.agent_orchestrator import AgentType
@@ -219,7 +219,10 @@ async def test_unproven_membership_preserves_an_answer_models_handoff(pair):
     executor = CaseExecutor(a, prepare=prepare, answer=orch.run, complete_facts=orch.complete_facts,
                             event_log=EventLog.disabled())
     result = (await executor(facts.worker_context(run, PgRunStore(a.db, a.run_instance)))).result
-    assert len(model.requests) == 1 and result["handoff"] is True
+    # The model answer is used (no deterministic projection), and its handoff stays
+    # a recorded proposal: the staff message only looks something up.
+    assert len(model.requests) == 1 and result["handoff"] is False
     assert result["answer_handoff_declared"] is True and result["answer_confidence"] == .65
+    assert result["handoff_review"]["outcome"] == "not_authorized_for_read_only_case"
     assert result.get("answer_origin") != ORIGIN
-    assert await scalar(a.db, "SELECT count(*) FROM case_actions WHERE kind='handoff'") == 1
+    assert await scalar(a.db, "SELECT count(*) FROM case_actions WHERE kind='handoff'") == 0

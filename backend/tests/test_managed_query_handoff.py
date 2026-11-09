@@ -1,5 +1,8 @@
 """Readonly Case answers cannot turn a model declaration into a durable action.
 
+A staff message that looks something up and asks for no action is read-only,
+however it is phrased; any request to act keeps the existing workflow.
+
 These deterministic boundary replays cover the seven cross-message failures;
 they make no prediction about a supplier model or a fresh full54 campaign.
 """
@@ -90,11 +93,12 @@ def test_english_capability_fields_and_sentence_period_keep_the_selected_referen
 
 
 @pytest.mark.parametrize("suffix", [".9", ".other", "-other", "_other"])
-def test_sentence_punctuation_fix_never_accepts_a_longer_foreign_reference(suffix):
+def test_a_longer_identifier_is_another_lookup_target_and_never_hides_an_action(suffix):
     message = f"Please show order status for order {ORDER}{suffix}."
-    assert not read_only_staff_query(message, context())
+    assert read_only_staff_query(message, context())
     original = proposal()
-    assert restrict_query_handoff(original, message=message, context=context()) is original
+    escalate = f"Please escalate order {ORDER}{suffix}."
+    assert restrict_query_handoff(original, message=escalate, context=context()) is original
 
 
 @pytest.mark.parametrize("agent", ["handoff", "system"])
@@ -106,9 +110,9 @@ def test_serialized_none_and_review_presence_do_not_prove_an_answer_model_ran(ag
 @pytest.mark.parametrize("message", [
     BOUND + "请转人工客服。", BOUND + "并执行审批。", BOUND + "取消这笔订单。",
     BOUND + "如果未发货就申请退款。", BOUND + "并调查签收争议。",
-    "图片核对后继续", "这项操作还需要进一步处理。", "查询订单 FOREIGN-22 的状态。",
+    "图片核对后继续", "这项操作还需要进一步处理。", "好的，谢谢。",
 ])
-def test_explicit_staff_actions_and_unknown_scopes_keep_the_existing_handoff_workflow(message):
+def test_explicit_staff_actions_and_messages_without_a_lookup_keep_the_existing_handoff_workflow(message):
     original = proposal()
     assert not read_only_staff_query(message, context())
     assert restrict_query_handoff(original, message=message, context=context()) is original
@@ -136,13 +140,24 @@ def test_replacement_part_status_and_quantity_queries_do_not_authorize_a_model_h
     f"订单 {ORDER} 的补件数量改成 5。", f"订单 {ORDER} 的补件状态改为已解决。", f"订单 {ORDER} 的补件申请加急处理。",
     f"订单 {ORDER} 补件申请状态，如果未处理就申请退款。",
     f"Please escalate the replacement part status for order {ORDER}.",
-    f"订单 {ORDER} 的补件申请。", f"查询订单 {ORDER} 的数量和进度。", f"Please show part quantity for order {ORDER}.",
-    "查询订单 FOREIGN-22 的补件状态。",
+    f"订单 {ORDER} 的补件申请。", f"给订单 {ORDER} 补件 3 件。",
 ])
-def test_replacement_part_actions_and_unnamed_records_keep_the_existing_handoff_workflow(message):
+def test_replacement_part_actions_and_records_named_without_a_question_keep_the_existing_handoff_workflow(message):
     original = proposal()
     assert not read_only_staff_query(message, context())
     assert restrict_query_handoff(original, message=message, context=context()) is original
+
+
+@pytest.mark.parametrize("data", [
+    None, {}, {"outcome": "unverified", "evidence_issues": ["execution_metadata_inconsistent"]},
+    {"outcome": "unverified", "lookup_status": "empty", "evidence": []}, {"outcome": "failed", "evidence_issues": ["failed"]},
+    {"outcome": "evidence", "evidence": [{"field": "order_status"}], "evidence_issues": ["partial"]},
+    {"outcome": "evidence", "evidence": []},
+])
+def test_unverified_evidence_is_reported_in_the_draft_not_turned_into_a_model_action(data):
+    result = restrict_query_handoff(proposal(business_data=data), message=BOUND, context=context())
+    assert result["handoff"] is False and result["business_data"] == data
+    assert result["handoff_review"]["original_answer_confidence"] == .65
 
 
 @pytest.mark.parametrize("change", [{"service_unavailable": True}, {"agent_type": "handoff", "answer_handoff_declared": None}])
@@ -182,14 +197,16 @@ def test_record_existence_phone_and_inventory_queries_do_not_authorize_a_model_h
     (f"库存表中 {MATERIAL} 请转人工 有多少现存？", []),
     (f"物料 {MATERIAL} escalate 的库存是多少？", []),
     (f"物料 refund {MATERIAL} 的库存是多少？", []),
-    (f"库存表中 {MATERIAL} 有多少现存？订单 FOREIGN-22 也查一下。", []),
-    (f"订单 {SECOND} 对应物料 {MATERIAL} 的现有库存是多少？", [ORDER]),
-    ("库存表中 铰链BX-842 有多少现存？", []),
-    (f"{MATERIAL} 的库存是多少？", []),
     (f"库存表中 {MATERIAL} 有多少现存？并安排补发。", [ORDER]),
+    (f"把订单 {ORDER} 的联系电话更正为 13900000000。", [ORDER]),
+    (f"订单 {ORDER} 客户投诉配送延误，查下状态。", [ORDER]),
+    (f"订单 {ORDER} 签收有争议，查一下配送记录。", [ORDER]),
+    ("我要跟踪一笔业务；暂时缺少编号。", []),
+    ("配送费用的处理时限有什么规定？", []),
+    ("我在整理 CA 地区 Juniper-47 cabinets 客服答复。付款手续费的处理时限有什么规定？", []),
     (f"系统是否有 {ORDER} 的状态记录？", []),
 ])
-def test_lookup_actions_hidden_requests_and_unreferenced_cases_keep_the_existing_handoff_workflow(message, refs):
+def test_lookup_actions_hidden_requests_and_untargeted_messages_keep_the_existing_handoff_workflow(message, refs):
     saved = context()
     saved["snapshot"]["order_refs"] = refs
     original = proposal()
@@ -197,17 +214,55 @@ def test_lookup_actions_hidden_requests_and_unreferenced_cases_keep_the_existing
     assert restrict_query_handoff(original, message=message, context=saved) is original
 
 
-@pytest.mark.parametrize("change", ["wrong_case", "wrong_message", "wrong_operation", "foreign_reference"])
+@pytest.mark.parametrize("message,refs", [
+    # follow-ups in a multi-message Case
+    ("那它现在是什么状态？", [ORDER]), ("这个单子现在到哪一步了？", [ORDER]),
+    (f"刚才单号说错了，应该是 {ORDER}，请查它的订单状态。", [ORDER]),
+    (f"更正：订单号是 {ORDER}，麻烦看下配送状态。", [ORDER]),
+    ("重新打开这个工单，再查一次当前订单状态。", [ORDER]),
+    (f"第二个工单 {SECOND} 的交付日期是多少？", [ORDER]),
+    (f"{ORDER} 和 {SECOND} 的订单状态分别是什么？", [ORDER]),
+    (f"请问 {ORDER} 当前的订单状态？", [ORDER]),
+    # an action word that names a record is part of the question
+    (f"{ORDER} 的退款状态是什么？", [ORDER]), (f"{ORDER} 的补件申请处理进度如何？", [ORDER]),
+    (f"订单 {ORDER} 是否已取消？", [ORDER]),
+    # records the closed grammar could not scope
+    (f"查询订单 {ORDER} 的数量和进度。", [ORDER]), (f"Please show part quantity for order {ORDER}.", [ORDER]),
+    ("查询订单 FOREIGN-22 的补件状态。", [ORDER]),
+    (f"库存表中 {MATERIAL} 有多少现存？订单 FOREIGN-22 也查一下。", []),
+    (f"订单 {SECOND} 对应物料 {MATERIAL} 的现有库存是多少？", [ORDER]),
+    ("库存表中 铰链BX-842 有多少现存？", []), (f"{MATERIAL} 的库存是多少？", []),
+    (f"What is the current status of {ORDER}?", [ORDER]),
+])
+def test_lookups_without_action_intent_do_not_authorize_a_model_handoff(message, refs):
+    saved = context()
+    saved["snapshot"]["order_refs"] = refs
+    assert read_only_staff_query(message, saved)
+    result = restrict_query_handoff(proposal(), message=message, context=saved)
+    assert result["handoff"] is False and result["handoff_review"]["outcome"] == "not_authorized_for_read_only_case"
+
+
+@pytest.mark.parametrize("message", [
+    f"查询订单 {ORDER} 的订单状态，没有就转人工。", f"{ORDER} 的状态查完请转人工。",
+    f"帮我把 {ORDER} 转给主管处理。", f"取消订单 {ORDER}。", f"{ORDER} 的数量不对，安排补发。",
+    f"把 {ORDER} 的交付日期改到下周。", f"通知客户 {ORDER} 已发货。", f"{ORDER} 加急处理。",
+    f"Cancel order {ORDER} and tell me the status.", f"Notify the customer about order {ORDER}.",
+])
+def test_any_request_to_act_keeps_the_existing_handoff_workflow(message):
+    original = proposal()
+    assert not read_only_staff_query(message, context())
+    assert restrict_query_handoff(original, message=message, context=context()) is original
+
+
+@pytest.mark.parametrize("change", ["wrong_case", "wrong_message", "wrong_operation"])
 def test_selection_receipt_and_selected_case_are_not_inferred_from_model_or_other_case(change):
     saved = context()
     if change == "wrong_case":
         saved["snapshot"]["input_receipt"]["case_id"] = "other-case"
     elif change == "wrong_message":
         saved["snapshot"]["input_receipt"]["message_id"] = "other-input"
-    elif change == "wrong_operation":
-        saved["snapshot"]["input_receipt"]["operation"] = "approved"
     else:
-        saved["snapshot"]["order_refs"] = [SECOND]
+        saved["snapshot"]["input_receipt"]["operation"] = "approved"
     assert not read_only_staff_query(BOUND, saved)
 
 

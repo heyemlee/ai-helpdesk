@@ -638,15 +638,18 @@ async def test_durable_checkpoint_cannot_downgrade_fact_mode_to_legacy(pair, cha
     ex.complete_facts.assert_not_awaited()
     ex.answer.assert_not_awaited()
     if change == "legacy_yes":
-        assert result["case_applied"] and result["handoff"] and result["answer_handoff_declared"] is True
-        assert result["answer_confidence"] == .65
+        # The recovered decision is the old checkpoint's own; the staff message only
+        # looks up verified facts, so the read-only boundary then withholds the action.
+        assert result["case_applied"] and result["answer_handoff_declared"] is True
+        assert result["answer_confidence"] == .65 and not result["handoff"]
+        assert result["handoff_review"]["outcome"] == "not_authorized_for_read_only_case"
+        assert result["handoff_review"]["original_answer_confidence"] == .65
     else:
         assert not result["case_applied"] and result["case_rejection"] == "draft_evidence_stale"
         assert result["answer_model_invoked"] is False
         assert await scalar(service.db, "SELECT count(*) FROM case_drafts") == 0
-    effects = int(change == "legacy_yes")
-    assert await scalar(service.db, "SELECT count(*) FROM case_actions WHERE kind='handoff'") == effects
-    assert await scalar(service.db, "SELECT count(*) FROM ticket_notifications") == effects
+    assert await scalar(service.db, "SELECT count(*) FROM case_actions WHERE kind='handoff'") == 0
+    assert await scalar(service.db, "SELECT count(*) FROM ticket_notifications") == 0
 
 
 @pytest.mark.skipif(not PG, reason="TEST_POSTGRES_DSN is required")
