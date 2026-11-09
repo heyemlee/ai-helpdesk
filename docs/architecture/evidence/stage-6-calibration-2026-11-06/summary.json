@@ -7,7 +7,7 @@
     "automatic_http_retries": 0,
     "client_date": "2026-11-06",
     "data": "Synthetic assessment orders, policies, images and application prompts only",
-    "destination": "https://api.kabi.pro/v1/responses",
+    "destination": "https://relay.invalid/v1/responses",
     "formal_batch_authorized": false,
     "max_output_tokens_per_request": 2048,
     "maximum_actual_supplier_http_requests": 40,

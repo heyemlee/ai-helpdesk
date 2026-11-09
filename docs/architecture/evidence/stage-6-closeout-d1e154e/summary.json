@@ -515,7 +515,7 @@
     "unknown_usage_requests": 6
   },
   "status": "closed_at_user_requested_scope_release_not_qualified",
-  "supplier_base_url": "https://api.kabi.pro/v1",
+  "supplier_base_url": "https://relay.invalid/v1",
   "unexecuted": [
     "formal_round_2",
     "formal_round_3",

@@ -31,7 +31,7 @@
       "model_provider": "openai",
       "chat_model": "gpt-6.1-sol",
       "coder_model": "gpt-6.1-sol",
-      "openai_base_url": "https://api.kabi.pro/v1",
+      "openai_base_url": "https://relay.invalid/v1",
       "anthropic_base_url": "https://claude-relay.liziqiao.com/api",
       "embedding_backend": "remote",
       "embedding_model": "Qwen/Qwen3-Embedding-0.6B",

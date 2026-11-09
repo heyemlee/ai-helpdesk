@@ -9,7 +9,7 @@
 - 代码固定于 `26c4a75a4bd3ad5d5408a38611ff100d0c47bd9e` 的干净导出；包含截至 `c5aeacc` 的多步骤可用性、截断和别名矛盾检查。运行中未改题、标准答案、提示词或判分。
 - 题集为 `ai-sql-agent/benchmark/customer_cases.json`，24 题（中文 20、英文 4，全部包含订单号），SHA-256：`2aac3f23251019e76551020c3540cfffd87ee3d2288c6d086cf85c8be2f2170e`。
 - 模拟 ERP 按现有固定种子生成于临时目录。标准答案由题集的 gold SQL 查询该库取得；未连接已有业务数据库。Schema 向量索引只在内存中构建，pgvector DSN 关闭。
-- 沿用运行中 SQL 服务已有模型连接：生成/路由/规划/校验均请求 `gpt-6.1-sol`，第三方兼容网关 `api.kabi.pro`，Chat Completions 协议；成功响应返回同一模型名。Embedding 使用 SiliconFlow 的 `Qwen/Qwen3-Embedding-0.6B`，1024 维，初始化确认 remote，未回落本地哈希向量。
+- 沿用运行中 SQL 服务已有模型连接：生成/路由/规划/校验均请求 `gpt-6.1-sol`，第三方兼容网关，Chat Completions 协议；成功响应返回同一模型名。Embedding 使用 SiliconFlow 的 `Qwen/Qwen3-Embedding-0.6B`，1024 维，初始化确认 remote，未回落本地哈希向量。
 - 这是 SQL Agent 单独的客户问法评测，先记录生产路由，再强制运行 Pipeline；没有执行 Helpdesk 最终回复、Case、附件或正式三轮发布验收，不计入 150 题 SQL 门禁。此次没有部署或修改运行中的模型配置。
 
 ## 判分规则
