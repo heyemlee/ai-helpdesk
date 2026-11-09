@@ -536,7 +536,10 @@ async def test_pg_catalog_conflict_survives_answer_retry_checkpoint_and_publishe
     assert "多个适用政策版本" in result["response"] and "尚未核实" in result["response"]
     assert "rev-control" not in result["response"] and "政策摘录" not in result["response"]
     assert "answer_origin" not in result and "fact_receipt" not in result
-    assert result["handoff"] and result["answer_handoff_declared"] is True
+    # The conflict is stated in the draft for staff review; the model's handoff on a
+    # question that asks for nothing to be done is recorded, not executed.
+    assert not result["handoff"] and result["answer_handoff_declared"] is True
+    assert result["handoff_review"]["outcome"] == "not_authorized_for_read_only_case"
     assert result["answer_confidence"] == captured["model_result"].answer_confidence
     checkpoint = decode((await a.run(run.run_id)).checkpoint, {})
     assert checkpoint["case_proposal"]["knowledge"]["lookup_status"] == "conflict"

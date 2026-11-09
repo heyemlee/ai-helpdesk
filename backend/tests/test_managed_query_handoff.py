@@ -254,6 +254,34 @@ def test_any_request_to_act_keeps_the_existing_handoff_workflow(message):
     assert restrict_query_handoff(original, message=message, context=context()) is original
 
 
+SCOPE = {"region": "CA", "product": "Cedar-01 cabinets", "audience": "employee", "as_of": "2026-11-05T20:00:01+00:00"}
+
+
+@pytest.mark.parametrize("message,expected", [
+    ("请查Cedar-01 cabinets的配送费用政策，说明所选日期和适用范围内的处理时限及有效版本，并提供引用。", True),
+    ("请查Cedar-05 cabinets的退货窗口政策，说明所选日期和适用范围内的办理步骤及有效版本，并提供引用。", True),
+    ("按所选日期和适用范围，取消订单的办理步骤有什么规定？", True),
+    ("What is the return window policy in this scope?", True),
+    ("请按退货政策直接给客户安排退货。", False), ("政策允许的话就帮我取消订单。", False),
+    ("根据保修政策通知客户上门维修。", False), ("请按政策帮我办理退款。", False),
+    ("帮客户取消订单并说明规定。", False), ("请说明取消订单的规定，然后帮我取消订单。", False),
+])
+def test_policy_questions_in_the_selected_scope_are_lookups_unless_they_ask_to_act(message, expected):
+    saved = context()
+    saved["snapshot"].update(order_refs=[], policy_scope=SCOPE)
+    assert read_only_staff_query(message, saved) is expected
+    original = proposal(agent_type="billing", answer_handoff_declared=False, answer_confidence=.5,
+                        handoff_review={"basis": "answer_quality", "outcome": "retained"})
+    result = restrict_query_handoff(original, message=message, context=saved)
+    assert (result["handoff"] is False) is expected and (result is original) is not expected
+
+
+def test_a_policy_question_without_a_selected_scope_keeps_the_existing_workflow():
+    saved = context()
+    saved["snapshot"].update(order_refs=[], policy_scope={})
+    assert not read_only_staff_query("配送费用的处理时限有什么规定？", saved)
+
+
 @pytest.mark.parametrize("change", ["wrong_case", "wrong_message", "wrong_operation"])
 def test_selection_receipt_and_selected_case_are_not_inferred_from_model_or_other_case(change):
     saved = context()

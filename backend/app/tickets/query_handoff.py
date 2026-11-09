@@ -2,8 +2,8 @@
 
 This is an action boundary, not a fact capability or a confidence classifier.
 A message counts as a lookup when it names a business target (the selected
-Case's saved order, an order or material named in the message) and asks for
-information, and it carries no request to act: escalate or hand over, cancel,
+Case's saved order, an order or material named in the message, or a policy
+question within the Case's selected policy scope) and asks for information, and it carries no request to act: escalate or hand over, cancel,
 refund, compensate, arrange, approve, change a record, contact the customer,
 investigate, expedite or otherwise handle something. Any such request keeps the
 existing handoff workflow, as do service failures and direct routes. A lookup
@@ -18,7 +18,8 @@ import re
 
 from app.agents.agent_orchestrator import AgentType
 from app.core.fact_completion import _PHRASES
-from app.core.request_plan import _MATERIAL, make_request_plan
+from app.core.policy_scope import asks_for_policy
+from app.core.request_plan import _EFFECTS, _MATERIAL, make_request_plan
 
 _ANSWER_AGENTS = {agent.value for agent in AgentType if agent not in {AgentType.HANDOFF, AgentType.SYSTEM}}
 
@@ -34,6 +35,7 @@ _FIELD_PHRASES = sorted(
 _FIELDS = re.compile("|".join(re.escape(p) for p in _FIELD_PHRASES), re.I)
 _INFO = re.compile(
     r"状态|记录|信息|情况|进展|进度|结果|详情|资料|数量|件数|日期|时间|名称|型号|金额|地址|电话|手机|库存|现存|占用|工序|"
+    r"政策|规定|条款|版本|引用|步骤|流程|时限|条件|要求|"
     r"什么|多少|几[个件天号]|哪|怎么样|如何|是否|有没有|有无|吗|[？?]|"
     r"查询|查一下|查看|查清|查|检索|汇报|告诉我|提供|列出|说明|显示|"
     r"\b(?:status|state|record|records|details?|information|progress|quantity|quantities|date|name|model|amount|"
@@ -57,6 +59,12 @@ _ACTIONS = re.compile(
       r"complain|complaint|arrange|approve|reject|change|update|modify|edit|correct|expedite|notify|contact|call|"
       r"email|send|create|delete|close|submit|resolve|fix|dispute|investigate|handle)\b",
     re.I,
+)
+# In a policy question the subject before the rule it asks about ("退货窗口的处理时限",
+# "取消订单的办理步骤") names the topic of that rule, not an operation to perform.
+_POLICY_TOPIC = re.compile(
+    r"(?:(?!帮|替|给|(?<!申)请|直接|立即|马上|尽快|并|然后|再|就)[^，,。；;？?！!]){1,16}(?=(?:的)?(?:政策|规定|条款|制度|处理时限|办理步骤|办理流程|时限|步骤|流程|条件|要求|标准|规则)"
+    r"|\s+(?:policy|policies|rules?|procedures?|steps|deadlines?|window)\b)", re.I,
 )
 _NEGATION = re.compile(r"(?:不要|不用|无需|不需要|不必|别|先别|暂不|暂时不要|do not|don't|no need to)\s*$", re.I)
 # Case navigation, selection and material updates already happened upstream
@@ -104,24 +112,25 @@ def read_only_staff_query(message, context):
     if not isinstance(refs, list) or not all(isinstance(ref, str) and ref for ref in refs):
         return False
     plan = make_request_plan(message, case_refs=refs)
-    if plan["business_effects"]:
-        return False
     text = message
     for ref in sorted(refs, key=len, reverse=True):
         # A correction that points at the saved reference only fixes the input.
         text = re.sub(r"(?:应该是|应为|改成|改为|更正为|更正成)\s*(?=" + re.escape(ref) + r")", " ", text)
         text = _without(text, ref)
-    for target in plan["targets"]:
-        if target["kind"] == "material_name":
-            text = text.replace(target["value"], " ")
     # Only the planner's own order reading names a target; product or policy
     # names such as "Juniper-47 cabinets" are not orders.
     named = bool(plan["lookup_entities"].get("order_id"))
+    scope = snapshot.get("policy_scope")
+    policy = asks_for_policy(message) and isinstance(scope, dict) and bool(scope)
+    if asks_for_policy(message):
+        text = _POLICY_TOPIC.sub(" ", text)
     text = _CASE_OPERATIONS.sub(" ", text)
     text, fields = _FIELDS.subn(" ", text)
-    if not (refs or named or _MATERIAL.search(message)):
+    if not (refs or named or policy or _MATERIAL.search(message)):
         return False
-    return bool(fields or _INFO.search(text)) and not _requests_action(text)
+    # The planner's business effects are checked on the same text, so a policy topic
+    # such as "取消订单的办理步骤" is a question while "取消订单" alone stays an action.
+    return bool(fields or _INFO.search(text)) and not _EFFECTS.search(text) and not _requests_action(text)
 
 
 def restrict_query_handoff(result, *, message, context):

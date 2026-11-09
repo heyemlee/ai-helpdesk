@@ -142,7 +142,7 @@ def test_metadata_reference_rule_is_not_tied_to_a_recorded_date_or_duration(text
 
 @pytest.mark.parametrize("explicit_handoff", [False, True])
 @pytest.mark.skipif(not PG, reason="TEST_POSTGRES_DSN is required")
-async def test_billing_case_keeps_policy_evidence_and_explicit_human_decision(pair, orchestrator, explicit_handoff):
+async def test_billing_case_keeps_policy_evidence_and_records_the_models_handoff_proposal(pair, orchestrator, explicit_handoff):
     service, _ = pair
     record = recording()
     scope = ps.PolicyScope.model_validate(record["scope"])
@@ -173,10 +173,15 @@ async def test_billing_case_keeps_policy_evidence_and_explicit_human_decision(pa
     run = await finish(service, executor, receipt["run_id"])
     assert run.status == "succeeded" and run.result["case_applied"]
     assert not run.result["policy_violations"]
-    assert run.result["handoff"] is explicit_handoff
-    if not explicit_handoff:
+    # A policy question in the selected scope asks for nothing to be done, so the
+    # model's declared handoff is recorded for staff, not executed as a Case action.
+    assert run.result["handoff"] is False
+    if explicit_handoff:
+        assert run.result["answer_handoff_declared"] is True
+        assert run.result["handoff_review"]["outcome"] == "not_authorized_for_read_only_case"
+    else:
         assert run.result["answer_confidence"] >= .7
         assert "handoff_review" not in run.result
     case = await service.get(ACTOR, run.result["case_id"])
     assert case["drafts"][0]["valid"] and case["drafts"][0]["status"] == "pending"
-    assert await scalar(service.db, "SELECT count(*) FROM case_actions WHERE kind='handoff'") == int(explicit_handoff)
+    assert await scalar(service.db, "SELECT count(*) FROM case_actions WHERE kind='handoff'") == 0
