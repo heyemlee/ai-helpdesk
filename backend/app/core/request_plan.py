@@ -162,6 +162,17 @@ def make_request_plan(original_message, *, entities=None, case_refs=(), fact_tas
     ]
     if filters:
         unresolved.append("filter_scope")
+    # In a selected Case with one order, a question about that order's own fields
+    # ("那张订单的订单状态", "再确认一下订单状态") is about the Case's order even
+    # without a listed pronoun. Explicit identifiers, materials, several Case
+    # orders, totals, time or location scopes and "all/which orders" stay unbound.
+    universal = re.search(
+        r"所有|全部|各个|每个|每一|哪些订单|多少(?:个|笔|张)?订单|列表|清单|\b(?:all|every|each|which orders|list)\b", clean, re.I
+    )
+    if (not targets and not material and len(references) == 1 and not competing_code and roles
+            and grain in {"order_values", "replacement_records", "registered_contact"} and not filters
+            and not {"aggregate_scope", "time_scope"} & set(unresolved) and not universal):
+        add("order_id", references[0], "case_reference")
     if re.search(r"\b\w+_db\b|指定来源|指定数据库", text, re.I):
         unresolved.append("source_scope")
     if not reused:
