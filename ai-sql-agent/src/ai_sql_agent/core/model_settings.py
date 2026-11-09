@@ -71,9 +71,6 @@ EMBEDDING_FIELDS = ("base_url", "api_key", "model", "dimensions")
 
 MAX_DIMENSIONS = 8192
 
-WARNINGS = ("plaintext_http",)
-"""`validate_base_url` 会给出的提醒。页面按这些代号配文案。"""
-
 STORE_VERSION = 1
 MAX_URL_LENGTH = 300
 MAX_KEY_LENGTH = 512

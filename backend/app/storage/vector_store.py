@@ -632,20 +632,6 @@ class LocalStore:
                 self._db.commit()
         await asyncio.to_thread(_w)
 
-    async def kb_chunk_owners(self, chunk_ids: list[str]) -> dict[str, str]:
-        """分片 id → 所属文档 id（只返回存在的分片）。"""
-        if not chunk_ids:
-            return {}
-
-        def _q() -> dict[str, str]:
-            marks = ",".join("?" * len(chunk_ids))
-            with self._lock:
-                rows = self._db.execute(
-                    f"SELECT id, doc_id FROM policy_chunks WHERE id IN ({marks})", chunk_ids
-                ).fetchall()
-            return {r["id"]: r["doc_id"] for r in rows}
-        return await asyncio.to_thread(_q)
-
     async def kb_docs_without_chunks(self, created_before: float) -> list[str]:
         """名下一个分片都没有的文档记录（只看 created_before 之前登记的）。"""
         def _q() -> list[str]:
@@ -1091,14 +1077,6 @@ class PgStore:
             "UPDATE policy_chunks SET doc_id = $1 WHERE id = ANY($2::text[])", doc_id, chunk_ids
         )
         await self._bump_kb_revision()
-
-    async def kb_chunk_owners(self, chunk_ids: list[str]) -> dict[str, str]:
-        if not chunk_ids:
-            return {}
-        rows = await self._db.fetch(
-            "SELECT id, doc_id FROM policy_chunks WHERE id = ANY($1::text[])", chunk_ids
-        )
-        return {r["id"]: r["doc_id"] for r in rows}
 
     async def kb_docs_without_chunks(self, created_before: float) -> list[str]:
         rows = await self._db.fetch(

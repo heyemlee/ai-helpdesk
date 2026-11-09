@@ -281,51 +281,6 @@ def business_grounding(text, trace):
                         include_metadata=False) if trace.get("evidence") else text
 
 
-def currency_note(data: dict, configured: str = "") -> str:
-    """
-    金额币种的说明句。**币种的来源必须在句子里可见。**
-
-    契约 §4.6.5 把这一条单独立了一节，理由是它已经出过一次业务事故：下游只
-    返回数字不返回币种，中文回答就默认写成「元」，接美国厂的库时报给 builder
-    的金额带了错误的币种。当时的补救是在调用方配一个全局常量
-    `SQL_AGENT_CURRENCY` 顶上——**那是个跨仓库配置在替契约打补丁**：
-    它是**部署**的属性不是**数据**的属性，一个部署里只要有多币种的库，
-    它必然给出错误答案，而且报出去的金额看起来完全正常。
-
-    契约 v1.8 把这一条改成**按来源三分**，来源判定在
-    `core.evidence.resolve_currency()`（`currency_source`，与 `status_source`
-    同构）；这里只负责把那个来源**说进句子里**：
-
-    1. `contract` —— 数据自己声明了 `currency` → 按数据说，可以当事实；
-    2. `deployment_config` —— 部署配了全局币种 → 可以用，但**明写它来自部署
-       配置**、不是本次查询返回的字段；
-    3. `unknown` —— 两者都没有 → 只写数字，并**主动禁止**语言的默认值。
-
-    第三档是一条**指令**不是一条禁令。契约 v1.6/v1.7 那条"不得补币种"是禁令，
-    而自然语言有自己的默认值：中文回答不说币种就会写成「元」。
-    "不说"会被默认值填上，所以规则必须写成"说什么"。
-
-    `configured` 是委派客户端上配置的币种（`SQL_AGENT_CURRENCY`），没配为空串。
-    """
-    currency, source = evidence.resolve_currency(data, configured)
-    if source == evidence.CURRENCY_CONTRACT:
-        return (
-            f"以上金额的币种是 {currency}（本次查询随数据一同返回）。"
-            f"提到金额时按 {currency} 表述，不要换算，也不要写成其它币种。"
-        )
-    if source == evidence.CURRENCY_DEPLOYMENT_CONFIG:
-        return (
-            f"以上金额按 {currency} 表述，不要换算，也不要写成其它币种。"
-            f"但请注意：{currency} 来自本部署的配置（SQL_AGENT_CURRENCY），"
-            "**不是**本次查询返回的字段——业务系统目前不返回币种。"
-            "因此不得把币种说成系统核实过的结果；客户对币种有疑问时请转人工确认。"
-        )
-    return (
-        "业务系统不返回币种，本部署也没有声明。提到金额时**只写数字，不要补"
-        "任何币种符号或单位**（不要默认写成「元」），并说明币种需要人工确认。"
-    )
-
-
 async def delegate_order_query(
     tool_manager: Any,
     query: str,
@@ -380,7 +335,7 @@ async def delegate_order_query(
     反过来，上面第 2 条那种"不是数据的文本"绝不能进。
 
     `trace` 的 `outcome` 见 `Prefetch.order_data_context`；`currency` 是委派客户端上
-    配置的币种，见 `currency_note`。`raw` 传进来的话，会填上下游返回的归一化结果
+    配置的币种。`raw` 传进来的话，会填上下游返回的归一化结果
     （answer 按同一个上限截断）：事件日志记它，重放和导出用例时当桩。
     """
     info = trace
