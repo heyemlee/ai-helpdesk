@@ -663,7 +663,7 @@ from app.runs.records import FAILED, SUCCEEDED, TERMINAL_FRAMES  # noqa: E402
 from app.runs.service import Backpressure, RunService  # noqa: E402
 from app.runs.store import IdempotencyConflict  # noqa: E402
 from app.runs.worker import RetryRun, RunContext, RunOutcome, RunWorker  # noqa: E402
-from app.tools.knowledge_base import SOURCE_MANUAL, SOURCE_UPLOAD, UnknownCategory  # noqa: E402
+from app.tools.knowledge_base import SOURCE_MANUAL, SOURCE_UPLOAD, UnknownCategory, normalize_category  # noqa: E402
 from app.tools.turn_tools import Prefetch, loop_tools  # noqa: E402
 
 # OTel：配置 OTEL_EXPORTER_OTLP_ENDPOINT 后启用 FastAPI/httpx/redis/asyncpg
@@ -2200,7 +2200,10 @@ async def _start_runs() -> None:
     from app.runs.memo import RedisMemo
     from app.runs.store import PgRunStore
 
-    store = PgRunStore(_pg_database, _INSTANCE + (":staff-v1" if staff_auth_mode() == "local" else ":policy-v1"))
+    # Runs queued before the namespace moved from the bare instance name are adopted by
+    # the sweeper (PgRunStore.adopt_legacy) instead of being orphaned.
+    store = PgRunStore(_pg_database, _INSTANCE + (":staff-v1" if staff_auth_mode() == "local" else ":policy-v1"),
+                       legacy_instances=[_INSTANCE])
     broker = RedisBroker(_infra_redis, _INSTANCE + (":staff-v1" if staff_auth_mode() == "local" else ":policy-v1"))
     channel = RedisChannel(_infra_redis)
     await broker.ensure_group()
@@ -3109,6 +3112,10 @@ async def update_knowledge_document(doc_id: str, body: DocumentPatch, actor=Depe
     """
     kb = _require_knowledge_base()
     try:
+        # Validate every part before writing any of it: a bad category must not be
+        # reported as a failure after the policy revision was already published.
+        if body.category is not None:
+            normalize_category(body.category)
         document = await kb.get_document(doc_id)
         if body.policy is not None:
             if not body.expected_revision:

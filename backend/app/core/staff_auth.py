@@ -12,6 +12,7 @@ import hmac
 import os
 import re
 import secrets
+import time
 import uuid
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
@@ -26,6 +27,8 @@ from app.events.log import instance_from_env
 current_actor: ContextVar[ActorContext | None] = ContextVar("staff_actor", default=None)
 current_auth: ContextVar[StaffAuth | None] = ContextVar("staff_auth_service", default=None)
 ROLES = {"employee", "operations", "admin"}
+# How often an open response stream rechecks its staff session (seconds).
+SESSION_RECHECK_S = float(os.getenv("AI_HELPDESK_SESSION_RECHECK_S", "5"))
 
 
 def mode(env=None):
@@ -320,18 +323,25 @@ class StaffSessionMiddleware:
             return await JSONResponse({"detail": exc.detail}, status_code=exc.status_code, headers=exc.headers)(scope, receive, send)
         reset = current_actor.set(actor)
         auth_reset = current_auth.set(auth)
-        started, ended = False, False
+        started, ended, checked_at = False, False, 0.0
 
         async def checked_send(message):
-            nonlocal started, ended
+            nonlocal started, ended, checked_at
             if ended:
                 return
-            if message["type"] in {"http.response.start", "http.response.body"} and not scope.get("logout_completed"):
+            # The session is rechecked when the response starts and then at most every
+            # SESSION_RECHECK_S while a stream is open, not once per SSE chunk: each check
+            # is a database query on the shared pool. A failed check (revoked, expired, or
+            # the session store unavailable) closes the stream deliberately.
+            due = message["type"] == "http.response.start" or (
+                message["type"] == "http.response.body" and time.monotonic() - checked_at >= SESSION_RECHECK_S)
+            if due and not scope.get("logout_completed"):
                 try:
                     live = await auth.session(token)
                     if live.auth_version != actor.auth_version:
                         raise HTTPException(401)
-                except HTTPException:
+                    checked_at = time.monotonic()
+                except Exception:
                     if not started:
                         await send({"type": "http.response.start", "status": 401, "headers": [(b"content-type", b"application/json"), (b"cache-control", b"no-store")]})
                     await send({"type": "http.response.body", "body": b"" if started else b'{"detail":"Session revoked"}', "more_body": False})

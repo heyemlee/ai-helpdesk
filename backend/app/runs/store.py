@@ -250,9 +250,32 @@ class PgRunStore:
 
     backend = "postgres"
 
-    def __init__(self, db, instance: str):
+    def __init__(self, db, instance: str, legacy_instances=()):
         self._db = db
         self.instance = instance
+        # Namespaces this instance used before; their runs are adopted, never left orphaned.
+        self.legacy_instances = [i for i in legacy_instances if i and i != instance]
+
+    async def adopt_legacy(self) -> int:
+        """Move runs left in an earlier namespace of this instance into the current one.
+
+        Queued runs, runs whose lease has expired, and finished runs (still read by
+        GET /runs and idempotency lookups) are adopted; a dispatch is then due, so the
+        sweeper hands queued and expired ones to a current worker. A run an old worker
+        still holds is left alone until its lease expires. A run whose idempotency key
+        already exists in the current namespace is never duplicated.
+        """
+        if not self.legacy_instances:
+            return 0
+        status = await self._db.execute(
+            f"UPDATE agent_runs AS r SET instance = $1, dispatched_at = 0, updated_at = {_NOW}"
+            f" WHERE r.instance = ANY($2::text[])"
+            f" AND NOT (r.status = 'running' AND r.lease_until >= {_NOW})"
+            f" AND NOT EXISTS (SELECT 1 FROM agent_runs n WHERE n.instance = $1"
+            f" AND n.idempotency_key = r.idempotency_key AND r.idempotency_key <> '')",
+            self.instance, self.legacy_instances,
+        )
+        return int(status.split()[-1]) if status else 0
 
     async def create(self, run: RunRecord) -> tuple[RunRecord, bool]:
         row = await self._db.fetchrow(

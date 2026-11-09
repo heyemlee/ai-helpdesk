@@ -267,6 +267,11 @@ class RunWorker:
         lock = getattr(self.broker, "try_lock", None)
         if lock is not None and not await lock("sweep", self.config.redispatch_after_s / 2):
             return 0
+        adopt = getattr(self.store, "adopt_legacy", None)
+        if adopt is not None:
+            adopted = await adopt()
+            if adopted:
+                logger.warning("清扫：从旧命名空间收编 %d 个 run", adopted)
         due = await self.store.due_for_dispatch(
             idle_s=self.config.redispatch_after_s, lease_grace_s=self.config.lease_s * 2)
         for run_id in due:

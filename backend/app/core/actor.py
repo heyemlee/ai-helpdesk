@@ -39,7 +39,8 @@ class ActorContext:
     def readable_audiences(self):
         if "admin" in self.roles:
             return None
-        return ["", "customer", "staff", "employee"] + (["operations"] if "operations" in self.roles else [])
+        # "*" is the default audience and means "applies to everyone" (policy_scope.eligible).
+        return ["", "*", "customer", "staff", "employee"] + (["operations"] if "operations" in self.roles else [])
 
     def snapshot(self) -> dict:
         return {"actor_id": self.actor_id, "instance": self.instance, "auth_version": self.auth_version}

@@ -290,6 +290,38 @@ async def test_another_instance_cannot_read_or_claim_a_run():
         await db.close()
 
 
+@needs_pg
+async def test_runs_left_in_the_old_namespace_are_adopted_not_orphaned():
+    from app.core.embedder import Embedder
+    from app.runs.store import PgRunStore
+    from app.storage.pg import Database
+
+    db = Database(TEST_PG_DSN)
+    await db.connect(embedding_dim=Embedder().dim)
+    try:
+        suffix = uuid.uuid4().hex[:6]
+        old = PgRunStore(db, f"customer-{suffix}")
+        new = PgRunStore(db, f"customer-{suffix}:policy-v1", legacy_instances=[f"customer-{suffix}"])
+        queued, _ = await old.create(RunRecord(new_run_id(), "", "c1", "u", "排队中", idempotency_key="q"))
+        held, _ = await old.create(RunRecord(new_run_id(), "", "c1", "u", "旧 worker 正在跑", idempotency_key="h"))
+        assert await old.claim(held.run_id, "old-worker", 300)
+        expired, _ = await old.create(RunRecord(new_run_id(), "", "c1", "u", "租约过期", idempotency_key="e"))
+        assert await old.claim(expired.run_id, "old-worker", 0.01)
+        twin_old, _ = await old.create(RunRecord(new_run_id(), "", "c1", "u", "同一个键", idempotency_key="t"))
+        twin_new, _ = await new.create(RunRecord(new_run_id(), "", "c1", "u", "同一个键", idempotency_key="t"))
+        await asyncio.sleep(0.05)
+        assert await new.adopt_legacy() == 2
+        assert (await new.get(queued.run_id)).status == QUEUED
+        assert await new.claim(expired.run_id, "new-worker", 30)
+        assert await new.get(held.run_id) is None and (await old.get(held.run_id)).lease_owner == "old-worker"
+        assert await new.get(twin_old.run_id) is None and (await new.get(twin_new.run_id)) is not None
+        found, created = await new.create(RunRecord(new_run_id(), "", "c1", "u", "排队中", idempotency_key="q"))
+        assert not created and found.run_id == queued.run_id  # a retry finds the adopted run
+        assert queued.run_id in await new.due_for_dispatch(idle_s=0, lease_grace_s=0)
+    finally:
+        await db.close()
+
+
 # ── 按 run 去重的副作用 ───────────────────────────────────────────────────────
 
 @needs_pg
