@@ -78,7 +78,7 @@ class AccountChange(BaseModel):
     model_config = ConfigDict(extra="forbid")
     active: bool | None = None
     role: str | None = None
-    password: SecretStr | None = Field(default=None, min_length=14, max_length=128)
+    password: SecretStr | None = Field(default=None, min_length=1, max_length=128)
 
 
 @router.get("/admin/employees")

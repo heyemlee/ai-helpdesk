@@ -123,6 +123,10 @@ services:
       - AI_HELPDESK_INSTANCE=staff
       - AI_HELPDESK_STAFF_AUTH=local
       - AI_HELPDESK_PUBLIC_ORIGIN=${AI_HELPDESK_PUBLIC_ORIGIN:-}
+      # 只给本机演示用：根目录 .env 里同时写这两项，员工实例启动时建一个管理员（不覆盖已有账号）。
+      # 密码因此会出现在 docker inspect 里，并把密码下限放宽到 6 位；生产模式下设了就拒绝启动。
+      - AI_HELPDESK_DEMO_ADMIN_LOGIN=${AI_HELPDESK_DEMO_ADMIN_LOGIN:-}
+      - AI_HELPDESK_DEMO_ADMIN_PASSWORD=${AI_HELPDESK_DEMO_ADMIN_PASSWORD:-}
       - SQL_AGENT_ADMIN_API_KEY_FILE=/run/secrets/console/sql_agent_key
       - AI_HELPDESK_METRICS_TOKEN_FILE=/run/secrets/console/metrics_token
       # 只给本机用。端口只绑本机挡得住别的机器，挡不住员工自己的浏览器：它打开的网站都能往

@@ -290,6 +290,7 @@ async def lifespan(app: FastAPI):
         app.state.staff_auth = StaffAuth(_pg_database, _INSTANCE,
             origin=os.getenv("AI_HELPDESK_PUBLIC_ORIGIN", "http://localhost:5174"))
         app.state.actor_directory = ActorDirectory(app.state.staff_auth.provider)
+        await app.state.staff_auth.seed_demo_admin()  # no-op unless the demo settings are present
     else:
         app.state.staff_auth = None
 

@@ -383,3 +383,93 @@ async def test_legacy_status_write_rechecks_revoked_operations_at_commit(staff):
     finally:
         current_actor.reset(actor_token)
         current_auth.reset(auth_token)
+
+
+# ── 本机演示管理员（.env 里配账号密码）─────────────────────────────────────────
+
+DEMO = {"AI_HELPDESK_DEMO_ADMIN_LOGIN": "admin", "AI_HELPDESK_DEMO_ADMIN_PASSWORD": "demo88"}
+
+
+def test_demo_admin_is_off_unless_both_settings_are_present():
+    from app.core.staff_auth import STRONG_MIN, demo_admin, min_password_length
+    assert demo_admin({}) is None and min_password_length({}) == STRONG_MIN == 14
+    for partial in ({"AI_HELPDESK_DEMO_ADMIN_LOGIN": "admin"}, {"AI_HELPDESK_DEMO_ADMIN_PASSWORD": "demo88"},
+                    {"AI_HELPDESK_DEMO_ADMIN_LOGIN": " ", "AI_HELPDESK_DEMO_ADMIN_PASSWORD": "demo88"}):
+        assert demo_admin(partial) is None and min_password_length(partial) == 14
+    assert demo_admin(DEMO) == ("admin", "demo88") and min_password_length(DEMO) == 6
+
+
+@pytest.mark.parametrize("env,problem", [
+    ({"AI_HELPDESK_DEMO_ADMIN_LOGIN": "admin"}, "both"),
+    ({"AI_HELPDESK_DEMO_ADMIN_PASSWORD": "demo88"}, "both"),
+    ({**DEMO, "AI_HELPDESK_DEMO_ADMIN_LOGIN": "Admin!"}, "lowercase"),
+    ({**DEMO, "AI_HELPDESK_DEMO_ADMIN_LOGIN": "ab"}, "lowercase"),
+    ({**DEMO, "AI_HELPDESK_DEMO_ADMIN_PASSWORD": "12345"}, "6-128"),
+    ({**DEMO, "AI_HELPDESK_DEMO_ADMIN_PASSWORD": "x" * 129}, "6-128"),
+    ({**DEMO, "APP_ENV": "production"}, "production"),
+    ({"AI_HELPDESK_DEMO_ADMIN_LOGIN": "admin", "APP_ENV": "production"}, "production"),
+])
+def test_demo_admin_settings_that_are_incomplete_invalid_or_in_production_stop_the_start(env, problem):
+    from app.core.staff_auth import check_demo_admin
+    with pytest.raises(ValueError, match=problem):
+        check_demo_admin(env)
+    with pytest.raises(ValueError):
+        from app.core.staff_auth import check_config
+        check_config({"AI_HELPDESK_INSTANCE": "staff", "POSTGRES_DSN": "postgresql://x/y", **env})
+
+
+def test_a_valid_demo_admin_config_and_no_config_both_pass():
+    from app.core.staff_auth import check_demo_admin
+    check_demo_admin({})
+    check_demo_admin(DEMO)
+
+
+def test_the_password_minimum_is_14_by_default_and_6_only_in_demo_mode(monkeypatch):
+    for name in DEMO:
+        monkeypatch.delenv(name, raising=False)
+    with pytest.raises(HTTPException) as strict:
+        hash_password("demo88")
+    assert strict.value.status_code == 422 and "14" in strict.value.detail
+    for name, value in DEMO.items():
+        monkeypatch.setenv(name, value)
+    assert verify_password("demo88", hash_password("demo88"))
+    with pytest.raises(HTTPException) as short:
+        hash_password("demo8")
+    assert short.value.status_code == 422 and "6" in short.value.detail
+
+
+async def test_demo_admin_is_created_once_can_log_in_and_never_overwritten(staff, monkeypatch):
+    auth, _, client, _ = staff
+    for name, value in DEMO.items():
+        monkeypatch.setenv(name, value)
+    created = await auth.seed_demo_admin()
+    assert created["login"] == "admin" and created["role"] == "admin"
+    assert await auth.seed_demo_admin() is None  # a second start leaves it alone
+    row = await auth.db.fetchrow("SELECT password_hash, role, instance FROM staff_accounts WHERE login='admin'")
+    assert row["role"] == "admin" and row["instance"] == "staff" and "demo88" not in row["password_hash"]
+    ok = await client.post("/auth/login", json={"login": "admin", "password": "demo88"}, headers={"Origin": auth.origin})
+    assert ok.status_code == 200
+    bad = await client.post("/auth/login", json={"login": "admin", "password": "demo89"}, headers={"Origin": auth.origin})
+    assert bad.status_code == 401
+    # the same login configured with another password does not replace the stored one
+    monkeypatch.setenv("AI_HELPDESK_DEMO_ADMIN_PASSWORD", "other-password")
+    assert await auth.seed_demo_admin() is None
+    again = await client.post("/auth/login", json={"login": "admin", "password": "demo88"}, headers={"Origin": auth.origin})
+    assert again.status_code == 200
+
+
+async def test_the_seeded_demo_admin_can_create_a_short_password_employee_only_in_demo_mode(staff, monkeypatch):
+    auth, _, client, _ = staff
+    for name, value in DEMO.items():
+        monkeypatch.setenv(name, value)
+    await auth.seed_demo_admin()
+    login_response = await client.post("/auth/login", json={"login": "admin", "password": "demo88"}, headers={"Origin": auth.origin})
+    headers = {"Origin": auth.origin, "X-CSRF-Token": login_response.json()["csrf_token"]}
+    created = await client.post("/admin/employees", headers=headers, json={"login": "zhang", "password": "zhang1", "role": "employee"})
+    assert created.status_code == 201, created.text
+    too_short = await client.post("/admin/employees", headers=headers, json={"login": "li", "password": "li123", "role": "employee"})
+    assert too_short.status_code == 422
+    for name in DEMO:
+        monkeypatch.delenv(name)
+    strict = await client.post("/admin/employees", headers=headers, json={"login": "wang", "password": "wang123", "role": "employee"})
+    assert strict.status_code == 422 and "14" in strict.text
