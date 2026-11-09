@@ -14,10 +14,7 @@ from typing import Any, Dict, Optional
 RUN_STARTED = "run.started"
 RUN_FINISHED = "run.finished"
 RUN_CANCEL_REQUESTED = "run.cancel_requested"
-STAGE_STARTED = "stage.started"
 STAGE_FINISHED = "stage.finished"
-MODEL_CALL = "model.call"
-TOOL_SQL = "tool.sql"
 
 FLUSH_ON = frozenset({STAGE_FINISHED, RUN_CANCEL_REQUESTED, RUN_FINISHED})
 """遇到这几类事件就把缓冲落库：一次请求十几次提交，崩溃最多丢掉当前 stage 的事件。"""
