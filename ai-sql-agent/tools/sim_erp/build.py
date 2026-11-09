@@ -100,9 +100,6 @@ ITEM_CATALOG = [
     ("accessory",     "LS",  "Lazy susan corner unit",                  140,  290),
 ]
 
-DOOR_STYLES = ["Shaker White", "Shaker Grey", "Flat Panel Maple", "Raised Panel Cherry",
-               "Slab Walnut", "Shaker Navy", "Beaded Inset White"]
-
 SUPPLIER_NAMES = [
     ("Northwest Door Co", "door"), ("Cascade Panel Works", "door"),
     ("Redwood Component", "box"), ("Valley Plywood Supply", "box"),

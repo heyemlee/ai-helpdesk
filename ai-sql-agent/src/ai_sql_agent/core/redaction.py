@@ -1,5 +1,4 @@
 """Redaction at log/audit sinks, not only at individual exception producers."""
-import logging
 import os
 import re
 
@@ -31,8 +30,3 @@ def data(value):
     if isinstance(value, (list, tuple)):
         return [data(v) for v in value]
     return text(value) if isinstance(value, str) else value
-
-
-class RedactingFormatter(logging.Formatter):
-    def format(self, record):
-        return text(super().format(record))

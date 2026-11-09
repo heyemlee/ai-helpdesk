@@ -512,23 +512,6 @@ class GoldExecutor:
         self.conn.close()
 
 
-def normalize_rows(rows: List[Dict[str, Any]]) -> List[tuple]:
-    """
-    结果集归一化：
-    - 每行取值集合（忽略列名与列顺序，浮点四舍六入到 6 位）；
-    - 整体按多重集比较（行顺序无关）。
-    """
-    normalized = []
-    for row in rows:
-        values = []
-        for value in row.values():
-            if isinstance(value, float):
-                value = round(value, 6)
-            values.append(str(value))
-        normalized.append(tuple(sorted(values)))
-    return sorted(normalized)
-
-
 MAX_EXTRA_COLUMNS = 1
 """允许模型比 gold 多输出的列数上限。"""
 
