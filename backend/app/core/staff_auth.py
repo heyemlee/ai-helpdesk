@@ -263,6 +263,13 @@ class StaffAuth:
         if not valid or not row or not row["active"]:
             await self.audit("login_denied")
             raise HTTPException(401, "账号或密码无效")
+        from app.core.preflight import is_production
+        if is_production() and len(password) < STRONG_MIN:
+            # A password set while the demo minimum applied is not accepted in production,
+            # whichever way it stayed in the database. Another administrator (or a new one
+            # from scripts/staff_accounts.py) must set a strong one first.
+            await self.audit("login_refused_weak_password", row["actor_id"])
+            raise HTTPException(403, f"密码短于生产环境要求的 {STRONG_MIN} 位，请让管理员重置密码")
         token = secrets.token_urlsafe(32)
         async with self.db.transaction() as conn:
             fresh = await conn.fetchrow("SELECT * FROM staff_accounts WHERE actor_id=$1 AND active FOR SHARE", row["actor_id"])

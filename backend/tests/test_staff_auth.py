@@ -458,6 +458,29 @@ async def test_demo_admin_is_created_once_can_log_in_and_never_overwritten(staff
     assert again.status_code == 200
 
 
+async def test_a_short_password_stored_in_demo_mode_cannot_log_in_once_the_instance_is_production(staff, monkeypatch):
+    auth, _, client, _ = staff
+    for name, value in DEMO.items():
+        monkeypatch.setenv(name, value)
+    await auth.seed_demo_admin()
+    for name in DEMO:
+        monkeypatch.delenv(name)
+    body, headers = {"login": "admin", "password": "demo88"}, {"Origin": auth.origin}
+    assert (await client.post("/auth/login", json=body, headers=headers)).status_code == 200  # outside production
+    for name, value in (("APP_ENV", "production"), ("AI_HELPDESK_INSTANCE", "staff"), ("AI_HELPDESK_STAFF_AUTH", "local")):
+        monkeypatch.setenv(name, value)
+    refused = await client.post("/auth/login", json=body, headers=headers)
+    assert refused.status_code == 403 and "14" in refused.text
+    assert "set-cookie" not in refused.headers
+    assert await auth.db.fetchval("SELECT count(*) FROM staff_audit WHERE action='login_refused_weak_password'") == 1
+    # a wrong password is still an ordinary denial and reveals nothing about strength
+    wrong = await client.post("/auth/login", json={"login": "admin", "password": "wrong"}, headers=headers)
+    assert wrong.status_code == 401
+    # a strong password is unaffected
+    strong = await client.post("/auth/login", json={"login": "alice", "password": PASSWORD}, headers=headers)
+    assert strong.status_code == 200
+
+
 async def test_the_seeded_demo_admin_can_create_a_short_password_employee_only_in_demo_mode(staff, monkeypatch):
     auth, _, client, _ = staff
     for name, value in DEMO.items():
