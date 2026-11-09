@@ -7,6 +7,7 @@ import tempfile
 import threading
 import time
 import unittest
+from contextvars import ContextVar
 from pathlib import Path
 
 from ai_sql_agent.execution import MCPExecutionResult
@@ -54,6 +55,47 @@ class MemoryTestCase(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
+
+    def test_late_summary_keeps_its_initiating_run_and_parent_context(self) -> None:
+        from ai_sql_agent.core.run_context import RunContext, current_run, use_run
+
+        parent = ContextVar("test_summary_parent", default=None)
+        seen = []
+
+        class CorrelatedSummarizer(BlockingSummarizer):
+            def summarize_conversation(self, previous_summary, messages):
+                self.started.set()
+                self.release.wait(timeout=5)
+                seen.append((current_run().run_id if current_run() else None, parent.get()))
+                return ExtractiveMemorySummarizer.summarize_conversation(self, previous_summary, messages)
+
+        summarizer = CorrelatedSummarizer()
+        service = ShortTermMemoryService(
+            store=SQLiteMemoryStore(self.db_path), summarizer=summarizer,
+            config=ShortTermMemoryConfig(max_window_messages=1, max_window_tokens=1000, async_summary=True),
+        )
+        try:
+            with use_run(RunContext("image-sql-run")):
+                token = parent.set("image-helpdesk-run")
+                try:
+                    service.add_message(user_id="u1", session_id="image", role="user", content="original question")
+                    service.add_message(user_id="u1", session_id="image", role="assistant", content="recorded result")
+                    self.assertTrue(summarizer.started.wait(timeout=2))
+                finally:
+                    parent.reset(token)
+            with use_run(RunContext("later-sql-run")):
+                token = parent.set("later-helpdesk-run")
+                try:
+                    summarizer.release.set()
+                    service.wait_for_summary(user_id="u1", session_id="image", timeout=5)
+                finally:
+                    parent.reset(token)
+            self.assertEqual(seen, [("image-sql-run", "image-helpdesk-run")])
+            self.assertIsNone(current_run())
+            self.assertIsNone(parent.get())
+        finally:
+            summarizer.release.set()
+            service.close()
 
     def test_async_summary_never_blocks_context_read(self) -> None:
         store = SQLiteMemoryStore(self.db_path)
@@ -773,7 +815,7 @@ class SummaryInputBudgetTest(unittest.TestCase):
                 "truncated",
                 "row_limit",
             }  # 读
-            | {"as_of", "as_of_source"},  # 不读
+            | {"as_of", "as_of_source", "observed_at"},  # 不读；时间保留在结构化结果，不让摘要更新它
         )
 
     def test_a_failed_step_keeps_its_sql_and_error(self) -> None:

@@ -11,6 +11,8 @@ from ai_sql_agent.retrieval.access import (
     filter_schema_graph,
 )
 from ai_sql_agent.retrieval.bm25 import BM25Index
+from ai_sql_agent.retrieval.graph_builder import build_schema_graph
+from ai_sql_agent.retrieval.objects import SchemaHit
 from ai_sql_agent.retrieval.hybrid_schema_retrieval_service import (
     HybridSchemaRetrievalConfig,
     HybridSchemaRetrievalResult,
@@ -431,6 +433,9 @@ class ThreeTierSchemaRetrievalService:
 
             # 兜底：无论走哪条分支，进 Prompt 前都按权限再裁一次
             filter_schema_graph(result.schema_graph, self._access_for(access, database))
+            result.schema_graph = self._cover_table_hits(
+                result.schema_graph, service, tables, self._access_for(access, database), database
+            )
 
             column_results[database] = result
             schema_graphs[database] = result.schema_graph
@@ -635,3 +640,33 @@ class ThreeTierSchemaRetrievalService:
             )
 
         return hits
+
+    @staticmethod
+    def _cover_table_hits(graph, service, table_hits, access, database):
+        """Apply the existing floor to table-tier hits using only visible schema."""
+        floor = getattr(getattr(service, "config", None), "min_columns_per_table", 0)
+        if not isinstance(floor, int) or floor <= 0:
+            return graph
+        scope = set(table_hits) | set(graph.tables)
+        tables = {name: table for name, table in service.tables.items()
+                  if name in scope and access.allows_table(database, name)}
+        columns = [column for column in service.columns if column.table_name in tables
+                   and access.allows_column(database, column.table_name, column.column_name)]
+        by_table = {}
+        for column in columns:
+            by_table.setdefault(column.table_name, []).append(column)
+        if not any(len(graph.columns.get(name, [])) < min(floor, len(by_table.get(name, [])))
+                   for name in table_hits if name in tables):
+            return graph
+        visible = {(column.table_name, column.column_name) for column in columns}
+        relations = [relation for relation in service.relations
+                     if (relation.source_table, relation.source_column) in visible
+                     and (relation.target_table, relation.target_column) in visible]
+        hits = [SchemaHit(column.full_name, 0.0, column)
+                for name in graph.tables for column in graph.columns.get(name, [])
+                if name in tables and (name, column.column_name) in visible]
+        return build_schema_graph(
+            hits, tables, columns, relations,
+            include_join_columns=service.config.include_join_columns,
+            min_columns_per_table=floor, table_order=table_hits, required_tables=table_hits,
+        )

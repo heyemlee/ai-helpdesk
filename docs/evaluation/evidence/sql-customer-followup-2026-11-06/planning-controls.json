@@ -1,0 +1,214 @@
+{
+  "run": {
+    "commit": "9f493f71c1c4ef77e1b82c93273c7cb6d43982cd",
+    "source": "clean committed export; same existing model connection as baseline",
+    "mode": "planning-controls",
+    "ids": null,
+    "case_count": 3,
+    "rounds": 1,
+    "generation_request_safety_cap": 20,
+    "generation_model": "gpt-6.1-sol",
+    "api_mode": "chat",
+    "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+    "embedding_backend": "remote",
+    "rubric_sha256": "77fb4a0fbd142c8563349159864a870fb98bda9a56fb490ce0a193981058bd7c",
+    "started_at_utc": "2026-11-06T17:48:00.337957+00:00",
+    "dataset_sha256": "93fba880f42881291e5490ade5ed275f87ff6e36fe76fba17f5bc6301961332c",
+    "finished_at_utc": "2026-11-06T17:48:18.779515+00:00",
+    "elapsed_seconds": 18.442,
+    "generation_requests": 3,
+    "request_counts": {
+      "generation": 3
+    },
+    "passed": 3,
+    "model_configuration": {
+      "model_provider": "openai",
+      "chat_model": "gpt-6.1-sol",
+      "coder_model": "gpt-6.1-sol",
+      "openai_base_url": "https://relay.invalid/v1",
+      "anthropic_base_url": "https://claude-relay.liziqiao.com/api",
+      "embedding_backend": "remote",
+      "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+      "embedding_url": "https://api.siliconflow.com/v1/embeddings",
+      "embedding_dimensions": 1024,
+      "embedding_batch_size": 10,
+      "http_timeout_seconds": 60.0,
+      "http_max_retries": 2,
+      "http_backoff_base_seconds": 0.5,
+      "http_backoff_max_seconds": 8.0,
+      "max_completion_tokens": 8192,
+      "rerank_model": "qwen3-rerank",
+      "rerank_url": "",
+      "openai_api_mode": "chat"
+    }
+  },
+  "requests": [
+    {
+      "item_id": "overall_only",
+      "kind": "generation",
+      "path": "/v1/chat/completions",
+      "host": "relay.invalid",
+      "elapsed_start_seconds": 0.026,
+      "requested_model": "gpt-6.1-sol",
+      "status_code": 200,
+      "returned_model": "gpt-6.1-sol",
+      "usage": {
+        "prompt_tokens": 2534,
+        "completion_tokens": 90,
+        "total_tokens": 2624
+      },
+      "finish_reason": "stop",
+      "duration_ms": 5155.86
+    },
+    {
+      "item_id": "explicit_compound",
+      "kind": "generation",
+      "path": "/v1/chat/completions",
+      "host": "relay.invalid",
+      "elapsed_start_seconds": 5.191,
+      "requested_model": "gpt-6.1-sol",
+      "status_code": 200,
+      "returned_model": "gpt-6.1-sol",
+      "usage": {
+        "prompt_tokens": 2539,
+        "completion_tokens": 191,
+        "total_tokens": 2730
+      },
+      "finish_reason": "stop",
+      "duration_ms": 6855.38
+    },
+    {
+      "item_id": "required_cross_database",
+      "kind": "generation",
+      "path": "/v1/chat/completions",
+      "host": "relay.invalid",
+      "elapsed_start_seconds": 12.051,
+      "requested_model": "gpt-6.1-sol",
+      "status_code": 200,
+      "returned_model": "gpt-6.1-sol",
+      "usage": {
+        "prompt_tokens": 2541,
+        "completion_tokens": 195,
+        "total_tokens": 2736
+      },
+      "finish_reason": "stop",
+      "duration_ms": 6387.1
+    }
+  ],
+  "model_events": [
+    {
+      "item_id": "overall_only",
+      "type": "model.call",
+      "stage": "",
+      "step": null,
+      "component": "thinking",
+      "model": "gpt-6.1-sol",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 5177.9,
+      "prompt_tokens": 2534,
+      "completion_tokens": 90,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "explicit_compound",
+      "type": "model.call",
+      "stage": "",
+      "step": null,
+      "component": "thinking",
+      "model": "gpt-6.1-sol",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 6857.2,
+      "prompt_tokens": 2539,
+      "completion_tokens": 191,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "required_cross_database",
+      "type": "model.call",
+      "stage": "",
+      "step": null,
+      "component": "thinking",
+      "model": "gpt-6.1-sol",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 6388.23,
+      "prompt_tokens": 2541,
+      "completion_tokens": 195,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    }
+  ],
+  "controls": [
+    {
+      "id": "overall_only",
+      "query": "订单 Z-109 的当前状态是什么？",
+      "expected_databases": [
+        "orders_db"
+      ],
+      "databases": [
+        "orders_db"
+      ],
+      "passed": true,
+      "raw_output": "步骤1：\n(\n  数据库: orders_db,\n  处理对象: orders表（字段：order_no, order_status）,\n  操作指令: 先在orders表中按order_no等于Z-109筛选订单；再返回该订单的业务编号和当前整体状态,\n  输出目标: order_no, order_status,\n  预期输出量级: 单条\n)",
+      "usage": {
+        "calls": 1,
+        "prompt_tokens": 2534,
+        "completion_tokens": 90,
+        "total_tokens": 2624,
+        "by_component": {
+          "thinking": 2624
+        }
+      }
+    },
+    {
+      "id": "explicit_compound",
+      "query": "订单 Z-109 的当前状态和生产工序分别是什么？",
+      "expected_databases": [
+        "orders_db",
+        "production_db"
+      ],
+      "databases": [
+        "orders_db",
+        "production_db"
+      ],
+      "passed": true,
+      "raw_output": "步骤1：\n(\n  数据库: orders_db,\n  处理对象: orders表（字段：order_no, order_status）,\n  操作指令: 先按用户给定的order_no等于'Z-109'筛选orders表；再返回该订单的当前整体状态,\n  输出目标: order_no, order_status,\n  预期输出量级: 单条\n)\n\n步骤2：\n(\n  数据库: production_db,\n  处理对象: jobs表（字段：order_no, current_stage）,\n  操作指令: 先以用户给定的订单编号'Z-109'作为字面量条件筛选jobs表中order_no相等的记录，不进行跨库JOIN；再返回该订单的生产工序,\n  输出目标: order_no, current_stage,\n  预期输出量级: 单条\n)",
+      "usage": {
+        "calls": 1,
+        "prompt_tokens": 2539,
+        "completion_tokens": 191,
+        "total_tokens": 2730,
+        "by_component": {
+          "thinking": 2730
+        }
+      }
+    },
+    {
+      "id": "required_cross_database",
+      "query": "由承运商 NorthStar 配送的订单合同金额合计是多少？",
+      "expected_databases": [
+        "shipping_db",
+        "orders_db"
+      ],
+      "databases": [
+        "shipping_db",
+        "orders_db"
+      ],
+      "passed": true,
+      "raw_output": "步骤1：\n(\n  数据库: shipping_db,\n  处理对象: deliveries表（字段：order_no, carrier）,\n  操作指令: 先在deliveries表中筛选carrier等于NorthStar的记录；再输出这些记录的order_no，作为传给下一步的关联键,\n  输出目标: order_no,\n  预期输出量级: 数十条\n)\n\n步骤2：\n(\n  数据库: orders_db,\n  处理对象: orders表（字段：order_no, contract_amount）,\n  操作指令: 先把步骤1输出的order_no取值作为字面量列表，筛选orders中order_no落在该列表内的记录；再对筛选记录的contract_amount求和，得到合同金额合计,\n  输出目标: contract_amount的合计,\n  预期输出量级: 单条\n)",
+      "usage": {
+        "calls": 1,
+        "prompt_tokens": 2541,
+        "completion_tokens": 195,
+        "total_tokens": 2736,
+        "by_component": {
+          "thinking": 2736
+        }
+      }
+    }
+  ]
+}

@@ -53,7 +53,7 @@ OFFICIAL_BASE_URL = {
 
 # 每组存哪几项。文件里出现别的键一律不认。
 FIELDS = {
-    "chat": ("provider", "base_url", "api_key", "model"),
+    "chat": ("provider", "base_url", "api_key", "model", "api_mode"),
     "embedding": ("base_url", "api_key", "model", "dim", "query_prefix"),
 }
 
@@ -127,6 +127,13 @@ def clean_provider(value: Any) -> str:
     if provider not in PROVIDERS:
         raise ModelSettingsError("invalid_provider", "协议只能是 openai 或 anthropic。")
     return provider
+
+
+def clean_api_mode(value: Any) -> str:
+    mode = str(value or "chat").strip().lower()
+    if mode not in ("chat", "responses"):
+        raise ModelSettingsError("invalid_api_mode", "OpenAI API 只支持 chat / responses。")
+    return mode
 
 
 def clean_dim(value: Any) -> int:
@@ -288,6 +295,7 @@ def _clean_section(section: str, raw: Any) -> tuple[dict[str, Any] | None, str]:
         }
         if section == "chat":
             cleaned["provider"] = clean_provider(values.get("provider"))
+            cleaned["api_mode"] = clean_api_mode(values.get("api_mode"))
         else:
             cleaned["dim"] = clean_dim(values.get("dim"))
             cleaned["query_prefix"] = clean_query_prefix(values.get("query_prefix"))

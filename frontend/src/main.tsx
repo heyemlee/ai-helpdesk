@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import App from './App'
+import { SessionGate } from './auth/session'
 import { LangProvider } from './i18n'
 import './index.css'
 
@@ -24,7 +25,7 @@ createRoot(root).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <LangProvider>
-        <App />
+        <SessionGate><App /></SessionGate>
       </LangProvider>
     </QueryClientProvider>
   </StrictMode>,

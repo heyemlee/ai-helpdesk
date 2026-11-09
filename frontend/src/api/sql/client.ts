@@ -1,15 +1,5 @@
-/**
- * SQL Agent 的接口。浏览器只认 /sql-api/：生产上由控制台的 nginx 去掉前缀转给 sql-agent:8000
- * （frontend/docker/templates/default.conf.template），本地开发由 vite 转给本机的 SQL Agent。
- *
- * **这里一把 Key 都不带。** 控制台那把管理员 Key 由 nginx 在服务端加进请求头，浏览器拿不到它，
- * JS 包里也没有；浏览器发来的 X-API-Key 会被 nginx 覆盖掉。代价是"连得到控制台就是管理员"：
- * 控制台只绑本机，在容器之间只挂 sql-net（合仓设计 §3.3），分角色是以后登录那一步的事。
- * 别的网站借员工浏览器发的跨站请求由 nginx 挡（Host 只认本机、要求 CONSOLE_HEADER、拒绝跨站）。
- *
- * 错误统一成 SqlApiError。FastAPI 的 detail 有三种形状：字符串、{code, message}（数据浏览）、
- * 校验错误的数组（422）。
- */
+/** SQL requests pass through the employee session gateway. */
+import { authHeaders, sessionExpired, sessionStamp } from '../client'
 import type {
   ArtifactDataPart, FeedbackRequest, FeedbackResponse, HistoryResponse, PreviewRequest,
   ProfileRequest, QueryResponse,
@@ -84,12 +74,14 @@ async function request<T>(method: string, path: string, { params, body, signal, 
   /** 要读响应头的调用方用（/query 的 X-Run-Id） */
   onResponse?: (response: Response) => void
 } = {}): Promise<T> {
+  const stamp = sessionStamp()
   let response: Response
   try {
     response = await fetch(SQL_API_BASE + withParams(path, params), {
       method,
+      credentials: 'same-origin',
       signal,
-      headers: body !== undefined ? { ...CONSOLE_HEADER, 'Content-Type': 'application/json' } : { ...CONSOLE_HEADER },
+      headers: body !== undefined ? { ...CONSOLE_HEADER, ...authHeaders(), 'Content-Type': 'application/json' } : { ...CONSOLE_HEADER, ...authHeaders() },
       body: body !== undefined ? JSON.stringify(body) : undefined,
     })
   } catch (error) {
@@ -107,7 +99,7 @@ async function request<T>(method: string, path: string, { params, body, signal, 
     if (isAbort(error)) throw error
     readable = false
   }
-  if (!response.ok) throw toError(response.status, payload)
+  if (!response.ok) { sessionExpired(response.status, stamp); throw toError(response.status, payload) }
   // 状态码是成功、响应体却不是 JSON（被代理换成了别的页面、中途断了）：不是一个可用的结果
   if (!readable) throw new SqlApiError({ status: response.status, code: 'bad_response' })
   return payload as T
@@ -205,12 +197,13 @@ export async function streamQuery(question: string, { userId, sessionId, signal,
   onStage?: (stage: StreamStage) => void
   onTask?: (runId: string) => void
 }): Promise<{ payload: StreamPayload; stages: StreamStage[]; runId: string }> {
+  const stamp = sessionStamp()
   let response: Response
   try {
     response = await fetch(`${SQL_API_BASE}/a2a`, {
       method: 'POST',
       signal,
-      headers: { ...CONSOLE_HEADER, 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+      headers: { ...CONSOLE_HEADER, ...authHeaders(), 'Content-Type': 'application/json', Accept: 'text/event-stream' },
       body: JSON.stringify({
         jsonrpc: '2.0',
         id: uid(),
@@ -232,6 +225,7 @@ export async function streamQuery(question: string, { userId, sessionId, signal,
     throw new SqlApiError({ code: 'network' })
   }
 
+  sessionExpired(response.status, stamp)
   const type = response.headers.get('content-type') || ''
   if (!type.includes('text/event-stream') || !response.body) {
     // 鉴权、限流、流式没开：都发生在流打开之前，回来的是普通的 JSON-RPC 错误或 HTTP 错误

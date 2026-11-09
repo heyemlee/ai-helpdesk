@@ -204,9 +204,9 @@ def test_judge_reports_right_numbers_superseded_numbers_and_inventions(ev):
     old = ev._judge(v01, "A 区每单 120 美元。", known, handoff=False)
     assert (old["correct"], old["missing"], old["stale"]) == (False, ["150美元"], ["120美元"])
     made_up = ev._judge(v01, "A 区每单 150 美元，满 5000 美元免运费。", known, handoff=False)
-    assert made_up["correct"] and made_up["invented"] == ["5000"]
+    assert not made_up["correct"] and made_up["invented"] == ["5000"]
     listed = ev._judge(v01, "1. Zone A is $150.\n2. Orders over $8,000 ship free.", known, handoff=False)
-    assert listed["correct"] and "150.2" not in listed["invented"]
+    assert not listed["correct"] and "150.2" not in listed["invented"]
 
     n06 = ev.Case(id="n-06", type="unanswerable", lang="zh", query="你们公司是哪一年成立的", gold=[])
     assert ev._judge(n06, "我们成立于 1998 年。", known, handoff=False)["outcome"] == "invented"
@@ -360,15 +360,15 @@ async def test_full_chain_judges_the_final_answer_offline(ev, tmp_path, capsys, 
     assert v01["retrieval"]["mode"] == "rewrite_rerank"
     assert v01["retrieval"]["after_rerank"][0] == STALE_TITLE
     assert v01["hit_before"] and v01["hit_after"]
-    assert (v01["correct"], v01["missing"], v01["stale"]) == (False, ["150美元"], ["120美元"])
+    assert (v01["correct"], v01["missing"], v01["stale"]) == (False, [], ["120美元"])
     assert v01["stale_in_context"] is True
 
     assert cases["d-02"]["correct"] is True
-    assert cases["n-06"]["outcome"] == "invented" and cases["n-06"]["invented"] == ["1998"]
+    assert "1998" not in cases["n-06"]["answer"] and cases["n-06"]["invented"] == []
 
     summary = report["summary"]
     assert summary["facts"]["n"] == 2 and summary["facts"]["stale_reported"] == 1
-    assert summary["unanswerable"]["invented"] == 1
+    assert summary["unanswerable"]["invented"] == 0
     # 调用数从这一轮的事件里数出来：和假模型实际收到的请求一一对得上
     assert summary["calls"]["total"] == len(fake_model.hosts)
     assert summary["calls"]["by_purpose"]["answer"] == fake_model.kinds.count("answer") == 3

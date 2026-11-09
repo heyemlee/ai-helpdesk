@@ -172,7 +172,8 @@ def llm_provider() -> str:
 
 
 def create_llm_client(
-    api_key: str, base_url: str | None = None, provider: str | None = None
+    api_key: str, base_url: str | None = None, provider: str | None = None,
+    api_mode: str | None = None,
 ) -> LLMClient:
     """
     造客户端。所有创建客户端的模块（编排器、意图识别、工具管理、记忆、评测）都走
@@ -186,7 +187,7 @@ def create_llm_client(
     if provider == "openai":
         from app.core.openai_compat import AsyncOpenAICompat
 
-        client: Any = AsyncOpenAICompat(**kwargs)
+        client: Any = AsyncOpenAICompat(**kwargs, api_mode=api_mode or os.getenv("OPENAI_API_MODE", "chat").strip().lower())
     else:
         client = AsyncAnthropic(**kwargs)
     # 凭证不可用保护套在这唯一的入口上：同一份配置（供应商 + 地址 + 凭证）的所有
@@ -210,6 +211,7 @@ def resolve_llm_config() -> dict[str, Any]:
             "provider": provider,
             "api_key": key,
             "model": os.getenv("OPENAI_MODEL", DEFAULT_OPENAI_MODEL).strip(),
+            "api_mode": os.getenv("OPENAI_API_MODE", "chat").strip().lower(),
         }
         base_url = os.getenv("OPENAI_BASE_URL", "").strip()
     else:

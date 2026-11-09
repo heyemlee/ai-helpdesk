@@ -5,12 +5,12 @@
 稀疏检索和 RRF 是纯计算，自纠错的控制流用打桩的重排结果驱动。
 """
 import pytest
+from evidence_fixtures import PublishedKnowledgeBase as KnowledgeBase
 
 from app.core.lexical import bm25_scores, index_text, query_tokens, tokenize
 from app.core.reranker import Reranker
 from app.storage.vector_store import LocalStore
 from app.tools.knowledge_base import (
-    KnowledgeBase,
     fuse_candidates,
     lexical_first_fuse,
     rrf_fuse,
@@ -535,7 +535,7 @@ async def test_self_correct_can_be_turned_off():
     assert calls["rerank"] == 1
 
 
-async def test_empty_recall_fails_without_burning_a_correction_round():
+async def test_successful_empty_recall_is_not_a_failure_or_correction_round():
     manager, calls = _search_manager([True])
 
     async def _empty(params, context):
@@ -543,7 +543,8 @@ async def test_empty_recall_fails_without_burning_a_correction_round():
 
     manager._tools["kb"].handler = _empty
     result = await manager.search_with_rewrite("kb", "补件流程", top_k=3)
-    assert result.success is False
+    assert result.success is True and result.lookup_status == "empty"
+    assert result.data == [] and result.error is None
     assert calls["rerank"] == 0
 
 

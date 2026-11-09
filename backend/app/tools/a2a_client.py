@@ -1,7 +1,7 @@
 """
 ai-sql-agent 的 A2A 客户端：`message/send` 与 `message/stream`。
 
-契约在本仓库的 `a2a-contract/a2a-streaming-contract.md`（v1.13，见 `CONTRACT_VERSION`；
+契约在本仓库的 `a2a-contract/a2a-streaming-contract.md`（v1.15，见 `CONTRACT_VERSION`；
 tag a2a-contract/v1.13 / commit be35cfb）。这里实现的是契约里「调用方」那一半，几条硬规则原样照搬：
 
 - **唯一的成功判据**（§5.1）：收到 `final:true` 且 `state:"completed"` 的终态事件。
@@ -37,7 +37,7 @@ ProgressCallback = Callable[[dict[str, Any]], None | Awaitable[None]]
 # 这份实现对应的契约版本。必须等于 a2a-contract/fixtures/index.json 的 contract_version，
 # tests/test_contract_fixtures.py 断言这一点。改契约时三处在同一个 PR 里一起改：这里、
 # SQL Agent 的 ai_sql_agent.a2a.server.CONTRACT_VERSION、index.json
-CONTRACT_VERSION = "v1.13"
+CONTRACT_VERSION = "v1.15"
 
 # 契约 §1 A：流式的自适应预算
 STREAM_SILENCE_S = 20.0
@@ -132,10 +132,10 @@ class A2AClient:
 
     # ── message/send ──────────────────────────────────────────────────────
 
-    async def send(self, question: str, user_id: str, session_id: str) -> dict[str, Any]:
+    async def send(self, question: str, user_id: str, session_id: str, *, trace_id="") -> dict[str, Any]:
         body = self._rpc("message/send", question, user_id, session_id)
         async with httpx.AsyncClient(timeout=self._send_timeout_s) as c:
-            r = await c.post(f"{self._base}/a2a", headers=self._headers(), json=body)
+            r = await c.post(f"{self._base}/a2a", headers={**self._headers(), **({"X-Trace-Id": trace_id} if trace_id else {})}, json=body)
         payload = self._parse_json(r)
         task = payload.get("result") or {}
         state = ((task.get("status") or {}).get("state") or "").lower()
@@ -150,9 +150,11 @@ class A2AClient:
     # ── message/stream ────────────────────────────────────────────────────
 
     async def stream(self, question: str, user_id: str, session_id: str,
-                     on_progress: ProgressCallback | None = None) -> dict[str, Any]:
+                     on_progress: ProgressCallback | None = None, *, trace_id="") -> dict[str, Any]:
         body = self._rpc("message/stream", question, user_id, session_id)
         headers = {**self._headers(), "Accept": "text/event-stream"}
+        if trace_id:
+            headers["X-Trace-Id"] = trace_id
         deadline = time.monotonic() + self._hard_s
         artifact: dict[str, Any] | None = None
         terminal: dict[str, Any] | None = None

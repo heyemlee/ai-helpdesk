@@ -1,9 +1,13 @@
+import { ScopeFields } from './PolicyFields'
+import type { PolicyScope } from '@/api/types'
 import { useEffect, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { MessageBubble } from './MessageBubble'
 import { Icon, type IconName } from './Icon'
-import type { ChatMessage } from '@/hooks/useChatStream'
-import type { HealthResponse, RoutingConfig } from '@/api/types'
+import type { ChatMaterials, ChatMessage } from '@/hooks/useChatStream'
+import type { Attachment, CaseSummary, HealthResponse, RoutingConfig } from '@/api/types'
+import { caseApi } from '@/api/client'
+import { AttachmentPicker, AttachmentView } from './Attachments'
 import { useT } from '@/i18n'
 import type { Key } from '@/i18n/catalog'
 
@@ -63,10 +67,10 @@ export function ScopeGuide({ capabilities }: { capabilities?: HealthResponse['ca
   )
 }
 
-export function ChatPanel({ messages, busy, onSend, onInspect, explain, restoring, capabilities, routingConfig, base }: {
+export function ChatPanel({ messages, busy, onSend, onInspect, explain, restoring, capabilities, routingConfig, base, caseId, onCaseChange }: {
   messages: ChatMessage[]
   busy: boolean
-  onSend: (text: string) => void
+  onSend: (text: string, materials?: ChatMaterials) => void | Promise<boolean>
   onInspect: (m: ChatMessage) => void
   explain?: boolean
   /** 正在从服务端拉刷新前的历史 */
@@ -74,9 +78,20 @@ export function ChatPanel({ messages, busy, onSend, onInspect, explain, restorin
   capabilities?: HealthResponse['capabilities']
   routingConfig?: RoutingConfig
   base?: string
+  caseId?: string
+  onCaseChange?: (id: string) => void
 }) {
-  const { t } = useT()
+  const { t, lang } = useT(), en = lang === 'en'
   const [draft, setDraft] = useState('')
+  const [policyScope, setPolicyScope] = useState<PolicyScope>({})
+  const [scopeOpen, setScopeOpen] = useState(false)
+  const [attachments, setAttachments] = useState<Attachment[]>([])
+  const [uploading, setUploading] = useState(false)
+  const [caseChoice, setCaseChoice] = useState(caseId || '')
+  const [caseList, setCaseList] = useState<CaseSummary[]>([])
+  const [issueType, setIssueType] = useState<CaseSummary['issue_type']>('general')
+  useEffect(() => { if (caseId) setCaseChoice(caseId) }, [caseId])
+  useEffect(() => { if (base) void caseApi.list(base).then(r => setCaseList(r.tickets)).catch(() => {}) }, [base, caseId])
   const listRef = useRef<HTMLDivElement>(null)
   const areaRef = useRef<HTMLTextAreaElement>(null)
   const followLatest = useRef(true)
@@ -119,13 +134,13 @@ export function ChatPanel({ messages, busy, onSend, onInspect, explain, restorin
   // 发出去的是去掉首尾空白的那段，按它数
   const over = [...draft.trim()].length - MAX_MESSAGE_CHARS
 
-  const submit = () => {
+  const submit = async () => {
     const text = draft.trim()
-    if (!text || busy || restoring || over > 0) return
+    if ((!text && !attachments.length) || (attachments.length > 0 && !caseChoice) || busy || uploading || restoring || over > 0) return
     followLatest.current = true
     setAwayFromBottom(false)
-    onSend(text)
-    setDraft('')
+    const result = onSend(text, { attachments, caseChoice, issueType, policyScope })
+    if (result instanceof Promise ? await result : true) { setDraft(''); setAttachments([]) }
     requestAnimationFrame(grow)
   }
 
@@ -157,8 +172,8 @@ export function ChatPanel({ messages, busy, onSend, onInspect, explain, restorin
               </p>
             )}
             {messages.map((m) => (
-              <MessageBubble key={m.id} message={m} explain={explain} base={base}
-                             routingConfig={routingConfig} onInspect={() => onInspect(m)} />
+              <div key={m.id}><div className="attachment-grid">{m.attachments?.map(a => <AttachmentView key={a.id} base={base || '/api'} id={a.id} name={a.filename} />)}</div>
+                <MessageBubble message={m} explain={explain} base={base} routingConfig={routingConfig} onInspect={() => onInspect(m)} /></div>
             ))}
           </div>
         )}
@@ -170,6 +185,7 @@ export function ChatPanel({ messages, busy, onSend, onInspect, explain, restorin
           setAwayFromBottom(false)
           listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' })
         }}>{t('cw.latest')} ↓</button>}
+        <details onToggle={e => setScopeOpen(e.currentTarget.open)}><summary>{en ? 'Policy scope' : '政策适用条件'}</summary>{scopeOpen && <ScopeFields value={policyScope} onChange={setPolicyScope} />}</details>
         <form className="composer" onSubmit={(e) => { e.preventDefault(); submit() }}>
           <label className="sr-only" htmlFor="draft">{t('cw.composeLabel')}</label>
           <textarea
@@ -187,10 +203,22 @@ export function ChatPanel({ messages, busy, onSend, onInspect, explain, restorin
           />
           <div className="composer-bar">
             <span className="composer-keyboard">{busy ? t('cw.busy') : t('cw.keyboard')}</span>
-            <button className="send" type="submit" disabled={busy || restoring || !draft.trim() || over > 0} aria-label={t('cw.send')}>
+            <button className="send" type="submit" disabled={busy || uploading || restoring || (!draft.trim() && !attachments.length) || (attachments.length > 0 && !caseChoice) || over > 0} aria-label={t('cw.send')}>
               <Icon name="send" size={18} />
             </button>
           </div>
+          <label>{en ? 'Link to problem' : '关联问题'}<select value={caseChoice} disabled={busy || uploading} onChange={e => {
+            setCaseChoice(e.target.value); if (e.target.value !== 'new') onCaseChange?.(e.target.value)
+          }}><option value="">{en ? 'Ordinary question' : '普通咨询'}</option><option value="new">{en ? 'New problem' : '新建问题'}</option>
+            {caseId && !caseList.some(c => c.id === caseId) && <option value={caseId}>{caseId}</option>}
+            {caseList.map(c => <option key={c.id} value={c.id}>{c.id} · {c.issue_type}</option>)}
+          </select></label>
+          {caseChoice === 'new' && <label>{en ? 'Issue type' : '问题类型'}<select value={issueType} onChange={e => setIssueType(e.target.value as typeof issueType)}>
+            <option value="general">{en ? 'General' : '一般问题'}</option><option value="order">{en ? 'Order' : '订单问题'}</option>
+            <option value="missing_parts">{en ? 'Missing parts' : '缺件'}</option><option value="wrong_item">{en ? 'Wrong item' : '错货'}</option>
+          </select></label>}
+          {attachments.length > 0 && !caseChoice && <p role="status">{en ? 'Choose a problem for these images.' : '请为图片选择已有问题或新建问题。'}</p>}
+          <AttachmentPicker base={base || '/api'} value={attachments} onChange={setAttachments} onBusy={setUploading} disabled={busy || restoring} />
         </form>
         {/* 放在输入框下面而不是按钮旁边：按钮旁那行快捷键提示在窄屏和开着检查器时是藏起来的 */}
         {over > 0 && (

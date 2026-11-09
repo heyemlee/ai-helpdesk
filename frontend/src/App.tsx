@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { loadSettings, saveSettings, setStaffKey, type Settings } from '@/api/client'
+import { loadSettings, saveSettings, type Settings } from '@/api/client'
 import { useHealth } from '@/api/hooks'
 import { useT } from '@/i18n'
 import type { Key } from '@/i18n/catalog'
@@ -15,6 +15,7 @@ import { Sidebar } from '@/components/Sidebar'
 import { TicketsPanel } from '@/components/TicketsPanel'
 import { InspectorDrawer } from '@/components/InspectorDrawer'
 import { Icon } from '@/components/Icon'
+import { usePermissions } from '@/auth/session'
 
 // 数据页面（SQL Agent）单独成一个包，进了数据页才下载：员工大多数时候只用对话、知识库和工单
 const DataPanel = lazy(() => import('@/components/data/DataPanel').then((m) => ({ default: m.DataPanel })))
@@ -42,6 +43,7 @@ const STREAM_KEY = 'helpdesk.stream'
  * 前端的一个按钮隔离不了任何数据；客户入口是另一套页面和另一组接口的事。
  */
 export default function App() {
+  const permissions = usePermissions()
   const [settings, setSettings] = useState<Settings>(loadSettings)
   const [streaming, setStreaming] = useState(() => localStorage.getItem(STREAM_KEY) !== 'off')
   // 学习模式：默认关。打开后每轮讲一遍实际发生了什么，并能打开编排检查器。
@@ -90,9 +92,10 @@ export default function App() {
 
   // 服务端已不认这个 conv_id（404）：清掉，别让下一条消息顶着一个假的历史 id 发出去
   const onConversationLost = useCallback(() => updateSettings({ conversationId: '' }), [updateSettings])
+  const onCaseId = useCallback((caseId: string) => updateSettings({ caseId }), [updateSettings])
 
   const { messages, busy, restoring, send, clear } =
-    useChatStream(settings, onConversationId, onConversationLost)
+    useChatStream(settings, onConversationId, onConversationLost, onCaseId)
 
   // 这一轮建了工单：侧栏的待处理数和工单列表马上重新取，不等下一次轮询
   const latestTicket = [...messages].reverse().find((m) => m.result?.ticket_id)?.result?.ticket_id
@@ -108,12 +111,11 @@ export default function App() {
     clear()
     setChatGeneration((generation) => generation + 1)
     setPinned(null)
-    updateSettings({ conversationId: '' })
+    updateSettings({ conversationId: '', caseId: '' })
     navigate(href.chat())
   }, [clear, updateSettings, navigate])
 
   const saveConnection = useCallback((draft: ConnectionDraft) => {
-    setStaffKey(draft.staffKey)
     setStreaming(draft.streaming)
     localStorage.setItem(STREAM_KEY, draft.streaming ? 'on' : 'off')
     // 换了会话 id：先清屏，恢复历史的那个 effect 只在屏幕上没有消息时才拉
@@ -212,7 +214,8 @@ export default function App() {
           <ChatPanel key={chatGeneration}
             messages={messages} busy={busy} explain={explain} restoring={restoring}
             capabilities={health?.capabilities} routingConfig={routingConfig} base={settings.apiBaseUrl}
-            onSend={(text) => { setPinned(null); send(text, streaming) }}
+            caseId={settings.caseId} onCaseChange={caseId => { clear(); updateSettings({ caseId, conversationId: '' }) }}
+            onSend={(text, materials) => { setPinned(null); return send(text, streaming, materials) }}
             onInspect={(m) => { setPinned(m.id); setInspector(true) }}
           />
         </div>
@@ -228,7 +231,8 @@ export default function App() {
             </Suspense>
           </div>
         )}
-        {route.view === 'admin' && (
+        {route.view === 'admin' && !permissions.admin && <p role="alert">此页面需要管理员权限。</p>}
+        {route.view === 'admin' && permissions.admin && (
           <AdminPanel base={settings.apiBaseUrl} tab={route.tab} settings={settings} streaming={streaming}
                       onSave={saveConnection} inspector={inspector} theme={theme} onToggleTheme={toggle} />
         )}

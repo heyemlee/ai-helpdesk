@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { api, ApiError, getStaffKey, parseSseBlock, setStaffKey, streamRun, StreamIdle } from '../client'
+import { api, ApiError, parseSseBlock, setCsrfToken, streamRun, StreamIdle } from '../client'
 
 describe('parseSseBlock', () => {
   it('解析标准 SSE 块', () => {
@@ -32,7 +32,7 @@ describe('员工钥匙与错误文案', () => {
     headers: { 'Content-Type': 'application/json' },
   })
 
-  afterEach(() => { setStaffKey(''); vi.unstubAllGlobals() })
+  afterEach(() => { setCsrfToken(''); vi.unstubAllGlobals() })
 
   it('没配钥匙时不带 X-API-Key；配了之后每个请求都带上', async () => {
     const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => okJson({ tickets: [], stats: {} }))
@@ -41,15 +41,14 @@ describe('员工钥匙与错误文案', () => {
     await api.tickets('/api')
     expect((fetchMock.mock.calls[0]![1] as RequestInit).headers).toEqual({})
 
-    setStaffKey('  s3cret ')
-    expect(getStaffKey()).toBe('s3cret')
+    setCsrfToken('s3cret')
     await api.tickets('/api', 'open')
     expect(fetchMock.mock.calls[1]![0]).toBe('/api/tickets?limit=200&status=open')
-    expect((fetchMock.mock.calls[1]![1] as RequestInit).headers).toEqual({ 'X-API-Key': 's3cret' })
+    expect((fetchMock.mock.calls[1]![1] as RequestInit).headers).toEqual({ 'X-CSRF-Token': 's3cret' })
 
     await api.setTicketStatus('/api', 'tk_1', 'assigned')
     const init = fetchMock.mock.calls[2]![1] as RequestInit
-    expect(init.headers).toEqual({ 'X-API-Key': 's3cret', 'Content-Type': 'application/json' })
+    expect(init.headers).toEqual({ 'X-CSRF-Token': 's3cret', 'Content-Type': 'application/json' })
     expect(init.body).toBe('{"status":"assigned"}')
   })
 

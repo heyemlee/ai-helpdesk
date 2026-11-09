@@ -31,9 +31,8 @@ export default defineConfig({
       // 生产上由控制台的 nginx 在服务端加（docker/templates/default.conf.template）。
       // 8000 是 SQL Agent 本机直跑的端口；生产的那个只在 Docker 的 sql-net 上，宿主机连不到。
       '/sql-api': {
-        target: process.env.VITE_SQL_API_URL || 'http://localhost:8000',
+        target: process.env.VITE_API_URL || 'http://localhost:8080',
         changeOrigin: true,
-        rewrite: (p) => p.replace(/^\/sql-api/, ''),
       },
     },
   },

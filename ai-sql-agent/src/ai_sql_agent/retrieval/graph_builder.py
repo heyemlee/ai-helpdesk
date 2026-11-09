@@ -14,6 +14,7 @@ def build_schema_graph(
     include_join_columns: bool = True,
     min_columns_per_table: int = 0,
     table_order: Optional[Sequence[str]] = None,
+    required_tables: Optional[Sequence[str]] = None,
 ) -> SchemaGraph:
     """
     根据检索命中的字段构建 Schema 子图。
@@ -26,6 +27,8 @@ def build_schema_graph(
     - min_columns_per_table: 每张选中表在图中至少保留的字段数（0 表示不保底）。
     - table_order: 表的先后。三层检索传表级检索的排名；不传时按字段命中的先后。
       只影响先后，不影响选哪些表、哪些字段。
+    - required_tables: 已授权的表级命中，可显式参与现有每表字段保底。
+      未提供时不改变旧字段命中选择；没有可见字段或保底为0时不补表。
 
     输出：
     - 仅包含相关表、相关字段、相关关联关系的 SchemaGraph。
@@ -40,6 +43,14 @@ def build_schema_graph(
     # 不能拿 set 去重——字符串集合的遍历顺序随 PYTHONHASHSEED 变，同一个问题换一个
     # 进程，Schema 上下文里的表就换了顺序：提示词复现不了，前缀缓存也命不中。
     selected_tables = list(dict.fromkeys(hit.column.table_name for hit in hits))
+    # Explicit table-tier coverage is separate from sort-only table_order.
+    # The caller supplies authorized metadata; a zero-hit table can otherwise
+    # never receive the existing per-table floor.
+    if min_columns_per_table > 0:
+        available = {column.table_name for column in all_columns}
+        for name in required_tables or ():
+            if name in tables and name in available and name not in selected_tables:
+                selected_tables.append(name)
     if table_order:
         # 字段命中的先后由精排定，而精排文本里拼着所属表的说明：说明里恰好带着问题用词的表，
         # 所有字段一起排到前面。本地精排下，「查询板材类物料的在库数量」里 stock_snapshot 的

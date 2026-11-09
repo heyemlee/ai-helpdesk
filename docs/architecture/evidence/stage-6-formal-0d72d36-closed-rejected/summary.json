@@ -1,0 +1,766 @@
+{
+  "C3_actual_model": "gpt-6.1-sol",
+  "C3_rounds": {
+    "round-1": {
+      "correct": 130,
+      "total": 130
+    },
+    "round-2": {
+      "correct": 130,
+      "total": 130
+    },
+    "round-3": {
+      "performed": false,
+      "reason": "Current candidate rejected; do not spend a new130 review on failed round as release qualification."
+    }
+  },
+  "DevC": {
+    "closed": 2551,
+    "guard": 3000,
+    "remaining": 449,
+    "retired_budget_TEXT_and_all_costs_preserved": true
+  },
+  "G": {
+    "closed": 7079,
+    "cold_raw_sha256": "bb2e88bfb6f9f21f32f29277f9c314ba2abd22e122bcc8ad91ae000240061e51",
+    "guard": 12499,
+    "original_baseline_seed": 1379,
+    "original_preformal_prefix_and_budget_TEXT_preserved": true,
+    "retired_from_further_candidate_execution": true
+  },
+  "all_actual_supplier_writers_stopped": true,
+  "all_prior_costs_retained": true,
+  "all_seven_components_root_admitted": true,
+  "archive_index_records": 2799,
+  "archive_index_sha256": "cf92bc333afdf7666f2c8af6d858af94c42763f81b6b56705ddd3dc7827018d8",
+  "automatic_HTTP_retries": 0,
+  "automatic_campaign_relaunch": false,
+  "baseline_review_models_unchanged": "gpt-6-astra",
+  "candidate_revision": "0d72d362f5518eadab429ae9cdbe27fd0219ed47",
+  "closed_at_local": "2026-11-08T00:46:20.966595-08:00",
+  "closed_at_utc": "2026-11-08T08:46:20.965045+00:00",
+  "closeout_tool_diagnostic": "The first failed-R3 finance closer used metadata outside the original G cold-totals allowed directory. Root retained the failed invocation and immutable partial snapshot, reverified all closure/prefix/export checks, published a new metadata alias inside the original allowed directory, and completed unchanged original G accounting. No model or workload replay.",
+  "comparison_limitations": [
+    "Different reviewer models.",
+    "Not fully blinded.",
+    "Not a controlled causal ablation.",
+    "R1/R2 reviews cannot count toward another candidate."
+  ],
+  "development": {
+    "correct": 54,
+    "explicit_empty_policy_protocol_receipt_required": true,
+    "invariant_violations": 0,
+    "total": 54
+  },
+  "failed_scenarios": [
+    {
+      "id": "release-images-026",
+      "observation": "Upstream service unavailable; extraction failed, no field candidates, waiting for information. No automatic HTTP retry.",
+      "scope": "round-2",
+      "type": "accuracy_failure"
+    },
+    {
+      "id": "release-images-033",
+      "observation": "Status was extracted as [not provided]; five outcomes conflict, query unverified, waiting for information. Not regraded.",
+      "scope": "round-2",
+      "type": "accuracy_failure"
+    },
+    {
+      "all_five_image_fields_extracted_and_database_verified_correctly": true,
+      "id": "release-images-013",
+      "model_date_table_violation_sentence": "| 日期 | 2026-11-13 | 待核实；对应来源字段定义为**计划送货日期**，不是实际送达或安装日期 |",
+      "model_explicit_handoff_retained": true,
+      "observation": "Label document held verified order fields. The continuation routed to missing_part; an extra unverified query and model answer led to an explicit handoff. The rendered draft had correct five verified facts, but the original handoff was retained.",
+      "scope": "round-3",
+      "type": "unauthorized_or_duplicate_handoff"
+    }
+  ],
+  "formal_new_usage": {
+    "known_input_tokens": 32503489,
+    "known_output_tokens": 591027,
+    "requests": 5656,
+    "unknown": 2
+  },
+  "formal_rounds": [
+    {
+      "accuracy": 1.0,
+      "actual_usage": {
+        "end": 3313,
+        "finished_unknown_in_interval": 1,
+        "new_requests": 1890,
+        "start": 1423,
+        "successful_HTTP_receipts_in_interval": 1889,
+        "unknown_not_refunded": true
+      },
+      "business_resolved": 0,
+      "complete": true,
+      "correct": 200,
+      "error_counts": {},
+      "groups": {
+        "cross_message": {
+          "accuracy": 1.0,
+          "correct": 50,
+          "total": 50
+        },
+        "images": {
+          "accuracy": 1.0,
+          "correct": 40,
+          "total": 40
+        },
+        "orders": {
+          "accuracy": 1.0,
+          "correct": 60,
+          "total": 60
+        },
+        "policies": {
+          "accuracy": 1.0,
+          "correct": 50,
+          "total": 50
+        }
+      },
+      "image_extraction": {
+        "date/all": {
+          "correct": 40,
+          "total": 40
+        },
+        "date/clear": {
+          "correct": 39,
+          "total": 39
+        },
+        "date/unclear": {
+          "correct": 1,
+          "total": 1
+        },
+        "model/all": {
+          "correct": 40,
+          "total": 40
+        },
+        "model/clear": {
+          "correct": 39,
+          "total": 39
+        },
+        "model/unclear": {
+          "correct": 1,
+          "total": 1
+        },
+        "order_ref/all": {
+          "correct": 40,
+          "total": 40
+        },
+        "order_ref/clear": {
+          "correct": 38,
+          "total": 38
+        },
+        "order_ref/missing": {
+          "correct": 1,
+          "total": 1
+        },
+        "order_ref/unclear": {
+          "correct": 1,
+          "total": 1
+        },
+        "quantity/all": {
+          "correct": 40,
+          "total": 40
+        },
+        "quantity/clear": {
+          "correct": 39,
+          "total": 39
+        },
+        "quantity/missing": {
+          "correct": 1,
+          "total": 1
+        },
+        "status/all": {
+          "correct": 40,
+          "total": 40
+        },
+        "status/clear": {
+          "correct": 39,
+          "total": 39
+        },
+        "status/missing": {
+          "correct": 1,
+          "total": 1
+        }
+      },
+      "image_fields": {
+        "date/all": {
+          "correct": 40,
+          "total": 40
+        },
+        "date/conflict": {
+          "correct": 3,
+          "total": 3
+        },
+        "date/matched": {
+          "correct": 32,
+          "total": 32
+        },
+        "date/unclear": {
+          "correct": 1,
+          "total": 1
+        },
+        "date/unverified": {
+          "correct": 4,
+          "total": 4
+        },
+        "model/all": {
+          "correct": 40,
+          "total": 40
+        },
+        "model/conflict": {
+          "correct": 3,
+          "total": 3
+        },
+        "model/matched": {
+          "correct": 33,
+          "total": 33
+        },
+        "model/unclear": {
+          "correct": 1,
+          "total": 1
+        },
+        "model/unverified": {
+          "correct": 3,
+          "total": 3
+        },
+        "order_ref/all": {
+          "correct": 40,
+          "total": 40
+        },
+        "order_ref/conflict": {
+          "correct": 2,
+          "total": 2
+        },
+        "order_ref/matched": {
+          "correct": 31,
+          "total": 31
+        },
+        "order_ref/missing": {
+          "correct": 1,
+          "total": 1
+        },
+        "order_ref/unclear": {
+          "correct": 1,
+          "total": 1
+        },
+        "order_ref/unverified": {
+          "correct": 5,
+          "total": 5
+        },
+        "quantity/all": {
+          "correct": 40,
+          "total": 40
+        },
+        "quantity/conflict": {
+          "correct": 3,
+          "total": 3
+        },
+        "quantity/matched": {
+          "correct": 32,
+          "total": 32
+        },
+        "quantity/missing": {
+          "correct": 1,
+          "total": 1
+        },
+        "quantity/unverified": {
+          "correct": 4,
+          "total": 4
+        },
+        "status/all": {
+          "correct": 40,
+          "total": 40
+        },
+        "status/conflict": {
+          "correct": 3,
+          "total": 3
+        },
+        "status/matched": {
+          "correct": 32,
+          "total": 32
+        },
+        "status/missing": {
+          "correct": 1,
+          "total": 1
+        },
+        "status/unverified": {
+          "correct": 4,
+          "total": 4
+        }
+      },
+      "invariant_violations": 0,
+      "missing": [],
+      "number": 1,
+      "release_quality_passed": true,
+      "run_terminal": 200,
+      "total": 200
+    },
+    {
+      "accuracy": 0.99,
+      "actual_usage": {
+        "end": 5189,
+        "finished_unknown_in_interval": 1,
+        "new_requests": 1876,
+        "start": 3313,
+        "successful_HTTP_receipts_in_interval": 1875,
+        "unknown_not_refunded": true
+      },
+      "business_resolved": 0,
+      "complete": true,
+      "correct": 198,
+      "error_counts": {
+        "case_status_mismatch": 1,
+        "image_field:date": 2,
+        "image_field:model": 2,
+        "image_field:order_ref": 2,
+        "image_field:quantity": 2,
+        "image_field:status": 2,
+        "pending_fields_mismatch": 2,
+        "required_fact_missing:model": 1,
+        "required_sources_missing": 1,
+        "unproven_visible_prose:材料已保存，请补充：图片核实：日期、图片核实：缺件型号、图片核实：订单号、图片核实：缺件数量、图片核实：业务状态。": 1,
+        "unproven_visible_prose:核验服务暂时不可用，图片核验未完成；原图已保留。": 1
+      },
+      "groups": {
+        "cross_message": {
+          "accuracy": 1.0,
+          "correct": 50,
+          "total": 50
+        },
+        "images": {
+          "accuracy": 0.95,
+          "correct": 38,
+          "total": 40
+        },
+        "orders": {
+          "accuracy": 1.0,
+          "correct": 60,
+          "total": 60
+        },
+        "policies": {
+          "accuracy": 1.0,
+          "correct": 50,
+          "total": 50
+        }
+      },
+      "image_extraction": {
+        "date/all": {
+          "correct": 39,
+          "total": 40
+        },
+        "date/clear": {
+          "correct": 38,
+          "total": 39
+        },
+        "date/unclear": {
+          "correct": 1,
+          "total": 1
+        },
+        "model/all": {
+          "correct": 39,
+          "total": 40
+        },
+        "model/clear": {
+          "correct": 38,
+          "total": 39
+        },
+        "model/unclear": {
+          "correct": 1,
+          "total": 1
+        },
+        "order_ref/all": {
+          "correct": 39,
+          "total": 40
+        },
+        "order_ref/clear": {
+          "correct": 37,
+          "total": 38
+        },
+        "order_ref/missing": {
+          "correct": 1,
+          "total": 1
+        },
+        "order_ref/unclear": {
+          "correct": 1,
+          "total": 1
+        },
+        "quantity/all": {
+          "correct": 39,
+          "total": 40
+        },
+        "quantity/clear": {
+          "correct": 38,
+          "total": 39
+        },
+        "quantity/missing": {
+          "correct": 1,
+          "total": 1
+        },
+        "status/all": {
+          "correct": 38,
+          "total": 40
+        },
+        "status/clear": {
+          "correct": 38,
+          "total": 39
+        },
+        "status/missing": {
+          "correct": 0,
+          "total": 1
+        }
+      },
+      "image_fields": {
+        "date/all": {
+          "correct": 38,
+          "total": 40
+        },
+        "date/conflict": {
+          "correct": 3,
+          "total": 3
+        },
+        "date/matched": {
+          "correct": 30,
+          "total": 32
+        },
+        "date/unclear": {
+          "correct": 1,
+          "total": 1
+        },
+        "date/unverified": {
+          "correct": 4,
+          "total": 4
+        },
+        "model/all": {
+          "correct": 38,
+          "total": 40
+        },
+        "model/conflict": {
+          "correct": 3,
+          "total": 3
+        },
+        "model/matched": {
+          "correct": 31,
+          "total": 33
+        },
+        "model/unclear": {
+          "correct": 1,
+          "total": 1
+        },
+        "model/unverified": {
+          "correct": 3,
+          "total": 3
+        },
+        "order_ref/all": {
+          "correct": 38,
+          "total": 40
+        },
+        "order_ref/conflict": {
+          "correct": 2,
+          "total": 2
+        },
+        "order_ref/matched": {
+          "correct": 29,
+          "total": 31
+        },
+        "order_ref/missing": {
+          "correct": 1,
+          "total": 1
+        },
+        "order_ref/unclear": {
+          "correct": 1,
+          "total": 1
+        },
+        "order_ref/unverified": {
+          "correct": 5,
+          "total": 5
+        },
+        "quantity/all": {
+          "correct": 38,
+          "total": 40
+        },
+        "quantity/conflict": {
+          "correct": 3,
+          "total": 3
+        },
+        "quantity/matched": {
+          "correct": 30,
+          "total": 32
+        },
+        "quantity/missing": {
+          "correct": 1,
+          "total": 1
+        },
+        "quantity/unverified": {
+          "correct": 4,
+          "total": 4
+        },
+        "status/all": {
+          "correct": 38,
+          "total": 40
+        },
+        "status/conflict": {
+          "correct": 3,
+          "total": 3
+        },
+        "status/matched": {
+          "correct": 31,
+          "total": 32
+        },
+        "status/missing": {
+          "correct": 0,
+          "total": 1
+        },
+        "status/unverified": {
+          "correct": 4,
+          "total": 4
+        }
+      },
+      "invariant_violations": 0,
+      "missing": [],
+      "number": 2,
+      "release_quality_passed": true,
+      "run_terminal": 200,
+      "total": 200
+    },
+    {
+      "accuracy": 0.995,
+      "actual_usage": {
+        "end": 7079,
+        "finished_unknown_in_interval": 0,
+        "new_requests": 1890,
+        "start": 5189,
+        "successful_HTTP_receipts_in_interval": 1890,
+        "unknown_not_refunded": true
+      },
+      "business_resolved": 0,
+      "complete": true,
+      "correct": 199,
+      "error_counts": {},
+      "groups": {
+        "cross_message": {
+          "accuracy": 1.0,
+          "correct": 50,
+          "total": 50
+        },
+        "images": {
+          "accuracy": 0.975,
+          "correct": 39,
+          "total": 40
+        },
+        "orders": {
+          "accuracy": 1.0,
+          "correct": 60,
+          "total": 60
+        },
+        "policies": {
+          "accuracy": 1.0,
+          "correct": 50,
+          "total": 50
+        }
+      },
+      "image_extraction": {
+        "date/all": {
+          "correct": 40,
+          "total": 40
+        },
+        "date/clear": {
+          "correct": 39,
+          "total": 39
+        },
+        "date/unclear": {
+          "correct": 1,
+          "total": 1
+        },
+        "model/all": {
+          "correct": 40,
+          "total": 40
+        },
+        "model/clear": {
+          "correct": 39,
+          "total": 39
+        },
+        "model/unclear": {
+          "correct": 1,
+          "total": 1
+        },
+        "order_ref/all": {
+          "correct": 40,
+          "total": 40
+        },
+        "order_ref/clear": {
+          "correct": 38,
+          "total": 38
+        },
+        "order_ref/missing": {
+          "correct": 1,
+          "total": 1
+        },
+        "order_ref/unclear": {
+          "correct": 1,
+          "total": 1
+        },
+        "quantity/all": {
+          "correct": 40,
+          "total": 40
+        },
+        "quantity/clear": {
+          "correct": 39,
+          "total": 39
+        },
+        "quantity/missing": {
+          "correct": 1,
+          "total": 1
+        },
+        "status/all": {
+          "correct": 40,
+          "total": 40
+        },
+        "status/clear": {
+          "correct": 39,
+          "total": 39
+        },
+        "status/missing": {
+          "correct": 1,
+          "total": 1
+        }
+      },
+      "image_fields": {
+        "date/all": {
+          "correct": 40,
+          "total": 40
+        },
+        "date/conflict": {
+          "correct": 3,
+          "total": 3
+        },
+        "date/matched": {
+          "correct": 32,
+          "total": 32
+        },
+        "date/unclear": {
+          "correct": 1,
+          "total": 1
+        },
+        "date/unverified": {
+          "correct": 4,
+          "total": 4
+        },
+        "model/all": {
+          "correct": 40,
+          "total": 40
+        },
+        "model/conflict": {
+          "correct": 3,
+          "total": 3
+        },
+        "model/matched": {
+          "correct": 33,
+          "total": 33
+        },
+        "model/unclear": {
+          "correct": 1,
+          "total": 1
+        },
+        "model/unverified": {
+          "correct": 3,
+          "total": 3
+        },
+        "order_ref/all": {
+          "correct": 40,
+          "total": 40
+        },
+        "order_ref/conflict": {
+          "correct": 2,
+          "total": 2
+        },
+        "order_ref/matched": {
+          "correct": 31,
+          "total": 31
+        },
+        "order_ref/missing": {
+          "correct": 1,
+          "total": 1
+        },
+        "order_ref/unclear": {
+          "correct": 1,
+          "total": 1
+        },
+        "order_ref/unverified": {
+          "correct": 5,
+          "total": 5
+        },
+        "quantity/all": {
+          "correct": 40,
+          "total": 40
+        },
+        "quantity/conflict": {
+          "correct": 3,
+          "total": 3
+        },
+        "quantity/matched": {
+          "correct": 32,
+          "total": 32
+        },
+        "quantity/missing": {
+          "correct": 1,
+          "total": 1
+        },
+        "quantity/unverified": {
+          "correct": 4,
+          "total": 4
+        },
+        "status/all": {
+          "correct": 40,
+          "total": 40
+        },
+        "status/conflict": {
+          "correct": 3,
+          "total": 3
+        },
+        "status/matched": {
+          "correct": 32,
+          "total": 32
+        },
+        "status/missing": {
+          "correct": 1,
+          "total": 1
+        },
+        "status/unverified": {
+          "correct": 4,
+          "total": 4
+        }
+      },
+      "invariant_violations": 1,
+      "missing": [],
+      "number": 3,
+      "release_quality_passed": false,
+      "run_terminal": 200,
+      "total": 200
+    }
+  ],
+  "global_totals": {
+    "known_input_tokens": 188178596,
+    "known_output_tokens": 3506809,
+    "new_requests": 27125,
+    "requests": 33498,
+    "unknown": 14
+  },
+  "images": {
+    "backend": "sha256:54fccde0be04bbc7ae1f5b5f31c6ae2a25ec604be81faada8c8e903eb15b2c1c",
+    "frontend": "sha256:5a0cb055f9f0fdc02507e819c15c991d1a71164a48dab419318365f5d740870e",
+    "sql": "sha256:dd9c6eb597f9b936282d4f3031127752565d0fd265b71c3ddcaf41fe068f461e"
+  },
+  "new_C3_independent_reviews_completed": 260,
+  "next": "Implement scoped repair, canonical backend validation and new clean candidate; fresh full54/all7/three200/fresh390; original final gate, complete pack and actual receive verification.",
+  "no_refunds_resets_or_new_initialization_in_closeout": true,
+  "original_final_gate_pack_receive_performed": false,
+  "production_deployed": false,
+  "release_eligible": false,
+  "repair_status": "Read-only design review; product code not yet modified.",
+  "same_frozen_200_scenarios_repeated_not_600_unique": true,
+  "status": "CLOSED_REJECTED_THIRD_ROUND_INVARIANT",
+  "supplier_tariff_unverified_dollar_fee_unknown": true,
+  "unknown_usage_never_treated_as_zero": true
+}

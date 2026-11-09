@@ -19,6 +19,9 @@ import time
 import uuid
 from contextvars import ContextVar
 
+from app.core.redaction import RedactingFormatter
+from app.core.redaction import text as redact
+
 # 当前请求的 request_id。默认 "-" 表示不在请求上下文中（启动日志、后台任务等）。
 request_id_var: ContextVar[str] = ContextVar("request_id", default="-")
 
@@ -62,7 +65,7 @@ class JsonFormatter(logging.Formatter):
             pass
         if record.exc_info and record.exc_info[0] is not None:
             payload["exc_info"] = self.formatException(record.exc_info)
-        return json.dumps(payload, ensure_ascii=False)
+        return redact(json.dumps(payload, ensure_ascii=False))
 
 
 def setup_logging(level: str = "INFO", fmt: str = "text") -> None:
@@ -78,7 +81,7 @@ def setup_logging(level: str = "INFO", fmt: str = "text") -> None:
     if fmt.lower() == "json":
         handler.setFormatter(JsonFormatter())
     else:
-        handler.setFormatter(logging.Formatter(
+        handler.setFormatter(RedactingFormatter(
             "%(asctime)s [%(levelname)s] [%(request_id)s] %(name)s: %(message)s"
         ))
     root.handlers.clear()

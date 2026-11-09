@@ -53,6 +53,7 @@ class FollowsModelSettings:
                 self.URL_FIELD: lambda settings: settings.chat_url,
                 "model": lambda settings: getattr(settings, self.MODEL_SETTING),
                 "provider": lambda settings: settings.model_provider,
+                "api_mode": lambda settings: settings.openai_api_mode,
             },
         )
         self._connection_lock = threading.Lock()
@@ -68,6 +69,7 @@ class FollowsModelSettings:
                     api_key=self.config.api_key,
                     timeout=self.config.timeout,
                     provider=self.config.provider,
+                    api_mode=self.config.api_mode,
                 )
             return ModelConnection(
                 transport=self.transport,

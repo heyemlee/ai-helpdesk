@@ -1,0 +1,1251 @@
+{
+  "kind": "closed_rejected_development_43f52d6_artifact_index_v1",
+  "candidate_revision": "43f52d6131e01188f01d68afcebe51ae4d783903",
+  "entries": [
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/build-43f52d6-launch.json",
+      "sha256": "813ceb6437c28257271d03ada627c0cb83cdd9590d432118a0b8711c9cff4ed4",
+      "bytes": 908
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/build-43f52d6.log",
+      "sha256": "b308ad48d7b90c9ae717eb5a1a910e104a669d88050f90e71d8dea672d1835cc",
+      "bytes": 8663
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/candidate-43f52d6.json",
+      "sha256": "cc35e05e6d9b9ebe4cf90df83fcc868859dae30f32b6cb73535d6ddf73292d11",
+      "bytes": 405
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/candidate-source-43f52d6-manifest.json",
+      "sha256": "2791296e4db2b959ea2f5c3b8d1ab52f3dad75c8651efea9ed6660ebaa2b3ce9",
+      "bytes": 177119
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/candidate-source-43f52d6.tar",
+      "sha256": "f8d0b6779c606b27fa2cf7254202029c79b7153cb53437c258eb81972ace4939",
+      "bytes": 40069120
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/collect-closed-image-authority-v4.py",
+      "sha256": "108997a64a65013c5a017f29eb379964afd0a65831935542dbcac04b9a5abf68",
+      "bytes": 17296
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/agent_runs.json",
+      "sha256": "62122b7223654e91599b8c183cfdb8ee17cfe8b4a6940127683adb21aff44ce3",
+      "bytes": 1561866
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/candidate.json",
+      "sha256": "8ef202f0deeb915113e4160b02478d3bdb73487e73c0f5abecf81b61e22a24df",
+      "bytes": 406
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/case_events.json",
+      "sha256": "c98278f58a38455850ab93cd0bc4a9ffec98d4b1e8e371436c8223d9de8dab22",
+      "bytes": 57267
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/case_image_reviews.json",
+      "sha256": "cfad57379b86816093bc00b5163dd15d9535271c68ade43859953ce6efc733ec",
+      "bytes": 125445
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/compose.log",
+      "sha256": "01aee9f76243106cfe77c9bec4266d018c37204e48d5f91fd66ea140b0114d2c",
+      "bytes": 1371133
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/containers-shutdown.log",
+      "sha256": "1131f2e41f36735cafcf9df83baf19bc5db385e393bf9eb4658151845e161269",
+      "bytes": 704596
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/containers.log",
+      "sha256": "c8038f7d18f0b203509bcb69ac7a4419afd400353eed1dcf4b1d1ec7d81a65ff",
+      "bytes": 648972
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-cross_message-001.json",
+      "sha256": "c33a83485b45d346f6ae1f2b57af13ec1f7798f2d6d61622f0b044ce36500c97",
+      "bytes": 45551
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-cross_message-002.json",
+      "sha256": "64dc20cc8e9ef017f388c8f045cc8e6389872a09a25e79aa056478513569796c",
+      "bytes": 74038
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-cross_message-003.json",
+      "sha256": "cefb339facdd2e1e53044956cd94a32b8e2344bebcd0f3dfb710ac83a9495c07",
+      "bytes": 91053
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-cross_message-004.json",
+      "sha256": "b4ba3516ff0cbd5f9d37ddc6e1047872df2470a7aca0d0968fb663a0d7dcc86a",
+      "bytes": 74625
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-cross_message-005.json",
+      "sha256": "dae3f709e443e27a6453f8f354fa6c01a993b1bbf0e91e36bd5e36191d39f10d",
+      "bytes": 74646
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-cross_message-006.json",
+      "sha256": "f45bf24aa332b0fc3629726e78d8b99e4d0ef4c09c892ef80e124242d80d4244",
+      "bytes": 45551
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-cross_message-007.json",
+      "sha256": "f319f1566f6ca0e3cb955e06970fdfc771965a0f6152942d42d291e67757bef9",
+      "bytes": 74036
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-cross_message-008.json",
+      "sha256": "22e583d8ab95b9daa00e893ad4bb82f351ed37e0a6b5d897c22a776821cbea11",
+      "bytes": 91093
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-cross_message-009.json",
+      "sha256": "f5f23c26360a45bc47c254a8b684fcc62d2b6d907e4a671289432e4179c26ebc",
+      "bytes": 74643
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-cross_message-010.json",
+      "sha256": "e97b45a1417e4ec256513a73003eb4ebc23cd1b2617ccd1ed2ba7e2de43a3213",
+      "bytes": 74712
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-images-001.json",
+      "sha256": "2f4939378905c88139474b235a1b0326f5fc852645823702eba003f03c946c1e",
+      "bytes": 68271
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-images-002.json",
+      "sha256": "838abfd0edb337d929ba7e71e9d7d233d7c9a6f9255977555a826bd4814d189b",
+      "bytes": 75428
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-images-003.json",
+      "sha256": "f7ca3dacb00821967cf6296ce3aa551209badc9d6fe5d3e304cd241f152d5a58",
+      "bytes": 68847
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-images-004.json",
+      "sha256": "97fe5f2870fa67fbbef706985064bb388c22653a7f3a0b8a28e58dbaddf79401",
+      "bytes": 68831
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-images-005.json",
+      "sha256": "930fc4572c146fb76f0a2f30b8de478cf340df6faa494244f3044ec8e4a495b9",
+      "bytes": 81239
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-images-006.json",
+      "sha256": "89f91b136a0adad4b79c75bf92bda6d721a8378beeb4532344956919d8ebd2d7",
+      "bytes": 48536
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-images-007.json",
+      "sha256": "e8fafe0770872ababd28bfa21bf77275d767e110ade0cbaa045c93a23a5490a1",
+      "bytes": 16477
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-images-008.json",
+      "sha256": "28b003e52058c3e46e288465adae3169ca12e093c70445b69c01531a889b5284",
+      "bytes": 48060
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-images-009.json",
+      "sha256": "c1bd513c79e0164fa7f0048426551ab0b2b75b6f8cb92e3d8b47413f7ec6a9a7",
+      "bytes": 46732
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-images-010.json",
+      "sha256": "943b2ec3966bedd30b500966ff2f5332b33f0262623291aaeb8429071ecc4603",
+      "bytes": 43623
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-images-011.json",
+      "sha256": "4d2a518ea5150d244c599c2c702a66c48b42f3ab7d1d5fbcde8dad8a68f78507",
+      "bytes": 16471
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-images-012.json",
+      "sha256": "a03c1b91187b78990e0669344277695f5282663fa978b2f05382a5e4206278e0",
+      "bytes": 28747
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-images-013.json",
+      "sha256": "bf05ae1b1548b15fcb17ba5f2879ec515119a44e21cf118ff8244f2f9a2d6528",
+      "bytes": 28733
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-images-014.json",
+      "sha256": "15274c696130d843813ea8added5c095be575b48ea7d1592866b7ef2f9f61bff",
+      "bytes": 28769
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-images-015.json",
+      "sha256": "96dfd8204eb701b7efc22bb23e9f25cb3bf9009b6014d58dc294cde2395c1155",
+      "bytes": 28706
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-orders-001.json",
+      "sha256": "09678e9b41c7a62f23c7f1af6090bea0c0773b74c71698579f9db68483c5faa2",
+      "bytes": 15542
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-orders-002.json",
+      "sha256": "38d4d3acef2587cb431a29011a1f1adef3fb6558f85cbfc2255dc07ce9aaf575",
+      "bytes": 15576
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-orders-003.json",
+      "sha256": "bc54e2279f67a6dede7d99f58a6ea7e0122e9c032338f301e18b35aa6e8da4e7",
+      "bytes": 46584
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-orders-004.json",
+      "sha256": "7ae1ab6a8c3f12b141ba5bce775c45b6260a57f23549cfdf0b0c115e452dc946",
+      "bytes": 25806
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-orders-005.json",
+      "sha256": "98b736d9ecd75a460e1baa678b199d5df799f0b37411caddf711d985a1af0161",
+      "bytes": 26757
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-orders-006.json",
+      "sha256": "a6035df4c17df639f3503fb53e25cfd45cd29321f398dc2a56c024e071b96a8a",
+      "bytes": 14202
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-orders-007.json",
+      "sha256": "c6d5a728c14cb23cb8e1b66496ab9c5fc419d82461de0f0ebdf120ecd6b8b59b",
+      "bytes": 55281
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-orders-008.json",
+      "sha256": "04e1990de1b7ecaf69f5c93da760fb0056e2af5f75205c099a7d9cb357b6d9a7",
+      "bytes": 54133
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-orders-009.json",
+      "sha256": "41da9398c0509512485cb02d5c7f8b29eb419b741ea4ac63f05d345be3369170",
+      "bytes": 46646
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-orders-010.json",
+      "sha256": "1aae26a560509590817236b03fa00a9758db39bf96005960adc7ad80b588f07b",
+      "bytes": 25829
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-orders-011.json",
+      "sha256": "82c443b5235716b817e6f97be2541f80d4da95484611ccab07a0eabbf15c0092",
+      "bytes": 26722
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-orders-012.json",
+      "sha256": "60daf515d178a2cfb2b43ad48237dd8f2cd16f5c54d5651f3a50c30e21eac9e9",
+      "bytes": 28759
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-orders-013.json",
+      "sha256": "d9c3e240340a49d180e87c60004843f9abaf4b57bd4d8c829ab507459bc52dcc",
+      "bytes": 55268
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-orders-014.json",
+      "sha256": "4b6245edf0c3516b2f39cd50b3dd6ac76923c488a5082fe0bd53b3a5cb5b8753",
+      "bytes": 54137
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-policies-001.json",
+      "sha256": "42257adb608ac49a85458777e52bc67b763141a61fa2c1a936712cb596a997ec",
+      "bytes": 22506
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-policies-002.json",
+      "sha256": "a16bafbcef5d09bbe80a3048b403ecde8090f3495ef951b499a15c83d80c4e6c",
+      "bytes": 22693
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-policies-003.json",
+      "sha256": "5a9bcf6ba80f535571dc81d10edc47d7d9d12b69200edfd18d40726b19bc25d3",
+      "bytes": 22230
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-policies-004.json",
+      "sha256": "998c9192393a8d8d7e34bae3b8376257bfdf1ff0ee3cd6721045338ca6a02f74",
+      "bytes": 27041
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-policies-005.json",
+      "sha256": "030f4e282d876ec14b5be421098dd506c79e78ba409352bd7bba2940824001f8",
+      "bytes": 39587
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-policies-006.json",
+      "sha256": "5ad52b8b98fd8b90dbfd41de2d0e1368990c579088e66961bc234d60454daaf1",
+      "bytes": 23015
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-policies-007.json",
+      "sha256": "f2f597320293630b8740c8eb586c5364762d3312809314f62f14595448daaff1",
+      "bytes": 23035
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-policies-008.json",
+      "sha256": "9698f4c90c6b7a8e721307c4742c5be6d48b3ee0dc5373cb43c5e0d520deb561",
+      "bytes": 22278
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-policies-009.json",
+      "sha256": "c8e587da922fb371772e432e20276c353101249b7a2e26b55c2ace73a9cda6e8",
+      "bytes": 27038
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-policies-010.json",
+      "sha256": "b4657a1afaeb5920e27891fa995e1d276a491aca786f14277f757448445fd515",
+      "bytes": 39586
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-policies-011.json",
+      "sha256": "4d6cafdadcad400986f41bfd3c91aab2c6b5db4d5895fa2ccfd256fb3de4890b",
+      "bytes": 22506
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-policies-012.json",
+      "sha256": "4ddbce3862ee74d60bc3535a50dd4ac7ba67a34246633b01131d0a14863bd993",
+      "bytes": 22506
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-policies-013.json",
+      "sha256": "341099a90e89115e8db51ec69cd1ce4ccc56ecc73486863a34a91b87ec988457",
+      "bytes": 22238
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-policies-014.json",
+      "sha256": "192034672aa0be9a063437852e7e11821c83644f9ad9b96afd893544a1c240a7",
+      "bytes": 27038
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/development-policies-015.json",
+      "sha256": "a18acf7403ab463f50bb09d9ccc7f2c3d61721b34fcde3e3f595a574ef9751f5",
+      "bytes": 39584
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/__init__.py",
+      "sha256": "81468220d4bad9e4806ac27043d1c827637afe35346ebb22bf3f83c762bc6cb2",
+      "bytes": 83
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/assemble.py",
+      "sha256": "7de012568a7cd385de7409d7825534f3fd21e6570dc357e8d72607bcf95a0949",
+      "bytes": 2470
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/baseline.py",
+      "sha256": "28e44a0903a5f0bad21aa23f37bd4892e5dc8ee9ed24d51e6dfffd627b7953f3",
+      "bytes": 6836
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/browser_run.py",
+      "sha256": "3a715da38a7f4be347e488b05b16b6566af4a8ff9693472170d34c44298c571d",
+      "bytes": 2564
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/budget.py",
+      "sha256": "528ddcd795a9604e6d2ab58be452d96c96270badd3a55dce6e15316530694b18",
+      "bytes": 7274
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/bundle.py",
+      "sha256": "9cf9a848ade3a45c556bfa42c2dc1b0e9114084a79379d0264585102e8565bcf",
+      "bytes": 5154
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/campaign.py",
+      "sha256": "f8ed2b8c6a81f6ccb17218e5c07111a79ee140783d4696cc163e246d2d78ab97",
+      "bytes": 6639
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/common.py",
+      "sha256": "4da7b1ef9464da37d1ec02b90c76b085c1affed80e29e27833664fea57e5a8a1",
+      "bytes": 1799
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/common_facts.py",
+      "sha256": "af1d3494a202bee84371fd0f0e08ca7dee91a0ba7fd3adde014b7ff5834bfb2d",
+      "bytes": 36224
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/comparison.py",
+      "sha256": "78c5d0d1d20957b70a1d0614b1ad248865233c54a0c3a4135e1de78587ab159f",
+      "bytes": 1162
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/configuration.py",
+      "sha256": "11657a7eb897b8f787dcd333324899767c7cb1598cf1321a3f65942968c4b3f9",
+      "bytes": 558
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/container_stack.py",
+      "sha256": "43fde6471dc281249c5a9e088cb8374e395b9c155cfb7f5758c5addc63ed3bbe",
+      "bytes": 15554
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/cost_plan.py",
+      "sha256": "aa1550b509ee14da2f7c4151cf3e8e6313c6ef963767fd33ba7056431586e6d8",
+      "bytes": 3952
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/evidence.py",
+      "sha256": "8ff1430efa5e678f33cd9e622ff1c62311bac357e15643b859a31253a2816b60",
+      "bytes": 1240
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/fault_probe.py",
+      "sha256": "57574d5372e537ff25fb207c405d0a9848f1376e06f42e3b4afad9d5ef5ea036",
+      "bytes": 4208
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/faults.py",
+      "sha256": "093dfb3ee766b203b8dfc27e088b8ca47dd53b19e07c674f54b5f5eadc2f4732",
+      "bytes": 9116
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/gate.py",
+      "sha256": "0225c4f478401ad9a872d74fd1b6855d66be0e79dfdaf096bf77599599248eb9",
+      "bytes": 18115
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/gateway.py",
+      "sha256": "4a84f3789d4b60efbd9792096d985f5570239dbb73d4b04afe9fc204e211d583",
+      "bytes": 10193
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/generate.py",
+      "sha256": "8c3181f14b34c30fa5079d9c391c4ac13ededba8ff88ff8f7a1578295ed876e2",
+      "bytes": 29205
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/invariant_oracle.py",
+      "sha256": "46505c5cce44ba58161164670c6f335457a91929dd66c25f34f478a2f0d2896f",
+      "bytes": 3368
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/load.py",
+      "sha256": "00195a0d3993465372ebb7ce6f14a5a7ee1724739ff800afb6061a10b30e7315",
+      "bytes": 13225
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/load_evidence.py",
+      "sha256": "dc52c59c52dd7c2aab2fafc5c9fed342f18a357ebceb9d4c1fb7841bebea80ac",
+      "bytes": 4608
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/load_sample.py",
+      "sha256": "44c57fc9a449fbaeb62f950f787d0d80d7e7c0bdf9e1eaebd48eef5cc001fa27",
+      "bytes": 2564
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/oracle.py",
+      "sha256": "3999bd7e01c976ffd65b59999dd0d8fa53ff50b1fcb343f9f22f0bd006801ae1",
+      "bytes": 33098
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/recovery_campaign.py",
+      "sha256": "52f9648af00f5061297b7cbd8776f141429b07b95d62dcee5537e6d31ef21899",
+      "bytes": 1216
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/recovery_evidence.py",
+      "sha256": "80d9db2536c5215c2f81692d5a0e5138084ead8a9cf84391fe79c0a5549e296a",
+      "bytes": 3614
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/review.py",
+      "sha256": "f333236dea47763023a6d942f81228d1aa04fa4024bdeb0a41e7e41d1ccaf842",
+      "bytes": 3669
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/revise_v3.py",
+      "sha256": "f734b49f98f527be630d54c0800fab8fbb4629e3e6038f0828352e9e9296f2eb",
+      "bytes": 10128
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/runner.py",
+      "sha256": "dc0c1551b30ccb8ce43bdeb0dca7b86f3e32f5318603fd4d2e1c5c96b496ec8a",
+      "bytes": 13777
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/runtime.py",
+      "sha256": "c39c53f8cfec8cc33cbef9a8c2ac18d4dad06f67083b102766620849460d9fc3",
+      "bytes": 2475
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/seed.py",
+      "sha256": "88d6ced26302743824f2584e52ba6ca1c45ea16668b6d3be6d4982a0295ca736",
+      "bytes": 3538
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/simulated_provider.py",
+      "sha256": "f05d7f913e0fc78afe2335a2f0437a0b4773acf609e3a2ee021eb10cb916f48b",
+      "bytes": 8800
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/source_semantics.py",
+      "sha256": "d79a36c672a77d31f5787369fc7cf37bf1ce5c0155920c7df109db783d66a294",
+      "bytes": 13531
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/stack.py",
+      "sha256": "2173e894c23b64b3af8c9e877ec7e0cb00ae3bb2b1418e6153209b852935358d",
+      "bytes": 12638
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/tests/test_acceptance.py",
+      "sha256": "0d2342a20e47939b957b3a3eda2085863fed3498ec3733caa7daed3baf1e42f3",
+      "bytes": 32827
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/tests/test_common_formats.py",
+      "sha256": "85f210275862be4647362955815a901dcf77267965ff481e4b45e6cae00bf4b5",
+      "bytes": 13894
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/tests/test_common_review_boundary.py",
+      "sha256": "88503c94080a9df40ed2db9030b25f7ab3d092ca85b52b3785ccbbc48f54ff94",
+      "bytes": 16248
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/tests/test_container_mounts.py",
+      "sha256": "044e4e7b1863666a7dbef8539c0600dea2869b5f8b613c965fd293a0e688e6b5",
+      "bytes": 6469
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/tests/test_corpus_revision.py",
+      "sha256": "7f30cc7ecc09550991776342ea51e953ec902f36ccbbba25f017e2d0d42710c4",
+      "bytes": 10603
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/tests/test_development_runner.py",
+      "sha256": "ec1fe3584f6f526f6ae39b2034763985d76abdc7daa6111c1fd108c92f3612ef",
+      "bytes": 5031
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/tests/test_oracle_recordings.py",
+      "sha256": "90571af909998598d7b2de2d80954cd0f65ce2e95fe5d4e425621d021b54ab07",
+      "bytes": 13370
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/tests/test_runner_run_evidence.py",
+      "sha256": "aabaeca45458f582413211aea21bbc722ae16756886cfbeee923f40d0ec5f06c",
+      "bytes": 11624
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/tests/test_source_semantics.py",
+      "sha256": "23223def603d8ec3116f04c9e63e0e20f75f03e8db4c76cfd6813d60a32fde75",
+      "bytes": 37596
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/trust.py",
+      "sha256": "c659c3a4093435c8fde0d10999c3600e53e5376f4e250219417d0fd226f8ea2a",
+      "bytes": 1152
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution-helper/usage_evidence.py",
+      "sha256": "596c4b914b5bd08e04ea6ef1afc3506603ab3f14e70ef826dbd23b7cfa78972d",
+      "bytes": 5813
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution.json",
+      "sha256": "fc3b872926eef192eb02900a446e7bdb9accf42a66aa73240c264a45dc38cb5a",
+      "bytes": 6866
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/image-projection-authority-v4/collector-command.json",
+      "sha256": "aa9d1c4e793e2d5aab0459cb3f921d258f460d02d74ba44eac2c0392b88531bc",
+      "bytes": 5201
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/image-projection-authority-v4/comparison-agent_runs.json",
+      "sha256": "617f68418a85b2fd686180d40efb79c8a348c010b32cf4afaa5009ace56f354d",
+      "bytes": 237
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/image-projection-authority-v4/comparison-case_image_reviews.json",
+      "sha256": "9bc94addf15f4f6315e5aba2395e02ea52057396326c474f90f4bf475d4d0082",
+      "bytes": 245
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/image-projection-authority-v4/object-index.json",
+      "sha256": "122ea5cccd1cbfce5e64be0030793aa1f1da73a8d2f15a6d7a5dbdc6601bbfba",
+      "bytes": 15033
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/image-projection-authority-v4/objects/1562206543da764123c21bd5/at_0ed37a5fc2a1420db75a975f4b13a147/original",
+      "sha256": "54c052abdbe463acd5a0a143a0afed03d1bfb7b73b12b8987eb864041785e669",
+      "bytes": 36827
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/image-projection-authority-v4/objects/1562206543da764123c21bd5/at_0ed37a5fc2a1420db75a975f4b13a147/preview",
+      "sha256": "05919c218be78bbe980d030c196dda553313736ab42362db1db2e616bf4cc3c8",
+      "bytes": 52243
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/image-projection-authority-v4/objects/1562206543da764123c21bd5/at_2c2e75220f5343b78c9de1f0e611420f/original",
+      "sha256": "a6badf0386d4b04764a78510b4c7bf264dbaad1bfc7e284a21831f37d28cbed7",
+      "bytes": 42890
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/image-projection-authority-v4/objects/1562206543da764123c21bd5/at_2c2e75220f5343b78c9de1f0e611420f/preview",
+      "sha256": "d2eb295aa814f710a28bca7950b5f5f0260b1c7aeb939160b2159238dee533cc",
+      "bytes": 57343
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/image-projection-authority-v4/objects/1562206543da764123c21bd5/at_4be9a8e2efb54ae89faea15c3d3c49fc/original",
+      "sha256": "2d37fa3717292e3bd7116f4a0e60ca21bcb67f9d6bba4e1194b4687b3a9e523f",
+      "bytes": 41597
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/image-projection-authority-v4/objects/1562206543da764123c21bd5/at_4be9a8e2efb54ae89faea15c3d3c49fc/preview",
+      "sha256": "021c33b0b25a0343e756f05dfce1b09def3ff94b67eac4b24a88e99e80d05900",
+      "bytes": 57551
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/image-projection-authority-v4/objects/1562206543da764123c21bd5/at_6f59c782c4b34d09a1981915eb99526c/original",
+      "sha256": "dff3780f55fd268494ab40b4ec90d824522500e9b3d0542b3a1fde05e35cda55",
+      "bytes": 37294
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/image-projection-authority-v4/objects/1562206543da764123c21bd5/at_6f59c782c4b34d09a1981915eb99526c/preview",
+      "sha256": "f3cdb43502da1a58c57cbf8b71f1ee5de78e3c1d354ced3a6a03c18abc4a5cd6",
+      "bytes": 53614
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/image-projection-authority-v4/objects/1562206543da764123c21bd5/at_797283c5dea04e85a9011e3fd0e48cd5/original",
+      "sha256": "f3655a39bfe906757a67bd974bf7ffe0eb929b9f158eb8e0181abd0f97603fff",
+      "bytes": 37283
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/image-projection-authority-v4/objects/1562206543da764123c21bd5/at_797283c5dea04e85a9011e3fd0e48cd5/preview",
+      "sha256": "18235d018e3e26432730bb65205a09e1337ea5a7f112859af11ccacca6ac79b0",
+      "bytes": 50782
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/image-projection-authority-v4/objects/1562206543da764123c21bd5/at_82123e82029041f292f97b1f5bf7ca08/original",
+      "sha256": "8b59e665e092972016ee58487fdf3f2e1235572ed79f4e8ebde41034a148a806",
+      "bytes": 35980
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/image-projection-authority-v4/objects/1562206543da764123c21bd5/at_82123e82029041f292f97b1f5bf7ca08/preview",
+      "sha256": "0681d8028c766a42bee41500c9881c2ff1402adef01d64129d5b15a898b6b39c",
+      "bytes": 47481
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/image-projection-authority-v4/objects/1562206543da764123c21bd5/at_82a9d274e4ce4cafbce2c0432334da56/original",
+      "sha256": "1494a9a95e47e9ccb41dcd41af5f473ab18056d13241e1a7e618247585325608",
+      "bytes": 35888
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/image-projection-authority-v4/objects/1562206543da764123c21bd5/at_82a9d274e4ce4cafbce2c0432334da56/preview",
+      "sha256": "a508a9fd4704e4341d8b601a97810964fd6081746a73ab338dc079bdad092530",
+      "bytes": 50961
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/image-projection-authority-v4/objects/1562206543da764123c21bd5/at_994a798c1169432292a8b53cd7277e22/original",
+      "sha256": "b741af0cd7b4628a7a9a38f5b821a3826546a8a8275eea982ac4e5695be969f5",
+      "bytes": 36333
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/image-projection-authority-v4/objects/1562206543da764123c21bd5/at_994a798c1169432292a8b53cd7277e22/preview",
+      "sha256": "3716636ef18ce172f08664961d5b3f874b63f03c91c0bd1d2c30d535314b31da",
+      "bytes": 51333
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/image-projection-authority-v4/objects/1562206543da764123c21bd5/at_abf530aeb71f4f91834aef0122b0ad9c/original",
+      "sha256": "261794ee6ee1851377526b72638372190aa553b3b852669781c4fb23b79a54b9",
+      "bytes": 36130
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/image-projection-authority-v4/objects/1562206543da764123c21bd5/at_abf530aeb71f4f91834aef0122b0ad9c/preview",
+      "sha256": "f81c7a7850840f6d1584dcad5936f9b83a12a5be0e41ce74dda06c86016d9d2d",
+      "bytes": 51980
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/image-projection-authority-v4/objects/1562206543da764123c21bd5/at_b7430405130a4016a408fb9a8755ad9b/original",
+      "sha256": "a92ef525a02da0cf737200358f4410764930f26cae8a1dac7b33a5896e6f64c9",
+      "bytes": 37762
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/image-projection-authority-v4/objects/1562206543da764123c21bd5/at_b7430405130a4016a408fb9a8755ad9b/preview",
+      "sha256": "e99c0a132fe1c958852d2acf9845ca533dde9d77134848ac35a1cdd79fcf4a07",
+      "bytes": 51144
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/image-projection-authority-v4/objects/1562206543da764123c21bd5/at_bbaa567ba6db4c0eb55a74c825e39090/original",
+      "sha256": "473c2429b1ed002f31dc68816066ee605a83eedeafcaf4176a36a9a4ee827001",
+      "bytes": 37512
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/image-projection-authority-v4/objects/1562206543da764123c21bd5/at_bbaa567ba6db4c0eb55a74c825e39090/preview",
+      "sha256": "23e92cf59ce53dd423d18b319cc1bbae2028c6c49ab98f4a36bcc28ac0c41ab6",
+      "bytes": 52257
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/image-projection-authority-v4/objects/1562206543da764123c21bd5/at_c4819326328741acbde9856d2210da8f/original",
+      "sha256": "25feb041b561ccf0a8fb99c08e6d25c5ee4babb7059daff2202f2d39169feedf",
+      "bytes": 42676
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/image-projection-authority-v4/objects/1562206543da764123c21bd5/at_c4819326328741acbde9856d2210da8f/preview",
+      "sha256": "f79c7f93812baed226b3187e1bde676d0eb2618729ef0e808f69f692028c0377",
+      "bytes": 60428
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/image-projection-authority-v4/objects/1562206543da764123c21bd5/at_c511f581ca3241bfaf58603485293739/original",
+      "sha256": "d8438c8b643c71e9c5c619e189cc89d39dab242322845428f7679cf01a425ce7",
+      "bytes": 37440
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/image-projection-authority-v4/objects/1562206543da764123c21bd5/at_c511f581ca3241bfaf58603485293739/preview",
+      "sha256": "a68100cefeff34d031461b8d5a8857527b25f9d175123eb657a4969847b62954",
+      "bytes": 51107
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/image-projection-authority-v4/objects/1562206543da764123c21bd5/at_e6318eccc8da4ecc9926822e71c07749/original",
+      "sha256": "1f257048709b1d0074b5d788a268e2d73817a6ada01a33270e1def15bfa72b58",
+      "bytes": 36030
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/image-projection-authority-v4/objects/1562206543da764123c21bd5/at_e6318eccc8da4ecc9926822e71c07749/preview",
+      "sha256": "bfaaeacc91d32bc7425c0f221d6dd330fd8a02624c573e02d829952fe91aabf2",
+      "bytes": 50248
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/image-projection-authority-v4/objects/1562206543da764123c21bd5/at_f3a306ad2ae447a7b2196eeff574d62a/original",
+      "sha256": "ec208d028360ea5a3863c45307047b5d0e07ad3bf25bf1e8755c574358250546",
+      "bytes": 35375
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/image-projection-authority-v4/objects/1562206543da764123c21bd5/at_f3a306ad2ae447a7b2196eeff574d62a/preview",
+      "sha256": "b3c0c2e60fa72adf02802df1461c9da1c0df186f8e58476017e54a8273a09b5f",
+      "bytes": 51127
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/image-projection-authority-v4/readonly-authority-query.sql",
+      "sha256": "9e19b0b0a8469edf0230d697c7dff73a0012297379ac01e35e5e7ce499e34fbf",
+      "bytes": 3254
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/image-projection-authority-v4/receipt.json",
+      "sha256": "3f504d45469340c573d0447cb52ee089695b4831f46bcc88271c940ec997d9ee",
+      "bytes": 3620
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/image-projection-authority-v4/restore.stderr.log",
+      "sha256": "3ce9477d7cf5b4f0e2a7ffabbf451b1183416a9f0651f911bd76abaf183aa83a",
+      "bytes": 1175
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/image-projection-authority-v4/restored-tables-before-export-equality.json",
+      "sha256": "1e2563eb0813f918ee5c434268b42c14f0bb8d44ac57bf120771929e8717d370",
+      "bytes": 2763835
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/image-projection-authority-v4/tables.json",
+      "sha256": "1e2563eb0813f918ee5c434268b42c14f0bb8d44ac57bf120771929e8717d370",
+      "bytes": 2763835
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/ledger-after-down.json",
+      "sha256": "49a901f2ceb07002341a46c2673a30ff979cdecf14384b936a107680dbd402a2",
+      "bytes": 1171622
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/ledger-before-stop.json",
+      "sha256": "49a901f2ceb07002341a46c2673a30ff979cdecf14384b936a107680dbd402a2",
+      "bytes": 1171622
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/ledger-drain.json",
+      "sha256": "28516f1609e5def5a5a2deb4513faf2bf0bedc153343b5419aa1a28dae378bb7",
+      "bytes": 3135
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-cross_message-001.json",
+      "sha256": "322912ea1ed243e38dd9ca14dcffb8752740c4dc1318217932782afb2e6edbae",
+      "bytes": 45211
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-cross_message-002.json",
+      "sha256": "008580ab244dee0344755c6d2715836a4ea5d87ef071d47b030e9f6bc188c9ac",
+      "bytes": 73699
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-cross_message-003.json",
+      "sha256": "7bbaa8b207c20ee119f2bab2634654b2c5dd139b98bd856b98c673b750685bb4",
+      "bytes": 90710
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-cross_message-004.json",
+      "sha256": "9884eb2e0bff895b6b01049551fc487931e9d6e4ce607437c36226e9cea58f53",
+      "bytes": 74288
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-cross_message-005.json",
+      "sha256": "4d1c24da58390a9eb4fd871fe1c09dfb8459ccff76fc0f828b5a7b4a5e030a57",
+      "bytes": 74310
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-cross_message-006.json",
+      "sha256": "fcc9a2ed9754e6d5dddcfeabdf0b36d72d99e879a4661ed9f947a4e1e000b599",
+      "bytes": 45212
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-cross_message-007.json",
+      "sha256": "61d186a0ddfc66c68f041386e34d0cb4fe6e0ab9a679087a500553fc413a4a22",
+      "bytes": 73698
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-cross_message-008.json",
+      "sha256": "9f94d4560af88e78f32df04698b867b9001844ff703ca976fc56475cb0a3204f",
+      "bytes": 90749
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-cross_message-009.json",
+      "sha256": "96f43beb8fb3bbd9921c00cf59f2be24624893499b367811ce6b817368f46013",
+      "bytes": 74304
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-cross_message-010.json",
+      "sha256": "e1b0fa2b2f761e398a408047615e1ebf39e1400d77bf6e133a3960208357bb79",
+      "bytes": 74377
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-images-001.json",
+      "sha256": "e73214147cdd7813794dd87f52c19f79e6e543c16345006645e3c76f3d80f97e",
+      "bytes": 67055
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-images-002.json",
+      "sha256": "f154c7d4e64eed5b5d9b5cab48684cb2c27aa6690f47cd2cdc4cb144fface2b8",
+      "bytes": 74164
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-images-003.json",
+      "sha256": "1e5442540c3afb6f42a2c79581f1f3e5a4586237e4f927d2d98bfb2acaaa8a67",
+      "bytes": 67631
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-images-004.json",
+      "sha256": "c0a222ba2105740b3022e1f1f4b0a732917b08c3c76d3254a791d21bed57339c",
+      "bytes": 67615
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-images-005.json",
+      "sha256": "90a8a8d1b17bfb395270c6bf275c75c840e519f82a811e3604a91ea5ec0cfdb9",
+      "bytes": 79975
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-images-006.json",
+      "sha256": "0a25e930f818f22aae2cfe72a9a1095c6f0a9e8df993f3d534a6d56249620b1c",
+      "bytes": 47318
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-images-007.json",
+      "sha256": "2a9bcb5fea73b74d1b0d49f99ac6484ac668ed400f22cd3f71c07a63af10e839",
+      "bytes": 15247
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-images-008.json",
+      "sha256": "c66bf3a05049ef5e6bed8ab37da7df9c507772025e26c5446d39018ee5be7d7f",
+      "bytes": 46842
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-images-009.json",
+      "sha256": "0f811ab081652a95b2dd4e33acf6037d84b412aba673f01980d26447613efec3",
+      "bytes": 45514
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-images-010.json",
+      "sha256": "fc1e315b5618d073ed81e1be9bef6580884d424bd112957c4e2ec772d39f9570",
+      "bytes": 42405
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-images-011.json",
+      "sha256": "254ba63c1d388deefb71480aeade048018e7e23450f242bbdedad21847f02e4a",
+      "bytes": 15246
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-images-012.json",
+      "sha256": "f020b55e96e1dfd9658c89bf22eacc18337a3ea174aff10950c58527b2f72033",
+      "bytes": 27514
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-images-013.json",
+      "sha256": "7b66e8560ebec3dbe76a2990ee491db7fcdacb479dc2f3dd69d7c3ad1df8f5b4",
+      "bytes": 27501
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-images-014.json",
+      "sha256": "999ecccf9d49e063ffe2e2802c39700f52fd5eec8eee66295847e7bea474e219",
+      "bytes": 27536
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-images-015.json",
+      "sha256": "2eb175df1f833dfbd9d51e44cb2470ce722f7e8b4097462855bb80ecd5888095",
+      "bytes": 27474
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-orders-001.json",
+      "sha256": "b6be84850a7664f67ad772cc88835f8e50436c124f1b017af2839e4fbda53945",
+      "bytes": 15044
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-orders-002.json",
+      "sha256": "b2e726ffd7559aee3371fe163a58ccc58cbd33df55b391ea84a045bb58e6d454",
+      "bytes": 15071
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-orders-003.json",
+      "sha256": "33355d660f0db26d461e5b6c5e44921eb61fb3dccbde3134aa9be245e4968ac9",
+      "bytes": 46164
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-orders-004.json",
+      "sha256": "d87133ff0b45e0df056edb16c030cf539bf1ac5187244137c83ee75f3416f2d1",
+      "bytes": 25317
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-orders-005.json",
+      "sha256": "36cd9ae455d27a2fb98a7e644ce768faa9076b92c76a1cc0a87aed30cb556f10",
+      "bytes": 26119
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-orders-006.json",
+      "sha256": "7a9ea89a8c9d4820d65c10f6078427a5a7e8f3d8d10c78bbe1df569aaa8e36fc",
+      "bytes": 13743
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-orders-007.json",
+      "sha256": "fca7a416887d69e6f3543677986017f133cf2f1a1573be5a5a950d92f810ceff",
+      "bytes": 54960
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-orders-008.json",
+      "sha256": "40d1ff76c662684e949faa51a4bc309e60bae8bb9e8247ba03bf703ae5e6aaf3",
+      "bytes": 53809
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-orders-009.json",
+      "sha256": "f8be8ae9966f857aa41637c73b8add9442954ee94224a560b39a3dc5e35ae6ae",
+      "bytes": 46226
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-orders-010.json",
+      "sha256": "d69cc2f5f3a13666fcec36b99af473f285dc425ed0b71a829327a829e8a031f5",
+      "bytes": 25340
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-orders-011.json",
+      "sha256": "b1aff9ea82b4307d7f96fdb8255ec540557d82049f0215ec727a4f2228feabb8",
+      "bytes": 26083
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-orders-012.json",
+      "sha256": "b6e2092d9e20c5c2606e6ea29b4cbb2defb81f76234c185df7eb09d099366eb9",
+      "bytes": 28434
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-orders-013.json",
+      "sha256": "5a8838f024b0c0f0a63809bd81e82fcc7a407a4a0fc889375cc0ec5b5316e54c",
+      "bytes": 54947
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-orders-014.json",
+      "sha256": "aac4e550812341f20df0d38dfc977997b8f571fa07e4127ececb58caf3436e3b",
+      "bytes": 53811
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-policies-001.json",
+      "sha256": "7746f3470a23c4103f78f9fc9633516cb216de900da71e9083006427a94df86f",
+      "bytes": 22180
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-policies-002.json",
+      "sha256": "d42dda8c957eb1c7b6b81835f095049b5a2f6d75e38c63244869cb49a00ab9bb",
+      "bytes": 22366
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-policies-003.json",
+      "sha256": "5619c2536489eee8cf8f0d5a1000a59d64fa57244ad94695a89a74e3e68f22dc",
+      "bytes": 21906
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-policies-004.json",
+      "sha256": "4b9387bbd287d9b13fe1a7aec648c40db49e7a5b9992907f94717fba2d8a5f42",
+      "bytes": 26710
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-policies-005.json",
+      "sha256": "6346792eefa85c48b1392eb2f3330a4e9fd06551c3ccf8fc8e7a80ec23f65643",
+      "bytes": 39258
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-policies-006.json",
+      "sha256": "2cefc8111cdbaf0956b5192cc437d0fb60e57886904c86cff3d5d68499ee0162",
+      "bytes": 22689
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-policies-007.json",
+      "sha256": "1f7365dd8c99beaa2afcdc37924db5653846ed9a85b728dea5089a6c68b06f4f",
+      "bytes": 22708
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-policies-008.json",
+      "sha256": "c615c0dd105f51e0acbf51b3bed1ef516d8297cb9a53bbaf5365477604bfcfca",
+      "bytes": 21954
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-policies-009.json",
+      "sha256": "5bfbf7ca47daa3ec3a29c334adcdd69906c0263993b193bf54cdc3caf8260586",
+      "bytes": 26708
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-policies-010.json",
+      "sha256": "2df57df1344da1d9b5477588f06f5edb3e1d6dba63213c454471a48c8976a72c",
+      "bytes": 39257
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-policies-011.json",
+      "sha256": "2f993519a2e38eacf2a309601bebbfeb1b28418c58d8404fe61ad0f3b98ad7c7",
+      "bytes": 22180
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-policies-012.json",
+      "sha256": "b31160b8f9b346dc05e4bae0eb611909b9b0af5a0a058e0850dfdee54087cde1",
+      "bytes": 22178
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-policies-013.json",
+      "sha256": "8367e032e778dc49a5e44ff3c5407de32b8bfd0eb3b49213bc721aa8e2861678",
+      "bytes": 21913
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-policies-014.json",
+      "sha256": "3e041298a86f569782c9dd27e212fd3796d0c07c9dfdded2e225750b5d7c1e9a",
+      "bytes": 26707
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/observed/development-policies-015.json",
+      "sha256": "24916605a2379f5c313c9de7674408da6240117d430f29196807581372485187",
+      "bytes": 39255
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/postgres.dump",
+      "sha256": "4ae58f1f4a7f35a4bd094e8b873453adec78af5d96c5da5823b1b516690e8bb0",
+      "bytes": 671279
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/progress.json",
+      "sha256": "318de696dbf898b194890a62e6007d7f316fde7a3e57cd6bac040cd50b92e433",
+      "bytes": 50728
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/provenance.json",
+      "sha256": "fd61e2c0299984a5b885f76fed756edca3b05c559865468e15c1b84642c3edc1",
+      "bytes": 2895
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/report.json",
+      "sha256": "98d7f40c129f4efcd9bfc16311c7cd71db74950aa6fdc0aeea559b006cc6da68",
+      "bytes": 50729
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/root-archived-fact-key.txt",
+      "sha256": "465376dd481cc2b7c3ae0b7c159dacea189a642bc9a90cee60848ec7069dbdf6",
+      "bytes": 43
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/shutdown-container-states.json",
+      "sha256": "03ff6112f86051b8b8327aa3187227aa2761dabc23e5597a571d105451513ac3",
+      "bytes": 21489
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/sql-state/audit.db",
+      "sha256": "1975fb9711b3c4c7e60e8c9991d143e07eba41893106b62bdc1634f2431e410e",
+      "bytes": 376832
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/sql-state/memory.db",
+      "sha256": "555894927701c44bb4cc1158b2bfa0ba2b58a05e94fb90dd5478f40ac45e4e39",
+      "bytes": 1032192
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/sql-state/runs.db",
+      "sha256": "c78bdd4a7ab8eb6039d21008252091fe05810026634aff0b19b0330e8e765ec8",
+      "bytes": 651264
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/turn_events.json",
+      "sha256": "dcd933d4e8d5ecbe86af88bdedd0fd88a88e05913fdf999c50636704638e186e",
+      "bytes": 1902184
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/usage/babc600064166e5ac2c2e8161e2381470bcc172820b18a6a42a3181e1f7489df.json",
+      "sha256": "49a901f2ceb07002341a46c2673a30ff979cdecf14384b936a107680dbd402a2",
+      "bytes": 1171622
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-launch-v1.json",
+      "sha256": "31a73a8040eb345238de3f30be66270f57cbb716aee4ddfdff9361ab060566a9",
+      "bytes": 1751
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/formal-h-and-new-dev-continuity-preparation-v3/continuity_d_h_v3.py",
+      "sha256": "cf00948803e2f7e4e28868d6f0a0b98db9934d2b6e72a19deeea6c37564f244e",
+      "bytes": 24436
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/formal-h-and-new-dev-continuity-preparation-v3/development-D-approval.json",
+      "sha256": "660a3ada72aa21ee494885ee9071452e5239f68d91c12bd180c4dfb0306e5868",
+      "bytes": 3203
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/formal-h-and-new-dev-continuity-preparation-v3/root-cold-totals-DevD420-failed-43f52d6-v2.json",
+      "sha256": "bd838c8a9c2f32caa400f8e052836d6c73244f665e24ce238b814d34429d91ac",
+      "bytes": 11964
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/formal-h-and-new-dev-continuity-preparation-v3/root-initialize-dev-43f52d6-v1.json",
+      "sha256": "639eecbfbace8b79832d898421a48ddb5c0c51783550c8c772a6e1cd732bb12f",
+      "bytes": 8406
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/history/dev-d-closed-43f52d6-failed-full54-420/stage6-v3-dev-continuation-20261108-d.sqlite",
+      "sha256": "2011d4eabf8d619862853c6642205ff0b05efa4d054778d02e02a6856ebe65e8",
+      "bytes": 811008
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/release-43f52d6-images-v1/export-launch.json",
+      "sha256": "de4a704594a1bbd3e5ef121f533149073cb672328a88be1743c2a819c4794ecd",
+      "bytes": 1085
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/release-43f52d6-images-v1/export-verification.json",
+      "sha256": "827c0aa3e8565093cc1ff34033bc470a7a53dc3e3e505d4116508c6773d71189",
+      "bytes": 13666
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/release-43f52d6-images-v1/export.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/release-43f52d6-images-v1/release-images.tar",
+      "sha256": "57e57ce4a65501148b94ad549cc2a741987ec4e8eed632ff581e8f9a005e52cc",
+      "bytes": 230359040
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/root-43f52d6-DevD420-closed-finance-v2/DevD420-cold-record.json",
+      "sha256": "c0d15f7eab67787abe6c71d36c7004808447526a23a3730ed539e78480225986",
+      "bytes": 284
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/root-43f52d6-DevD420-closed-finance-v2/all-actual-writers-stopped-DevD420-retired.json",
+      "sha256": "07cd7f48790b669c99486c8972f171656dc3a63420bd1d8d11a52fff58c64bac",
+      "bytes": 2286
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/root-43f52d6-DevD420-closed-finance-v2/global-after-failed-full54-DevD420.json",
+      "sha256": "08f938dbdafbb1826aedd4eeada2eda1f2263509942db2bf176e380c2c481f53",
+      "bytes": 767
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/root-43f52d6-DevD420-closed-finance-v2/receipt.json",
+      "sha256": "74d6141535f4216e9304662c768c3e07884b6383cf6c6ced35639f3725f31b89",
+      "bytes": 4542
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/root-43f52d6-DevD420-closed-finance-v2/typed-snapshot-receipt.json",
+      "sha256": "e83352407285613d9b87cacaa72e51855f02842e01b477686eb860c7d42b9114",
+      "bytes": 3959
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/root-43f52d6-failed-full54-diagnostic-evidence-scope-v1.json",
+      "sha256": "bacb3acec40a7e41d9a8dcbd1892aaef390ef3ed415e9241c9e2843afa58ba07",
+      "bytes": 3614
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/root-43f52d6-failed-full54-image-authority-binding-v4.json",
+      "sha256": "1193d324e39852d95317ecc98028099b6dba8a5f41348ee9bb56db3e77540bb8",
+      "bytes": 1807
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/root-43f52d6-failed54-SQL-model-diagnostic-v1.json",
+      "sha256": "89c351c9d93830e1f32031fe4e72f1c36529085770fed17d4c725d72174db763",
+      "bytes": 17782
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/root-43f52d6-failed54-selected-SQL-queries-v1.json",
+      "sha256": "95cd66c9c5317384bc06d9ecc2f4f202b9376969e6b4882cef634ff870170c99",
+      "bytes": 46011
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/root-DevD-43f52d6-full54-launch-binding-v1.json",
+      "sha256": "9b631d9db122224224b67cb0f14331373a558140ef5ab51c7bb6f720ccfee6f2",
+      "bytes": 3538
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/root-DevD-43f52d6-initialization-launch-v1.json",
+      "sha256": "7f494b37b474c7b29514ac039bf02219f991d8a7fca2daa28f4b1c583602fc04",
+      "bytes": 1482
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/root-DevD-43f52d6-initialization-result-v1.json",
+      "sha256": "c100849accdb150d7683e90db239ea5667e966d4bc3cd700e7ae1ad7bfa0cf31",
+      "bytes": 1820
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/root-DevD420-finance-v1-before-snapshot-failure.json",
+      "sha256": "7bef04d7d8442c86a5c931baac3ef1dccdd623d08cbebadf8add3df0998a5ac7",
+      "bytes": 437
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/root-build-verification-43f52d6.json",
+      "sha256": "5f43e96b1a76c58fcabad0c8e6f49ac61af50ff395b2f2ce79154741ebf4f16f",
+      "bytes": 18899
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/root-close-rejected-43f52d6-DevD420-finance-v1.py",
+      "sha256": "a56ccc36e8f2614cdc90e8daf571da4b1f7a88388521c9d7900ce0c90759a32d",
+      "bytes": 6622
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/root-close-rejected-43f52d6-DevD420-finance-v2.py",
+      "sha256": "64960c22b1bbcd5753eec7544f07a90e0db1a129f48c56aab23c739211b128c9",
+      "bytes": 6960
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/root-development-43f52d6-closed-materials-v1.json",
+      "sha256": "d5d2b3c717cc27eaf4a0bbb667b90d41465e0189616e5b1e46ed74d4ba4485e5",
+      "bytes": 1596
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/root-verified-image-projection-43f52d6-source-admission-v1.json",
+      "sha256": "39619f373c7c74fa529d9e01a3851d603065944838b71217965445525905298c",
+      "bytes": 2285
+    }
+  ],
+  "count": 248,
+  "all_hashed_by_root_after_normal_closed_driver": true,
+  "actual_host_banks_configs_or_native_contexts_not_indexed": true,
+  "not_a_release_bundle": true,
+  "release_eligible": false
+}

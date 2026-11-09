@@ -1,0 +1,146 @@
+{
+  "version": 1,
+  "source_definition": "ai-sql-agent/tools/simple_erp/schema.py",
+  "fields": {
+    "planned_delivery_date": {
+      "source": {
+        "database": "erp_db",
+        "table": "orders",
+        "column": "delivery_date",
+        "label_zh": "交付日期",
+        "label_en": "Delivery date",
+        "description": "交付日期。迁移自原配送记录的计划送货日期。没有送货计划时为空；不是安装日期。实际送达日期在 svc_db.delivery.delivered_date。",
+        "semantic_role": "time",
+        "business_usage": "迁移自原配送记录的计划送货日期。没有送货计划时为空；不是安装日期。实际送达日期在 svc_db.delivery.delivered_date。 日期为 YYYY-MM-DD 文本；本地时间相关查询使用 DATE('now','localtime')。"
+      },
+      "schema_revision": "a525539d1bf4f9f5b7bd6b46b42cf25dbc1a640e6fd96fe842dfa9544f4550ff",
+      "grain": "order_scalar",
+      "unit": null,
+      "labels": {
+        "zh": "约定交付日期",
+        "en": "Planned delivery date"
+      },
+      "type": "date"
+    },
+    "actual_delivery_date": {
+      "source": {
+        "database": "svc_db",
+        "table": "delivery",
+        "column": "delivered_date",
+        "label_zh": "实际送达日期",
+        "label_en": "Actual delivery date",
+        "description": "实际送达日期。尚未送达时为空。",
+        "semantic_role": "time",
+        "business_usage": "尚未送达时为空。 日期为 YYYY-MM-DD 文本；本地时间相关查询使用 DATE('now','localtime')。"
+      },
+      "schema_revision": "5319d8a5dd5dc86d7684d8462a24f6c14a859d414b110671bfc3597b4d2f0c95",
+      "grain": "order_value",
+      "unit": null,
+      "labels": {
+        "zh": "配送记录实际送达日期",
+        "en": "Recorded actual delivery date"
+      },
+      "type": "date"
+    },
+    "delivery_status": {
+      "source": {
+        "database": "svc_db",
+        "table": "delivery",
+        "column": "delivery_status",
+        "label_zh": "配送状态",
+        "label_en": "Delivery status",
+        "description": "配送状态；选项：待配送、配送中、已送达。",
+        "semantic_role": "filter",
+        "business_usage": "查询和展示配送状态。"
+      },
+      "schema_revision": "dd8e6eba7cf1f4d20397769664cb7dd91abe4e94044b55050b0165ff4cebcdc3",
+      "grain": "order_value",
+      "unit": null,
+      "labels": {
+        "zh": "配送状态",
+        "en": "Delivery status"
+      },
+      "type": "text"
+    },
+    "order_status": {
+      "source": {
+        "database": "erp_db",
+        "table": "orders",
+        "column": "order_status",
+        "label_zh": "订单状态",
+        "label_en": "Order status",
+        "description": "订单状态；选项：已签单、生产中、待发货、配送中、已交付、已取消。",
+        "semantic_role": "filter",
+        "business_usage": "查询和展示订单状态。"
+      },
+      "schema_revision": "b8f5d093a60f4cfc81ad3801670ae537127994e9ede313d2853301f8163e0cb4",
+      "grain": "order_scalar",
+      "unit": null,
+      "labels": {
+        "zh": "订单状态",
+        "en": "Order status"
+      },
+      "type": "text"
+    },
+    "contract_amount": {
+      "source": {
+        "database": "erp_db",
+        "table": "orders",
+        "column": "contract_amount",
+        "label_zh": "合同金额",
+        "label_en": "Contract amount",
+        "description": "合同金额。美元、不含税的合同总额。明细小计之和不一定等于谈定的合同金额；没有回款记录，不能计算未付余额。",
+        "semantic_role": "metric",
+        "business_usage": "美元、不含税的合同总额。明细小计之和不一定等于谈定的合同金额；没有回款记录，不能计算未付余额。"
+      },
+      "schema_revision": "37a15681d1f23ec0c2880f8017541e6d024ba12e7ef341dfc4c877f4fd7ca44a",
+      "grain": "order_scalar",
+      "unit": "USD",
+      "labels": {
+        "zh": "合同金额",
+        "en": "Contract amount"
+      },
+      "type": "number"
+    },
+    "current_stage": {
+      "source": {
+        "database": "prod_db",
+        "table": "work_order",
+        "column": "current_stage",
+        "label_zh": "当前工序",
+        "label_en": "Current stage",
+        "description": "当前工序；选项：裁切、封边、钻孔、组装、包装。",
+        "semantic_role": "filter",
+        "business_usage": "查询和展示当前工序。"
+      },
+      "schema_revision": "095f127dcef90d167743cc2d431cbe9476cb9aa33e6b3fabaa70c63d625601bc",
+      "grain": "order_scalar",
+      "unit": null,
+      "labels": {
+        "zh": "当前工序",
+        "en": "Current stage"
+      },
+      "type": "text"
+    },
+    "production_status": {
+      "source": {
+        "database": "prod_db",
+        "table": "work_order",
+        "column": "production_status",
+        "label_zh": "生产状态",
+        "label_en": "Production status",
+        "description": "生产状态；选项：待生产、生产中、已完工。",
+        "semantic_role": "filter",
+        "business_usage": "查询和展示生产状态。"
+      },
+      "schema_revision": "a91cfb52f73141955cbf747a2d4f584efacd5e6f01a7635881c7cd1e319e3524",
+      "grain": "order_scalar",
+      "unit": null,
+      "labels": {
+        "zh": "生产状态",
+        "en": "Production status"
+      },
+      "type": "text"
+    }
+  }
+}

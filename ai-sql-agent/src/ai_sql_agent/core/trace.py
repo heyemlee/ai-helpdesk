@@ -98,6 +98,8 @@ class ModelUsage:
     model: str
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    cache_read_tokens: int = 0
+    reasoning_tokens: int = 0
 
     @property
     def total_tokens(self) -> int:
@@ -125,6 +127,9 @@ class UsageAccumulator:
             "completion_tokens": sum(r.completion_tokens for r in self.records),
             "total_tokens": sum(r.total_tokens for r in self.records),
             "by_component": by_component,
+            **({"cache_read_tokens": sum(r.cache_read_tokens for r in self.records),
+                "reasoning_tokens": sum(r.reasoning_tokens for r in self.records)}
+               if any(r.cache_read_tokens or r.reasoning_tokens for r in self.records) else {}),
         }
 
 
@@ -133,6 +138,8 @@ def record_usage(
     model: str,
     prompt_tokens: int = 0,
     completion_tokens: int = 0,
+    cache_read_tokens: int = 0,
+    reasoning_tokens: int = 0,
 ) -> None:
     """登记一次模型调用用量；不在请求上下文中时静默忽略。"""
     accumulator = _usage.get()
@@ -144,6 +151,8 @@ def record_usage(
             model=model,
             prompt_tokens=int(prompt_tokens or 0),
             completion_tokens=int(completion_tokens or 0),
+            cache_read_tokens=int(cache_read_tokens or 0),
+            reasoning_tokens=int(reasoning_tokens or 0),
         )
     )
 

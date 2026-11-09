@@ -1,0 +1,225 @@
+{
+  "root": "/Users/l/Desktop/Projects/ai-helpdesk",
+  "files": {
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-001.json": {
+      "sha256": "eeb6e58ae50dfaa9727e757e0e3fc947d5ad5d295e1d9105996d56f80c1acfa8",
+      "bytes": 7074
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-002.json": {
+      "sha256": "2cff41ce73b43abae3f06455ad233e2d0fbd12e3328fe3fbdb7e175909f56468",
+      "bytes": 8319
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-003.json": {
+      "sha256": "8a33dbf3e30156382ce5925eaa82cf6ad264cbf4b0d7f132f3897e7fdd26f1cc",
+      "bytes": 9514
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-004.json": {
+      "sha256": "d4fa20679a7d0998034be179f6da5c25c650f1eac48d56146dcfef5ded46f153",
+      "bytes": 6947
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-005.json": {
+      "sha256": "c05e8d92e4187bb3f8f5c386c6cfdbfb8288cc82444d56462ebdf861848c8fd3",
+      "bytes": 7242
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-006.json": {
+      "sha256": "4d3abaa0d4b2608411677403029b6c903695e3d54e2770f31c548b61de37b644",
+      "bytes": 6206
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-007.json": {
+      "sha256": "40eaf8cc2ae16703d27f9eceebade308382f8ab92e2efff56034195af3f925ed",
+      "bytes": 7081
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-008.json": {
+      "sha256": "5371ad507ab0edcf81ce5ee9d35bd13171474a5e73dde191c848d7b85d51f25c",
+      "bytes": 8290
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-009.json": {
+      "sha256": "8d752a2bce76996087156154b89fc0d6da12311342bd5766d953f685a21bbdd9",
+      "bytes": 8953
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-010.json": {
+      "sha256": "0403e5c28d0204174a6a80a0ea8e59f1f77c059f502bf5e71bc3484dfcf2d426",
+      "bytes": 6856
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-011.json": {
+      "sha256": "463caff75a46b75530776638235df6aab7d13e454f6b2d8208924e3773fa5a2a",
+      "bytes": 7169
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-012.json": {
+      "sha256": "f308889cfbecbe486ff9174c31e3035cbacaef4eb0d74bdbe8da04a116066838",
+      "bytes": 7279
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-013.json": {
+      "sha256": "517de1ebfe7813b265ae2254ff6fe1285e151d4b28ce48b80480efc825b1f1bd",
+      "bytes": 7080
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-014.json": {
+      "sha256": "f56a8a1708f3aa0d5c2ee11c543c4daacda96bce7d75a09f4813ac715cfa7d88",
+      "bytes": 8525
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-015.json": {
+      "sha256": "604cad91394fa0a91888b70a29f45064d103d40b32f7c84163c0e1d6aafe4910",
+      "bytes": 8690
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-016.json": {
+      "sha256": "7b36f8768369123b75982aa7fbfb62a6836a35fb993a5f0226ad74044e160948",
+      "bytes": 6883
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-017.json": {
+      "sha256": "fd4c9e49a0e5298ab730d2cc5dc70a3271cf8ee7ec62865a01dfe31a0c3c696b",
+      "bytes": 7280
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-018.json": {
+      "sha256": "21c7037000df4538730c2a0ba3b33ac3290b9f3be11c7298249bcc982e2ce620",
+      "bytes": 6763
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-019.json": {
+      "sha256": "9fd8ec0da6271fc01abb8f5526ea600a183869af8ae8a0363df4fec07312cf43",
+      "bytes": 7080
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-020.json": {
+      "sha256": "7dcb07eb054cca3ad0705ceeb7e35d3e6b14314a5fe0ace1684572f7b6b043f1",
+      "bytes": 8129
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-021.json": {
+      "sha256": "fc36a01b93e3965ead789464d4bebc9c9696e89aab3da8d81b93eb138a34a873",
+      "bytes": 9154
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-022.json": {
+      "sha256": "dd614afab525d6648d6e74b7a7b774096e45af0ef47f323483562e36a38385e8",
+      "bytes": 6762
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-023.json": {
+      "sha256": "f657aad6b3413464ffc3cbd5932262f6a2af512f50b31e997feddc2ecb14d6cf",
+      "bytes": 7230
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-024.json": {
+      "sha256": "42b991cbe818bd16ac8cfe3c1b2d4c69a935570a80737002e4a54ab1c4dff6eb",
+      "bytes": 7480
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-025.json": {
+      "sha256": "48d9c8194627967047ec0ef16ce8d0a7dfaa5af22a0da475a89de6d953675721",
+      "bytes": 7080
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-026.json": {
+      "sha256": "2f1a0cbd83fda9d799d47d3a5d6d309ead51d3941eb59097f4c57cba7f57e7b7",
+      "bytes": 8969
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-027.json": {
+      "sha256": "d190be52fe2665f91bce7a06e7d1156ca48e70a128d06516e669bffd9488fa33",
+      "bytes": 9231
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-028.json": {
+      "sha256": "525f657396428c7211be64bffe1bac20b38b20ce5e62b33429df473c6c396110",
+      "bytes": 6818
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-029.json": {
+      "sha256": "8ee81f289526af942ac6035dd55a6d8034dbf6f1b29719a44931a570810d4f57",
+      "bytes": 7293
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-030.json": {
+      "sha256": "c3d9aa2803280839cf703ca4b00b5efd78befbedae53644bf62659bd63092976",
+      "bytes": 6224
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-031.json": {
+      "sha256": "4958f172a6a34a8c8a2da6ff3f5ebb32e274f944fcae1e6454e3e7ffda3213c5",
+      "bytes": 7080
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-032.json": {
+      "sha256": "a5b3d77d014f65b47e482a02833adda82c2a7d3cc8a08da8a1ab0f026972f11f",
+      "bytes": 8110
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-033.json": {
+      "sha256": "c8a746e03c99504231b1fcd9277da7d5323904b2ef0a95edaef7d078c38ae7ff",
+      "bytes": 9374
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-034.json": {
+      "sha256": "4dbe7259556dd73bdf799889a6e17b71a4b5d589ecfea897d7ad50b658394cd1",
+      "bytes": 6905
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-035.json": {
+      "sha256": "012d22955404dc10ac78a21b2fa0fdc630a016679d5f400e73e6872084f521bf",
+      "bytes": 7251
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-036.json": {
+      "sha256": "8c1171afea4666357520f33ef90ccdb23262234195e663807ce7bf1270b90108",
+      "bytes": 7474
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-037.json": {
+      "sha256": "dfd0ab3c7f361b508817003cca4536da87c46f7357f054f221a91e5b8e5a4632",
+      "bytes": 7080
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-038.json": {
+      "sha256": "ad3338dbe302d8ccd108ea4b1c721abc1b3ea4785749fbb501ec01d1a888b4d6",
+      "bytes": 8365
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-039.json": {
+      "sha256": "9b8bcf7dcc92d62eae9e1fc76b0f7625b2d9a8c088b256d493bcf7a35f7e050a",
+      "bytes": 8549
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-040.json": {
+      "sha256": "6551fd87593e90a45c480d94058f2fb1113c6c3d7cabf4e9eea5cce6c40c6d97",
+      "bytes": 6848
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-041.json": {
+      "sha256": "e9e2dc41f5e62d96567fb7b9684788f740f8f08dec8139ee2bed7133d9fcac78",
+      "bytes": 7341
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-042.json": {
+      "sha256": "ba2571b6dc1e1e5b7062601265f0ab0705e93c9420e7dc7c6200039d9edc6992",
+      "bytes": 6987
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-043.json": {
+      "sha256": "871d954ab4d65e6d201a6cba541fb980566e5670d924060b9cb9ca7815583e74",
+      "bytes": 7079
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-044.json": {
+      "sha256": "0483f48be60e0ef7b545a862096bc9ed222a40d505f2a39df14c4b74e2c7b9e4",
+      "bytes": 8059
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-045.json": {
+      "sha256": "298612d9b9fb736dab8fdc418ab887f7fe1df49a68996c9fb0f653a7839ca5fc",
+      "bytes": 8589
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-046.json": {
+      "sha256": "5dfdc8dcc4bc70a174628f05cc8de54e642223e0bc7f52c51ee4a6d0a88ed8ad",
+      "bytes": 8236
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-047.json": {
+      "sha256": "8e5c00d42b47ce050768f416807d7008c256a770494e8edb35aeeedde2fea0d7",
+      "bytes": 7330
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline/release-orders-048.json": {
+      "sha256": "a74d0fda65cac491ec053cff173624fec44e79d4ec57f1f7ca453d1f67c3a611",
+      "bytes": 7384
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline-execution.json": {
+      "sha256": "21fdbf1fd969dd3b8092aa455974d5053b602eb0772933760af0349dadbc3fb8",
+      "bytes": 2017
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline-preinterrupt-postgres.dump": {
+      "sha256": "05abf941e47d17bb978ade2a1ffae97c31fc6544345f90648fb4866c06ea7701",
+      "bytes": 344994
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline-sql-state/audit.db": {
+      "sha256": "77e8d1fe039840bd0098f141d4668c2043487be63d8225ef452d1fb5a95c3891",
+      "bytes": 77824
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline-sql-state/memory.db": {
+      "sha256": "927a3cdce61665998128c3b1bd63a49e932b4b2216f723a8b965be194c255856",
+      "bytes": 643072
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/baseline-sql-state/runs.db": {
+      "sha256": "ee872dd9ec31e17b16245bf97bf44a7cd23cc61a7d6ac9f82536d0f63d380962",
+      "bytes": 434176
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/interruption-reason.json": {
+      "sha256": "bf80c2b35adab070974a048d4468d49efd00347695162b910cdcc5566d12a033",
+      "bytes": 364
+    },
+    ".stage6/evaluation/2026-11-06/formal-20261106/usage/299be5f06f49485e8520bf1c2d5e16c39adec9275e923bdc101fec111f4077c7.json": {
+      "sha256": "f0c43a7f980960ee154e137a5edcac5bde5c6dfc63b61ec4026c51715023581b",
+      "bytes": 1296974
+    }
+  }
+}

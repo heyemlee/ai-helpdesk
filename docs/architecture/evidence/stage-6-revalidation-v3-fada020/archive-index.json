@@ -1,0 +1,243 @@
+{
+  "file_count": 59,
+  "files": {
+    ".stage6/evaluation/2026-11-06/container_ledger.py": {
+      "bytes": 8063,
+      "sha256": "ed1e6d9f88988b75fb5f83ed6b6c6812d591585e3beda5eb4e2fce9c57447192"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration.entry.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/agent_runs.json": {
+      "bytes": 352124,
+      "sha256": "4388e1e227fa5192d6d7e3ebafd9097f1f1f7b451ee0e630eb5c098735b9124a"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/candidate.json": {
+      "bytes": 406,
+      "sha256": "bf0543e73aaa59ef73f769576db8ad7f639b8ecbe160368018fb7982e50a9d75"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/case_events.json": {
+      "bytes": 13767,
+      "sha256": "83203d36ff9b6dc1dedd58d59566e762d210e1fcef8ade7584f8379a91121dc7"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/case_image_reviews.json": {
+      "bytes": 20257,
+      "sha256": "b58d46dcb43a75b2fd520899c393e5ca4e7597ce3dc17f5eb4a3c743389de5f6"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/compose.log": {
+      "bytes": 400476,
+      "sha256": "f330376a6e646093032fde1f9a5556096302f7b06199d8d96b3fca7ee671ce58"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/containers-shutdown.log": {
+      "bytes": 201679,
+      "sha256": "05e469e3cdde57b94c26f062a597fa00ef3aa144be4bdb4ced30a0b556dc9b13"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/containers.log": {
+      "bytes": 181223,
+      "sha256": "74ede9b3f4a99cc10e860379202c77f92f52c66186b3df902bb888d21994a7e7"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/development-cross_message-001.json": {
+      "bytes": 43568,
+      "sha256": "f416b33bd15925747e932ad4266dbd2b4cc7baf96c8f47d2a4a3f9b863ffe79f"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/development-cross_message-002.json": {
+      "bytes": 70011,
+      "sha256": "ce2d722b4944f9a3b55699acb8364af99115e3f0dfdfdab8a6cdceadad29b488"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/development-cross_message-003.json": {
+      "bytes": 85061,
+      "sha256": "2ad9c604f7b9a12a0e897fb79fe555f282b9f30b2debd143a06e41e8b97fbd07"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/development-images-001.json": {
+      "bytes": 115685,
+      "sha256": "5cfb419a23e8eb7eca7f4ab0edb5e991d82d72b188c02d2f8c86d3a13986edf0"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/development-images-006.json": {
+      "bytes": 48474,
+      "sha256": "3d950dc9f811a6498200a9ac0cb0d4b7f9c18e0a19f87b488036e3a2379c3f8d"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/development-images-011.json": {
+      "bytes": 16468,
+      "sha256": "ab65da46597fffc85a6efc15266500a69e5fc0115f9dbd356c80be2f90f4f8ca"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/development-orders-001.json": {
+      "bytes": 46277,
+      "sha256": "5a308764da27c13c3c77274cfe244eae8ee3b23f77ba0957543eb1939c24a4dc"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/development-orders-002.json": {
+      "bytes": 44562,
+      "sha256": "b1bd43dd2081766afd8a1c73299c1220438dcd89f100e87fc4398df85663a351"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/development-orders-003.json": {
+      "bytes": 54681,
+      "sha256": "09f61c450cb8e4a18223e6ee529bea2ddb19d756a5a1d567b24db560f36aa56a"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/development-policies-001.json": {
+      "bytes": 14583,
+      "sha256": "cc7e0ba7ea264748ebb167de3a0d18c2d6a6a055d7d859b122ed0b017b151d52"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/development-policies-002.json": {
+      "bytes": 14874,
+      "sha256": "8bf641f6bc0a581b19375c2f4699a0cf47e521aa97ea9f4ca649b86e3f802bac"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/development-policies-004.json": {
+      "bytes": 11282,
+      "sha256": "8d31d65d5652a3f253d64abfe18517407c847dc7153375f02122f494c0be6271"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/execution.json": {
+      "bytes": 8184,
+      "sha256": "816c40d785a3820736c4db8fef0f0ba603af70f20d0e6fc8f57e3860574b6486"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/ledger-after-down.json": {
+      "bytes": 1455929,
+      "sha256": "8aa959155bbcf15ca656483e88b51f407ea08b1d96b899ca5c074e3ae8c583e4"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/ledger-before-stop.json": {
+      "bytes": 1455929,
+      "sha256": "8aa959155bbcf15ca656483e88b51f407ea08b1d96b899ca5c074e3ae8c583e4"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/ledger-drain.json": {
+      "bytes": 4384,
+      "sha256": "14f50ff0628cf776596bf270b21cb15f86af75ddf618e69ca056196e7748eef9"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/observed/development-cross_message-001.json": {
+      "bytes": 43228,
+      "sha256": "3a22de7614f95e55004e7ec5ccd9a532b1f18f8c846fed8435eab04b1fe3d318"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/observed/development-cross_message-002.json": {
+      "bytes": 69672,
+      "sha256": "4ee84284fc8903272614fc32bf2b193bdfbc04eb15d7f8a08ea3e5b3dad1927d"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/observed/development-cross_message-003.json": {
+      "bytes": 84718,
+      "sha256": "331d9792be8b1ee6f0ef5c7be2a4c2e1815f7a2ab7d79b64c71274b6629965a5"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/observed/development-images-001.json": {
+      "bytes": 114469,
+      "sha256": "e71a2b9e8b7c3e3227c95712876208d83cdb673dbf6cb2f99f0345ad1e29791d"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/observed/development-images-006.json": {
+      "bytes": 47256,
+      "sha256": "6daa854d440976ea068d8836db9565d095fdd3fae7494beb4692d88fd3a91a66"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/observed/development-images-011.json": {
+      "bytes": 15243,
+      "sha256": "f82fd76d65506a408eba630114fb87ce5bd489d85c70d62f4d1cf600489117d6"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/observed/development-orders-001.json": {
+      "bytes": 45957,
+      "sha256": "f13cc00a00ccc413453d322e542a55fd1ef2c72b4b2d3564fd3dd8e03528e9f4"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/observed/development-orders-002.json": {
+      "bytes": 44237,
+      "sha256": "b57f601460def7bb7a058a347c87f76544e0866ef73ffe3363f3c555f1645d59"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/observed/development-orders-003.json": {
+      "bytes": 54358,
+      "sha256": "eddacda31fb3b8bf5be90cca8024d9d9af54febb6ab6f1e931f9589a34bf3906"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/observed/development-policies-001.json": {
+      "bytes": 14258,
+      "sha256": "d85d33a406d6f908999444915c7c979d644e46661b37211bbc080648faf88ce1"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/observed/development-policies-002.json": {
+      "bytes": 14546,
+      "sha256": "5d8924c7cbd8215260bbf358b345890464193bd0041c3f5fc363030969b28e0b"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/observed/development-policies-004.json": {
+      "bytes": 10951,
+      "sha256": "d8aa95706958cbb77cff6ba7eb5444dd179750ad2b50b5d976c037c5b9033f4c"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/postgres.dump": {
+      "bytes": 252322,
+      "sha256": "43c5d6153ffc0a75133cd409484d037c72c7f3f18de892c08cdffe0615f84d9d"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/progress.json": {
+      "bytes": 14735,
+      "sha256": "caf18740c7a61d1db06dca4bf88ccaa353dc1e5f448b9c3da0e80b8b948b0993"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/provenance.json": {
+      "bytes": 2895,
+      "sha256": "699905b4db1ccf7ecc4fac9b9e68d0a09b9d38c3dfbd3f1a9395b9c1d7957716"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/report.json": {
+      "bytes": 14736,
+      "sha256": "dce178df5b0fb0ba203fb7f946455d23001c36c5d6fa69506890839ffb5538a3"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/root-drain-verification.json": {
+      "bytes": 879,
+      "sha256": "6f24124b0c93b665ec70b97e3f6b93f597cb0b973f176a1605a3ebc386caeecf"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/root-postgres.toc": {
+      "bytes": 12035,
+      "sha256": "0cfa2d245d46903c741c61808d60ca77dc70a02b8e72014e03255b1a99394cc0"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/root-verification.json": {
+      "bytes": 5019,
+      "sha256": "d6ccd3a392cf8bdc851efd639c76d881630dca0353850b699e807b856546fe28"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/shutdown-container-states.json": {
+      "bytes": 21498,
+      "sha256": "c1454a4bfdc93b2d21182e8d460be4e16d3df52cf3753743bfff8cf7d283d2c6"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/sql-state/audit.db": {
+      "bytes": 81920,
+      "sha256": "b342f52bfa33541828183df442ddac68218bcc3eab23a5a54dcb840b08fec647"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/sql-state/memory.db": {
+      "bytes": 262144,
+      "sha256": "d6153d5cbf2501b2a9d6d18c2652a201223f7063954eef5f5c2e501b4a87e5f4"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/sql-state/runs.db": {
+      "bytes": 188416,
+      "sha256": "cf53522d48fb4cd0d5135f65ec18720b4762bdde3279fb8c93aa576f871f6a67"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/turn_events.json": {
+      "bytes": 541376,
+      "sha256": "f5bde3e4450a8ffa4698c9136d1cda84dbecb74c89400d5cfb16d80dedffbda1"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-calibration/usage/7b1aeecefb3b3266bae9664862c10932fa8c11bf2f0dd3bcdfb5afb2adae0d75.json": {
+      "bytes": 1455929,
+      "sha256": "8aa959155bbcf15ca656483e88b51f407ea08b1d96b899ca5c074e3ae8c583e4"
+    },
+    ".stage6/evaluation/2026-11-06/formal-v3-20261106/orchestrators/candidate-drain-v1-sources.json": {
+      "bytes": 181443,
+      "sha256": "0551a9e0e9a998a93ca147251f48d2f637dfaba7a81a0ab6a55c3a78b66039be"
+    },
+    ".stage6/evaluation/2026-11-06/ledger_drain_v1.py": {
+      "bytes": 5389,
+      "sha256": "200fd0d6e38bef4bbb4ad3faad2302edc0ccba6fcef14c70acec3433c057105e"
+    },
+    ".stage6/evaluation/2026-11-06/run-development-v3-candidate-drain-v1.py": {
+      "bytes": 5207,
+      "sha256": "74331e98ea9ca022c58e7b33a8a1482be443da2c6d83ae44901cb9b169a431c4"
+    },
+    ".stage6/evaluation/2026-11-06/v3_client_run_safety.py": {
+      "bytes": 14530,
+      "sha256": "b97ca4d549951b6427add9965a5f2d874c6b83d819fe501fb9e55f4bf63d23b2"
+    },
+    ".stage6/evaluation/2026-11-06/v3_shutdown_support_v1.py": {
+      "bytes": 12570,
+      "sha256": "74201bcfbc1086292807884e588c2bfc88db54e9fcce9a5b42fda3434c2eb48b"
+    },
+    ".stage6/evaluation/2026-11-06/verify-development-candidate.py": {
+      "bytes": 7128,
+      "sha256": "8e5767efbe1ed4a71ea167fed81537a48ef9da57994b0e8ebb7b08bc8e1bd1fc"
+    },
+    ".stage6/validation/ledger-drain-v1/root-verification.json": {
+      "bytes": 738,
+      "sha256": "c2375292c40be0b0a5c2d783066842cba60881f1780af81f0095b4f254f3f9d8"
+    },
+    ".stage6/validation/ledger-drain-v1/runtime-actual-02/result.json": {
+      "bytes": 8360,
+      "sha256": "69a57ef17c097c169cd867fac0b266daadd0c2157304de2f4d05fefa0d54ed00"
+    },
+    ".stage6/validation/ledger-drain-v1/source-and-test-hashes.json": {
+      "bytes": 3892,
+      "sha256": "ac547cb076cd62a9a3aad97aa8834e23eb83222faaa4c437ed51c06d5da9a6d4"
+    }
+  },
+  "kind": "root_verified_development_and_shutdown_evidence",
+  "raw_evidence_git_ignored": true
+}

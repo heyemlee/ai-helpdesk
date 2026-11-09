@@ -212,6 +212,20 @@ class SemanticLayer:
         meta = self._column_meta(database, table, column)
         return str(meta.get("unit") or "").strip()
 
+    def column_description(self, database: str, table: str, column: str) -> dict:
+        """Return configured meaning verbatim, never infer it from a field name.
+
+        Drop an oversized/invalid description as a whole: clipping could remove
+        a qualification such as 'not the actual delivery date'.
+        """
+        meta = self._column_meta(database, table, column)
+        keys = ("label", "label_zh", "label_en", "description", "business_usage", "semantic_role")
+        result = {key: meta[key] for key in keys if meta.get(key)}
+        if (not result.get("description") or any(not isinstance(v, str) or not v.strip() or len(v) > 2000
+                                                  or "\x00" in v for v in result.values())):
+            return {}
+        return result
+
     def primary_key_columns(self, database: str, table: str) -> List[str]:
         """
         主键列（契约 §4.6.6 的 `key_columns`）。没有声明就返回空列表。
@@ -225,6 +239,19 @@ class SemanticLayer:
         if isinstance(keys, str):
             keys = [keys]
         return [str(item) for item in keys if str(item).strip()]
+
+    def record_key_metadata(self, database: str, table: str) -> dict:
+        """Distinguish an undeclared key from unknown or invalid metadata."""
+        meta = self._table_meta(database, table)
+        columns = meta.get("columns")
+        if not isinstance(columns, dict) or not columns:
+            return {"status": "unknown", "columns": []}
+        raw = meta.get("primary_key", [])
+        keys = [raw] if isinstance(raw, str) else raw
+        if (not isinstance(keys, list) or any(not isinstance(k, str) or k not in columns for k in keys)
+                or len(set(keys)) != len(keys)):
+            return {"status": "unknown", "columns": []}
+        return {"status": "declared" if keys else "not_declared", "columns": list(keys)}
 
     def _table_meta(self, database: str, table: str) -> dict:
         semantics = self.databases.get(database)

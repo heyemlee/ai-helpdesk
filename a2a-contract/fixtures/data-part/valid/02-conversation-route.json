@@ -8,5 +8,7 @@
   "degrade_reason": "",
   "selected_databases": [],
   "trace_id": "7c1a0b93d4e84f21",
-  "steps": []
+  "steps": [],
+  "evidence": [],
+  "observed_at": "2026-11-06T00:00:00Z"
 }

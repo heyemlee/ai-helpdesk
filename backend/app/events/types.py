@@ -29,7 +29,7 @@ EVENT_TYPES = frozenset({
     # 编排器和专家
     "routed", "agent_started", "agent_fallback", "preamble_discarded",
     "loop_ended", "loop_fallback", "guard_replaced", "agent_answered",
-    "handoff", "ticket_created",
+    "handoff", "ticket_created", "fact_proposed",
     # 别人替这一轮补的：跑它的进程没了（排队模式下 worker 失联），见 RESERVED_SEQ
     "turn_abandoned",
 })

@@ -1,0 +1,171 @@
+{
+  "file_count": 41,
+  "files": {
+    ".stage6/evaluation/2026-11-06/development-v3-fb14f67-calibration/agent_runs.json": {
+      "bytes": 346207,
+      "sha256": "2bfb540fc444ef3e481745693c0015ca571745ec55680753ee42b4544906e729"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fb14f67-calibration/candidate.json": {
+      "bytes": 406,
+      "sha256": "f1bdd000b3a6e0e940caf0a2168d3048cb7266c932fcf311a636edf11cfd79b7"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fb14f67-calibration/case_events.json": {
+      "bytes": 13768,
+      "sha256": "eefbf665de2e143a5ff7a53baebcbebc09dabbac8ee1d81ff3206231b8e796ae"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fb14f67-calibration/case_image_reviews.json": {
+      "bytes": 20214,
+      "sha256": "681c97c2dbf3ca4355e342f9a0a9ec6cf8249653be14157756d5e367e294cd79"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fb14f67-calibration/compose.log": {
+      "bytes": 174740,
+      "sha256": "683bcd3677540a002b0e322ddcb2be1e2092795dc144908579f727c39e0c47ea"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fb14f67-calibration/containers.log": {
+      "bytes": 169910,
+      "sha256": "95c48c91a061117f2001beae876419e90f4ecb125c7a5be60726e504309ae26a"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fb14f67-calibration/development-cross_message-001.json": {
+      "bytes": 42936,
+      "sha256": "d50db22307b1a0d22b3abb88c654aa88482ee66d9cf5f4dc2c3431af617b12bd"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fb14f67-calibration/development-cross_message-002.json": {
+      "bytes": 69380,
+      "sha256": "e85ad4a34817279fa36f5fc5aa5cc4929ea0df717ffbf65f73629d4a2f9316d0"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fb14f67-calibration/development-cross_message-003.json": {
+      "bytes": 84431,
+      "sha256": "6e0524cf809d71776f02d319ff70ed375cff60c5b7ca79ccb4d553c35e49a359"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fb14f67-calibration/development-images-001.json": {
+      "bytes": 115652,
+      "sha256": "a3359690c51664b35d1a732921ba5e709a5b6f76e6bdf07fa0ea6232b633acce"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fb14f67-calibration/development-images-006.json": {
+      "bytes": 47819,
+      "sha256": "3b47c77797760faafff664f55d4dd9ca3fb977c84ce6093879c15ec76dff5fff"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fb14f67-calibration/development-images-011.json": {
+      "bytes": 15850,
+      "sha256": "fa113709783fba1746e6cfb8239a542693ea44cb00ece9883412b57811fb24b6"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fb14f67-calibration/development-orders-001.json": {
+      "bytes": 45479,
+      "sha256": "69035f26eb44278d906319011f77b1e47dfba0a83d3398978418436f092132ce"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fb14f67-calibration/development-orders-002.json": {
+      "bytes": 43935,
+      "sha256": "f913316385741385862c0fde2d2670d2dd5e1f6b92e88866ed23ee481feef2f8"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fb14f67-calibration/development-orders-003.json": {
+      "bytes": 36374,
+      "sha256": "20f936296892d156ccb4489df9951f9fa1b304745d235bc91aa5bc8e064932d5"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fb14f67-calibration/development-policies-001.json": {
+      "bytes": 15543,
+      "sha256": "290a46cdef55714ab57d907ecf2f93bc148dacd2085bd4643a35752e85744187"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fb14f67-calibration/development-policies-002.json": {
+      "bytes": 15954,
+      "sha256": "ed545ee74bae598c112f5c296309298500d240655112b367d8bd1c9b599c1389"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fb14f67-calibration/development-policies-004.json": {
+      "bytes": 11468,
+      "sha256": "c95efc5faa2ed67ffb7faac26e6be45b36a5429fe6d3dcc8f58d5ace749e8dd7"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fb14f67-calibration/execution.json": {
+      "bytes": 3236,
+      "sha256": "bd0672883a1cb0975e509accd8226493ffa6444b3be69b1f7b252214a3d4eb09"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fb14f67-calibration/observed/development-cross_message-001.json": {
+      "bytes": 42596,
+      "sha256": "29734a3b57c3d193c0de697ea20174554ff6bdc94e24f25ebd17c8ab594572cd"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fb14f67-calibration/observed/development-cross_message-002.json": {
+      "bytes": 69042,
+      "sha256": "223e02a0b8a343f9da3baf7b3f81d8ee87571f2fd4c38809b9d744f4980dbb14"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fb14f67-calibration/observed/development-cross_message-003.json": {
+      "bytes": 84088,
+      "sha256": "a062bece4b61bc356bf3770c0628b7d2382fc27daa063bfcae99e1b6a692c767"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fb14f67-calibration/observed/development-images-001.json": {
+      "bytes": 114388,
+      "sha256": "8f0baf8677bbbe5d8d9cd88ae23156015c293bbd86f96443250b817ed2c36e63"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fb14f67-calibration/observed/development-images-006.json": {
+      "bytes": 46601,
+      "sha256": "1208bc65819ddbba9f63dacfde18aa94bac105d299df96ac99603206df837cad"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fb14f67-calibration/observed/development-images-011.json": {
+      "bytes": 14625,
+      "sha256": "80ac5717eea62fdca7af8abef3b68946a23a0863682b6fecb75761a21ac2b103"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fb14f67-calibration/observed/development-orders-001.json": {
+      "bytes": 45158,
+      "sha256": "05b66d268b1d728ca4aea299e93abaac7ecb04f4337c6fe0c02bd51eec97d1bc"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fb14f67-calibration/observed/development-orders-002.json": {
+      "bytes": 43610,
+      "sha256": "e23765640a02abb09dc4c1c3d1447822325ad946b4a9302a5cdc190764dd3f60"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fb14f67-calibration/observed/development-orders-003.json": {
+      "bytes": 35872,
+      "sha256": "05b657d241576ff36fb97cb71b62d696c552e5c3c523020489c453f6d10640a6"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fb14f67-calibration/observed/development-policies-001.json": {
+      "bytes": 15170,
+      "sha256": "22caefe969470f68344afbfa6b8e4aa3bb2ea418b03479a36ecf4c5d41b91b32"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fb14f67-calibration/observed/development-policies-002.json": {
+      "bytes": 15579,
+      "sha256": "79e69fea3f8677e4c8e4d162c83a853e1d7217a5e9652b1b7d3dba109e95a130"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fb14f67-calibration/observed/development-policies-004.json": {
+      "bytes": 11089,
+      "sha256": "519cc3c51813361347369073b51392295c234a829b9d4825679c3f3f2449034e"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fb14f67-calibration/postgres.dump": {
+      "bytes": 237081,
+      "sha256": "917f2524c2d67f369abd711d1b2e485707ff2c8c6eb686ce0049db3fb718e1a7"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fb14f67-calibration/progress.json": {
+      "bytes": 14685,
+      "sha256": "f10c0f02de4ac3d8de576dd8225c028c4f7979fb0bc3ec8a8ca87a24168f05ab"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fb14f67-calibration/provenance.json": {
+      "bytes": 2264,
+      "sha256": "35c218990837a134ed0a5ad60020036cd19c2299cff2d269c597d93c4d51984c"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fb14f67-calibration/report.json": {
+      "bytes": 14686,
+      "sha256": "728f9027366aacb2954f2a3915e508291129729eb506b9ce481e6776a910d0f8"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fb14f67-calibration/root-verification.json": {
+      "bytes": 4410,
+      "sha256": "9b626421466aa3dbda10fdbc2486fef6a071f4df068e099be5e0259e8188ae28"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fb14f67-calibration/sql-state/audit.db": {
+      "bytes": 73728,
+      "sha256": "ae814571ef149f3649605d0062e3762f1b97410611f4b58e318932b8836a9342"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fb14f67-calibration/sql-state/memory.db": {
+      "bytes": 249856,
+      "sha256": "a1058f7123c710a631a81e4a6a712802a097a1add776bbf326a00fdcdab46256"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fb14f67-calibration/sql-state/runs.db": {
+      "bytes": 172032,
+      "sha256": "13c7b56ab3407835e113570637a4d1f5f8044712139382182957abf6dd2544f6"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fb14f67-calibration/turn_events.json": {
+      "bytes": 507001,
+      "sha256": "8ba5975089a79a075dc48ba20b45f6ba4848fb9e3533f8dfe51aef87b046a240"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fb14f67-calibration/usage/cb875c024b437d50bbc57105a62e741df571af6c809431ea35d01e92900081eb.json": {
+      "bytes": 777394,
+      "sha256": "b79ab198e1bcd52057ea5f5cd1db94e4c2eef5472e5fac0aa66a37975768c44b"
+    }
+  },
+  "path_base": "repository_root",
+  "private_evidence_not_distributed_by_git": true
+}

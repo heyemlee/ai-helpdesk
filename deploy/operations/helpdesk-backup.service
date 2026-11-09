@@ -1,0 +1,6 @@
+[Unit]
+Description=Encrypted consistent Helpdesk backup
+[Service]
+Type=oneshot
+UMask=0077
+ExecStart=/opt/helpdesk/ops-venv/bin/python /opt/helpdesk/scripts/operations/recovery.py --config /etc/helpdesk/operations.json --allow-production backup

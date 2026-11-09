@@ -1,0 +1,12 @@
+ Container aihd-stage6-images-406059f774-provider-1 Creating 
+ Container aihd-stage6-images-406059f774-provider-1 Created 
+ Container aihd-stage6-images-406059f774-provider-1 Starting 
+ Container aihd-stage6-images-406059f774-provider-1 Started 
+ Container aihd-stage6-images-406059f774-provider-1 Waiting 
+ Container aihd-stage6-images-406059f774-provider-1 Healthy 
+{"health": {"healthy": true, "provider_enabled": true, "remaining_requests": 1}, "parent_readonly": true, "settings_readonly": true, "ledger_writable": true, "attempts": 0, "receipts": 0}
+2d58266956aa888d87dcbba45fafd5cc9a91e1d8f5f46d6f6d00a00a5370fd34
+ Container aihd-stage6-images-406059f774-provider-1 Stopping 
+ Container aihd-stage6-images-406059f774-provider-1 Stopped 
+ Container aihd-stage6-images-406059f774-provider-1 Removing 
+ Container aihd-stage6-images-406059f774-provider-1 Removed 

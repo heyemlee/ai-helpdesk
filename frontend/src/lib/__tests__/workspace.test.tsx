@@ -5,7 +5,7 @@ import { CATALOG } from '@/i18n/catalog'
 import { href, parseRoute } from '../route'
 import { dateTime } from '../format'
 import { explainError } from '../errors'
-import { ApiError, setStaffKey } from '@/api/client'
+import { ApiError, setCsrfToken } from '@/api/client'
 
 describe('页面位置', () => {
   it('默认是对话；认不出的位置也回到对话', () => {
@@ -57,12 +57,12 @@ describe('接口错误说明', () => {
   it('401：没填钥匙和钥匙不对是两句话——后端回的是同一句，该做的事不一样', () => {
     const rejected = new ApiError(401, '401 Unauthorized: 缺少或错误的 X-API-Key')
     try {
-      setStaffKey('')
+      setCsrfToken('')
       expect(explainError(rejected, t as never).body).toBe('err.401')
-      setStaffKey('not-the-right-key')
-      expect(explainError(rejected, t as never).body).toBe('err.401.rejected')
+      setCsrfToken('not-the-right-key')
+      expect(explainError(rejected, t as never).body).toBe('err.401')
     } finally {
-      setStaffKey('')
+      setCsrfToken('')
     }
   })
 })

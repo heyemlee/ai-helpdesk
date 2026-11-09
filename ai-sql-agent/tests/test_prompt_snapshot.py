@@ -312,6 +312,25 @@ class PromptSnapshotTest(unittest.TestCase):
             self.skipTest(f"已重录 {SNAPSHOT_PATH.name}（{len(records)} 条）")
 
         expected = json.loads(SNAPSHOT_PATH.read_text(encoding="utf-8"))
+        # The historical snapshot stays immutable. This intentional model-input
+        # addition is separately recorded; every pre-existing argument and the
+        # entire call sequence must still match the original snapshot.
+        key_facts = json.loads(SNAPSHOT_PATH.with_name("prompt_snapshot_key_facts.json").read_text(encoding="utf-8"))
+        for index, facts in key_facts.items():
+            self.assertEqual(expected[int(index)]["call"], "ResultValidator.validate")
+            expected[int(index)]["kwargs"]["key_facts"] = facts
+        # Keep the original and key-facts snapshots immutable. This versioned
+        # delta changes only the aligned planning/generation prompts and the
+        # explicit user_query input to generation; call order stays exact.
+        delta = json.loads(SNAPSHOT_PATH.with_name("prompt_snapshot_business_projection.json").read_text(encoding="utf-8"))
+        self.assertEqual(delta["base_snapshot_sha256"], hashlib.sha256(SNAPSHOT_PATH.read_bytes()).hexdigest())
+        for index, change in delta["changes"].items():
+            previous = expected[int(index)]
+            self.assertEqual(hashlib.sha256(json.dumps(previous, ensure_ascii=False, sort_keys=True).encode()).hexdigest(),
+                             change["before_sha256"])
+            self.assertIn(previous["call"], {"ThinkingModelClient.generate", "CoderModelClient.generate_sql", "SqlGenerator.generate"})
+            self.assertEqual(previous["call"], change["after"]["call"])
+            expected[int(index)] = change["after"]
         for index, (got, want) in enumerate(zip(records, expected)):
             self.assertEqual(
                 got, want,

@@ -73,7 +73,12 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.security import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+from app.core.actor import get_current_actor
+from app.core.policy_scope import PolicyMetadata, PolicyScope, bind_policy_scope
+from app.core.staff_auth import current_actor
+from app.core.staff_auth import mode as staff_auth_mode
 
 load_dotenv()
 
@@ -138,6 +143,9 @@ _llm_info: dict[str, str] = {}
 # inline 模式下两个都是 None；一个进程是哪一侧由 AI_HELPDESK_ROLE 决定
 _runs = None
 _worker = None
+_cases = None
+_case_worker = None
+_case_event_log: EventLog = EventLog.disabled()
 # 停机开始了：/readyz 回 503
 _draining = False
 # 一轮对话的事件日志（app/events/）。lifespan 里按配置换成真的；默认这个什么都不记，
@@ -219,6 +227,8 @@ async def lifespan(app: FastAPI):
     for section, problem in (saved_models.get("problems") or {}).items():
         logger.warning(f"控制台保存的模型连接（{section}）读不出来，按没有处理: {problem}")
     cfg = chat_config_from(saved_models)
+    from app.core.redaction import register_secret
+    register_secret(cfg.get("api_key"))
     logger.info(
         f"LLM 供应商: {cfg['provider']}  模型: {cfg['model']}  "
         f"base_url: {cfg.get('base_url') or '(官方)'}  来源: {cfg['source']}"
@@ -274,6 +284,15 @@ async def lifespan(app: FastAPI):
             db_path=os.getenv("CONVERSATION_LOG_DB_PATH", str(pathlib.Path(_ROOT) / "data" / "conversations.db"))
         )
         logger.warning("存储后端: SQLite 本地兜底（未配置 POSTGRES_DSN，仅适用于 demo/联调）")
+    if staff_auth_mode() == "local":
+        from app.core.staff_auth import StaffAuth, check_config
+        check_config(os.environ)
+        app.state.staff_auth = StaffAuth(_pg_database, _INSTANCE,
+            origin=os.getenv("AI_HELPDESK_PUBLIC_ORIGIN", "http://localhost:5174"))
+        app.state.actor_directory = ActorDirectory(app.state.staff_auth.provider)
+    else:
+        app.state.staff_auth = None
+
     # 库里的向量得是当前这个 Embedding 模型算的。换过模型而没重建向量的，在这里停下
     # ——维度相同的话后面一路都不会报错，只是语义检索返回的东西和问题无关。
     await check_embedding_signature(vector_store, embedder)
@@ -521,13 +540,24 @@ async def lifespan(app: FastAPI):
 
     if _RUN_CONFIG.queued:
         await _start_runs()
+    if _pg_database is not None and _INSTANCE and os.getenv("REDIS_URL", "").strip():
+        await _start_cases()
 
+    maintenance = None
+    if getattr(app.state, "staff_auth", None) is not None and _RUN_CONFIG.role in {"worker", "all"}:
+        from app.core.staff_maintenance import run as staff_maintenance
+        maintenance = asyncio.create_task(staff_maintenance(app.state.staff_auth, getattr(_cases, "attachments", None)))
     logger.info("ai-helpdesk 已就绪")
     yield
+    if maintenance is not None:
+        maintenance.cancel()
+        await asyncio.gather(maintenance, return_exceptions=True)
 
     # 停机：先停 worker（等手上的 run 跑完，到时限没跑完的交还给别的 worker），再关别的——
     # 在跑的 run 还要用下面这些组件
     _draining = True
+    if _case_worker is not None:
+        await _case_worker.drain(float(os.getenv("AI_HELPDESK_RUN_DRAIN_S", "90")))
     if _worker is not None:
         drained = await _worker.drain(float(os.getenv("AI_HELPDESK_RUN_DRAIN_S", "90")))
         logger.info("run worker 已停：跑完 %d 个，交还 %d 个", drained["finished"], drained["released"])
@@ -551,6 +581,7 @@ async def lifespan(app: FastAPI):
             logger.warning("后台任务未在时限内完成，放弃等待")
     # 排在后台任务之后：画像更新这类任务的模型调用也记在那一轮里，等它们跑完再写完日志
     await _event_log.close(timeout_s=float(os.getenv("SHUTDOWN_DRAIN_TIMEOUT_S", "10")))
+    await _case_event_log.close(timeout_s=float(os.getenv("SHUTDOWN_DRAIN_TIMEOUT_S", "10")))
     if _ticket_store is not None:
         await _ticket_store.close()
     if _conv_log is not None:
@@ -571,6 +602,12 @@ app = FastAPI(
     lifespan=lifespan,
     docs_url="/docs",
 )
+
+from app.attachments.body_limit import UploadBodyLimit  # noqa: E402
+from app.core.actor import ActorDirectory  # noqa: E402
+
+app.state.actor_directory = ActorDirectory()
+app.add_middleware(UploadBodyLimit)
 
 # CORS 白名单从环境变量读取，默认放开是为了本地联调；
 # 部署时用 CORS_ALLOW_ORIGINS=https://console.example.com 收敛。
@@ -598,7 +635,10 @@ async def _request_validation_error(request: HttpRequest, exc: RequestValidation
     detail 里会回显没通过校验的原值。原值里有孤立代理字符时（/chat 挡掉的坏 id 正是这种），
     默认的 UTF-8 编码会抛错，客户端拿到的就成了 500。
     """
-    return _AsciiJSONResponse(status_code=422, content={"detail": jsonable_encoder(exc.errors())})
+    errors = exc.errors()
+    if request.url.path.startswith(("/auth/", "/admin/employees")):
+        errors = [{k: v for k, v in error.items() if k not in {"input", "ctx"}} for error in errors]
+    return _AsciiJSONResponse(status_code=422, content={"detail": jsonable_encoder(errors)})
 
 
 from app.agents.tool_loop import LoopConfig, LoopSetup, deadline_for, deadline_warnings  # noqa: E402
@@ -623,7 +663,7 @@ from app.runs.records import FAILED, SUCCEEDED, TERMINAL_FRAMES  # noqa: E402
 from app.runs.service import Backpressure, RunService  # noqa: E402
 from app.runs.store import IdempotencyConflict  # noqa: E402
 from app.runs.worker import RetryRun, RunContext, RunOutcome, RunWorker  # noqa: E402
-from app.tools.knowledge_base import SOURCE_MANUAL, SOURCE_UPLOAD, UnknownCategory  # noqa: E402
+from app.tools.knowledge_base import SOURCE_MANUAL, SOURCE_UPLOAD, UnknownCategory, normalize_category  # noqa: E402
 from app.tools.turn_tools import Prefetch, loop_tools  # noqa: E402
 
 # OTel：配置 OTEL_EXPORTER_OTLP_ENDPOINT 后启用 FastAPI/httpx/redis/asyncpg
@@ -690,6 +730,9 @@ async def request_id_middleware(request: HttpRequest, call_next):
 # 设了 AI_HELPDESK_ALLOWED_HOSTS 才启用（compose 给员工实例设了），见 app/core/browser_guard.py。
 # 必须在所有中间件注册完之后装：后注册的在外层，被拒的请求进不了 CORS 和上面的请求日志
 _ALLOWED_HOSTS = browser_guard.install(app)
+from app.core.staff_auth import StaffSessionMiddleware  # noqa: E402
+
+app.add_middleware(StaffSessionMiddleware)
 
 
 # ── 鉴权 ──────────────────────────────────────────────────────────────────────
@@ -704,7 +747,7 @@ _PROTECT_CHAT = os.getenv("AI_HELPDESK_PROTECT_CHAT", "false").strip().lower() i
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
-def require_api_key(api_key: str | None = Security(_api_key_header)) -> None:
+def require_api_key(api_key: str | None = Security(_api_key_header), request: HttpRequest = None) -> None:
     """
     写操作/管理端点的鉴权依赖。未配置 AI_HELPDESK_API_KEY 时放行（demo 模式）。
 
@@ -714,6 +757,9 @@ def require_api_key(api_key: str | None = Security(_api_key_header)) -> None:
     lifespan 的 ASGI 容器（测试里就是这么用的）会绕过那次校验，而绕过之后
     原来的 `return` 是**放行**。一个防护的缺席不能被解释成"不需要防护"。
     """
+    if request is not None and request.scope.get("staff_session"):
+        get_current_actor(request)
+        return
     if not _API_KEY:
         if is_production():
             raise HTTPException(
@@ -794,11 +840,11 @@ def require_token_issuer_source(request: HttpRequest) -> None:
         raise HTTPException(403, "此端点仅对网关开放")
 
 
-def protect_chat(api_key: str | None = Security(_api_key_header)) -> None:
+def protect_chat(api_key: str | None = Security(_api_key_header), request: HttpRequest = None) -> None:
     """/chat 的可选鉴权，由 AI_HELPDESK_PROTECT_CHAT 控制。"""
     if not _PROTECT_CHAT:
         return
-    require_api_key(api_key)
+    require_api_key(api_key, request)
 
 
 class TokenRequest(BaseModel):
@@ -843,6 +889,10 @@ async def issue_user_token(body: TokenRequest):
 async def resolve_user_id(req: "ChatRequest", user_token: str | None) -> str:
     """从令牌推导可信 user_id；鉴权未开启时保持旧行为。超限抛 429。"""
     from app.core.auth import AuthError
+    actor = current_actor.get()
+    if actor is not None:
+        actor = await app.state.actor_directory.refresh(actor)
+        return actor.actor_id
     try:
         user_id = _user_auth.verify(user_token, req.user_id) if _user_auth else (req.user_id or "anonymous")
     except AuthError as exc:
@@ -977,6 +1027,26 @@ class ChatRequest(BaseModel):
     message:     str = Field(max_length=MAX_MESSAGE_CHARS)
     user_id:     str = "anonymous"
     conv_id:     str | None = None
+    case_id: str | None = None
+    new_case: bool = False
+    message_id: str | None = None
+    expected_version: int | None = None
+    expected_control_version: int | None = None
+    issue_type: str = "general"
+    customer_ref: str = ""
+    order_refs: list[str] = Field(default_factory=list)
+    facts: dict[str, str] = Field(default_factory=dict)
+    pending_fields: list[str] | None = None
+    attachment_ids: list[str] = Field(default_factory=list)
+    policy_scope: PolicyScope = Field(default_factory=PolicyScope)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _case_material_only(cls, data):
+        if (isinstance(data, dict) and "message" not in data and (data.get("case_id") or data.get("new_case"))
+                and (data.get("facts") or data.get("attachment_ids"))):
+            return {**data, "message": ""}
+        return data
 
     @field_validator("user_id", "conv_id")
     @classmethod
@@ -1051,8 +1121,18 @@ class ChatResponse(BaseModel):
 # 模型连接的管理接口（api/model_admin.py）。带员工钥匙这一层和其它写接口一样；
 # 能不能改还要过它自己那道"本机控制台发来的"检查。
 from app.api import model_admin as _model_admin  # noqa: E402
+from app.api.attachment_api import router as attachment_router  # noqa: E402
+from app.api.case_api import optional_actor, readable_case_run, require_actor  # noqa: E402
+from app.api.case_api import router as case_router  # noqa: E402
+from app.api.staff_api import router as staff_router  # noqa: E402
+from app.api.staff_sql import router as staff_sql_router
+
+app.include_router(staff_router)
+app.include_router(staff_sql_router)
+app.include_router(attachment_router)
 
 app.include_router(_model_admin.router, dependencies=[Depends(require_api_key)])
+app.include_router(case_router)
 
 
 @app.get("/health")
@@ -1202,7 +1282,7 @@ def _log_loop_config() -> None:
 
 
 async def _prepare_request(req: "ChatRequest", conv_id: str, user_id: str, progress_cb=None,
-                           degrade: Degrade | None = None):
+                           degrade: Degrade | None = None, case_context=None):
     """
     /chat 和 /chat/stream 共用的准备阶段，实现见 `agents/turn_prep.prepare_turn`。
 
@@ -1210,7 +1290,7 @@ async def _prepare_request(req: "ChatRequest", conv_id: str, user_id: str, progr
     装配依赖：记忆、意图识别、模型服务的保护状态、两路预取，以及工具循环（打开时）。
     """
     prefetch = _prefetch(degrade)
-    return await prepare_turn(
+    prepared = await prepare_turn(
         req.message,
         user_id=user_id,
         conv_id=conv_id,
@@ -1222,9 +1302,13 @@ async def _prepare_request(req: "ChatRequest", conv_id: str, user_id: str, progr
             outage_reason=_model_unavailable_reason,
             prefetch=prefetch,
             loop=_loop_setup(prefetch, degrade),
+            bind_policy_projection=getattr(_knowledge_base, "bind_policy_projection", None),
         ),
         progress_cb=progress_cb,
+        case_context=case_context,
     )
+    prepared.request.policy_ref_validator = _knowledge_base.validate_policy_refs if _knowledge_base else None
+    return prepared
 
 
 def _evidence_fields(evidence_trace: dict[str, Any]) -> dict[str, Any]:
@@ -1305,7 +1389,7 @@ def _turn_outcome(result) -> str:
     return "answered"
 
 
-def _complete_turn(turn: TurnRecorder, result, ticket_id: str | None, shown: str | None = None) -> None:
+def _complete_turn(turn: TurnRecorder, result, ticket_id: str | None, shown: str | None = None, *, evidence=None) -> None:
     """
     发 turn_completed：客户看到了什么。在返回响应、发 result 之前调。
 
@@ -1315,6 +1399,12 @@ def _complete_turn(turn: TurnRecorder, result, ticket_id: str | None, shown: str
     """
     shown = result.response if shown is None else shown
     body = {"response": result.response}
+    selected_structure = {}
+    if evidence is not None:
+        from app.events.shapes import split_trace
+        parts = {key: split_trace(evidence.get(key) or {}) for key in ("knowledge", "business_data")}
+        selected_structure = {key: value[0] for key, value in parts.items()}
+        body["selected_evidence"] = {key: value[1] for key, value in parts.items()}
     if shown != result.response:
         body["shown"] = shown
     turn.emit("turn_completed", {
@@ -1334,6 +1424,7 @@ def _complete_turn(turn: TurnRecorder, result, ticket_id: str | None, shown: str
         "ticket_id": ticket_id,
         "latency_ms": round(result.latency_ms, 1),
         "totals": turn.totals(),
+        **({"selected_evidence": selected_structure} if evidence is not None else {}),
     }, body)
 
 
@@ -1370,6 +1461,7 @@ async def chat(
     req: ChatRequest,
     x_user_token: str | None = Header(None, alias="X-User-Token"),
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    actor=Depends(optional_actor),
 ):
     """
     主对话接口。完整流程：
@@ -1378,6 +1470,9 @@ async def chat(
     排队模式下提交成 run、等它跑完（最多 AI_HELPDESK_RUN_WAIT_S）；等不到回 202 和 run_id，
     这一轮照样在跑，结局去 GET /runs/{run_id} 取。
     """
+    await _validate_chat_policy_scope(req, actor)
+    if _is_case_input(req):
+        return await _case_chat(req, actor, idempotency_key, stream=False)
     if _orchestrator is None or _memory is None:
         raise HTTPException(503, "服务未就绪")
 
@@ -1390,7 +1485,7 @@ async def chat(
     # audited：这一轮写过审计没有。没写到那一步就出来的（出错、被取消），收尾时补写客户原话
     stage, audited = "prepare", False
     try:
-        with bind(turn):
+        with bind_policy_scope(req.policy_scope), bind(turn):
             orch_req, intent_result, knowledge_used, evidence_trace = await _prepare_request(
                 req, conv_id, user_id
             )
@@ -1400,6 +1495,7 @@ async def chat(
             result = await _orchestrator.run(orch_req)
 
             # 4. 转人工 → 落工单（失败不影响响应）
+            await _check_staff_work(req.policy_scope)
             stage = "after"
             ticket_id = await _create_handoff_ticket(result, user_id, conv_id, req.message,
                                                      turn.turn_id)
@@ -1416,7 +1512,7 @@ async def chat(
             #    任务建在 bind 里面，它的模型调用也记在这一轮（排在 turn_completed 后面）。
             if not result.service_unavailable:
                 _spawn_background(_memory.update_profile(user_id, conv_id))
-            _complete_turn(turn, result, ticket_id)
+            _complete_turn(turn, result, ticket_id, evidence=orch_req.fact_evidence)
     except Exception as ex:
         _fail_turn(turn, ex, stage)
         raise
@@ -1474,6 +1570,7 @@ async def chat_stream(
     req: ChatRequest,
     x_user_token: str | None = Header(None, alias="X-User-Token"),
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    actor=Depends(optional_actor),
 ):
     """
     /chat 的流式版本，SSE（text/event-stream）。
@@ -1492,6 +1589,9 @@ async def chat_stream(
 
     浏览器的 EventSource 只支持 GET，这里是 POST，前端用 fetch + ReadableStream 消费。
     """
+    await _validate_chat_policy_scope(req, actor)
+    if _is_case_input(req):
+        return await _case_chat(req, actor, idempotency_key, stream=True)
     if _orchestrator is None or _memory is None:
         raise HTTPException(503, "服务未就绪")
 
@@ -1587,7 +1687,7 @@ async def _turn_frames(
     state = _TurnState()
     # 生成器可能在请求的 context 之外被关掉（那里取到的是 "-"），request_id 先在这里取好
     request_id = current_request_id()
-    with bind(turn):
+    with bind_policy_scope(req.policy_scope), bind(turn):
         try:
             if on_turn is not None:
                 await on_turn(turn.turn_id)
@@ -1649,16 +1749,26 @@ async def _turn_frames(
                 yield _sse("error", {"detail": "编排器未返回结果"})
                 return
 
+            # Tool-loop evidence may differ from prefetch. Publish the exact
+            # ordered references used in the rendered reply before checkpointing.
+            if orch_req.fact_evidence is not None:
+                selected_fields = _evidence_fields(orch_req.fact_evidence)
+                if any(meta.get(key) != value for key, value in selected_fields.items()):
+                    meta.update(selected_fields)
+                    yield _sse("meta", meta)
+
             # 提交点（排队模式）：回答定下来了，副作用还一样都没落。写不进去说明这个 run 已经
             # 被别人领走，这一遍到此为止——工单、记忆、审计都留给拿着租约的那一遍
             if on_commit is not None:
                 if not await on_commit({
                     "turn_id": turn.turn_id, "meta": meta, "routing": state.routing,
                     "shown": "".join(state.shown), "final": encode_result(final),
+                    "policy_scope": req.policy_scope.model_dump(mode="json"),
+                    "lookup_goal": orch_req.lookup_goal,
                 }):
                     raise _LeaseLost()
                 state.committed = True
-            result = await _finish_turn(turn, state, req, conv_id, user_id, final, degrade=degrade)
+            result = await _finish_turn(turn, state, req, conv_id, user_id, final, degrade=degrade, evidence=orch_req.fact_evidence)
             _shadow_check(turn, meta=meta, routing=state.routing, result=result)
             yield _sse("result", result)
         except _LeaseLost:
@@ -1690,6 +1800,7 @@ async def _finish_turn(
     *,
     degrade: Degrade | None = None,
     resumed_from: str = "",
+    evidence=None,
 ) -> dict[str, Any]:
     """
     回答定下来之后：落工单、写记忆和审计、提炼画像、记 turn_completed，返回 result 帧的载荷。
@@ -1697,6 +1808,7 @@ async def _finish_turn(
     直接跑完的一轮和按提交点收尾的一轮（_resume_frames）都走这里，副作用只有这一份写法。
     """
     state.stage = "after"
+    await _check_staff_work(req.policy_scope)
     ticket_id = await _create_handoff_ticket(final, user_id, conv_id, req.message, turn.turn_id)
     await _remember_turn(user_id, conv_id, req.message, final.response)
     _spawn_background(_log_turn(conv_id, user_id, req.message, final.response,
@@ -1704,7 +1816,7 @@ async def _finish_turn(
     state.audited = True
     if not final.service_unavailable:      # 同 /chat：没答上来的轮次不提炼画像
         _spawn_background(_memory.update_profile(user_id, conv_id))
-    _complete_turn(turn, final, ticket_id, shown="".join(state.shown))
+    _complete_turn(turn, final, ticket_id, shown="".join(state.shown), evidence=evidence)
     return {
         "conv_id": conv_id,
         "request_id": current_request_id(),
@@ -1763,12 +1875,37 @@ async def _resume_frames(req: ChatRequest, conv_id: str, user_id: str, checkpoin
     """
     resumed_from = str(checkpoint.get("turn_id") or "")
     turn = _start_turn("queued", conv_id, user_id, req.message, degrade=degrade, resumed_from=resumed_from)
+    checkpoint = dict(checkpoint)
+    meta = checkpoint.get("meta") or {}
+    refs = meta.get("knowledge_sources") or []
+    business = meta.get("business_data") or {}
+    from app.core.business_facts import verified_cells
+    invalid = bool(refs and (_knowledge_base is None or not await _knowledge_base.validate_policy_refs(refs)))
+    if business.get("evidence"):
+        cells, issues = verified_cells(business.get("evidence_payload") or {})
+        invalid = invalid or bool(issues) or cells != business["evidence"]
+    from app.core.lookup_scope import assess_lookup, goal_matches, is_empty_trace
+    if is_empty_trace(business):
+        goal = checkpoint.get("lookup_goal") or meta.get("lookup_goal")
+        run_scope = current_run()
+        invalid = (invalid or run_scope is None or not goal_matches(goal, req.message, run_scope.run_id)
+                   or not assess_lookup(business, goal)["covers_goal"])
+    if invalid:
+        safe = "此前依据已失效，请重新查询后核实。"
+        # Revoke the answer and its reusable evidence, not the already
+        # committed routing decision. Handoff effects still use the same run
+        # identity, whether they completed before the crash or remain pending.
+        checkpoint.update(shown=safe, final={**checkpoint["final"], "response": safe, "trajectory": []})
+        meta = {**meta, "knowledge_used": False, "knowledge_sources": [],
+                "knowledge": {**meta.get("knowledge", {}), "evidence_ok": False},
+                "business_data": {"attempted": True, "evidence": [], "evidence_issues": ["missing_or_stale_time"]}}
+        checkpoint["meta"] = meta
     shown = str(checkpoint.get("shown") or "")
     state = _TurnState(stage="after", shown=[shown] if shown else [],
                        routing=dict(checkpoint.get("routing") or {}))
     request_id = current_request_id()
     scope = current_run()
-    with bind(turn):
+    with bind_policy_scope(req.policy_scope), bind(turn):
         try:
             yield _sse("meta", {**(checkpoint.get("meta") or {}), **_run_fields(degrade, resumed_from)})
             if state.routing:
@@ -1777,7 +1914,9 @@ async def _resume_frames(req: ChatRequest, conv_id: str, user_id: str, checkpoin
                 yield _sse("delta", {"text": shown})
             final = decode_result(checkpoint["final"])
             result = await _finish_turn(turn, state, req, conv_id, user_id, final, degrade=degrade,
-                                        resumed_from=resumed_from)
+                                        resumed_from=resumed_from,
+                                        evidence={"knowledge": {**meta.get("knowledge", {}), "sources": meta.get("knowledge_sources", [])},
+                                                  "business_data": meta.get("business_data", {})})
             yield _sse("result", result)
         except (asyncio.CancelledError, GeneratorExit):
             state.cancelled = True
@@ -1840,7 +1979,19 @@ async def _execute_run(ctx: RunContext) -> RunOutcome:
     run 跑完、事件还在攒批的那一刻被杀，run 是成功的，它那一轮在日志里却永远没有结束——没人
     会替一个成功的 run 补 turn_abandoned。演练（docs/evaluation/chaos-drill.md）撞上过一次。
     """
-    outcome = await _run_queued_turn(ctx)
+    actor = None
+    if getattr(app.state, "staff_auth", None) is not None:
+        try:
+            actor = await app.state.actor_directory.from_snapshot(ctx.run.actor_context)
+            actor.require_policy(ctx.run.policy_scope)
+            await app.state.staff_auth.conversation(actor, ctx.run.conv_id)
+        except HTTPException:
+            return RunOutcome("failed", ("error", {"detail": "Employee authorization changed"}), error="actor_access_changed")
+    reset_actor = current_actor.set(actor)
+    try:
+        outcome = await _run_queued_turn(ctx)
+    finally:
+        current_actor.reset(reset_actor)
     if not await _event_log.flush(timeout_s=1.0):
         logger.warning("run %s 这一轮的事件 1 秒内没送到，照常收尾（日志之后补上或计数丢掉）", ctx.run.run_id)
     return outcome
@@ -1853,7 +2004,8 @@ async def _run_queued_turn(ctx: RunContext) -> RunOutcome:
     # 不再校验：这个 run 提交时已经按当时的规则收下了。入口的规则后来变了（比如消息长度上限），
     # 在这里重新校验的话，已经收下的 run 会直接失败：抛在下面的 try 外面，不转人工也不收尾，
     # 有提交点的回答也丢了，pydantic 的报错还会带着客户原话的开头进日志和终态帧
-    req = ChatRequest.model_construct(message=run.message, user_id=run.user_id, conv_id=run.conv_id)
+    req = ChatRequest.model_construct(message=run.message, user_id=run.user_id, conv_id=run.conv_id,
+                                      policy_scope=PolicyScope.model_validate(run.policy_scope))
     token = request_id_var.set(run.request_id or new_request_id())
     meta: dict[str, Any] = {}
     terminal: tuple[str, dict[str, Any]] | None = None
@@ -1891,6 +2043,155 @@ async def _run_queued_turn(ctx: RunContext) -> RunOutcome:
 
 # ── 排队模式：装配、提交、查询、续流（app/runs/）──────────────────────────────
 
+async def _start_cases() -> None:
+    """Case executions are durable even when legacy FAQ requests use inline mode."""
+    global _cases, _case_worker, _case_event_log
+    from app.attachments.objects import configured_objects
+    from app.attachments.service import AttachmentService
+    from app.attachments.verification import ImageExtractor
+    from app.attachments.workflow import MaterialWorkflow
+    from app.runs.broker import RedisBroker
+    from app.runs.channel import RedisChannel
+    from app.runs.memo import RedisMemo
+    from app.runs.store import PgRunStore
+    from app.tickets.case_execution import CaseExecutor
+    from app.tickets.cases import CASE_SUFFIX, CaseService
+
+    namespace = _INSTANCE + CASE_SUFFIX
+    config = dataclasses.replace(_RUN_CONFIG, mode="queued", retention_days=0)
+    store = PgRunStore(_pg_database, namespace)
+    broker = RedisBroker(_infra_redis, namespace)
+    channel = RedisChannel(_infra_redis)
+    await broker.ensure_group()
+    runs = RunService(store=store, broker=broker, channel=channel, config=config, heartbeat_s=SSE_HEARTBEAT_S)
+    objects = configured_objects()
+    attachments = AttachmentService(_pg_database, objects, app.state.actor_directory, _INSTANCE) if objects else None
+    app.state.attachments = attachments if config.serves_api else None
+    _cases = CaseService(_pg_database, _INSTANCE, run_service=runs, attachments=attachments,
+                         knowledge_base=_knowledge_base, actors=app.state.actor_directory, identity_store=getattr(app.state, "staff_auth", None),
+                         attachment_resolver=attachments.resolve if attachments else None,
+                         webhook_url=os.getenv("TICKET_WEBHOOK_URL", "").strip())
+    app.state.case_service = _cases if config.serves_api else None
+    # Case audit uses its protected PG scope. Existing Kafka topics/consumers
+    # accept only the legacy staff/customer scopes and cannot carry this data.
+    _case_event_log = await EventLog.open(
+        dataclasses.replace(EventLogConfig.from_env(), instance=namespace, sink="postgres"), db=_pg_database)
+
+    async def prepare(run, snapshot, degrade):
+        req = ChatRequest.model_construct(message=run.message, user_id=run.user_id, conv_id=run.conv_id,
+                                      policy_scope=PolicyScope.model_validate(run.policy_scope))
+        # SQL Agent continuity is per Case, not per conversation or browser user_id.
+        token = request_id_var.set(run.request_id or new_request_id())
+        try:
+            return await _prepare_request(req, f"case-{_INSTANCE}-{snapshot['case_id']}", run.user_id,
+                                          degrade=degrade, case_context=snapshot)
+        finally:
+            request_id_var.reset(token)
+
+    materials = None
+    if attachments:
+        extractor = ImageExtractor(None, "")
+        _model_runtime.register_llm(extractor)
+
+        async def query_images(question, run):
+            if _sql_agent is None or not _sql_agent.enabled:
+                return {"unavailable": True}
+            result = await _tool_manager.call("order_data_query", {
+                "query": question, "user_id": run.user_id, "session_id": f"case-{_INSTANCE}-{run.case_context['case_id']}"})
+            return result.data if result.success else {"unavailable": True}
+
+        # The SQL tool already owns a bounded client/transport timeout. The
+        # material wrapper must not abandon it earlier (the old fixed 90s did).
+        materials = MaterialWorkflow(attachments, extractor, query_images,
+                                     query_timeout_s=outer_tool_timeout_s() + 1)
+    executor = CaseExecutor(_cases, prepare=prepare, answer=_orchestrator.run, event_log=_case_event_log,
+                            materials=materials, complete_facts=getattr(_orchestrator, "complete_facts", None))
+    if config.runs_worker:
+        _case_worker = RunWorker(store=store, broker=broker, channel=channel, memo=RedisMemo(_infra_redis),
+                                 execute=executor, config=config, policy=DegradePolicy.from_env(), on_dead=executor.dead)
+        await _case_worker.start()
+
+
+async def _check_staff_work(scope=None):
+    actor = current_actor.get()
+    if actor is not None:
+        actor = await app.state.actor_directory.refresh(actor)
+        if scope is not None:
+            actor.require_policy(scope)
+    return actor
+
+
+async def _validate_chat_policy_scope(req, actor):
+    scope = req.policy_scope
+    auth = getattr(app.state, "staff_auth", None)
+    if auth is not None:
+        actor = await app.state.actor_directory.refresh(require_actor(actor))
+        actor.require_policy(scope)
+        req.user_id = actor.actor_id
+        if not req.conv_id:
+            req.conv_id = await auth.new_conversation(actor)
+        elif not req.case_id:
+            await auth.conversation(actor, req.conv_id)
+    if scope.as_of is not None or scope.audience not in {"", "customer"}:
+        actor = require_actor(actor)
+        actor = await app.state.actor_directory.refresh(actor)
+        if actor.instance != _INSTANCE:
+            raise HTTPException(403, "政策范围不属于当前实例")
+        actor.require_policy(scope)
+    # Product and region are exact explicit conditions, never wildcard selectors.
+    # Audiences other than public/customer require a current employee identity.
+
+
+def _is_case_input(req: ChatRequest) -> bool:
+    return bool(req.case_id or req.new_case or req.attachment_ids or req.facts or req.order_refs
+                or req.expected_version is not None or req.expected_control_version is not None
+                or req.issue_type != "general" or req.customer_ref)
+
+
+async def _accept_case_chat(req, actor, idempotency_key, transport):
+    from pydantic import ValidationError
+
+    from app.tickets.cases import CaseInput
+
+    actor = require_actor(actor)
+    service = getattr(app.state, "case_service", None)
+    if service is None:
+        raise HTTPException(503, {"code": "case_unavailable", "message": "跨消息工单需要 PostgreSQL 和队列配置"})
+    if not req.message_id and not idempotency_key:
+        raise HTTPException(422, "工单输入需要稳定的 message_id")
+    if req.message_id and idempotency_key and req.message_id != idempotency_key:
+        raise HTTPException(422, "message_id 与 Idempotency-Key 必须一致")
+    data = {k: v for k, v in req.model_dump(exclude_unset=True).items() if k in CaseInput.model_fields}
+    data["message_id"] = req.message_id or idempotency_key
+    try:
+        body = CaseInput(**data)
+    except ValidationError as exc:
+        raise HTTPException(422, "请选择工单或新问题，并提供会话、材料版本和控制权版本") from exc
+    receipt = await service.accept_input(actor, body, request_id=current_request_id(), transport=transport)
+    return service, receipt
+
+
+async def _case_chat(req, actor, idempotency_key, *, stream):
+    service, receipt = await _accept_case_chat(req, actor, idempotency_key, "stream" if stream else "chat")
+    run = await service.run(receipt["run_id"])
+    if run is None:  # business receipt survives execution-retention cleanup
+        saved = await service.completed_result(receipt["run_id"])
+        if saved:
+            if stream:
+                async def historical():
+                    yield _sse("result", saved)
+                return _sse_response(historical())
+            return JSONResponse(jsonable_encoder(saved))
+        return JSONResponse({**receipt, "status": "expired"})
+    if stream:
+        return _sse_response(service.runs.events(run))
+    done = await service.runs.wait(run.run_id, timeout_s=service.runs.config.wait_s)
+    if done is not None and done.result is not None:
+        return JSONResponse(jsonable_encoder(done.result))
+    return JSONResponse({**receipt, "status": done.status if done else "queued"}, status_code=202,
+                        headers={"Location": f"/tickets/cases/runs/{run.run_id}"})
+
+
 async def _start_runs() -> None:
     """按 AI_HELPDESK_ROLE 装上收提交的一侧和/或 worker。只在排队模式、启动的最后调。"""
     global _runs, _worker
@@ -1899,8 +2200,11 @@ async def _start_runs() -> None:
     from app.runs.memo import RedisMemo
     from app.runs.store import PgRunStore
 
-    store = PgRunStore(_pg_database, _INSTANCE)
-    broker = RedisBroker(_infra_redis, _INSTANCE)
+    # Runs queued before the namespace moved from the bare instance name are adopted by
+    # the sweeper (PgRunStore.adopt_legacy) instead of being orphaned.
+    store = PgRunStore(_pg_database, _INSTANCE + (":staff-v1" if staff_auth_mode() == "local" else ":policy-v1"),
+                       legacy_instances=[_INSTANCE])
+    broker = RedisBroker(_infra_redis, _INSTANCE + (":staff-v1" if staff_auth_mode() == "local" else ":policy-v1"))
     channel = RedisChannel(_infra_redis)
     await broker.ensure_group()
     if _RUN_CONFIG.serves_api:
@@ -1926,7 +2230,8 @@ async def _submit_run(req: ChatRequest, user_id: str, conv_id: str, idempotency_
     try:
         run, _created = await _runs.submit(
             conv_id=conv_id, user_id=user_id, message=req.message, request_id=current_request_id(),
-            idempotency_key=key, transport=transport,
+            idempotency_key=key, transport=transport, policy_scope=req.policy_scope.model_dump(mode="json"),
+            actor_context=current_actor.get().snapshot() if current_actor.get() else {},
         )
     except Backpressure as bp:
         logger.warning("积压 %d 条，拒收（%ss 后再试）", bp.backlog, bp.retry_after_s)
@@ -2001,7 +2306,7 @@ async def _handoff_dead_run(run, reason: str) -> dict[str, Any]:
     return body
 
 
-async def _readable_run(run_id: str, user_token: str | None):
+async def _readable_run(run_id: str, user_token: str | None, actor=None):
     """
     读一个 run（状态、续流）。排队模式没开、run 不存在、不是这个实例的，都是 404。
 
@@ -2009,11 +2314,21 @@ async def _readable_run(run_id: str, user_token: str | None):
     "有这个 run 但不是你的"。没开令牌鉴权时 run_id 本身就是凭据（80 位随机数，猜不到）——
     和这时 /chat 信任请求体里的 user_id 是同一个信任级别。
     """
-    if _runs is None or not _RUN_ID.fullmatch(run_id):
+    if not _RUN_ID.fullmatch(run_id):
+        raise HTTPException(404, "Not Found")
+    cases = getattr(app.state, "case_service", None)
+    if cases is not None and await cases.run(run_id) is not None:
+        return await readable_case_run(cases, actor, run_id)
+    if _runs is None:
         raise HTTPException(404, "Not Found")
     run = await _runs.get(run_id)
     if run is None:
         raise HTTPException(404, f"run 不存在或已超出保留期: {run_id}")
+    if getattr(app.state, "staff_auth", None) is not None:
+        fresh = await app.state.actor_directory.refresh(require_actor(actor))
+        await app.state.staff_auth.conversation(fresh, run.conv_id)
+        fresh.require_policy(run.policy_scope)
+        return run
     if _user_auth is not None and _user_auth.enabled:
         from app.core.auth import AuthError
         try:
@@ -2034,11 +2349,16 @@ async def submit_run(
     req: ChatRequest,
     x_user_token: str | None = Header(None, alias="X-User-Token"),
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    actor=Depends(optional_actor),
 ):
     """
     提交一轮，不等结果（排队模式）。返回 run_id；进度和回答从 GET /runs/{run_id}/events 读，
     结局从 GET /runs/{run_id} 读。同一个 Idempotency-Key 重复提交拿到的是同一个 run。
     """
+    await _validate_chat_policy_scope(req, actor)
+    if _is_case_input(req):
+        _, receipt = await _accept_case_chat(req, actor, idempotency_key, "runs")
+        return {**receipt, "status_url": f"/tickets/cases/runs/{receipt['run_id']}"}
     if _runs is None:
         raise HTTPException(404, "排队模式没开（AI_HELPDESK_RUN_MODE=queued）")
     user_id = await resolve_user_id(req, x_user_token)
@@ -2049,9 +2369,9 @@ async def submit_run(
 
 
 @app.get("/runs/{run_id}", dependencies=[Depends(protect_chat)], tags=["对话"])
-async def get_run(run_id: str, x_user_token: str | None = Header(None, alias="X-User-Token")):
+async def get_run(run_id: str, x_user_token: str | None = Header(None, alias="X-User-Token"), actor=Depends(optional_actor)):
     """一个 run 的状态：第几次执行、每次谁跑的、怎么结束的；结束了带结果（/chat 的形状）。"""
-    return (await _readable_run(run_id, x_user_token)).public()
+    return (await _readable_run(run_id, x_user_token, actor)).public()
 
 
 @app.get("/runs/{run_id}/events", dependencies=[Depends(protect_chat)], tags=["对话"])
@@ -2060,16 +2380,18 @@ async def run_events(
     after: str | None = None,
     x_user_token: str | None = Header(None, alias="X-User-Token"),
     last_event_id: Annotated[str | None, Header(alias="Last-Event-ID")] = None,
+    actor=Depends(optional_actor),
 ):
     """
     一个 run 的 SSE 流，和 /chat/stream 的帧一样。断线重连时带上最后收到的那一帧的 id
     （`Last-Event-ID` 头，或 `?after=`），从它后面接着读，一帧不重、一帧不漏；不带就从头读。
     """
-    run = await _readable_run(run_id, x_user_token)
+    run = await _readable_run(run_id, x_user_token, actor)
     cursor = (last_event_id or after or "").strip()
     if cursor and not _EVENT_ID.fullmatch(cursor):
         raise HTTPException(422, "Last-Event-ID 的格式不对")
-    return _sse_response(_runs.events(run, after=cursor or None))
+    service = app.state.case_service.runs if run.case_context else _runs
+    return _sse_response(service.events(run, after=cursor or None))
 
 
 @app.get("/livez", include_in_schema=False)
@@ -2314,6 +2636,8 @@ async def monitor_summary():
 @app.get("/metrics")
 async def prometheus_metrics():
     """Prometheus 指标入口。"""
+    from app.core.staff_maintenance import operation_metrics
+    operation_metrics()
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
@@ -2402,6 +2726,7 @@ async def _log_turn(
 
 
 async def _remember_turn(user_id: str, conv_id: str, message: str, answer: str) -> None:
+    await _check_staff_work()
     """
     一轮的两条写进工作记忆。排队模式下按 run 只写一次（一轮可能跑不止一遍，客户的原话
     不能在记忆里出现两次），两条要么都写要么都不写；inline 和原来一样逐条写。
@@ -2486,6 +2811,8 @@ async def update_ticket_status(ticket_id: str, body: TicketStatusRequest):
     except KeyError as exc:
         raise HTTPException(404, f"工单不存在: {ticket_id}") from exc
     except ValueError as exc:
+        if str(exc) == "case_requires_versioned_api":
+            raise HTTPException(409, "此工单需要带版本的员工工单接口") from exc
         raise HTTPException(422, str(exc)) from exc
     return {
         **(await _ticket_payloads([ticket]))[0],
@@ -2493,14 +2820,29 @@ async def update_ticket_status(ticket_id: str, body: TicketStatusRequest):
     }
 
 
+async def policy_employee(request: HttpRequest):
+    actor = await app.state.actor_directory.refresh(get_current_actor(request))
+    if actor.instance != _INSTANCE:
+        raise HTTPException(403, "政策工作台不属于此实例")
+    return actor
+
+
+async def policy_admin(actor=Depends(policy_employee)):
+    if "admin" not in actor.roles:
+        raise HTTPException(403, "只有管理员可以编辑和发布政策")
+    return actor
+
+
 class SearchRequest(BaseModel):
     """检索请求体。"""
     query: str
     top_k: int = 5
+    policy_scope: PolicyScope = Field(default_factory=PolicyScope)
 
 
 @app.post("/search", dependencies=[Depends(require_api_key)])
-async def search(body: SearchRequest):
+async def search(body: SearchRequest, actor=Depends(policy_employee)):
+    actor.require_policy(body.policy_scope)
     """
     演示检索优化链路：
       查询改写 → 并行召回（每路内部是 dense+lexical 混合）→ 去重
@@ -2516,9 +2858,8 @@ async def search(body: SearchRequest):
     """
     if _tool_manager is None:
         raise HTTPException(503, "服务未就绪")
-    result = await _tool_manager.search_with_rewrite(
-        "knowledge_search", body.query, top_k=body.top_k
-    )
+    with bind_policy_scope(body.policy_scope):
+        result = await _tool_manager.search_with_rewrite("knowledge_search", body.query, top_k=body.top_k)
     results = result.data if isinstance(result.data, list) else []
     if _knowledge_base is not None:
         doc_ids = [r.get("doc_id", "") for r in results if isinstance(r, dict)]
@@ -2552,6 +2893,7 @@ class DocInput(BaseModel):
     title:   str
     content: str
     category: str | None = None
+    policy: PolicyMetadata = Field(default_factory=PolicyMetadata)
 
 
 class BatchDocInput(BaseModel):
@@ -2561,7 +2903,9 @@ class BatchDocInput(BaseModel):
 
 class DocumentPatch(BaseModel):
     """改一篇文档。现在只能改分类：空串是未分类。"""
-    category: str
+    category: str | None = None
+    policy: PolicyMetadata | None = None
+    expected_revision: str | None = None
 
 
 class EvalIntentInput(BaseModel):
@@ -2589,7 +2933,7 @@ class EvalRunInput(BaseModel):
 
 
 @app.post("/knowledge/add", tags=["知识库"], dependencies=[Depends(require_api_key)])
-async def add_knowledge(body: BatchDocInput):
+async def add_knowledge(body: BatchDocInput, actor=Depends(policy_admin)):
     """
     批量导入文档到知识库。
 
@@ -2613,14 +2957,14 @@ async def add_knowledge(body: BatchDocInput):
     kb = _require_knowledge_base()
     results = await _import_or_503(
         kb,
-        [{"title": d.title, "content": d.content, "category": d.category} for d in body.documents],
+        [d.model_dump(mode="json") for d in body.documents],
         source_type=SOURCE_MANUAL,
     )
     return await _import_response(kb, results)
 
 
 @app.post("/knowledge/upload", tags=["知识库"], dependencies=[Depends(require_api_key)])
-async def upload_knowledge(file: UploadFile = File(...), category: str = Form("")):
+async def upload_knowledge(file: UploadFile = File(...), category: str = Form(""), policy: str = Form(""), actor=Depends(policy_admin)):
     """
     上传文件导入知识库。
 
@@ -2656,6 +3000,12 @@ async def upload_knowledge(file: UploadFile = File(...), category: str = Form(""
         title = filename.rsplit(".", 1)[0] if "." in filename else filename
         docs = [{"title": title, "content": text}]
 
+    if policy:
+        try:
+            import_policy = PolicyMetadata.model_validate_json(policy).model_dump(mode="json")
+        except ValueError as exc:
+            raise HTTPException(422, "政策元数据不合法") from exc
+        docs = [{**d, "policy": d.get("policy") or import_policy} for d in docs]
     results = await _import_or_503(
         kb, docs, source_type=SOURCE_UPLOAD, source_name=filename, category=category
     )
@@ -2709,15 +3059,15 @@ async def _import_response(
 
 
 @app.get("/knowledge/stats", tags=["知识库"])
-async def knowledge_stats():
+async def knowledge_stats(actor=Depends(policy_employee)):
     """知识库统计：文档数、片段数，以及其中有多少篇是由历史分片归档来的。"""
     kb = _require_knowledge_base()
-    return await kb.document_stats()
+    return await kb.document_stats(actor=actor)
 
 
 @app.get("/knowledge/documents", tags=["知识库"], dependencies=[Depends(require_api_key)])
 async def list_knowledge_documents(
-    q: str = "", limit: int = 100, offset: int = 0, category: str = "",
+    q: str = "", limit: int = 100, offset: int = 0, category: str = "", actor=Depends(policy_employee),
 ):
     """
     知识库里有哪些文档。不带 `q` 是浏览全部（新导入的在前）；带 `q` 时按空白
@@ -2736,33 +3086,47 @@ async def list_knowledge_documents(
     kb = _require_knowledge_base()
     return await kb.list_documents(
         query=q.strip()[:200], limit=max(1, min(limit, 500)), offset=max(0, offset),
-        category=category.strip()[:64] or None,
+        category=category.strip()[:64] or None, actor=actor,
     )
 
 
 @app.get("/knowledge/categories", tags=["知识库"], dependencies=[Depends(require_api_key)])
-async def list_knowledge_categories():
+async def list_knowledge_categories(actor=Depends(policy_employee)):
     """
     知识库的分类（按客户从咨询到售后的顺序）和每类的篇数，外加未分类的篇数。
 
     分类是固定的一组，用来整理和浏览文档；检索不看分类。
     """
     kb = _require_knowledge_base()
-    return await kb.category_overview()
+    return await kb.category_overview(actor=actor)
 
 
 @app.patch("/knowledge/documents/{doc_id}", tags=["知识库"],
            dependencies=[Depends(require_api_key)])
-async def update_knowledge_document(doc_id: str, body: DocumentPatch):
+async def update_knowledge_document(doc_id: str, body: DocumentPatch, actor=Depends(policy_admin)):
     """
-    改一篇文档的分类（`{"category": "delivery"}`，空串是未分类）。
+    管理员修改文档分类或政策适用条件。分类为空串表示未分类。
 
-    只改分类：正文、分片、向量和关键词索引都不动，检索结果不受影响。
+    修改政策必须携带 expected_revision；并发旧版本返回 409。
+    政策修订与缓存版本同时更新，正文、分片和向量不变。
     """
     kb = _require_knowledge_base()
     try:
-        document = await kb.set_document_category(doc_id, body.category)
-    except UnknownCategory as ex:
+        # Validate every part before writing any of it: a bad category must not be
+        # reported as a failure after the policy revision was already published.
+        if body.category is not None:
+            normalize_category(body.category)
+        document = await kb.get_document(doc_id)
+        if body.policy is not None:
+            if not body.expected_revision:
+                raise HTTPException(422, "政策更新需要当前版本")
+            try:
+                document = await kb.set_document_policy(doc_id, body.policy, body.expected_revision)
+            except ValueError as exc:
+                raise HTTPException(409, str(exc)) from exc
+        if body.category is not None:
+            document = await kb.set_document_category(doc_id, body.category)
+    except (UnknownCategory, ValueError) as ex:
         raise HTTPException(400, str(ex)) from ex
     if document is None:
         raise HTTPException(404, f"文档不存在: {doc_id}")
@@ -2771,10 +3135,10 @@ async def update_knowledge_document(doc_id: str, body: DocumentPatch):
 
 @app.get("/knowledge/documents/{doc_id}", tags=["知识库"],
          dependencies=[Depends(require_api_key)])
-async def get_knowledge_document(doc_id: str):
+async def get_knowledge_document(doc_id: str, actor=Depends(policy_employee)):
     """一篇文档的正文，以及它被切成的片段（检索用的就是这些片段）。"""
     kb = _require_knowledge_base()
-    document = await kb.get_document(doc_id)
+    document = await kb.get_document(doc_id, actor=actor)
     if document is None:
         raise HTTPException(404, f"文档不存在: {doc_id}")
     return document

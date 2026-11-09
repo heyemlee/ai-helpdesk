@@ -1,0 +1,49 @@
+name: Receive externally measured acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_revision:
+        description: 'Full 40-character tested candidate commit in trusted main history'
+        type: string
+        required: true
+      release_tag:
+        description: 'Tag in this repository holding stage6-acceptance.zip'
+        type: string
+        required: true
+      bundle_sha256:
+        description: 'SHA-256 returned by the trusted offline pack command'
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  receive:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download data from the explicitly selected repository release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern stage6-acceptance.zip --dir /tmp/incoming
+      - name: Validate every digest and independently recompute the gate
+        env:
+          BUNDLE_SHA256: ${{ inputs.bundle_sha256 }}
+          CANDIDATE_REVISION: ${{ inputs.candidate_revision }}
+        run: |
+          python -m acceptance.trust "$CANDIDATE_REVISION"
+          python -m acceptance.bundle receive --bundle /tmp/incoming/stage6-acceptance.zip --sha256 "$BUNDLE_SHA256" --revision "$CANDIDATE_REVISION" --output /tmp/stage6-acceptance
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage6-acceptance
+          path: /tmp/stage6-acceptance/
+          if-no-files-found: error

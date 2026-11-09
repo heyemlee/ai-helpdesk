@@ -15,15 +15,17 @@ import time
 import uuid
 
 import pytest
+from evidence_fixtures import PUBLISHED
+from evidence_fixtures import PublishedKnowledgeBase as KnowledgeBase
 
 from app.core.embedder import Embedder
 from app.core.lexical import index_text
+from app.core.policy_scope import PolicyMetadata
 from app.storage.vector_store import LocalStore, like_pattern
 from app.tools import knowledge_base as kbmod
 from app.tools.knowledge_base import (
     CATEGORY_KEYS,
     UNCATEGORIZED,
-    KnowledgeBase,
     UnknownCategory,
     document_excerpt,
     document_hash,
@@ -445,7 +447,7 @@ async def test_search_hits_point_back_to_their_document(kb):
     hit = next(h for h in hits if h["doc_id"] == doc["id"])
     passages = (await kb.get_document(doc["id"]))["passages"]
     assert hit["chunk_id"] == passages[0]["id"]
-    assert list(hit)[-2:] == ["doc_id", "chunk_id"]   # 新字段排在最后，见 search_async 的说明
+    assert {"doc_id", "chunk_id", "policy", "policy_scope", "policy_revision", "policy_as_of"} <= set(hit)   # 新字段排在最后，见 search_async 的说明
     assert (await kb.document_titles([doc["id"], "", "missing"])) == {doc["id"]: f"hinge-{tag}"}
 
 
@@ -531,51 +533,25 @@ async def test_incomplete_legacy_document_is_marked_partial(kb, store):
     assert chunks[0]["content"] not in full["content"]
 
 
-async def test_reimporting_a_legacy_document_does_not_duplicate_it(kb, store):
-    # 短文档：拼回来的正文就是原文，哈希对得上
-    short_title = uniq("legacy-short")
-    short = "缺件需在验收单注明。"
-    await store.kb_add(await legacy_chunks(short_title, short, 1_700_000_600.0))
-    # 长文档：拼回来的不是原文，哈希对不上，靠逐片比对认出来
-    long_title = uniq("legacy-reimport")
-    await store.kb_add(await legacy_chunks(long_title, LONG_DOC, 1_700_000_700.0))
+async def test_reimporting_legacy_does_not_publish_or_merge_its_policy(kb, store):
+    title = uniq("legacy-reimport")
+    await store.kb_add(await legacy_chunks(title, LONG_DOC, 1_700_000_700.0))
     await kb.ensure_documents()
-    before = await store.kb_count()
-
-    short_result, long_result = await kb.import_documents(
-        [{"title": short_title, "content": short}, {"title": long_title, "content": LONG_DOC}],
-        source_type="upload", source_name="reimport.json",
-    )
-    assert short_result["status"] == "duplicate"
-    assert long_result["status"] == "restored"
-    assert await store.kb_count() == before             # 一片都没多
-
-    # 正文一字不差地又导了一遍：能确认存着的就是原文，不再标成"历史"
-    confirmed = await kb.get_document(short_result["id"])
-    assert confirmed["origin"] == "original" and confirmed["content"] == short
-    assert confirmed["source_type"] == "legacy" and confirmed["created_at"] == 1_700_000_600.0
-
-    restored = await kb.get_document(long_result["id"])
-    assert restored["origin"] == "original" and restored["content"] == LONG_DOC
-    assert restored["created_at"] == 1_700_000_700.0    # 第一次导入的时间
-    assert restored["source_type"] == "legacy"          # 那次的来源没记，不拿这次的顶替
-    # 补全之后再导一次，就是普通的重复
-    [again] = await kb.import_documents([{"title": long_title, "content": LONG_DOC}])
-    assert again["status"] == "duplicate" and again["id"] == long_result["id"]
+    [legacy] = (await kb.list_documents(query=title))["documents"]
+    [new] = await kb.import_documents([{"title":title,"content":LONG_DOC}], source_type="upload")
+    assert new["status"] == "created" and new["id"] != legacy["id"]
+    assert (await kb.get_document(legacy["id"]))["policy"]["status"] == "draft"
+    [again] = await kb.import_documents([{"title":title,"content":LONG_DOC}])
+    assert again["status"] == "duplicate" and again["id"] == new["id"]
 
 
-async def test_first_import_after_upgrade_does_not_reimport_the_old_library(kb, store):
-    """
-    升级后第一次导入：文档表还是空的，历史分片还没归档。
-    这时候导入老知识库里已有的文档，不能把它再写一遍。
-    """
-    title = uniq("legacy-first")
-    content = "台面结构性开裂先暂停使用。"
+async def test_first_reviewed_import_keeps_legacy_quarantined(kb, store):
+    title, content = uniq("legacy-first"), "台面结构性开裂先暂停使用。"
     await store.kb_add(await legacy_chunks(title, content, 1_700_000_800.0))
-    before = await store.kb_count()
-    assert await kb.add_documents_async([{"title": title, "content": content}]) == 0
-    assert await store.kb_count() == before
-    assert (await kb.list_documents(query=title))["matched"] == 1
+    assert await kb.add_documents_async([{"title":title,"content":content}]) == 1
+    docs = (await kb.list_documents(query=title))["documents"]
+    assert len(docs) == 2
+    assert {d["policy"]["status"] for d in docs} == {"draft", "published"}
 
 
 # ── 空壳记录 ──────────────────────────────────────────────────────────────────
@@ -675,7 +651,7 @@ async def test_two_instances_seeding_an_empty_library_do_not_double_it(tmp_path)
         await customer.close()
 
 
-async def test_passage_shared_by_two_versions_is_retrieved_once(kb):
+async def test_passage_shared_by_versions_retains_distinct_policy_references(kb):
     """
     同名文档的两个版本共用一段原文。两篇都保留，但检索结果里这段文字只出现一次，
     不然回答的上下文会被同一段话占掉两个名额。
@@ -699,8 +675,8 @@ async def test_passage_shared_by_two_versions_is_retrieved_once(kb):
 
     hits = await kb.search_async(f"{tag} 铰链 门缝", top_k=5)
     same = [h for h in hits if h["content"] == first_a]
-    assert len(same) == 1
-    assert len({(h["title"], h["content"]) for h in hits}) == len(hits)
+    assert len(same) == 2
+    assert len({(h["doc_id"], h["policy_revision"], h["content"]) for h in hits}) == len(hits)
 
 
 # ── 老库升级（SQLite 文件）────────────────────────────────────────────────────
@@ -748,7 +724,10 @@ async def test_existing_sqlite_file_is_upgraded_in_place(tmp_path):
         # 同一时刻导入的按标题排，顺序稳定
         assert [d["title"] for d in listing["documents"]] == ["install", "stock"]
 
-        # 检索照常，命中带着文档出处
+        # Legacy content is retained but not eligible until explicitly reviewed.
+        assert await kb.search_async("柜体水平", top_k=2) == []
+        for doc in listing["documents"]:
+            await kb.set_document_policy(doc["id"], PolicyMetadata.model_validate(PUBLISHED), doc["policy_revision"])
         hits = await kb.search_async("柜体水平", top_k=2)
         assert hits[0]["title"] == "install" and hits[0]["doc_id"].startswith("legacy_")
         assert hits[0]["chunk_id"] == rows[0]["id"]
@@ -790,7 +769,7 @@ async def test_sqlite_document_table_without_categories_is_upgraded(tmp_path):
     await seeded.close()
     with sqlite3.connect(path) as conn:      # 退回到没有 category 列的样子
         conn.executescript(
-            "ALTER TABLE kb_documents RENAME TO kb_documents_new;"
+            "DROP VIEW kb_documents; DROP VIEW kb_chunks; ALTER TABLE policy_documents RENAME TO kb_documents_new;"
             + PRE_CATEGORY_DOCUMENTS.format(real="REAL")
             + "INSERT INTO kb_documents SELECT id, title, content, content_hash, origin, source_type,"
               " source_name, chunk_count, created_at FROM kb_documents_new;"
@@ -912,7 +891,10 @@ async def test_existing_postgres_table_is_upgraded_in_place():
             assert by_title["warranty"]["display_title"] == "Warranty Review"
             assert by_title["long"]["chunks"] == by_title["long"]["chunk_count"] == len(rows) - 1
 
-            # 稠密和关键词两路都还能召回，命中带文档出处
+            # Both retrieval paths require an explicit review after migration.
+            assert await kb.search_async("written limited warranty", top_k=3) == []
+            for doc in listing["documents"]:
+                await kb.set_document_policy(doc["id"], PolicyMetadata.model_validate(PUBLISHED), doc["policy_revision"])
             hits = await kb.search_async("written limited warranty", top_k=3)
             assert hits[0]["title"] == "warranty" and hits[0]["retrieval"] == "hybrid"
             assert hits[0]["doc_id"] == by_title["warranty"]["id"]
@@ -924,8 +906,8 @@ async def test_existing_postgres_table_is_upgraded_in_place():
                 {"title": "long", "content": LONG_DOC},
                 {"title": "new", "content": "LTL freight is scheduled separately."},
             ])
-            assert old["status"] == "restored" and new["status"] == "created"
-            assert await store.kb_count() == before + 1
+            assert old["status"] == "created" and new["status"] == "created"
+            assert await store.kb_count() == before + old["chunks"] + 1
             assert (await kb.list_documents(query="LTL freight"))["matched"] == 1
         finally:
             await db.close()

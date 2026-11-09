@@ -21,25 +21,23 @@
         "SO-1"
       ]
     },
-    "knowledge_used": true,
-    "knowledge_sources": [
-      {
-        "doc_id": "doc_1",
-        "chunk_id": "c1",
-        "passage": 0,
-        "score": 0.6,
-        "retrieval": "hybrid",
-        "title": "补件流程",
-        "excerpt": "缺件补发在核实后安排。"
-      }
-    ],
+    "knowledge_used": false,
+    "knowledge_sources": [],
     "knowledge": {
       "attempted": true,
       "mode": "direct",
       "reranked": false,
       "corrected": false,
       "evidence_ok": null,
-      "degraded": false
+      "degraded": true,
+      "policy_lookup": false,
+      "lookup_status": "unavailable",
+      "lookup_scope": {
+        "product": "",
+        "region": "",
+        "audience": "",
+        "as_of": null
+      }
     },
     "business_data": {
       "enabled": true,
@@ -51,9 +49,183 @@
         "wms_db"
       ],
       "execution_status": "success",
+      "evidence_issues": [],
       "has_risk": false,
       "degraded": false,
-      "reasons": []
+      "reasons": [],
+      "evidence_payload": {
+        "answer": "SO-1 的补件已排产。",
+        "queried_database": true,
+        "execution_status": "success",
+        "has_risk": false,
+        "degraded": false,
+        "selected_databases": [
+          "wms_db"
+        ],
+        "trace_id": "t-1",
+        "steps": [
+          {
+            "database": "wms_db",
+            "success": true,
+            "rows": [
+              {
+                "order_ref": "SO-1",
+                "lead_time": "3个工作日",
+                "status": "scheduled"
+              }
+            ],
+            "row_count": 1,
+            "truncated": false,
+            "final_sql": "SELECT order_ref,lead_time,status FROM orders",
+            "as_of": "2026-11-06T00:00:00+00:00",
+            "observed_at": "2026-11-06T00:00:00+00:00",
+            "as_of_source": "query_time",
+            "column_units": {},
+            "source_records": []
+          }
+        ],
+        "route": "database_query",
+        "observed_at": "2026-11-06T00:00:00+00:00",
+        "evidence": [
+          {
+            "evidence_id": "ev_0000000000000000000000000000000000000000000000000000000000000001",
+            "entity": {
+              "kind": "query_row",
+              "query_hash": "e102a42bae2370b6bed6c71ccf6cfbf86be28a1da88a5b657e6e0c7498675310",
+              "row_index": 0
+            },
+            "field": "order_ref",
+            "value": "SO-1",
+            "unit": null,
+            "as_of": "2026-11-06T00:00:00+00:00",
+            "as_of_source": "query_time",
+            "database": "wms_db",
+            "step_index": 0,
+            "row_index": 0,
+            "query_hash": "e102a42bae2370b6bed6c71ccf6cfbf86be28a1da88a5b657e6e0c7498675310",
+            "source_records": [],
+            "issues": []
+          },
+          {
+            "evidence_id": "ev_0000000000000000000000000000000000000000000000000000000000000002",
+            "entity": {
+              "kind": "query_row",
+              "query_hash": "e102a42bae2370b6bed6c71ccf6cfbf86be28a1da88a5b657e6e0c7498675310",
+              "row_index": 0
+            },
+            "field": "lead_time",
+            "value": "3个工作日",
+            "unit": null,
+            "as_of": "2026-11-06T00:00:00+00:00",
+            "as_of_source": "query_time",
+            "database": "wms_db",
+            "step_index": 0,
+            "row_index": 0,
+            "query_hash": "e102a42bae2370b6bed6c71ccf6cfbf86be28a1da88a5b657e6e0c7498675310",
+            "source_records": [],
+            "issues": []
+          },
+          {
+            "evidence_id": "ev_0000000000000000000000000000000000000000000000000000000000000003",
+            "entity": {
+              "kind": "query_row",
+              "query_hash": "e102a42bae2370b6bed6c71ccf6cfbf86be28a1da88a5b657e6e0c7498675310",
+              "row_index": 0
+            },
+            "field": "status",
+            "value": "scheduled",
+            "unit": null,
+            "as_of": "2026-11-06T00:00:00+00:00",
+            "as_of_source": "query_time",
+            "database": "wms_db",
+            "step_index": 0,
+            "row_index": 0,
+            "query_hash": "e102a42bae2370b6bed6c71ccf6cfbf86be28a1da88a5b657e6e0c7498675310",
+            "source_records": [],
+            "issues": []
+          }
+        ]
+      },
+      "evidence": [
+        {
+          "evidence_id": "ev_0000000000000000000000000000000000000000000000000000000000000001",
+          "entity": {
+            "kind": "query_row",
+            "query_hash": "e102a42bae2370b6bed6c71ccf6cfbf86be28a1da88a5b657e6e0c7498675310",
+            "row_index": 0
+          },
+          "field": "order_ref",
+          "value": "SO-1",
+          "unit": null,
+          "as_of": "2026-11-06T00:00:00+00:00",
+          "as_of_source": "query_time",
+          "database": "wms_db",
+          "step_index": 0,
+          "row_index": 0,
+          "query_hash": "e102a42bae2370b6bed6c71ccf6cfbf86be28a1da88a5b657e6e0c7498675310",
+          "source_records": [],
+          "issues": [],
+          "entity_keys": {
+            "order_ref": "SO-1"
+          },
+          "column_metadata": {},
+          "trace_id": "t-1",
+          "run_id": "",
+          "observed_at": "2026-11-06T00:00:00+00:00"
+        },
+        {
+          "evidence_id": "ev_0000000000000000000000000000000000000000000000000000000000000002",
+          "entity": {
+            "kind": "query_row",
+            "query_hash": "e102a42bae2370b6bed6c71ccf6cfbf86be28a1da88a5b657e6e0c7498675310",
+            "row_index": 0
+          },
+          "field": "lead_time",
+          "value": "3个工作日",
+          "unit": null,
+          "as_of": "2026-11-06T00:00:00+00:00",
+          "as_of_source": "query_time",
+          "database": "wms_db",
+          "step_index": 0,
+          "row_index": 0,
+          "query_hash": "e102a42bae2370b6bed6c71ccf6cfbf86be28a1da88a5b657e6e0c7498675310",
+          "source_records": [],
+          "issues": [],
+          "entity_keys": {
+            "order_ref": "SO-1"
+          },
+          "column_metadata": {},
+          "trace_id": "t-1",
+          "run_id": "",
+          "observed_at": "2026-11-06T00:00:00+00:00"
+        },
+        {
+          "evidence_id": "ev_0000000000000000000000000000000000000000000000000000000000000003",
+          "entity": {
+            "kind": "query_row",
+            "query_hash": "e102a42bae2370b6bed6c71ccf6cfbf86be28a1da88a5b657e6e0c7498675310",
+            "row_index": 0
+          },
+          "field": "status",
+          "value": "scheduled",
+          "unit": null,
+          "as_of": "2026-11-06T00:00:00+00:00",
+          "as_of_source": "query_time",
+          "database": "wms_db",
+          "step_index": 0,
+          "row_index": 0,
+          "query_hash": "e102a42bae2370b6bed6c71ccf6cfbf86be28a1da88a5b657e6e0c7498675310",
+          "source_records": [],
+          "issues": [],
+          "entity_keys": {
+            "order_ref": "SO-1"
+          },
+          "column_metadata": {},
+          "trace_id": "t-1",
+          "run_id": "",
+          "observed_at": "2026-11-06T00:00:00+00:00"
+        }
+      ]
     }
   },
   "routing": {
@@ -72,7 +244,7 @@
     "conv_id": "conv-turns",
     "request_id": "0a1b2c3d4e11",
     "turn_id": "00000000000000000000000001",
-    "response": "补件已经登记，核实后安排发出。",
+    "response": "订单 SO-1 [1]\n数据时点 2026-11-06T00:00:00+00:00\n- 交期: 3个工作日\n- 状态: scheduled\n\n以上为可核对的资料。涉及补件、责任、金额或交期承诺，请由员工按适用政策审核后处理。",
     "agent_type": "order",
     "agent_types": [
       "order"

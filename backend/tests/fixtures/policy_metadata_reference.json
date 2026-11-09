@@ -1,0 +1,64 @@
+{
+  "origin": {
+    "record": "release-policies-047",
+    "candidate_revision": "5e61fee6db635c89cfbf9cdb2144cfe5b76019b9",
+    "original_sha256": "0a63397a2bbfc80c1de4093771fe9d0e1e47c63919cbc339dd627fdb32fe8dbd"
+  },
+  "message": "我在整理 CA 地区 Juniper-47 cabinets 客服答复。按所选日期和适用范围，付款手续费的处理时限有什么规定？请说明有效版本并保留引用。",
+  "scope": {
+    "as_of": "2026-11-05T19:59:59Z",
+    "audience": "employee",
+    "product": "Juniper-47 cabinets",
+    "region": "CA"
+  },
+  "sources": [
+    {
+      "chunk_id": "765b429698d26c67e52af8474818f0f1",
+      "content": "Juniper-47 cabinets 的付款手续费：旧版处理时限为 77 个工作日。",
+      "doc_id": "doc_91ad2d0571577c033973",
+      "doc_title": "Juniper-47 cabinets 付款手续费 2026-A",
+      "excerpt": "Juniper-47 cabinets 的付款手续费：旧版处理时限为 77 个工作日。",
+      "passage": 0,
+      "policy": {
+        "audience": "employee",
+        "effective_at": "2026-01-01T00:00:00Z",
+        "expires_at": "2026-11-05T20:00:00Z",
+        "product": "Juniper-47 cabinets",
+        "region": "CA",
+        "status": "published",
+        "version": "2026-A"
+      },
+      "policy_as_of": "2026-11-05T19:59:59+00:00",
+      "policy_revision": "91ad2d0571577c033973901cf72882f6a3c8020d4af39e4979454da4cc9b0b25",
+      "policy_scope": {
+        "as_of": "2026-11-05T19:59:59Z",
+        "audience": "employee",
+        "product": "Juniper-47 cabinets",
+        "region": "CA"
+      },
+      "retrieval": "hybrid",
+      "score": 0.4575,
+      "title": "Juniper-47 cabinets 付款手续费 2026-A"
+    }
+  ],
+  "sentences": [
+    "按所选时点 **2026-11-05T19:59:59Z**，适用于 **CA 地区、Juniper-47 cabinets、员工受众**的已发布有效版本为 **2026-A**，付款手续费的处理时限为 **77 个工作日**。",
+    "- 到期时间：2026-11-05T20:00:00Z"
+  ],
+  "original_violations": [
+    {
+      "evidence": "2026-11-05",
+      "reason": "无依据的时效承诺：'2026-11-05' 未出现在本轮知识库检索结果或 Skill SOP 中，且句子使用了承诺性表述。",
+      "rule": "lead_time_commitment",
+      "sentence": "按所选时点 **2026-11-05T19:59:59Z**，适用于 **CA 地区、Juniper-47 cabinets、员工受众**的已发布有效版本为 **2026-A**，付款手续费的处理时限为 **77 个工作日**。"
+    },
+    {
+      "evidence": "2026-11-05",
+      "reason": "无依据的时效承诺：'2026-11-05' 未出现在本轮知识库检索结果或 Skill SOP 中，且句子使用了承诺性表述。",
+      "rule": "lead_time_commitment",
+      "sentence": "- 到期时间：2026-11-05T20:00:00Z"
+    }
+  ],
+  "original_answer_confidence": 0.5,
+  "original_handoff": true
+}

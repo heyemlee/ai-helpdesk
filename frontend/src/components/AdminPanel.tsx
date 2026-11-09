@@ -1,8 +1,9 @@
+import { EmployeesPanel } from './EmployeesPanel'
 import { useState, type ReactNode } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useHealth, useSops } from '@/api/hooks'
-import { getStaffKey, type Settings } from '@/api/client'
+import { type Settings } from '@/api/client'
 import { Card, Chip, KV, StateBlock } from './ui'
 import { EvalPanel } from './EvalPanel'
 import { Icon } from './Icon'
@@ -29,7 +30,6 @@ const TAB_LABEL: Record<AdminTab, Key> = {
 }
 
 export interface ConnectionDraft extends Settings {
-  staffKey: string
   streaming: boolean
 }
 
@@ -51,6 +51,7 @@ export function AdminPanel({ base, tab, settings, streaming, onSave, inspector, 
   onToggleTheme: () => void
 }) {
   const { t, lang, toggle: toggleLang } = useT()
+  const [employeesOpen, setEmployeesOpen] = useState(false)
   return (
     <div className="admin">
       <div className="admin-head">
@@ -73,6 +74,7 @@ export function AdminPanel({ base, tab, settings, streaming, onSave, inspector, 
       {tab === 'overview' && (
         <div className="page scroll"><div className="page-inner">
           <Overview base={base} />
+          <details onToggle={e => setEmployeesOpen(e.currentTarget.open)}><summary>员工账号管理</summary>{employeesOpen && <EmployeesPanel base={base} />}</details>
           <Connection settings={settings} streaming={streaming} onSave={onSave} />
           {/* 窄屏的底部导航放不下主题和语言开关，这里是它们在手机上的唯一入口 */}
           <Card title={t('ad.display')}>
@@ -185,7 +187,7 @@ function Connection({ settings, streaming, onSave }: {
 }) {
   const { t } = useT()
   const [draft, setDraft] = useState<ConnectionDraft>(
-    () => ({ ...settings, staffKey: getStaffKey(), streaming }),
+    () => ({ ...settings, streaming }),
   )
   const [saved, setSaved] = useState(false)
   const set = (patch: Partial<ConnectionDraft>) => { setSaved(false); setDraft((d) => ({ ...d, ...patch })) }
@@ -198,8 +200,6 @@ function Connection({ settings, streaming, onSave }: {
         <p className="page-lede">{t('ad.connection.hint')}</p>
         <Field label={t('shell.apiBase')} value={draft.apiBaseUrl} placeholder="/api"
                onChange={(apiBaseUrl) => set({ apiBaseUrl })} />
-        <Field label={t('ad.staffKey')} hint={t('ad.staffKey.hint')} value={draft.staffKey} type="password"
-               autoComplete="off" onChange={(staffKey) => set({ staffKey })} />
         <Field label={t('shell.userId')} hint={t('ad.userId.hint')} value={draft.userId} placeholder="u1001"
                onChange={(userId) => set({ userId })} />
         <Field label={t('shell.convId')} hint={t('ad.convId.hint')} value={draft.conversationId}

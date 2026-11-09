@@ -1,0 +1,18 @@
+{
+  "environment": "production",
+  "project": "helpdesk-employees",
+  "compose_file": "/opt/helpdesk/deploy/release/compose.yml",
+  "env_file": "/etc/helpdesk/release.env",
+  "config_files": ["/etc/helpdesk/release.env", "/etc/helpdesk/app.env", "/etc/helpdesk/sql.env"],
+  "gate_root": "/var/lib/helpdesk-gate",
+  "data_root": "/srv/helpdesk",
+  "backup_dir": "/var/backups/helpdesk",
+  "report_root": "/srv/helpdesk-metrics",
+  "key_file": "/etc/helpdesk/backup-key",
+  "storage_services": ["postgres", "redis"],
+  "require_offsite": true,
+  "retention": {"days": 30, "keep_last": 48, "apply_after_backup": true},
+  "offsite": {"bucket": "REPLACE-private-backups", "prefix": "helpdesk/", "profile": "helpdesk-backup"},
+  "objects_s3": {"bucket": "REPLACE-private-attachments", "profile": "helpdesk-attachments"},
+  "release": {"manifest": "/etc/helpdesk/release.json"}
+}

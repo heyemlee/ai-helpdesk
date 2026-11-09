@@ -1,0 +1,115 @@
+{
+  "candidate_revision": "d4bf72c507a7c31eaec94adc529a57a94b58b93f",
+  "private_revision": "437151919d6a16857c626e7e54f439e2b806a287",
+  "status": "admitted_built_full54_running",
+  "scope": "Exact single-entity literal IN, redundant same-entity conjunction/parentheses, and reversed equality in existing fact scope proof; no SQL or receipts rewritten",
+  "backend_full": {
+    "passed": 2587,
+    "skipped": 0
+  },
+  "frontend": {
+    "passed": 436,
+    "typecheck": true,
+    "build": true
+  },
+  "SQL_identity_reuse": {
+    "tests": 1317,
+    "ERP": 6,
+    "contract": 41,
+    "joint_input_files": 634,
+    "not_a_new_execution": true
+  },
+  "independent_actual": {
+    "original_fact": 74,
+    "call_chain": 10,
+    "whole_request": 20,
+    "frozen_scope": 33,
+    "scope_positive": 9,
+    "scope_negative": 24
+  },
+  "historical_11_probe": {
+    "consistent": 10,
+    "intended_duplicate_same_literal_membership_extension": 1,
+    "not_claimed_11_passed": true
+  },
+  "candidate_source_files": 1422,
+  "private_tested_source_files": 1415,
+  "difference": "One root status document and seven extra evidence documents; product source exact",
+  "new_empty_DevB": {
+    "start": 0,
+    "guard": 1000,
+    "extra_technical_headroom": 552
+  },
+  "new_formal_E": {
+    "seed": 1379,
+    "guard": 12499,
+    "remaining": 11120,
+    "no_quota_increase_or_refund": true
+  },
+  "initialization_supplier_calls": 0,
+  "history_unchanged": true,
+  "six_development_checkpoints": [
+    2993,
+    3513,
+    4027,
+    4541,
+    5038,
+    5552
+  ],
+  "root_control_executions": {
+    "finance": 17,
+    "full54_auditor_synthetic": 31,
+    "auditor_entrypoints": 7
+  },
+  "proofs": [
+    {
+      "path": ".stage6/release-readiness-d/2026-11-06/root-exact-4371519-admission-v1.json",
+      "sha256": "c9de71e332d7c1a82db13a464b9bee95b9652fbf04f26ad75e5948b16c78c65e",
+      "bytes": 1711
+    },
+    {
+      "path": ".stage6/release-readiness-d/2026-11-06/root-4371519-independent-C1-review-v1.json",
+      "sha256": "ee785a9662b64ae1e64130ea2f941db7a751db700d53b21811380d36380b5e70",
+      "bytes": 752
+    },
+    {
+      "path": ".stage6/release-readiness-d/2026-11-06/root-4371519-independent-C4-review-v1.json",
+      "sha256": "aedb5954712173f989c02c38f08602b4cacd5bc2793209356ca70bed66d012ef",
+      "bytes": 427
+    },
+    {
+      "path": ".stage6/release-readiness-e/2026-11-06/candidate-d4bf72c.json",
+      "sha256": "3ba021a94ca57b1720ea29529668aa0d4a679406fd765d93f0c02b4a5dd2176e",
+      "bytes": 405
+    },
+    {
+      "path": ".stage6/release-readiness-e/2026-11-06/root-build-verification-d4bf72c.json",
+      "sha256": "03ec81b63f803f401d4ed59f8613cd8389904682fa3f671aaecb493af8bbf2f4",
+      "bytes": 1956
+    },
+    {
+      "path": ".stage6/release-readiness-e/2026-11-06/root-initialization-v3.json",
+      "sha256": "513d57576cc27e523679b2391e044568905497900f00bce9b3fb4a84faac3fd8",
+      "bytes": 6758
+    },
+    {
+      "path": ".stage6/release-readiness-e/2026-11-06/root-post-initialization-totals-v3.json",
+      "sha256": "ad12af6d6a79c899ddeb46f878b0638cca02988d9620b974218d814401e8931b",
+      "bytes": 326
+    },
+    {
+      "path": ".stage6/release-readiness-e/2026-11-06/root-initial-aliases-v3.json",
+      "sha256": "356cac635f0bfb8775187b6e645d42149ceafcc1ec8181916d130e3ee8de48df",
+      "bytes": 877573
+    },
+    {
+      "path": ".stage6/release-readiness-e/2026-11-06/root-development-v9-admission-v1.json",
+      "sha256": "9b4fd768b246ab8b7ef9b43fa4b2c1a8248b7b20c82ac6d4162181a38c178aef",
+      "bytes": 2282
+    }
+  ],
+  "frozen_release_oracle_corpus_thresholds_unchanged": true,
+  "current_formal_rounds_completed": 0,
+  "release_eligible": false,
+  "production_deployed": false
+}

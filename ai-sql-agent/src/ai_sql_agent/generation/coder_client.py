@@ -21,6 +21,7 @@ class CoderModelConfig:
     api_key: str = ""
     base_url: str = ""
     model: str = ""
+    api_mode: str = ""
     provider: str = ""
     temperature: float = 0.0
     timeout: Optional[float] = None

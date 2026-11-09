@@ -221,7 +221,7 @@ async def test_the_same_query_runs_once_including_what_the_rules_fetched():
     turn.remember(tool.memo_key(LookupArgs(query="SO-1 补件")),
                   ToolOutcome(content="预取的资料", evidence="预取的资料", outcome="found"))
     model = ScriptedModel(
-        tool_step(("c1", "lookup", {"query": " so-1  补件 "}),     # 大小写、空白不同也算同一次
+        tool_step(("c1", "lookup", {"query": " SO-1  补件 "}),     # whitespace only; business identifiers remain case-sensitive
                   ("c2", "lookup", {"query": "SO-2"}), ("c3", "lookup", {"query": "SO-2"})),
         text_step("好的。"),
     )
@@ -370,3 +370,49 @@ def test_tools_for_intersects_the_allowlist_with_what_this_instance_has():
     assert turn.tools_for("technical") == [knowledge, data]      # 破损、缺件常带着柜号或单号
     assert turn.tools_for("general") == [knowledge]
     assert turn.tools_for("unknown") == []
+
+
+@pytest.mark.parametrize("truncated", [False, True])
+async def test_responses_stream_roundtrip_preserves_reasoning_and_never_executes_truncated_calls(truncated):
+    import json
+
+    import httpx
+    from test_openai_responses import wire_response
+
+    from app.core.openai_compat import AsyncOpenAICompat
+    from app.core.openai_responses import ResponsesOutputError
+
+    tool = Lookup()
+    requests = []
+    def handle(req):
+        requests.append(json.loads(req.content))
+        if len(requests) == 1:
+            result = wire_response(output=[
+                {"type": "reasoning", "id": "rs", "summary": [], "encrypted_content": "final-opaque"},
+                {"type": "function_call", "id": "fc", "call_id": "c1", "name": "lookup",
+                 "arguments": '{"query":"test"}', "status": "completed"}])
+            if truncated:
+                result.update(status="incomplete", incomplete_details={"reason": "max_output_tokens"})
+        else:
+            result = wire_response()
+        # In-progress reasoning must never replace the final item.
+        events = [{"type": "response.output_item.added", "output_index": 0,
+                   "item": {"type": "reasoning", "id": "rs", "summary": [], "encrypted_content": "partial-opaque"}},
+                  {"type": "response.incomplete" if truncated else "response.completed", "response": result}]
+        return httpx.Response(200, headers={"content-type": "text/event-stream"},
+                              text="".join("data: " + json.dumps(e) + "\n\n" for e in events))
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as http:
+        client = AsyncOpenAICompat(api_key="test", api_mode="responses", http_client=http, max_retries=0)
+        if truncated:
+            with pytest.raises(ResponsesOutputError):
+                await _run(client, _turn(tool))
+            assert tool.calls == []
+            assert len(requests) == 1
+        else:
+            events = await _run(client, _turn(tool))
+            assert tool.calls == ["test"]
+            assert events[-1].tool_calls == 1
+            assert any(i.get("encrypted_content") == "final-opaque" for i in requests[1]["input"])
+            assert not any(i.get("encrypted_content") == "partial-opaque" for i in requests[1]["input"])
+            assert any(i.get("type") == "function_call_output" and i["call_id"] == "c1" for i in requests[1]["input"])

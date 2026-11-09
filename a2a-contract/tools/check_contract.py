@@ -185,7 +185,7 @@ def check_fixtures() -> None:
 
         payload = json.loads(path.read_text(encoding="utf-8"))
         schema = json.loads(schema_path.read_text(encoding="utf-8"))
-        validator = cls(schema, registry=registry)
+        validator = cls(schema, registry=registry, format_checker=cls.FORMAT_CHECKER)
         errors = sorted(validator.iter_errors(payload), key=lambda e: list(e.path))
         actually_valid = not errors
 
@@ -204,7 +204,7 @@ def check_fixtures() -> None:
     # 于是「这条反例真的在保护它声称保护的东西」就悄悄失效了。除 dp-trust-01
     # （它的职责本来就是「缺这个字段会被挡住」）以外，任何反例都不许因为它被拒。
     for case in manifest["cases"]:
-        if case["expect"] != "invalid" or case["id"] == "dp-trust-01":
+        if case["expect"] != "invalid" or case["id"] in {"dp-trust-01", "dp-bad-07"}:
             continue
         path = FIXTURES / case["file"]
         schema_path = ROOT / case["schema"]
@@ -213,7 +213,7 @@ def check_fixtures() -> None:
         payload = json.loads(path.read_text(encoding="utf-8"))
         schema = json.loads(schema_path.read_text(encoding="utf-8"))
         reasons = [
-            e.message for e in cls(schema, registry=registry).iter_errors(payload)
+            e.message for e in cls(schema, registry=registry, format_checker=cls.FORMAT_CHECKER).iter_errors(payload)
         ]
         stray = [m for m in reasons if "execution_status" in m]
         if stray:

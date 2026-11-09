@@ -1,0 +1,2632 @@
+{
+  "run": {
+    "commit": "e29f1322b3068626235b018e8eb61eef5a3b7570",
+    "source": "clean committed source verified byte-for-byte; same existing model configuration",
+    "mode": "targeted",
+    "ids": [
+      "c03",
+      "c04",
+      "c11",
+      "c18",
+      "c23"
+    ],
+    "case_count": 5,
+    "rounds": 1,
+    "generation_request_safety_cap": 80,
+    "generation_model": "gpt-6.1-sol",
+    "api_mode": "chat",
+    "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+    "embedding_backend": "remote",
+    "rubric_sha256": "51cd88e5f91897157eb723a1520a335f977dfba3a8c8ac8a29643000268956d9",
+    "started_at_utc": "2026-11-06T18:24:42.834713+00:00",
+    "dataset_sha256": "2b5181098db48f4ae237cf082b5ef8b2d4cf73c2bf2838e631d3d5846c7b0730",
+    "embedding_status": {
+      "backend": "remote",
+      "model": "Qwen/Qwen3-Embedding-0.6B",
+      "dimensions": 1024,
+      "signature": "Qwen/Qwen3-Embedding-0.6B/1024",
+      "fallback": ""
+    },
+    "finished_at_utc": "2026-11-06T18:27:29.267381+00:00",
+    "elapsed_seconds": 166.433,
+    "generation_requests": 39,
+    "request_counts": {
+      "embedding": 15,
+      "generation": 39
+    },
+    "items_observed": 5,
+    "model_configuration": {
+      "model_provider": "openai",
+      "chat_model": "gpt-6.1-sol",
+      "coder_model": "gpt-6.1-sol",
+      "openai_base_url": "https://relay.invalid/v1",
+      "anthropic_base_url": "https://claude-relay.liziqiao.com/api",
+      "embedding_backend": "remote",
+      "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+      "embedding_url": "https://api.siliconflow.com/v1/embeddings",
+      "embedding_dimensions": 1024,
+      "embedding_batch_size": 10,
+      "http_timeout_seconds": 60.0,
+      "http_max_retries": 2,
+      "http_backoff_base_seconds": 0.5,
+      "http_backoff_max_seconds": 8.0,
+      "max_completion_tokens": 8192,
+      "rerank_model": "qwen3-rerank",
+      "rerank_url": "",
+      "openai_api_mode": "chat"
+    }
+  },
+  "requests": [
+    {
+      "item_id": "initialization",
+      "kind": "embedding",
+      "path": "/v1/embeddings",
+      "host": "api.siliconflow.com",
+      "elapsed_start_seconds": 0.373,
+      "requested_model": "Qwen/Qwen3-Embedding-0.6B",
+      "status_code": 200,
+      "returned_model": "Qwen/Qwen3-Embedding-0.6B",
+      "usage": {
+        "prompt_tokens": 1058,
+        "completion_tokens": 0,
+        "total_tokens": 1058
+      },
+      "duration_ms": 831.54
+    },
+    {
+      "item_id": "initialization",
+      "kind": "embedding",
+      "path": "/v1/embeddings",
+      "host": "api.siliconflow.com",
+      "elapsed_start_seconds": 1.211,
+      "requested_model": "Qwen/Qwen3-Embedding-0.6B",
+      "status_code": 200,
+      "returned_model": "Qwen/Qwen3-Embedding-0.6B",
+      "usage": {
+        "prompt_tokens": 720,
+        "completion_tokens": 0,
+        "total_tokens": 720
+      },
+      "duration_ms": 364.5
+    },
+    {
+      "item_id": "initialization",
+      "kind": "embedding",
+      "path": "/v1/embeddings",
+      "host": "api.siliconflow.com",
+      "elapsed_start_seconds": 1.578,
+      "requested_model": "Qwen/Qwen3-Embedding-0.6B",
+      "status_code": 200,
+      "returned_model": "Qwen/Qwen3-Embedding-0.6B",
+      "usage": {
+        "prompt_tokens": 602,
+        "completion_tokens": 0,
+        "total_tokens": 602
+      },
+      "duration_ms": 381.79
+    },
+    {
+      "item_id": "initialization",
+      "kind": "embedding",
+      "path": "/v1/embeddings",
+      "host": "api.siliconflow.com",
+      "elapsed_start_seconds": 1.962,
+      "requested_model": "Qwen/Qwen3-Embedding-0.6B",
+      "status_code": 200,
+      "returned_model": "Qwen/Qwen3-Embedding-0.6B",
+      "usage": {
+        "prompt_tokens": 985,
+        "completion_tokens": 0,
+        "total_tokens": 985
+      },
+      "duration_ms": 450.65
+    },
+    {
+      "item_id": "initialization",
+      "kind": "embedding",
+      "path": "/v1/embeddings",
+      "host": "api.siliconflow.com",
+      "elapsed_start_seconds": 2.415,
+      "requested_model": "Qwen/Qwen3-Embedding-0.6B",
+      "status_code": 200,
+      "returned_model": "Qwen/Qwen3-Embedding-0.6B",
+      "usage": {
+        "prompt_tokens": 1163,
+        "completion_tokens": 0,
+        "total_tokens": 1163
+      },
+      "duration_ms": 521.96
+    },
+    {
+      "item_id": "initialization",
+      "kind": "embedding",
+      "path": "/v1/embeddings",
+      "host": "api.siliconflow.com",
+      "elapsed_start_seconds": 2.939,
+      "requested_model": "Qwen/Qwen3-Embedding-0.6B",
+      "status_code": 200,
+      "returned_model": "Qwen/Qwen3-Embedding-0.6B",
+      "usage": {
+        "prompt_tokens": 82,
+        "completion_tokens": 0,
+        "total_tokens": 82
+      },
+      "duration_ms": 311.45
+    },
+    {
+      "item_id": "initialization",
+      "kind": "embedding",
+      "path": "/v1/embeddings",
+      "host": "api.siliconflow.com",
+      "elapsed_start_seconds": 3.255,
+      "requested_model": "Qwen/Qwen3-Embedding-0.6B",
+      "status_code": 200,
+      "returned_model": "Qwen/Qwen3-Embedding-0.6B",
+      "usage": {
+        "prompt_tokens": 938,
+        "completion_tokens": 0,
+        "total_tokens": 938
+      },
+      "duration_ms": 508.52
+    },
+    {
+      "item_id": "initialization",
+      "kind": "embedding",
+      "path": "/v1/embeddings",
+      "host": "api.siliconflow.com",
+      "elapsed_start_seconds": 3.768,
+      "requested_model": "Qwen/Qwen3-Embedding-0.6B",
+      "status_code": 200,
+      "returned_model": "Qwen/Qwen3-Embedding-0.6B",
+      "usage": {
+        "prompt_tokens": 711,
+        "completion_tokens": 0,
+        "total_tokens": 711
+      },
+      "duration_ms": 453.76
+    },
+    {
+      "item_id": "initialization",
+      "kind": "embedding",
+      "path": "/v1/embeddings",
+      "host": "api.siliconflow.com",
+      "elapsed_start_seconds": 4.224,
+      "requested_model": "Qwen/Qwen3-Embedding-0.6B",
+      "status_code": 200,
+      "returned_model": "Qwen/Qwen3-Embedding-0.6B",
+      "usage": {
+        "prompt_tokens": 390,
+        "completion_tokens": 0,
+        "total_tokens": 390
+      },
+      "duration_ms": 414.99
+    },
+    {
+      "item_id": "initialization",
+      "kind": "embedding",
+      "path": "/v1/embeddings",
+      "host": "api.siliconflow.com",
+      "elapsed_start_seconds": 4.642,
+      "requested_model": "Qwen/Qwen3-Embedding-0.6B",
+      "status_code": 200,
+      "returned_model": "Qwen/Qwen3-Embedding-0.6B",
+      "usage": {
+        "prompt_tokens": 1312,
+        "completion_tokens": 0,
+        "total_tokens": 1312
+      },
+      "duration_ms": 445.53
+    },
+    {
+      "item_id": "c03",
+      "kind": "generation",
+      "path": "/v1/chat/completions",
+      "host": "relay.invalid",
+      "elapsed_start_seconds": 5.096,
+      "requested_model": "gpt-6.1-sol",
+      "status_code": 200,
+      "returned_model": "gpt-6.1-sol",
+      "usage": {
+        "prompt_tokens": 205,
+        "completion_tokens": 42,
+        "total_tokens": 247
+      },
+      "finish_reason": "stop",
+      "duration_ms": 3279.1
+    },
+    {
+      "item_id": "c03",
+      "kind": "generation",
+      "path": "/v1/chat/completions",
+      "host": "relay.invalid",
+      "elapsed_start_seconds": 8.377,
+      "requested_model": "gpt-6.1-sol",
+      "status_code": 200,
+      "returned_model": "gpt-6.1-sol",
+      "usage": {
+        "prompt_tokens": 1467,
+        "completion_tokens": 36,
+        "total_tokens": 1503,
+        "prompt_tokens_details": {
+          "cached_tokens": 1280
+        }
+      },
+      "finish_reason": "stop",
+      "duration_ms": 2927.36
+    },
+    {
+      "item_id": "c03",
+      "kind": "embedding",
+      "path": "/v1/embeddings",
+      "host": "api.siliconflow.com",
+      "elapsed_start_seconds": 11.306,
+      "requested_model": "Qwen/Qwen3-Embedding-0.6B",
+      "status_code": 200,
+      "returned_model": "Qwen/Qwen3-Embedding-0.6B",
+      "usage": {
+        "prompt_tokens": 27,
+        "completion_tokens": 0,
+        "total_tokens": 27
+      },
+      "duration_ms": 691.63
+    },
+    {
+      "item_id": "c03",
+      "kind": "generation",
+      "path": "/v1/chat/completions",
+      "host": "relay.invalid",
+      "elapsed_start_seconds": 12.009,
+      "requested_model": "gpt-6.1-sol",
+      "status_code": 200,
+      "returned_model": "gpt-6.1-sol",
+      "usage": {
+        "prompt_tokens": 5815,
+        "completion_tokens": 147,
+        "total_tokens": 5962
+      },
+      "finish_reason": "stop",
+      "duration_ms": 4750.66
+    },
+    {
+      "item_id": "c03",
+      "kind": "generation",
+      "path": "/v1/chat/completions",
+      "host": "relay.invalid",
+      "elapsed_start_seconds": 16.765,
+      "requested_model": "gpt-6.1-sol",
+      "status_code": 200,
+      "returned_model": "gpt-6.1-sol",
+      "usage": {
+        "prompt_tokens": 1196,
+        "completion_tokens": 25,
+        "total_tokens": 1221
+      },
+      "finish_reason": "stop",
+      "duration_ms": 2860.74
+    },
+    {
+      "item_id": "c03",
+      "kind": "generation",
+      "path": "/v1/chat/completions",
+      "host": "relay.invalid",
+      "elapsed_start_seconds": 19.639,
+      "requested_model": "gpt-6.1-sol",
+      "status_code": 200,
+      "returned_model": "gpt-6.1-sol",
+      "usage": {
+        "prompt_tokens": 101,
+        "completion_tokens": 40,
+        "total_tokens": 141
+      },
+      "finish_reason": "stop",
+      "duration_ms": 3310.14
+    },
+    {
+      "item_id": "c03",
+      "kind": "generation",
+      "path": "/v1/chat/completions",
+      "host": "relay.invalid",
+      "elapsed_start_seconds": 22.952,
+      "requested_model": "gpt-6.1-sol",
+      "status_code": 200,
+      "returned_model": "gpt-6.1-sol",
+      "usage": {
+        "prompt_tokens": 169,
+        "completion_tokens": 59,
+        "total_tokens": 228,
+        "completion_tokens_details": {
+          "reasoning_tokens": 20
+        }
+      },
+      "finish_reason": "stop",
+      "duration_ms": 4215.35
+    },
+    {
+      "item_id": "c04",
+      "kind": "generation",
+      "path": "/v1/chat/completions",
+      "host": "relay.invalid",
+      "elapsed_start_seconds": 27.173,
+      "requested_model": "gpt-6.1-sol",
+      "status_code": 200,
+      "returned_model": "gpt-6.1-sol",
+      "usage": {
+        "prompt_tokens": 200,
+        "completion_tokens": 44,
+        "total_tokens": 244
+      },
+      "finish_reason": "stop",
+      "duration_ms": 4186.11
+    },
+    {
+      "item_id": "c04",
+      "kind": "generation",
+      "path": "/v1/chat/completions",
+      "host": "relay.invalid",
+      "elapsed_start_seconds": 31.362,
+      "requested_model": "gpt-6.1-sol",
+      "status_code": 200,
+      "returned_model": "gpt-6.1-sol",
+      "usage": {
+        "prompt_tokens": 1462,
+        "completion_tokens": 32,
+        "total_tokens": 1494,
+        "prompt_tokens_details": {
+          "cached_tokens": 1280
+        }
+      },
+      "finish_reason": "stop",
+      "duration_ms": 2789.59
+    },
+    {
+      "item_id": "c04",
+      "kind": "embedding",
+      "path": "/v1/embeddings",
+      "host": "api.siliconflow.com",
+      "elapsed_start_seconds": 34.155,
+      "requested_model": "Qwen/Qwen3-Embedding-0.6B",
+      "status_code": 200,
+      "returned_model": "Qwen/Qwen3-Embedding-0.6B",
+      "usage": {
+        "prompt_tokens": 17,
+        "completion_tokens": 0,
+        "total_tokens": 17
+      },
+      "duration_ms": 813.45
+    },
+    {
+      "item_id": "c04",
+      "kind": "generation",
+      "path": "/v1/chat/completions",
+      "host": "relay.invalid",
+      "elapsed_start_seconds": 34.979,
+      "requested_model": "gpt-6.1-sol",
+      "status_code": 200,
+      "returned_model": "gpt-6.1-sol",
+      "usage": {
+        "prompt_tokens": 5637,
+        "completion_tokens": 272,
+        "total_tokens": 5909
+      },
+      "finish_reason": "stop",
+      "duration_ms": 7152.11
+    },
+    {
+      "item_id": "c04",
+      "kind": "generation",
+      "path": "/v1/chat/completions",
+      "host": "relay.invalid",
+      "elapsed_start_seconds": 42.135,
+      "requested_model": "gpt-6.1-sol",
+      "status_code": 200,
+      "returned_model": "gpt-6.1-sol",
+      "usage": {
+        "prompt_tokens": 1166,
+        "completion_tokens": 26,
+        "total_tokens": 1192
+      },
+      "finish_reason": "stop",
+      "duration_ms": 2940.5
+    },
+    {
+      "item_id": "c04",
+      "kind": "generation",
+      "path": "/v1/chat/completions",
+      "host": "relay.invalid",
+      "elapsed_start_seconds": 45.084,
+      "requested_model": "gpt-6.1-sol",
+      "status_code": 200,
+      "returned_model": "gpt-6.1-sol",
+      "usage": {
+        "prompt_tokens": 102,
+        "completion_tokens": 42,
+        "total_tokens": 144
+      },
+      "finish_reason": "stop",
+      "duration_ms": 2774.08
+    },
+    {
+      "item_id": "c04",
+      "kind": "generation",
+      "path": "/v1/chat/completions",
+      "host": "relay.invalid",
+      "elapsed_start_seconds": 47.861,
+      "requested_model": "gpt-6.1-sol",
+      "status_code": 200,
+      "returned_model": "gpt-6.1-sol",
+      "usage": {
+        "prompt_tokens": 232,
+        "completion_tokens": 41,
+        "total_tokens": 273
+      },
+      "finish_reason": "stop",
+      "duration_ms": 2330.65
+    },
+    {
+      "item_id": "c04",
+      "kind": "generation",
+      "path": "/v1/chat/completions",
+      "host": "relay.invalid",
+      "elapsed_start_seconds": 50.194,
+      "requested_model": "gpt-6.1-sol",
+      "status_code": 200,
+      "returned_model": "gpt-6.1-sol",
+      "usage": {
+        "prompt_tokens": 1369,
+        "completion_tokens": 25,
+        "total_tokens": 1394
+      },
+      "finish_reason": "stop",
+      "duration_ms": 2498.06
+    },
+    {
+      "item_id": "c04",
+      "kind": "generation",
+      "path": "/v1/chat/completions",
+      "host": "relay.invalid",
+      "elapsed_start_seconds": 52.703,
+      "requested_model": "gpt-6.1-sol",
+      "status_code": 200,
+      "returned_model": "gpt-6.1-sol",
+      "usage": {
+        "prompt_tokens": 101,
+        "completion_tokens": 39,
+        "total_tokens": 140
+      },
+      "finish_reason": "stop",
+      "duration_ms": 2312.52
+    },
+    {
+      "item_id": "c04",
+      "kind": "generation",
+      "path": "/v1/chat/completions",
+      "host": "relay.invalid",
+      "elapsed_start_seconds": 55.016,
+      "requested_model": "gpt-6.1-sol",
+      "status_code": 200,
+      "returned_model": "gpt-6.1-sol",
+      "usage": {
+        "prompt_tokens": 362,
+        "completion_tokens": 91,
+        "total_tokens": 453,
+        "completion_tokens_details": {
+          "reasoning_tokens": 41
+        }
+      },
+      "finish_reason": "stop",
+      "duration_ms": 6794.96
+    },
+    {
+      "item_id": "c11",
+      "kind": "generation",
+      "path": "/v1/chat/completions",
+      "host": "relay.invalid",
+      "elapsed_start_seconds": 61.82,
+      "requested_model": "gpt-6.1-sol",
+      "status_code": 200,
+      "returned_model": "gpt-6.1-sol",
+      "usage": {
+        "prompt_tokens": 206,
+        "completion_tokens": 44,
+        "total_tokens": 250
+      },
+      "finish_reason": "stop",
+      "duration_ms": 2512.12
+    },
+    {
+      "item_id": "c11",
+      "kind": "generation",
+      "path": "/v1/chat/completions",
+      "host": "relay.invalid",
+      "elapsed_start_seconds": 64.336,
+      "requested_model": "gpt-6.1-sol",
+      "status_code": 200,
+      "returned_model": "gpt-6.1-sol",
+      "usage": {
+        "prompt_tokens": 1468,
+        "completion_tokens": 36,
+        "total_tokens": 1504,
+        "prompt_tokens_details": {
+          "cached_tokens": 1280
+        }
+      },
+      "finish_reason": "stop",
+      "duration_ms": 3084.73
+    },
+    {
+      "item_id": "c11",
+      "kind": "embedding",
+      "path": "/v1/embeddings",
+      "host": "api.siliconflow.com",
+      "elapsed_start_seconds": 67.423,
+      "requested_model": "Qwen/Qwen3-Embedding-0.6B",
+      "status_code": 200,
+      "returned_model": "Qwen/Qwen3-Embedding-0.6B",
+      "usage": {
+        "prompt_tokens": 27,
+        "completion_tokens": 0,
+        "total_tokens": 27
+      },
+      "duration_ms": 695.65
+    },
+    {
+      "item_id": "c11",
+      "kind": "generation",
+      "path": "/v1/chat/completions",
+      "host": "relay.invalid",
+      "elapsed_start_seconds": 68.13,
+      "requested_model": "gpt-6.1-sol",
+      "status_code": 200,
+      "returned_model": "gpt-6.1-sol",
+      "usage": {
+        "prompt_tokens": 5717,
+        "completion_tokens": 158,
+        "total_tokens": 5875
+      },
+      "finish_reason": "stop",
+      "duration_ms": 5077.12
+    },
+    {
+      "item_id": "c11",
+      "kind": "generation",
+      "path": "/v1/chat/completions",
+      "host": "relay.invalid",
+      "elapsed_start_seconds": 73.212,
+      "requested_model": "gpt-6.1-sol",
+      "status_code": 200,
+      "returned_model": "gpt-6.1-sol",
+      "usage": {
+        "prompt_tokens": 1184,
+        "completion_tokens": 26,
+        "total_tokens": 1210
+      },
+      "finish_reason": "stop",
+      "duration_ms": 2875.8
+    },
+    {
+      "item_id": "c11",
+      "kind": "generation",
+      "path": "/v1/chat/completions",
+      "host": "relay.invalid",
+      "elapsed_start_seconds": 76.098,
+      "requested_model": "gpt-6.1-sol",
+      "status_code": 200,
+      "returned_model": "gpt-6.1-sol",
+      "usage": {
+        "prompt_tokens": 102,
+        "completion_tokens": 41,
+        "total_tokens": 143
+      },
+      "finish_reason": "stop",
+      "duration_ms": 2663.22
+    },
+    {
+      "item_id": "c11",
+      "kind": "generation",
+      "path": "/v1/chat/completions",
+      "host": "relay.invalid",
+      "elapsed_start_seconds": 78.764,
+      "requested_model": "gpt-6.1-sol",
+      "status_code": 200,
+      "returned_model": "gpt-6.1-sol",
+      "usage": {
+        "prompt_tokens": 171,
+        "completion_tokens": 35,
+        "total_tokens": 206
+      },
+      "finish_reason": "stop",
+      "duration_ms": 2599.64
+    },
+    {
+      "item_id": "c18",
+      "kind": "generation",
+      "path": "/v1/chat/completions",
+      "host": "relay.invalid",
+      "elapsed_start_seconds": 81.37,
+      "requested_model": "gpt-6.1-sol",
+      "status_code": 200,
+      "returned_model": "gpt-6.1-sol",
+      "usage": {
+        "prompt_tokens": 201,
+        "completion_tokens": 40,
+        "total_tokens": 241
+      },
+      "finish_reason": "stop",
+      "duration_ms": 3288.73
+    },
+    {
+      "item_id": "c18",
+      "kind": "generation",
+      "path": "/v1/chat/completions",
+      "host": "relay.invalid",
+      "elapsed_start_seconds": 84.662,
+      "requested_model": "gpt-6.1-sol",
+      "status_code": 200,
+      "returned_model": "gpt-6.1-sol",
+      "usage": {
+        "prompt_tokens": 1463,
+        "completion_tokens": 93,
+        "total_tokens": 1556,
+        "prompt_tokens_details": {
+          "cached_tokens": 1280
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 63
+        }
+      },
+      "finish_reason": "stop",
+      "duration_ms": 10877.8
+    },
+    {
+      "item_id": "c18",
+      "kind": "embedding",
+      "path": "/v1/embeddings",
+      "host": "api.siliconflow.com",
+      "elapsed_start_seconds": 95.542,
+      "requested_model": "Qwen/Qwen3-Embedding-0.6B",
+      "status_code": 200,
+      "returned_model": "Qwen/Qwen3-Embedding-0.6B",
+      "usage": {
+        "prompt_tokens": 15,
+        "completion_tokens": 0,
+        "total_tokens": 15
+      },
+      "duration_ms": 736.18
+    },
+    {
+      "item_id": "c18",
+      "kind": "generation",
+      "path": "/v1/chat/completions",
+      "host": "relay.invalid",
+      "elapsed_start_seconds": 96.288,
+      "requested_model": "gpt-6.1-sol",
+      "status_code": 200,
+      "returned_model": "gpt-6.1-sol",
+      "usage": {
+        "prompt_tokens": 6487,
+        "completion_tokens": 116,
+        "total_tokens": 6603
+      },
+      "finish_reason": "stop",
+      "duration_ms": 4964.83
+    },
+    {
+      "item_id": "c18",
+      "kind": "generation",
+      "path": "/v1/chat/completions",
+      "host": "relay.invalid",
+      "elapsed_start_seconds": 101.258,
+      "requested_model": "gpt-6.1-sol",
+      "status_code": 200,
+      "returned_model": "gpt-6.1-sol",
+      "usage": {
+        "prompt_tokens": 1153,
+        "completion_tokens": 25,
+        "total_tokens": 1178
+      },
+      "finish_reason": "stop",
+      "duration_ms": 3250.9
+    },
+    {
+      "item_id": "c18",
+      "kind": "generation",
+      "path": "/v1/chat/completions",
+      "host": "relay.invalid",
+      "elapsed_start_seconds": 104.518,
+      "requested_model": "gpt-6.1-sol",
+      "status_code": 200,
+      "returned_model": "gpt-6.1-sol",
+      "usage": {
+        "prompt_tokens": 101,
+        "completion_tokens": 40,
+        "total_tokens": 141
+      },
+      "finish_reason": "stop",
+      "duration_ms": 2328.3
+    },
+    {
+      "item_id": "c18",
+      "kind": "generation",
+      "path": "/v1/chat/completions",
+      "host": "relay.invalid",
+      "elapsed_start_seconds": 106.849,
+      "requested_model": "gpt-6.1-sol",
+      "status_code": 200,
+      "returned_model": "gpt-6.1-sol",
+      "usage": {
+        "prompt_tokens": 165,
+        "completion_tokens": 31,
+        "total_tokens": 196
+      },
+      "finish_reason": "stop",
+      "duration_ms": 2500.42
+    },
+    {
+      "item_id": "c23",
+      "kind": "generation",
+      "path": "/v1/chat/completions",
+      "host": "relay.invalid",
+      "elapsed_start_seconds": 109.357,
+      "requested_model": "gpt-6.1-sol",
+      "status_code": 200,
+      "returned_model": "gpt-6.1-sol",
+      "usage": {
+        "prompt_tokens": 199,
+        "completion_tokens": 47,
+        "total_tokens": 246
+      },
+      "finish_reason": "stop",
+      "duration_ms": 3619.96
+    },
+    {
+      "item_id": "c23",
+      "kind": "generation",
+      "path": "/v1/chat/completions",
+      "host": "relay.invalid",
+      "elapsed_start_seconds": 112.981,
+      "requested_model": "gpt-6.1-sol",
+      "status_code": 200,
+      "returned_model": "gpt-6.1-sol",
+      "usage": {
+        "prompt_tokens": 1461,
+        "completion_tokens": 28,
+        "total_tokens": 1489,
+        "prompt_tokens_details": {
+          "cached_tokens": 1280
+        }
+      },
+      "finish_reason": "stop",
+      "duration_ms": 3475.9
+    },
+    {
+      "item_id": "c23",
+      "kind": "embedding",
+      "path": "/v1/embeddings",
+      "host": "api.siliconflow.com",
+      "elapsed_start_seconds": 116.459,
+      "requested_model": "Qwen/Qwen3-Embedding-0.6B",
+      "status_code": 200,
+      "returned_model": "Qwen/Qwen3-Embedding-0.6B",
+      "usage": {
+        "prompt_tokens": 15,
+        "completion_tokens": 0,
+        "total_tokens": 15
+      },
+      "duration_ms": 827.15
+    },
+    {
+      "item_id": "c23",
+      "kind": "generation",
+      "path": "/v1/chat/completions",
+      "host": "relay.invalid",
+      "elapsed_start_seconds": 117.292,
+      "requested_model": "gpt-6.1-sol",
+      "status_code": 200,
+      "returned_model": "gpt-6.1-sol",
+      "usage": {
+        "prompt_tokens": 5581,
+        "completion_tokens": 443,
+        "total_tokens": 6024,
+        "completion_tokens_details": {
+          "reasoning_tokens": 53
+        }
+      },
+      "finish_reason": "stop",
+      "duration_ms": 11799.58
+    },
+    {
+      "item_id": "c23",
+      "kind": "generation",
+      "path": "/v1/chat/completions",
+      "host": "relay.invalid",
+      "elapsed_start_seconds": 129.096,
+      "requested_model": "gpt-6.1-sol",
+      "status_code": 200,
+      "returned_model": "gpt-6.1-sol",
+      "usage": {
+        "prompt_tokens": 1170,
+        "completion_tokens": 26,
+        "total_tokens": 1196
+      },
+      "finish_reason": "stop",
+      "duration_ms": 4041.93
+    },
+    {
+      "item_id": "c23",
+      "kind": "generation",
+      "path": "/v1/chat/completions",
+      "host": "relay.invalid",
+      "elapsed_start_seconds": 133.151,
+      "requested_model": "gpt-6.1-sol",
+      "status_code": 200,
+      "returned_model": "gpt-6.1-sol",
+      "usage": {
+        "prompt_tokens": 102,
+        "completion_tokens": 41,
+        "total_tokens": 143
+      },
+      "finish_reason": "stop",
+      "duration_ms": 2405.96
+    },
+    {
+      "item_id": "c23",
+      "kind": "generation",
+      "path": "/v1/chat/completions",
+      "host": "relay.invalid",
+      "elapsed_start_seconds": 135.56,
+      "requested_model": "gpt-6.1-sol",
+      "status_code": 200,
+      "returned_model": "gpt-6.1-sol",
+      "usage": {
+        "prompt_tokens": 235,
+        "completion_tokens": 41,
+        "total_tokens": 276
+      },
+      "finish_reason": "stop",
+      "duration_ms": 3110.76
+    },
+    {
+      "item_id": "c23",
+      "kind": "generation",
+      "path": "/v1/chat/completions",
+      "host": "relay.invalid",
+      "elapsed_start_seconds": 138.672,
+      "requested_model": "gpt-6.1-sol",
+      "status_code": 200,
+      "returned_model": "gpt-6.1-sol",
+      "usage": {
+        "prompt_tokens": 1357,
+        "completion_tokens": 26,
+        "total_tokens": 1383
+      },
+      "finish_reason": "stop",
+      "duration_ms": 8250.2
+    },
+    {
+      "item_id": "c23",
+      "kind": "generation",
+      "path": "/v1/chat/completions",
+      "host": "relay.invalid",
+      "elapsed_start_seconds": 146.933,
+      "requested_model": "gpt-6.1-sol",
+      "status_code": 200,
+      "returned_model": "gpt-6.1-sol",
+      "usage": {
+        "prompt_tokens": 102,
+        "completion_tokens": 42,
+        "total_tokens": 144
+      },
+      "finish_reason": "stop",
+      "duration_ms": 2264.06
+    },
+    {
+      "item_id": "c23",
+      "kind": "generation",
+      "path": "/v1/chat/completions",
+      "host": "relay.invalid",
+      "elapsed_start_seconds": 149.2,
+      "requested_model": "gpt-6.1-sol",
+      "status_code": 200,
+      "returned_model": "gpt-6.1-sol",
+      "usage": {
+        "prompt_tokens": 235,
+        "completion_tokens": 49,
+        "total_tokens": 284
+      },
+      "finish_reason": "stop",
+      "duration_ms": 2673.6
+    },
+    {
+      "item_id": "c23",
+      "kind": "generation",
+      "path": "/v1/chat/completions",
+      "host": "relay.invalid",
+      "elapsed_start_seconds": 151.876,
+      "requested_model": "gpt-6.1-sol",
+      "status_code": 200,
+      "returned_model": "gpt-6.1-sol",
+      "usage": {
+        "prompt_tokens": 1382,
+        "completion_tokens": 25,
+        "total_tokens": 1407
+      },
+      "finish_reason": "stop",
+      "duration_ms": 4163.53
+    },
+    {
+      "item_id": "c23",
+      "kind": "generation",
+      "path": "/v1/chat/completions",
+      "host": "relay.invalid",
+      "elapsed_start_seconds": 156.049,
+      "requested_model": "gpt-6.1-sol",
+      "status_code": 200,
+      "returned_model": "gpt-6.1-sol",
+      "usage": {
+        "prompt_tokens": 101,
+        "completion_tokens": 39,
+        "total_tokens": 140
+      },
+      "finish_reason": "stop",
+      "duration_ms": 2769.22
+    },
+    {
+      "item_id": "c23",
+      "kind": "generation",
+      "path": "/v1/chat/completions",
+      "host": "relay.invalid",
+      "elapsed_start_seconds": 158.821,
+      "requested_model": "gpt-6.1-sol",
+      "status_code": 200,
+      "returned_model": "gpt-6.1-sol",
+      "usage": {
+        "prompt_tokens": 451,
+        "completion_tokens": 72,
+        "total_tokens": 523,
+        "completion_tokens_details": {
+          "reasoning_tokens": 15
+        }
+      },
+      "finish_reason": "stop",
+      "duration_ms": 7598.83
+    }
+  ],
+  "model_events": [
+    {
+      "item_id": "initialization",
+      "type": "model.call",
+      "stage": "",
+      "step": null,
+      "component": "embedding",
+      "model": "Qwen/Qwen3-Embedding-0.6B",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 848.03,
+      "prompt_tokens": 1058,
+      "completion_tokens": 0,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "initialization",
+      "type": "model.call",
+      "stage": "",
+      "step": null,
+      "component": "embedding",
+      "model": "Qwen/Qwen3-Embedding-0.6B",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 365.67,
+      "prompt_tokens": 720,
+      "completion_tokens": 0,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "initialization",
+      "type": "model.call",
+      "stage": "",
+      "step": null,
+      "component": "embedding",
+      "model": "Qwen/Qwen3-Embedding-0.6B",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 382.64,
+      "prompt_tokens": 602,
+      "completion_tokens": 0,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "initialization",
+      "type": "model.call",
+      "stage": "",
+      "step": null,
+      "component": "embedding",
+      "model": "Qwen/Qwen3-Embedding-0.6B",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 452.16,
+      "prompt_tokens": 985,
+      "completion_tokens": 0,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "initialization",
+      "type": "model.call",
+      "stage": "",
+      "step": null,
+      "component": "embedding",
+      "model": "Qwen/Qwen3-Embedding-0.6B",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 523.5,
+      "prompt_tokens": 1163,
+      "completion_tokens": 0,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "initialization",
+      "type": "model.call",
+      "stage": "",
+      "step": null,
+      "component": "embedding",
+      "model": "Qwen/Qwen3-Embedding-0.6B",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 312.18,
+      "prompt_tokens": 82,
+      "completion_tokens": 0,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "initialization",
+      "type": "model.call",
+      "stage": "",
+      "step": null,
+      "component": "embedding",
+      "model": "Qwen/Qwen3-Embedding-0.6B",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 512.09,
+      "prompt_tokens": 938,
+      "completion_tokens": 0,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "initialization",
+      "type": "model.call",
+      "stage": "",
+      "step": null,
+      "component": "embedding",
+      "model": "Qwen/Qwen3-Embedding-0.6B",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 455.26,
+      "prompt_tokens": 711,
+      "completion_tokens": 0,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "initialization",
+      "type": "model.call",
+      "stage": "",
+      "step": null,
+      "component": "embedding",
+      "model": "Qwen/Qwen3-Embedding-0.6B",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 415.95,
+      "prompt_tokens": 390,
+      "completion_tokens": 0,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "initialization",
+      "type": "model.call",
+      "stage": "",
+      "step": null,
+      "component": "embedding",
+      "model": "Qwen/Qwen3-Embedding-0.6B",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 449.29,
+      "prompt_tokens": 1312,
+      "completion_tokens": 0,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c03",
+      "type": "model.call",
+      "stage": "",
+      "step": null,
+      "component": "thinking",
+      "model": "gpt-6.1-sol",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 3279.54,
+      "prompt_tokens": 205,
+      "completion_tokens": 42,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c03",
+      "type": "model.call",
+      "stage": "",
+      "step": null,
+      "component": "keyword_extractor",
+      "model": "gpt-6.1-sol",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 2927.65,
+      "prompt_tokens": 1467,
+      "completion_tokens": 36,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c03",
+      "type": "model.call",
+      "stage": "retrieval",
+      "step": null,
+      "component": "embedding",
+      "model": "Qwen/Qwen3-Embedding-0.6B",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 694.09,
+      "prompt_tokens": 27,
+      "completion_tokens": 0,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c03",
+      "type": "model.call",
+      "stage": "planning",
+      "step": null,
+      "component": "thinking",
+      "model": "gpt-6.1-sol",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 4751.48,
+      "prompt_tokens": 5815,
+      "completion_tokens": 147,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c03",
+      "type": "model.call",
+      "stage": "sql_generation",
+      "step": 1,
+      "component": "coder",
+      "model": "gpt-6.1-sol",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 2861.74,
+      "prompt_tokens": 1196,
+      "completion_tokens": 25,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c03",
+      "type": "model.call",
+      "stage": "validation",
+      "step": 1,
+      "component": "thinking",
+      "model": "gpt-6.1-sol",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 3310.92,
+      "prompt_tokens": 101,
+      "completion_tokens": 40,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c03",
+      "type": "model.call",
+      "stage": "validation",
+      "step": 1,
+      "component": "thinking",
+      "model": "gpt-6.1-sol",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 4216.31,
+      "prompt_tokens": 169,
+      "completion_tokens": 59,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c04",
+      "type": "model.call",
+      "stage": "",
+      "step": null,
+      "component": "thinking",
+      "model": "gpt-6.1-sol",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 4187.0,
+      "prompt_tokens": 200,
+      "completion_tokens": 44,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c04",
+      "type": "model.call",
+      "stage": "",
+      "step": null,
+      "component": "keyword_extractor",
+      "model": "gpt-6.1-sol",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 2790.72,
+      "prompt_tokens": 1462,
+      "completion_tokens": 32,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c04",
+      "type": "model.call",
+      "stage": "retrieval",
+      "step": null,
+      "component": "embedding",
+      "model": "Qwen/Qwen3-Embedding-0.6B",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 815.46,
+      "prompt_tokens": 17,
+      "completion_tokens": 0,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c04",
+      "type": "model.call",
+      "stage": "planning",
+      "step": null,
+      "component": "thinking",
+      "model": "gpt-6.1-sol",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 7153.08,
+      "prompt_tokens": 5637,
+      "completion_tokens": 272,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c04",
+      "type": "model.call",
+      "stage": "sql_generation",
+      "step": 1,
+      "component": "coder",
+      "model": "gpt-6.1-sol",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 2941.53,
+      "prompt_tokens": 1166,
+      "completion_tokens": 26,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c04",
+      "type": "model.call",
+      "stage": "validation",
+      "step": 1,
+      "component": "thinking",
+      "model": "gpt-6.1-sol",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 2775.27,
+      "prompt_tokens": 102,
+      "completion_tokens": 42,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c04",
+      "type": "model.call",
+      "stage": "validation",
+      "step": 1,
+      "component": "thinking",
+      "model": "gpt-6.1-sol",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 2331.6,
+      "prompt_tokens": 232,
+      "completion_tokens": 41,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c04",
+      "type": "model.call",
+      "stage": "sql_generation",
+      "step": 2,
+      "component": "coder",
+      "model": "gpt-6.1-sol",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 2498.95,
+      "prompt_tokens": 1369,
+      "completion_tokens": 25,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c04",
+      "type": "model.call",
+      "stage": "validation",
+      "step": 2,
+      "component": "thinking",
+      "model": "gpt-6.1-sol",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 2313.06,
+      "prompt_tokens": 101,
+      "completion_tokens": 39,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c04",
+      "type": "model.call",
+      "stage": "validation",
+      "step": 2,
+      "component": "thinking",
+      "model": "gpt-6.1-sol",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 6795.8,
+      "prompt_tokens": 362,
+      "completion_tokens": 91,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c11",
+      "type": "model.call",
+      "stage": "",
+      "step": null,
+      "component": "thinking",
+      "model": "gpt-6.1-sol",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 2513.11,
+      "prompt_tokens": 206,
+      "completion_tokens": 44,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c11",
+      "type": "model.call",
+      "stage": "",
+      "step": null,
+      "component": "keyword_extractor",
+      "model": "gpt-6.1-sol",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 3085.89,
+      "prompt_tokens": 1468,
+      "completion_tokens": 36,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c11",
+      "type": "model.call",
+      "stage": "retrieval",
+      "step": null,
+      "component": "embedding",
+      "model": "Qwen/Qwen3-Embedding-0.6B",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 698.27,
+      "prompt_tokens": 27,
+      "completion_tokens": 0,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c11",
+      "type": "model.call",
+      "stage": "planning",
+      "step": null,
+      "component": "thinking",
+      "model": "gpt-6.1-sol",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 5078.19,
+      "prompt_tokens": 5717,
+      "completion_tokens": 158,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c11",
+      "type": "model.call",
+      "stage": "sql_generation",
+      "step": 1,
+      "component": "coder",
+      "model": "gpt-6.1-sol",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 2876.63,
+      "prompt_tokens": 1184,
+      "completion_tokens": 26,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c11",
+      "type": "model.call",
+      "stage": "validation",
+      "step": 1,
+      "component": "thinking",
+      "model": "gpt-6.1-sol",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 2663.89,
+      "prompt_tokens": 102,
+      "completion_tokens": 41,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c11",
+      "type": "model.call",
+      "stage": "validation",
+      "step": 1,
+      "component": "thinking",
+      "model": "gpt-6.1-sol",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 2600.61,
+      "prompt_tokens": 171,
+      "completion_tokens": 35,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c18",
+      "type": "model.call",
+      "stage": "",
+      "step": null,
+      "component": "thinking",
+      "model": "gpt-6.1-sol",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 3289.7,
+      "prompt_tokens": 201,
+      "completion_tokens": 40,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c18",
+      "type": "model.call",
+      "stage": "",
+      "step": null,
+      "component": "keyword_extractor",
+      "model": "gpt-6.1-sol",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 10878.9,
+      "prompt_tokens": 1463,
+      "completion_tokens": 93,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c18",
+      "type": "model.call",
+      "stage": "retrieval",
+      "step": null,
+      "component": "embedding",
+      "model": "Qwen/Qwen3-Embedding-0.6B",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 737.97,
+      "prompt_tokens": 15,
+      "completion_tokens": 0,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c18",
+      "type": "model.call",
+      "stage": "planning",
+      "step": null,
+      "component": "thinking",
+      "model": "gpt-6.1-sol",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 4967.17,
+      "prompt_tokens": 6487,
+      "completion_tokens": 116,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c18",
+      "type": "model.call",
+      "stage": "sql_generation",
+      "step": 1,
+      "component": "coder",
+      "model": "gpt-6.1-sol",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 3251.57,
+      "prompt_tokens": 1153,
+      "completion_tokens": 25,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c18",
+      "type": "model.call",
+      "stage": "validation",
+      "step": 1,
+      "component": "thinking",
+      "model": "gpt-6.1-sol",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 2329.22,
+      "prompt_tokens": 101,
+      "completion_tokens": 40,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c18",
+      "type": "model.call",
+      "stage": "validation",
+      "step": 1,
+      "component": "thinking",
+      "model": "gpt-6.1-sol",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 2501.57,
+      "prompt_tokens": 165,
+      "completion_tokens": 31,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c23",
+      "type": "model.call",
+      "stage": "",
+      "step": null,
+      "component": "thinking",
+      "model": "gpt-6.1-sol",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 3621.06,
+      "prompt_tokens": 199,
+      "completion_tokens": 47,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c23",
+      "type": "model.call",
+      "stage": "",
+      "step": null,
+      "component": "keyword_extractor",
+      "model": "gpt-6.1-sol",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 3476.73,
+      "prompt_tokens": 1461,
+      "completion_tokens": 28,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c23",
+      "type": "model.call",
+      "stage": "retrieval",
+      "step": null,
+      "component": "embedding",
+      "model": "Qwen/Qwen3-Embedding-0.6B",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 828.66,
+      "prompt_tokens": 15,
+      "completion_tokens": 0,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c23",
+      "type": "model.call",
+      "stage": "planning",
+      "step": null,
+      "component": "thinking",
+      "model": "gpt-6.1-sol",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 11800.74,
+      "prompt_tokens": 5581,
+      "completion_tokens": 443,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c23",
+      "type": "model.call",
+      "stage": "sql_generation",
+      "step": 1,
+      "component": "coder",
+      "model": "gpt-6.1-sol",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 4044.98,
+      "prompt_tokens": 1170,
+      "completion_tokens": 26,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c23",
+      "type": "model.call",
+      "stage": "validation",
+      "step": 1,
+      "component": "thinking",
+      "model": "gpt-6.1-sol",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 2406.93,
+      "prompt_tokens": 102,
+      "completion_tokens": 41,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c23",
+      "type": "model.call",
+      "stage": "validation",
+      "step": 1,
+      "component": "thinking",
+      "model": "gpt-6.1-sol",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 3111.26,
+      "prompt_tokens": 235,
+      "completion_tokens": 41,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c23",
+      "type": "model.call",
+      "stage": "sql_generation",
+      "step": 2,
+      "component": "coder",
+      "model": "gpt-6.1-sol",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 8251.12,
+      "prompt_tokens": 1357,
+      "completion_tokens": 26,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c23",
+      "type": "model.call",
+      "stage": "validation",
+      "step": 2,
+      "component": "thinking",
+      "model": "gpt-6.1-sol",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 2264.97,
+      "prompt_tokens": 102,
+      "completion_tokens": 42,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c23",
+      "type": "model.call",
+      "stage": "validation",
+      "step": 2,
+      "component": "thinking",
+      "model": "gpt-6.1-sol",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 2674.37,
+      "prompt_tokens": 235,
+      "completion_tokens": 49,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c23",
+      "type": "model.call",
+      "stage": "sql_generation",
+      "step": 3,
+      "component": "coder",
+      "model": "gpt-6.1-sol",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 4164.1,
+      "prompt_tokens": 1382,
+      "completion_tokens": 25,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c23",
+      "type": "model.call",
+      "stage": "validation",
+      "step": 3,
+      "component": "thinking",
+      "model": "gpt-6.1-sol",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 2770.92,
+      "prompt_tokens": 101,
+      "completion_tokens": 39,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    {
+      "item_id": "c23",
+      "type": "model.call",
+      "stage": "validation",
+      "step": 3,
+      "component": "thinking",
+      "model": "gpt-6.1-sol",
+      "status": "ok",
+      "attempt": 0,
+      "duration_ms": 7599.93,
+      "prompt_tokens": 451,
+      "completion_tokens": 72,
+      "cache_read_tokens": 0,
+      "reasoning_tokens": 0
+    }
+  ],
+  "report": {
+    "incomplete": false,
+    "planned_total": 5,
+    "abort_reason": "",
+    "abort_detail": [],
+    "total": 5,
+    "correct": 4,
+    "accuracy": 0.8,
+    "column_recall": 1.0,
+    "retrieval_recall": 1.0,
+    "recall_gap": 0.0,
+    "silent_error_rate": 0.2,
+    "false_alarm_rate": 0.0,
+    "avg_retrieved_columns": 28.6,
+    "avg_column_ratio": 0.4767,
+    "grouped_accuracy": {
+      "customer": 0.8
+    },
+    "category_accuracy": {
+      "customer": 0.8
+    },
+    "items": [
+      {
+        "id": "c03",
+        "category": "customer",
+        "query": "我这单 J26-00044 还要多久能送到？",
+        "correct": true,
+        "predicted_sql": "SELECT order_no, delivery_date\nFROM orders\nWHERE order_no = 'J26-00044';",
+        "error": null,
+        "repair_used": false,
+        "recall_hit": true,
+        "retrieval_recall_hit": true,
+        "answered": true,
+        "flagged": false,
+        "degraded": false,
+        "degrade_reason": "",
+        "silent_error": false,
+        "flag_reasons": [],
+        "mismatch": "",
+        "matched_step": 1,
+        "unusable_match": false,
+        "route": "database_query",
+        "route_signals": [
+          "model_classifier"
+        ],
+        "steps": [
+          {
+            "database": "erp_db",
+            "sql": "SELECT order_no, delivery_date\nFROM orders\nWHERE order_no = 'J26-00044';",
+            "success": true,
+            "row_count": 1
+          }
+        ]
+      },
+      {
+        "id": "c04",
+        "category": "customer",
+        "query": "J25-00213 怎么还没发货？",
+        "correct": true,
+        "predicted_sql": "SELECT order_no, delivery_notes\nFROM delivery\nWHERE order_no IN ('J25-00213');",
+        "error": null,
+        "repair_used": false,
+        "recall_hit": true,
+        "retrieval_recall_hit": true,
+        "answered": true,
+        "flagged": false,
+        "degraded": false,
+        "degrade_reason": "",
+        "silent_error": false,
+        "flag_reasons": [],
+        "mismatch": "",
+        "matched_step": 2,
+        "unusable_match": false,
+        "route": "database_query",
+        "route_signals": [
+          "model_classifier"
+        ],
+        "steps": [
+          {
+            "database": "prod_db",
+            "sql": "SELECT order_no, production_notes\nFROM work_order\nWHERE order_no = 'J25-00213';",
+            "success": true,
+            "row_count": 1
+          },
+          {
+            "database": "svc_db",
+            "sql": "SELECT order_no, delivery_notes\nFROM delivery\nWHERE order_no IN ('J25-00213');",
+            "success": true,
+            "row_count": 1
+          }
+        ]
+      },
+      {
+        "id": "c11",
+        "category": "customer",
+        "query": "J25-00137 我们报的几个问题现在都处理好了吗？",
+        "correct": false,
+        "predicted_sql": "SELECT order_no, service_status\nFROM service_ticket\nWHERE order_no = 'J25-00137';",
+        "error": null,
+        "repair_used": false,
+        "recall_hit": true,
+        "retrieval_recall_hit": true,
+        "answered": true,
+        "flagged": false,
+        "degraded": false,
+        "degrade_reason": "",
+        "silent_error": true,
+        "flag_reasons": [],
+        "mismatch": "wrong_values",
+        "matched_step": null,
+        "unusable_match": false,
+        "route": "database_query",
+        "route_signals": [
+          "model_classifier"
+        ],
+        "steps": [
+          {
+            "database": "svc_db",
+            "sql": "SELECT order_no, service_status\nFROM service_ticket\nWHERE order_no = 'J25-00137';",
+            "success": true,
+            "row_count": 2
+          }
+        ]
+      },
+      {
+        "id": "c18",
+        "category": "customer",
+        "query": "J26-00024 现在什么进度了？",
+        "correct": true,
+        "predicted_sql": "SELECT order_no, order_status\nFROM orders\nWHERE order_no = 'J26-00024';",
+        "error": null,
+        "repair_used": false,
+        "recall_hit": true,
+        "retrieval_recall_hit": true,
+        "answered": true,
+        "flagged": false,
+        "degraded": false,
+        "degrade_reason": "",
+        "silent_error": false,
+        "flag_reasons": [],
+        "mismatch": "",
+        "matched_step": 1,
+        "unusable_match": false,
+        "route": "database_query",
+        "route_signals": [
+          "model_classifier"
+        ],
+        "steps": [
+          {
+            "database": "erp_db",
+            "sql": "SELECT order_no, order_status\nFROM orders\nWHERE order_no = 'J26-00024';",
+            "success": true,
+            "row_count": 1
+          }
+        ]
+      },
+      {
+        "id": "c23",
+        "category": "customer",
+        "query": "Why hasn't J25-00094 shipped yet?",
+        "correct": true,
+        "predicted_sql": "SELECT DISTINCT order_no, delivery_notes\nFROM delivery\nWHERE order_no IN ('J25-00094');",
+        "error": null,
+        "repair_used": false,
+        "recall_hit": true,
+        "retrieval_recall_hit": true,
+        "answered": true,
+        "flagged": false,
+        "degraded": false,
+        "degrade_reason": "",
+        "silent_error": false,
+        "flag_reasons": [],
+        "mismatch": "",
+        "matched_step": 2,
+        "unusable_match": false,
+        "route": "database_query",
+        "route_signals": [
+          "model_classifier"
+        ],
+        "steps": [
+          {
+            "database": "prod_db",
+            "sql": "SELECT order_no, production_notes\nFROM work_order\nWHERE order_no = 'J25-00094';",
+            "success": true,
+            "row_count": 1
+          },
+          {
+            "database": "svc_db",
+            "sql": "SELECT DISTINCT order_no, delivery_notes\nFROM delivery\nWHERE order_no IN ('J25-00094');",
+            "success": true,
+            "row_count": 1
+          },
+          {
+            "database": "erp_db",
+            "sql": "SELECT order_no, order_notes\nFROM orders\nWHERE order_no IN ('J25-00094');",
+            "success": true,
+            "row_count": 1
+          }
+        ]
+      }
+    ]
+  },
+  "items": [
+    {
+      "item_id": "c03",
+      "category": "customer",
+      "query": "我这单 J26-00044 还要多久能送到？",
+      "correct": true,
+      "predicted_sql": "SELECT order_no, delivery_date\nFROM orders\nWHERE order_no = 'J26-00044';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "retrieved_columns": 31,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "degrade_reason": "",
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT order_no, delivery_date\nFROM orders\nWHERE order_no = 'J26-00044';",
+          "success": true,
+          "row_count": 1
+        }
+      ],
+      "mismatch": "",
+      "route": "database_query",
+      "matched_step": 1,
+      "unusable_match": false,
+      "route_signals": [
+        "model_classifier"
+      ],
+      "duration_seconds": 22.075,
+      "usage": {
+        "calls": 7,
+        "prompt_tokens": 8980,
+        "completion_tokens": 349,
+        "total_tokens": 9329,
+        "by_component": {
+          "thinking": 6578,
+          "keyword_extractor": 1503,
+          "embedding": 27,
+          "coder": 1221
+        }
+      },
+      "gold_rows": [
+        {
+          "delivery_date": "2026-07-02"
+        }
+      ],
+      "alternative_gold_rows": [],
+      "requests": {
+        "generation": 6,
+        "embedding": 1
+      }
+    },
+    {
+      "item_id": "c04",
+      "category": "customer",
+      "query": "J25-00213 怎么还没发货？",
+      "correct": true,
+      "predicted_sql": "SELECT order_no, delivery_notes\nFROM delivery\nWHERE order_no IN ('J25-00213');",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "retrieved_columns": 29,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "degrade_reason": "",
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "prod_db",
+          "sql": "SELECT order_no, production_notes\nFROM work_order\nWHERE order_no = 'J25-00213';",
+          "success": true,
+          "row_count": 1
+        },
+        {
+          "database": "svc_db",
+          "sql": "SELECT order_no, delivery_notes\nFROM delivery\nWHERE order_no IN ('J25-00213');",
+          "success": true,
+          "row_count": 1
+        }
+      ],
+      "mismatch": "",
+      "route": "database_query",
+      "matched_step": 2,
+      "unusable_match": false,
+      "route_signals": [
+        "model_classifier"
+      ],
+      "duration_seconds": 34.645,
+      "usage": {
+        "calls": 10,
+        "prompt_tokens": 10648,
+        "completion_tokens": 612,
+        "total_tokens": 11260,
+        "by_component": {
+          "thinking": 7163,
+          "keyword_extractor": 1494,
+          "embedding": 17,
+          "coder": 2586
+        }
+      },
+      "gold_rows": [
+        {
+          "delivery_notes": "site not ready；配送失败，待重新配送"
+        }
+      ],
+      "alternative_gold_rows": [],
+      "requests": {
+        "generation": 9,
+        "embedding": 1
+      }
+    },
+    {
+      "item_id": "c11",
+      "category": "customer",
+      "query": "J25-00137 我们报的几个问题现在都处理好了吗？",
+      "correct": false,
+      "predicted_sql": "SELECT order_no, service_status\nFROM service_ticket\nWHERE order_no = 'J25-00137';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "retrieved_columns": 30,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "degrade_reason": "",
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "svc_db",
+          "sql": "SELECT order_no, service_status\nFROM service_ticket\nWHERE order_no = 'J25-00137';",
+          "success": true,
+          "row_count": 2
+        }
+      ],
+      "mismatch": "wrong_values",
+      "route": "database_query",
+      "matched_step": null,
+      "unusable_match": false,
+      "route_signals": [
+        "model_classifier"
+      ],
+      "duration_seconds": 19.55,
+      "usage": {
+        "calls": 7,
+        "prompt_tokens": 8875,
+        "completion_tokens": 340,
+        "total_tokens": 9215,
+        "by_component": {
+          "thinking": 6474,
+          "keyword_extractor": 1504,
+          "embedding": 27,
+          "coder": 1210
+        }
+      },
+      "gold_rows": [
+        {
+          "issue_type": "安装问题",
+          "service_status": "已解决"
+        },
+        {
+          "issue_type": "质量问题",
+          "service_status": "处理中"
+        }
+      ],
+      "alternative_gold_rows": [
+        [
+          {
+            "description": "Filler does not fit field condition",
+            "service_status": "已解决"
+          },
+          {
+            "description": "Finish defect on door front",
+            "service_status": "处理中"
+          }
+        ]
+      ],
+      "requests": {
+        "generation": 6,
+        "embedding": 1
+      }
+    },
+    {
+      "item_id": "c18",
+      "category": "customer",
+      "query": "J26-00024 现在什么进度了？",
+      "correct": true,
+      "predicted_sql": "SELECT order_no, order_status\nFROM orders\nWHERE order_no = 'J26-00024';",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "retrieved_columns": 25,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "degrade_reason": "",
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT order_no, order_status\nFROM orders\nWHERE order_no = 'J26-00024';",
+          "success": true,
+          "row_count": 1
+        }
+      ],
+      "mismatch": "",
+      "route": "database_query",
+      "matched_step": 1,
+      "unusable_match": false,
+      "route_signals": [
+        "model_classifier"
+      ],
+      "duration_seconds": 27.986,
+      "usage": {
+        "calls": 7,
+        "prompt_tokens": 9585,
+        "completion_tokens": 345,
+        "total_tokens": 9930,
+        "by_component": {
+          "thinking": 7181,
+          "keyword_extractor": 1556,
+          "embedding": 15,
+          "coder": 1178
+        }
+      },
+      "gold_rows": [
+        {
+          "order_status": "已签单"
+        }
+      ],
+      "alternative_gold_rows": [],
+      "requests": {
+        "generation": 6,
+        "embedding": 1
+      }
+    },
+    {
+      "item_id": "c23",
+      "category": "customer",
+      "query": "Why hasn't J25-00094 shipped yet?",
+      "correct": true,
+      "predicted_sql": "SELECT DISTINCT order_no, delivery_notes\nFROM delivery\nWHERE order_no IN ('J25-00094');",
+      "error": null,
+      "repair_used": false,
+      "recall_hit": true,
+      "retrieval_recall_hit": true,
+      "retrieved_columns": 28,
+      "answered": true,
+      "flagged": false,
+      "degraded": false,
+      "degrade_reason": "",
+      "flag_reasons": [],
+      "steps": [
+        {
+          "database": "prod_db",
+          "sql": "SELECT order_no, production_notes\nFROM work_order\nWHERE order_no = 'J25-00094';",
+          "success": true,
+          "row_count": 1
+        },
+        {
+          "database": "svc_db",
+          "sql": "SELECT DISTINCT order_no, delivery_notes\nFROM delivery\nWHERE order_no IN ('J25-00094');",
+          "success": true,
+          "row_count": 1
+        },
+        {
+          "database": "erp_db",
+          "sql": "SELECT order_no, order_notes\nFROM orders\nWHERE order_no IN ('J25-00094');",
+          "success": true,
+          "row_count": 1
+        }
+      ],
+      "mismatch": "",
+      "route": "database_query",
+      "matched_step": 2,
+      "unusable_match": false,
+      "route_signals": [
+        "model_classifier"
+      ],
+      "duration_seconds": 57.069,
+      "usage": {
+        "calls": 13,
+        "prompt_tokens": 12391,
+        "completion_tokens": 879,
+        "total_tokens": 13270,
+        "by_component": {
+          "thinking": 7780,
+          "keyword_extractor": 1489,
+          "embedding": 15,
+          "coder": 3986
+        }
+      },
+      "gold_rows": [
+        {
+          "delivery_notes": "access blocked by other trades；配送失败，待重新配送"
+        }
+      ],
+      "alternative_gold_rows": [],
+      "requests": {
+        "generation": 12,
+        "embedding": 1
+      }
+    }
+  ],
+  "step_results": [
+    {
+      "id": "c03",
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT order_no, delivery_date\nFROM orders\nWHERE order_no = 'J26-00044';",
+          "execution_result": {
+            "database": "erp_db",
+            "sql": "SELECT order_no, delivery_date\nFROM orders\nWHERE order_no = 'J26-00044';",
+            "success": true,
+            "columns": [
+              "order_no",
+              "delivery_date"
+            ],
+            "rows": [
+              {
+                "order_no": "J26-00044",
+                "delivery_date": "2026-07-02"
+              }
+            ],
+            "row_count": 1,
+            "error": null,
+            "truncated": false,
+            "row_limit": 1000,
+            "as_of": "2026-11-06T18:25:02.471Z",
+            "as_of_source": "query_time",
+            "observed_at": "2026-11-06T18:25:02.472Z"
+          },
+          "validation": {
+            "passed": true,
+            "should_retry": false,
+            "findings": [],
+            "self_check_paraphrase": "从 orders 表中筛选 order_no 等于 'J26-00044' 的记录，不进行分组，输出 order_no 和 delivery_date 两列。",
+            "self_check": "passed",
+            "self_check_error": ""
+          }
+        }
+      ],
+      "degraded": false,
+      "cot_output": "步骤1：\n(\n  数据库: erp_db,\n  处理对象: orders表（字段：order_no, delivery_date）,\n  操作指令: 先按用户给定的order_no等于J26-00044筛选orders表；再读取delivery_date，返回原始计划交付日期；Schema未提供最新预计到达时间，不能准确计算还需等待多久，不将计划交付日期减去今天作为剩余等待时间，也不根据过期计划推导新的到达日期；若delivery_date为空则保留为空,\n  输出目标: order_no, delivery_date,\n  预期输出量级: 单条\n)"
+    },
+    {
+      "id": "c04",
+      "steps": [
+        {
+          "database": "prod_db",
+          "sql": "SELECT order_no, production_notes\nFROM work_order\nWHERE order_no = 'J25-00213';",
+          "execution_result": {
+            "database": "prod_db",
+            "sql": "SELECT order_no, production_notes\nFROM work_order\nWHERE order_no = 'J25-00213';",
+            "success": true,
+            "columns": [
+              "order_no",
+              "production_notes"
+            ],
+            "rows": [
+              {
+                "order_no": "J25-00213",
+                "production_notes": null
+              }
+            ],
+            "row_count": 1,
+            "error": null,
+            "truncated": false,
+            "row_limit": 1000,
+            "as_of": "2026-11-06T18:25:27.916Z",
+            "as_of_source": "query_time",
+            "observed_at": "2026-11-06T18:25:27.917Z"
+          },
+          "validation": {
+            "passed": true,
+            "should_retry": false,
+            "findings": [],
+            "self_check_paraphrase": "从 work_order 表中筛选 order_no 等于 'J25-00213' 的记录，不进行分组，输出 order_no 和 production_notes 两个字段。",
+            "self_check": "passed",
+            "self_check_error": ""
+          }
+        },
+        {
+          "database": "svc_db",
+          "sql": "SELECT order_no, delivery_notes\nFROM delivery\nWHERE order_no IN ('J25-00213');",
+          "execution_result": {
+            "database": "svc_db",
+            "sql": "SELECT order_no, delivery_notes\nFROM delivery\nWHERE order_no IN ('J25-00213');",
+            "success": true,
+            "columns": [
+              "order_no",
+              "delivery_notes"
+            ],
+            "rows": [
+              {
+                "order_no": "J25-00213",
+                "delivery_notes": "site not ready；配送失败，待重新配送"
+              }
+            ],
+            "row_count": 1,
+            "error": null,
+            "truncated": false,
+            "row_limit": 1000,
+            "as_of": "2026-11-06T18:25:35.534Z",
+            "as_of_source": "query_time",
+            "observed_at": "2026-11-06T18:25:35.534Z"
+          },
+          "validation": {
+            "passed": true,
+            "should_retry": false,
+            "findings": [],
+            "self_check_paraphrase": "从 delivery 表中筛选 order_no 为 'J25-00213' 的记录，不进行分组，输出 order_no 和 delivery_notes 两列。",
+            "self_check": "passed",
+            "self_check_error": ""
+          }
+        }
+      ],
+      "degraded": false,
+      "cot_output": "步骤1：\n(\n  数据库: prod_db,\n  处理对象: work_order表（字段：order_no, production_notes）,\n  操作指令: 先使用用户已给定的订单号J25-00213筛选work_order表中order_no相等的记录；再读取production_notes中记录的生产问题或暂停原因；最后返回原始生产备注，备注为空或未记载原因时保留未知，不由生产状态推断未发货原因,\n  输出目标: order_no, production_notes,\n  预期输出量级: 单条\n)\n\n步骤2：\n(\n  数据库: svc_db,\n  处理对象: delivery表（字段：order_no, delivery_notes）,\n  操作指令: 先直接使用用户已给定的订单号J25-00213作为字面量条件筛选delivery表中order_no相等的记录；再逐条读取delivery_notes中记录的配送受阻原因或配送说明；最后返回配送备注，不因生产备注为空而跳过本步骤，也不由配送状态推断未发货原因，未记载原因时保留未知,\n  输出目标: order_no, delivery_notes,\n  预期输出量级: 数条\n)"
+    },
+    {
+      "id": "c11",
+      "steps": [
+        {
+          "database": "svc_db",
+          "sql": "SELECT order_no, service_status\nFROM service_ticket\nWHERE order_no = 'J25-00137';",
+          "execution_result": {
+            "database": "svc_db",
+            "sql": "SELECT order_no, service_status\nFROM service_ticket\nWHERE order_no = 'J25-00137';",
+            "success": true,
+            "columns": [
+              "order_no",
+              "service_status"
+            ],
+            "rows": [
+              {
+                "order_no": "J25-00137",
+                "service_status": "已解决"
+              },
+              {
+                "order_no": "J25-00137",
+                "service_status": "处理中"
+              }
+            ],
+            "row_count": 2,
+            "error": null,
+            "truncated": false,
+            "row_limit": 1000,
+            "as_of": "2026-11-06T18:25:58.929Z",
+            "as_of_source": "query_time",
+            "observed_at": "2026-11-06T18:25:58.930Z"
+          },
+          "validation": {
+            "passed": true,
+            "should_retry": false,
+            "findings": [],
+            "self_check_paraphrase": "从 service_ticket 表中筛选 order_no 等于 'J25-00137' 的记录，不进行分组，输出 order_no 和 service_status 两列。",
+            "self_check": "passed",
+            "self_check_error": ""
+          }
+        }
+      ],
+      "degraded": false,
+      "cot_output": "步骤1：\n(\n  数据库: svc_db,\n  处理对象: service_ticket表（字段：order_no, service_status）,\n  操作指令: 先确定按service_ticket.order_no筛选订单、以service_status确认所报问题的处理情况；再筛选order_no等于J25-00137的全部售后记录，不预先过滤处理状态；最后逐条返回订单号和原始处理状态，保留各条记录，不汇总、不按状态去重，以便确认是否每条记录均为已解决；若没有记录，不据此认定问题均已解决,\n  输出目标: order_no, service_status,\n  预期输出量级: 数条\n)"
+    },
+    {
+      "id": "c18",
+      "steps": [
+        {
+          "database": "erp_db",
+          "sql": "SELECT order_no, order_status\nFROM orders\nWHERE order_no = 'J26-00024';",
+          "execution_result": {
+            "database": "erp_db",
+            "sql": "SELECT order_no, order_status\nFROM orders\nWHERE order_no = 'J26-00024';",
+            "success": true,
+            "columns": [
+              "order_no",
+              "order_status"
+            ],
+            "rows": [
+              {
+                "order_no": "J26-00024",
+                "order_status": "已签单"
+              }
+            ],
+            "row_count": 1,
+            "error": null,
+            "truncated": false,
+            "row_limit": 1000,
+            "as_of": "2026-11-06T18:26:27.349Z",
+            "as_of_source": "query_time",
+            "observed_at": "2026-11-06T18:26:27.350Z"
+          },
+          "validation": {
+            "passed": true,
+            "should_retry": false,
+            "findings": [],
+            "self_check_paraphrase": "从 orders 表中筛选 order_no 等于 'J26-00024' 的记录，不进行分组，输出 order_no 和 order_status 两列。",
+            "self_check": "passed",
+            "self_check_error": ""
+          }
+        }
+      ],
+      "degraded": false,
+      "cot_output": "步骤1：\n(\n  数据库: erp_db,\n  处理对象: orders表（字段：order_no, order_status）,\n  操作指令: 先确定用户询问的是订单当前整体状态，筛选字段order_no和输出字段order_status均位于orders表；再按order_no等于'J26-00024'筛选订单；最后返回该订单号及当前订单状态,\n  输出目标: order_no, order_status,\n  预期输出量级: 单条\n)"
+    },
+    {
+      "id": "c23",
+      "steps": [
+        {
+          "database": "prod_db",
+          "sql": "SELECT order_no, production_notes\nFROM work_order\nWHERE order_no = 'J25-00094';",
+          "execution_result": {
+            "database": "prod_db",
+            "sql": "SELECT order_no, production_notes\nFROM work_order\nWHERE order_no = 'J25-00094';",
+            "success": true,
+            "columns": [
+              "order_no",
+              "production_notes"
+            ],
+            "rows": [
+              {
+                "order_no": "J25-00094",
+                "production_notes": null
+              }
+            ],
+            "row_count": 1,
+            "error": null,
+            "truncated": false,
+            "row_limit": 1000,
+            "as_of": "2026-11-06T18:26:55.983Z",
+            "as_of_source": "query_time",
+            "observed_at": "2026-11-06T18:26:55.983Z"
+          },
+          "validation": {
+            "passed": true,
+            "should_retry": false,
+            "findings": [],
+            "self_check_paraphrase": "从 work_order 表中筛选 order_no 等于 'J25-00094' 的记录，不进行分组，输出 order_no 和 production_notes 两列。",
+            "self_check": "passed",
+            "self_check_error": ""
+          }
+        },
+        {
+          "database": "svc_db",
+          "sql": "SELECT DISTINCT order_no, delivery_notes\nFROM delivery\nWHERE order_no IN ('J25-00094');",
+          "execution_result": {
+            "database": "svc_db",
+            "sql": "SELECT DISTINCT order_no, delivery_notes\nFROM delivery\nWHERE order_no IN ('J25-00094');",
+            "success": true,
+            "columns": [
+              "order_no",
+              "delivery_notes"
+            ],
+            "rows": [
+              {
+                "order_no": "J25-00094",
+                "delivery_notes": "access blocked by other trades；配送失败，待重新配送"
+              }
+            ],
+            "row_count": 1,
+            "error": null,
+            "truncated": false,
+            "row_limit": 1000,
+            "as_of": "2026-11-06T18:27:09.764Z",
+            "as_of_source": "query_time",
+            "observed_at": "2026-11-06T18:27:09.765Z"
+          },
+          "validation": {
+            "passed": true,
+            "should_retry": false,
+            "findings": [],
+            "self_check_paraphrase": "从 delivery 表中筛选 order_no 为 'J25-00094' 的记录，不进行分组，输出去重后的 order_no 和 delivery_notes 组合。",
+            "self_check": "passed",
+            "self_check_error": ""
+          }
+        },
+        {
+          "database": "erp_db",
+          "sql": "SELECT order_no, order_notes\nFROM orders\nWHERE order_no IN ('J25-00094');",
+          "execution_result": {
+            "database": "erp_db",
+            "sql": "SELECT order_no, order_notes\nFROM orders\nWHERE order_no IN ('J25-00094');",
+            "success": true,
+            "columns": [
+              "order_no",
+              "order_notes"
+            ],
+            "rows": [
+              {
+                "order_no": "J25-00094",
+                "order_notes": null
+              }
+            ],
+            "row_count": 1,
+            "error": null,
+            "truncated": false,
+            "row_limit": 1000,
+            "as_of": "2026-11-06T18:27:18.881Z",
+            "as_of_source": "query_time",
+            "observed_at": "2026-11-06T18:27:18.881Z"
+          },
+          "validation": {
+            "passed": true,
+            "should_retry": false,
+            "findings": [],
+            "self_check_paraphrase": "从 orders 表中筛选 order_no 为 'J25-00094' 的记录，不进行分组，输出 order_no 和 order_notes 两列。",
+            "self_check": "passed",
+            "self_check_error": ""
+          }
+        }
+      ],
+      "degraded": false,
+      "cot_output": "步骤1：\n(\n  数据库: prod_db,\n  处理对象: work_order表（字段：order_no, production_notes）,\n  操作指令: 先使用用户给定的订单号J25-00094筛选work_order表中order_no等于该值的记录；再读取production_notes中记载的生产问题或暂停原因，作为尚未发货原因的生产环节证据；备注为空时保留未知，不推断原因，也不因此跳过其他来源,\n  输出目标: order_no, production_notes,\n  预期输出量级: 单条\n)\n\n步骤2：\n(\n  数据库: svc_db,\n  处理对象: delivery表（字段：order_no, delivery_notes）,\n  操作指令: 先直接使用用户给定的订单号J25-00094作为字面量条件筛选delivery表；再读取匹配记录的delivery_notes，获取可能记载的配送受阻原因；最后对输出的订单号与配送备注组合去重，保留不同备注，备注为空时不根据配送状态推断原因,\n  输出目标: order_no, delivery_notes,\n  预期输出量级: 数条\n)\n\n步骤3：\n(\n  数据库: erp_db,\n  处理对象: orders表（字段：order_no, order_notes）,\n  操作指令: 先直接使用用户给定的订单号J25-00094作为字面量条件筛选orders表；再读取order_notes，补充订单层面可能记载的未发货原因；若各来源均无明确原因记录，则保留原因未知，不从订单状态或日期推断原因,\n  输出目标: order_no, order_notes,\n  预期输出量级: 单条\n)"
+    }
+  ]
+}

@@ -53,6 +53,8 @@ The response includes `response`, `intent`, `primary_agent`, `supporting_agents`
 
 For an OpenAI-compatible endpoint, set `LLM_PROVIDER=openai`, `OPENAI_API_KEY`, `OPENAI_MODEL` and, if needed, `OPENAI_BASE_URL`. Endpoints that ignore JSON Schema `response_format` still work: the schema is moved into the prompt and the reply is validated strictly.
 
+Set `OPENAI_API_MODE=responses` explicitly for endpoints that implement the Responses API, including GPT-6.1 Sol tool calling. The default `chat` preserves existing compatible gateways. The setting applies to OpenAI connections in this process; do not enable it for a gateway until its Responses support has been verified. The Responses adapter does not silently fall back to Chat Completions or prompt-only structured output. Images at the adapter boundary do not yet provide an attachment upload or authorization workflow.
+
 `EMBEDDING_*` and `RERANK_*` configure the retrieval models separately. Without a remote embedding endpoint, retrieval ranks keyword matches first and uses local character n-gram vectors only to fill the remaining places. Vectors from different embedding models cannot be mixed: after changing the model in `backend/.env`, set `EMBEDDING_DIM` to its output size, stop the service and rebuild the stored vectors with [reembed.py](../backend/scripts/reembed.py) (it prints a plan first; `--apply` runs it). The service refuses to start on vectors another model produced. Restart after any change to `backend/.env`.
 
 Both connections can also be changed from the console without a restart, under **Admin & diagnostics → Model connections**:

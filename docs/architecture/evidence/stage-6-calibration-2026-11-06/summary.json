@@ -1,0 +1,156 @@
+{
+  "schema_version": 1,
+  "kind": "limited_real_development_calibration",
+  "date": "2026-11-06",
+  "authorization": {
+    "answer": "授权上述有限校准",
+    "automatic_http_retries": 0,
+    "client_date": "2026-11-06",
+    "data": "Synthetic assessment orders, policies, images and application prompts only",
+    "destination": "https://relay.invalid/v1/responses",
+    "formal_batch_authorized": false,
+    "max_output_tokens_per_request": 2048,
+    "maximum_actual_supplier_http_requests": 40,
+    "maximum_development_scenarios": 12,
+    "model": "gpt-6.1-sol",
+    "question_item_id": "[\"request_user_input_async\",\"call_BosGILg8QlA94VGaEWfqwYaM\",0]",
+    "source": "Direct user reply in main chat 01a1af38-8e21-7081-9b05-fa8fbd8bb77c",
+    "supplier_usd_rates_unverified": true
+  },
+  "source_revision": "26c4a75a4bd3ad5d5408a38611ff100d0c47bd9e",
+  "source_sha256": "5504f29c5a1144634433fb119f32d8e08c1c514c096bd844c920eb81999c2860",
+  "manifest_sha256": "88a8954e19b0c7e7870b41e42b16f47b61630a83553e9eb6446640ee61f92b9b",
+  "runtime_kind": "isolated_source_copy_not_frozen_image_release",
+  "release_eligible": false,
+  "results_classified": {
+    "passed": 3,
+    "business_failure": 1,
+    "budget_censored": 1,
+    "not_executed": 7
+  },
+  "planned_scenarios": 12,
+  "started_scenarios": 5,
+  "completed_without_budget_censoring": 4,
+  "results": [
+    {
+      "id": "development-orders-001",
+      "classification": "passed",
+      "fact_correct": true,
+      "elapsed_seconds": 34.76898649986833,
+      "actual_http_requests": 7,
+      "input_tokens": 36323,
+      "output_tokens": 448,
+      "raw_record_sha256": "17a4f4350ae59d4fd4ab7a1f826aee118c08078b940b0e9c5f637861b3ea6f0e"
+    },
+    {
+      "id": "development-policies-001",
+      "classification": "passed",
+      "fact_correct": true,
+      "elapsed_seconds": 20.82089470885694,
+      "actual_http_requests": 4,
+      "input_tokens": 14748,
+      "output_tokens": 378,
+      "raw_record_sha256": "479314287f91bea960e00ea352face98b3533747b54e98965b714682381c075c"
+    },
+    {
+      "id": "development-images-001",
+      "classification": "business_failure",
+      "fact_correct": false,
+      "elapsed_seconds": 102.92617508303374,
+      "actual_http_requests": 14,
+      "input_tokens": 77941,
+      "output_tokens": 3711,
+      "raw_record_sha256": "2629fec034b6cc0781493535af7ade4b1e7f50a1ec48ffe901ca479b84a0bc82"
+    },
+    {
+      "id": "development-cross_message-001",
+      "classification": "passed",
+      "fact_correct": true,
+      "elapsed_seconds": 44.27256291685626,
+      "actual_http_requests": 9,
+      "input_tokens": 45776,
+      "output_tokens": 642,
+      "raw_record_sha256": "141d102517cd4134480332b417e201127ab3092b8be6cace34e549c717c8927c"
+    },
+    {
+      "id": "development-orders-002",
+      "classification": "budget_censored",
+      "fact_correct": false,
+      "elapsed_seconds": 16.03071470791474,
+      "actual_http_requests": 5,
+      "input_tokens": 29031,
+      "output_tokens": 352,
+      "raw_record_sha256": "f0ff7d0b901d7ca61a0492e8e3dac1487b9957562fdb84493b229a4ca49e10fc"
+    },
+    {
+      "id": "development-policies-002",
+      "classification": "not_executed"
+    },
+    {
+      "id": "development-images-006",
+      "classification": "not_executed"
+    },
+    {
+      "id": "development-cross_message-002",
+      "classification": "not_executed"
+    },
+    {
+      "id": "development-orders-003",
+      "classification": "not_executed"
+    },
+    {
+      "id": "development-policies-004",
+      "classification": "not_executed"
+    },
+    {
+      "id": "development-images-011",
+      "classification": "not_executed"
+    },
+    {
+      "id": "development-cross_message-003",
+      "classification": "not_executed"
+    }
+  ],
+  "actual_http_requests": 40,
+  "http_status_counts": {
+    "200": 40
+  },
+  "remaining_requests": 0,
+  "unfinished_requests": 0,
+  "requests_by_service": {
+    "sql": 29,
+    "helpdesk": 11
+  },
+  "unattributed_background_requests": 1,
+  "usage": {
+    "input_tokens": 208291,
+    "output_tokens": 5803,
+    "cached_input_tokens_included": 87296,
+    "cache_write_tokens_included": 0,
+    "reasoning_output_tokens_included": 480
+  },
+  "unknown_usage_requests": 0,
+  "verified_usd_cost": null,
+  "supplier_tariff_verified": false,
+  "formal_batch_authorized": false,
+  "image_extraction_fields_correct": 5,
+  "image_verification_fields_correct": 0,
+  "image_fields_total": 5,
+  "verification": "Parent independently rescored all 5 raw scenario records and matched saved scores; validated all 40 finished supplier receipts and recomputed token totals.",
+  "execution_end": {
+    "formal_batch_authorized": false,
+    "real_calibration_ledger_preserved": true,
+    "remaining_requests": 0,
+    "runner_exit_code": 0,
+    "stop_reason": "cumulative_request_cap_reached",
+    "supplier_requests": 40,
+    "temporary_stack_closed": true,
+    "unfinished_requests": 0
+  },
+  "limitations": [
+    "Development sample only; 7 planned scenarios were not run and 1 was censored by the approved request cap.",
+    "Original image failure and all raw scores are preserved; local changes require separately authorized real verification.",
+    "The 14000-request formula in the original cost-plan is provisional, is not an approval, and is not a reliable formal-budget estimate from this sample.",
+    "Provider-reported model identity, token usage and HTTP status do not establish underlying hosted model identity or verified billing."
+  ]
+}

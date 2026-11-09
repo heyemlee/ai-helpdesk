@@ -67,12 +67,12 @@ def _registry():
 
 
 def _validator(schema_name: str):
-    from jsonschema import Draft202012Validator
+    from jsonschema import Draft202012Validator, FormatChecker
 
     schema = json.loads(
         (CONTRACT / schema_name).read_text(encoding="utf-8")
     )
-    return Draft202012Validator(schema, registry=_registry())
+    return Draft202012Validator(schema, registry=_registry(), format_checker=FormatChecker())
 
 
 def _is_valid(schema_name: str, payload: Any) -> bool:

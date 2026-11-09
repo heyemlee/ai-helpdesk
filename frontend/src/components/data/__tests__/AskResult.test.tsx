@@ -26,7 +26,7 @@ const tr = (lang: Lang) => (key: Key, vars?: Record<string, string | number>): s
 }
 
 const step = (rows: Array<Record<string, unknown>>, extra: Record<string, unknown> = {}) => ({
-  database: 'sales_db', sql: COUNTED, final_sql: COUNTED, success: true, row_count: rows.length, rows, ...extra,
+  database: 'sales_db', sql: COUNTED, final_sql: COUNTED, success: true, truncated: false, row_count: rows.length, rows, ...extra,
 })
 
 function turnOf(payload: Record<string, unknown>, extra: Partial<Turn> = {}): Turn {

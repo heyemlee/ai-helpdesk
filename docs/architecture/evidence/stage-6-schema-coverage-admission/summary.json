@@ -1,0 +1,66 @@
+{
+  "kind": "root_exact_403a_source_admission_v1",
+  "private_revision": "403a479c08fe4a4a84e2d3d85c8d57915f535a8d",
+  "source_files": 1411,
+  "indices": [
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-d/2026-11-06/independent-fact-review-403a479-v1/review-index-v1.json",
+      "sha256": "158c8163ccf1c961b2d3ab4c017556a013b45e4ce17046b4e8752a5d46cd776a",
+      "files_verified": 137
+    },
+    {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/validation/independent-schema-fallback-403a479c-75bf63d2/evidence-index.json",
+      "sha256": "cddfe45a749e77b3b427df5f1d77b2d1f97a5933dd8125915f99bcbac20a600e",
+      "files_verified": 31
+    }
+  ],
+  "independent_actual74_passed": 74,
+  "independent_actual16_passed": 16,
+  "snapshot_changed_main_indices": [
+    4,
+    23,
+    25,
+    26,
+    38,
+    40,
+    41,
+    53,
+    54
+  ],
+  "snapshot_changed_existing_delta_after_indices": [
+    5,
+    27,
+    33,
+    42,
+    48
+  ],
+  "snapshot_strict_test_and_key_facts_unchanged": true,
+  "snapshot_before_bindings_unchanged": true,
+  "model_calls_order56_and_executed_SQL_validator_results_unchanged": true,
+  "production_source_review": "Only explicit authorized table-hit coverage for existing quota; sort-only table_order, access filters, physical relations, schema budgets, keyword breaker and all risk/trust guards preserved. No new literal field gate or request/retry.",
+  "test_backend_2540_SQL1317_ERP6_contract41_exact_sealed_source_verified": true,
+  "frontend": {
+    "actual_passed": 436,
+    "skipped": 0,
+    "typecheck": 0,
+    "build": 0,
+    "all_source_files": 1411,
+    "receipt": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-d/2026-11-06/fix-image-query-contract/frontend-check-v1/logs/frontend-full-01.json",
+    "receipt_sha256": "5af077f21eaca96997f8bd0b3a6b3b75175b7dd2c3e993728f8c8eeec7285cbe",
+    "index_sha256": "6d085019f20621fc39e66f4b7aff633c4d018589c817683ce557a40ea066126c",
+    "files_verified": 8
+  },
+  "acceptance_configuration": "frozen LocalHash per-table floor4; remote floor3 limitation disclosed and not evaluated as fixed",
+  "release_eligible": false,
+  "pre_admission_review_sha256": "e23baab869110e4e3e8891933e99e47820efcadbdf15f000e955945593131668",
+  "sealed_manifest_sha256": "577683c00aabb148b9fe23866a434eaa89ed4ede6083606c92c2e3231b31e048",
+  "sealed_source_tar_sha256": "7aeb50a899a2b54b99c3599d3c866a58482d3c8b098f8c9076f0be96391caf0b",
+  "net_patch_sha256": "e7b3b63f8befe07b75a567c7edd2a4ba34eb6ee846f00b4a6357ecc0ac7f4791",
+  "implementation_index_sha256": "ffb2927b285af30da6205336c49de99db0fe9f99238810a2a2185a9f3dee7a54",
+  "implementation_files_verified": 109,
+  "required_next": "Clean main adoption/build; fresh full54 from5038 under reviewed v8, seven same-candidate components, three fresh200 and independent390, strict gate/pack; no deployment.",
+  "root_admission": {
+    "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-d/2026-11-06/root-exact-403a-admission-v1.json",
+    "sha256": "d3ae98a76c466f6537a977bb586de256062ed4f84adfcecbd6f8745108ae42c2"
+  }
+}

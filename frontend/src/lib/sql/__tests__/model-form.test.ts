@@ -45,11 +45,11 @@ describe('SQL Agent 模型连接的表单', () => {
   })
 
   it('换协议时填上那一家现在配的地址和模型', () => {
-    expect(prefill(status, 'anthropic')).toEqual({ provider: 'anthropic', baseUrl: 'https://relay.example.com',
+    expect(prefill(status, 'anthropic')).toEqual({ provider: 'anthropic', apiMode: 'chat', baseUrl: 'https://relay.example.com',
       chatModel: 'claude-sonnet-5', coderModel: 'claude-opus-5-5' })
     const openai = prefill(status, 'openai')
     expect([openai.baseUrl, openai.chatModel]).toEqual(['https://api.openai.com/v1', 'gpt-5.6-luna'])
-    expect(prefill(null, 'openai')).toEqual({ provider: 'openai', baseUrl: '', chatModel: '', coderModel: '' })
+    expect(prefill(null, 'openai')).toEqual({ provider: 'openai', apiMode: 'chat', baseUrl: '', chatModel: '', coderModel: '' })
   })
 
   it('只有从别的机器经明文 http 打开的页面才算不加密', () => {
@@ -66,7 +66,7 @@ describe('SQL Agent 模型连接的表单', () => {
   it('请求体的字段都去掉首尾空白；Key 留空表示接着用', () => {
     expect(requestBody({ provider: 'openai', baseUrl: ' https://relay.example.com/v1 ', chatModel: ' some-model ',
       coderModel: '' }, '  sk-typed  ')).toEqual({
-      provider: 'openai', base_url: 'https://relay.example.com/v1', api_key: 'sk-typed',
+      provider: 'openai', api_mode: 'chat', base_url: 'https://relay.example.com/v1', api_key: 'sk-typed',
       chat_model: 'some-model', coder_model: '',
     })
   })

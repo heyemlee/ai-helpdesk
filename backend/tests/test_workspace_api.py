@@ -11,6 +11,7 @@ import sys
 import time
 
 import pytest
+from evidence_fixtures import PUBLISHED, policy_hits, with_evidence
 from fastapi.testclient import TestClient
 
 from app.core.embedder import Embedder
@@ -47,6 +48,8 @@ def kb(main, monkeypatch, tmp_path):
 
 @pytest.fixture
 def client(main):
+    from app.core.actor import ActorContext
+    main.app.dependency_overrides[main.policy_employee] = lambda: ActorContext("test-admin", frozenset({"admin"}), "staff")
     return TestClient(main.app)
 
 
@@ -57,6 +60,7 @@ STAFF_ONLY = [
     ("GET", "/knowledge/documents/doc_x"),
     ("PATCH", "/knowledge/documents/doc_x"),
     ("GET", "/knowledge/categories"),
+    ("GET", "/knowledge/stats"),
     ("GET", "/sops"),
     ("POST", "/search"),
     ("POST", "/knowledge/add"),
@@ -79,7 +83,11 @@ def test_staff_endpoints_reject_anonymous_callers(monkeypatch, method, path):
     assert client.request(method, path).status_code == 401
     assert client.request(method, path, headers={"X-API-Key": "wrong"}).status_code == 401
     # 带对钥匙就越过鉴权，落到业务层（组件没初始化 → 503，或请求体不对 → 422）
-    assert client.request(method, path, headers={"X-API-Key": "s3cret"}).status_code != 401
+    status = client.request(method, path, headers={"X-API-Key": "s3cret"}).status_code
+    if path == "/search" or path.startswith("/knowledge/"):
+        assert status == 401  # shared key is not an employee/admin identity
+    else:
+        assert status != 401
 
 
 # ── 知识文档 ──────────────────────────────────────────────────────────────────
@@ -231,7 +239,7 @@ def test_upload_rejects_malformed_json(client, kb, payload):
 
 def test_search_results_name_their_document(client, kb, main, monkeypatch):
     [doc] = client.post("/knowledge/add", json={"documents": [
-        {"title": "install", "content": "# Door Troubleshooting\n\nCheck cabinet level before adjusting hinges."},
+        {"title": "install", "content": "# Door Troubleshooting\n\nCheck cabinet level before adjusting hinges.", "policy": PUBLISHED},
     ]}).json()["documents"]
 
     class _Tools:
@@ -280,7 +288,7 @@ class _KnowledgeTools:
     """只实现 /chat 准备阶段用到的两个检索入口。"""
 
     def __init__(self, items, **flags):
-        self._items, self._flags = items, flags
+        self._items, self._flags = policy_hits(items), flags
         self.calls: list[str] = []
 
     async def call(self, name, params, context=None, **_):
@@ -314,7 +322,7 @@ async def test_knowledge_trace_lists_only_passages_that_reached_the_prompt(main,
     assert (trace["reranked"], trace["corrected"], trace["evidence_ok"]) == (True, False, True)
 
     first, second = trace["sources"]            # 空内容的那条和 top_k 之外的那条都不在
-    assert first == {
+    assert {k: v for k, v in first.items() if k not in {"content", "policy", "policy_scope", "policy_revision", "policy_as_of"}} == {
         "doc_id": doc["id"], "chunk_id": passage["id"], "title": "invoice",
         "doc_title": "Invoices and Change Orders", "passage": 0, "score": 0.42,
         "retrieval": "hybrid", "excerpt": "更正由财务提供 revised invoice。",   # 不带标题行
@@ -403,6 +411,9 @@ OK_DATA = {
 }
 
 
+OK_DATA = with_evidence(OK_DATA)
+
+
 async def test_business_data_trace_reports_what_actually_happened(main, monkeypatch):
     from app.tools.sql_agent_client import SQLAgentClient
 
@@ -438,7 +449,7 @@ async def test_business_data_trace_reports_what_actually_happened(main, monkeypa
     assert trace["outcome"] == "not_applicable"
 
     trace, _ = await outcome(dict(OK_DATA, answer="  "))
-    assert trace["outcome"] == "empty"
+    assert trace["outcome"] == "evidence"  # rows remain evidence when answer prose is empty
 
 
 # ── 准备阶段的进度 ────────────────────────────────────────────────────────────
@@ -712,3 +723,25 @@ def test_health_reports_what_this_instance_is_connected_to(main, monkeypatch):
 
     monkeypatch.setattr(main, "_sql_agent", SQLAgentClient(base_url="http://x:8000"))
     assert client.get("/health").json()["capabilities"]["business_data"] is True
+
+
+def test_policy_publication_requires_admin_valid_dates_and_current_revision(client, main, kb):
+    from app.core.actor import ActorContext
+
+    added = client.post('/knowledge/add', json={'documents': [{'title': 'Shipping', 'content': 'Shipping fee $150.'}]}).json()
+    doc_id = added['documents'][0]['id']
+    original = client.get(f'/knowledge/documents/{doc_id}').json()
+    assert original['policy']['status'] == 'draft'
+    assert original['policy']['version'] == 'legacy-unreviewed'
+    policy = {**PUBLISHED, 'product': 'Cab', 'region': 'CA', 'audience': 'employee'}
+    main.app.dependency_overrides[main.policy_employee] = lambda: ActorContext('employee', frozenset({'employee'}), 'staff')
+    assert client.patch(f'/knowledge/documents/{doc_id}', json={'policy': policy, 'expected_revision': original['policy_revision']}).status_code == 403
+    main.app.dependency_overrides[main.policy_employee] = lambda: ActorContext('admin', frozenset({'admin'}), 'staff')
+    for invalid in ({**policy, 'version': 'legacy-unreviewed'}, {**policy, 'effective_at': '2020-01-01T00:00:00'},
+                    {**policy, 'expires_at': policy['effective_at']}):
+        assert client.patch(f'/knowledge/documents/{doc_id}', json={'policy': invalid, 'expected_revision': original['policy_revision']}).status_code == 422
+    published = client.patch(f'/knowledge/documents/{doc_id}', json={'policy': policy, 'expected_revision': original['policy_revision']})
+    assert published.status_code == 200
+    assert published.json()['policy_revision'] != original['policy_revision']
+    assert client.patch(f'/knowledge/documents/{doc_id}', json={'policy': policy, 'expected_revision': original['policy_revision']}).status_code == 409
+    assert client.get(f'/knowledge/documents/{doc_id}').json()['policy'] == policy

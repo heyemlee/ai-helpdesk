@@ -1,0 +1,21 @@
+{
+  "capture-run.py": "22160bc26a0e1ebf7853900cacbcd548db7481ef363fdc3079eb2834e0c2a6fc",
+  "cause-controls-run.py": "51df37432ff19c4e58bab78ea5e283dfcb845f0744373bad125be9461e4b8c06",
+  "cause-controls.json": "c40f4b6efb2fff61a2d8aa7f6d833f072f517aca062648e8b5dd2f8979f37d9c",
+  "full-revision2-replay.json": "20e4d6c92ee0670c137773c94dba04c877a3bf6a1db4c3381c03c10858856335",
+  "full-revision2-summary.json": "d956eacd9bc100e937bea4407e2da000ba36d7c83a3071237c06ab80f17559cb",
+  "full.json": "664db8968df5bbf643dce75ab8b3e47f7fadcf8f6cca892a2b928c2bddebc02f",
+  "offline-tests.txt": "6dcbeacc0f8966d0dc0211b0b1f1df044750aa830a84b44ca805bd230c3f4ae3",
+  "planning-controls.json": "91ac70ed97f4f0566993a3407b48b61f47fad5ecdaf78e41248cb84e9cba04c4",
+  "planning-controls.py": "f02cdc412572ba822581fa5d9fabb06b36fdc5bca86958f95db05b4d3fa17e60",
+  "previous-regraded.json": "e18cac7313bd911d5d10a24a0738b31cbaf08fd373a8b0a4323c30f101faf3b4",
+  "regrade-summary.json": "78db025a8e6c748800d0de0574b78868662a6c7d10f8cc45eea3436b46288b4a",
+  "replay.py": "2a20930a1ca04b5de35cb4f9e6e648a8b8c9b4e5d2166d840e909f1c0c6cf251",
+  "replay_revision2.py": "086e6a638edf5c8ca41265fd50ff101811f81d7a4b4ddfa45bd4be030b6d86f7",
+  "revision2-cases.json": "93fba880f42881291e5490ade5ed275f87ff6e36fe76fba17f5bc6301961332c",
+  "revision2-rubric.md": "77fb4a0fbd142c8563349159864a870fb98bda9a56fb490ce0a193981058bd7c",
+  "setup_controls.py": "023c0d3f76b4421931b1ad98fc1b67833f87ea76a0fbff2f4f7920b1b9db3289",
+  "summary.json": "0cd3b3d9b6100f0ac9b6ff6c03611a30a65642985cec400ca26f1ceebf3315d8",
+  "targeted-final.json": "3ac7eb413a0ce280d8a30f123c1b0e28d9990536ad175bb10c60ed2b68bc3740",
+  "targeted.json": "2a43f2a2a2373201d3c27093e1e66986538f5a9aa7722f93719edb6ef57b3a92"
+}

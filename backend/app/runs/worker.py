@@ -73,6 +73,7 @@ class RunOutcome:
     terminal: tuple[str, dict[str, Any]]  # ("result", 载荷) 或 ("error", {"detail": ...})
     result: dict[str, Any] | None = None  # 存进库的响应体（/chat 的形状）
     error: str = ""
+    persisted: bool = False             # Case effects and terminal state committed atomically
 
 
 @dataclass
@@ -266,6 +267,11 @@ class RunWorker:
         lock = getattr(self.broker, "try_lock", None)
         if lock is not None and not await lock("sweep", self.config.redispatch_after_s / 2):
             return 0
+        adopt = getattr(self.store, "adopt_legacy", None)
+        if adopt is not None:
+            adopted = await adopt()
+            if adopted:
+                logger.warning("清扫：从旧命名空间收编 %d 个 run", adopted)
         due = await self.store.due_for_dispatch(
             idle_s=self.config.redispatch_after_s, lease_grace_s=self.config.lease_s * 2)
         for run_id in due:
@@ -382,8 +388,13 @@ class RunWorker:
 
         if job.lost:
             return
-        finished = await self.store.finish(run.run_id, self.owner, run.attempt, outcome.status,
-                                           result=outcome.result, error=outcome.error)
+        if outcome.persisted:
+            finished = await self.store.get(run.run_id)
+            if finished and (finished.status != outcome.status or finished.attempt != run.attempt):
+                finished = None
+        else:
+            finished = await self.store.finish(run.run_id, self.owner, run.attempt, outcome.status,
+                                               result=outcome.result, error=outcome.error)
         if finished is None:
             # 跑完了才发现租约不是自己的了：这一遍作废，消息不确认，交给拿着租约的那一遍
             RUN_LEASE_LOST.inc()
@@ -418,6 +429,12 @@ class RunWorker:
             if ok:
                 last_ok = time.monotonic()
             elif ok is False or time.monotonic() - last_ok > self.config.lease_s:
+                if ok is False and run.case_context:
+                    completed = await self.store.get(run.run_id)
+                    if completed and completed.terminal and completed.attempt == run.attempt:
+                        # Case transaction already committed and cleared its lease.
+                        # Let execute return so _handle can publish and ACK it.
+                        return
                 job.lost = True
                 RUN_LEASE_LOST.inc()
                 logger.warning("run %s 第 %d 次执行的租约丢了，取消这一遍", run.run_id, run.attempt)
@@ -461,8 +478,12 @@ class RunWorker:
                 payload = await self._on_dead(run, reason)
             except Exception:
                 logger.exception("run %s 进死信时转人工失败", run.run_id)
-        finished = await self.store.finish(run.run_id, self.owner, run.attempt, DEAD,
-                                           result=payload, error=reason)
+                if run.case_context:
+                    return  # retry the guarded Case dead-letter transaction after lease expiry
+        finished = await self.store.get(run.run_id)
+        if not (finished and finished.status == DEAD and finished.attempt == run.attempt):
+            finished = await self.store.finish(run.run_id, self.owner, run.attempt, DEAD,
+                                               result=payload, error=reason)
         if finished is None:
             return
         try:

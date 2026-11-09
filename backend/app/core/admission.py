@@ -173,7 +173,17 @@ def estimate_tokens(kwargs: Mapping[str, Any]) -> int:
     chars = len(str(kwargs.get("system") or ""))
     for message in kwargs.get("messages") or []:
         content = message.get("content") if isinstance(message, Mapping) else None
-        chars += len(content) if isinstance(content, str) else len(str(content or ""))
+        if isinstance(content, list):
+            for block in content:
+                if isinstance(block, Mapping) and block.get("type") == "image":
+                    # Previews are bounded to 2048px by the attachment decoder.
+                    # Reserve conservatively; settle with actual API usage. Image
+                    # base64 is transport, never millions of text tokens.
+                    chars += 4096 / _TOKENS_PER_CHAR
+                else:
+                    chars += len(str(block))
+        else:
+            chars += len(content) if isinstance(content, str) else len(str(content or ""))
     tools = kwargs.get("tools")
     if tools:
         chars += len(str(tools))

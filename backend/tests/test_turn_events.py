@@ -73,7 +73,7 @@ def test_the_event_types_are_a_fixed_list():
         "turn_started", "memory_loaded", "intent_voted", "prefetch_planned", "tool_started",
         "tool_call", "model_call", "routed", "agent_started", "agent_fallback",
         "preamble_discarded", "loop_ended", "loop_fallback", "guard_replaced", "agent_answered",
-        "handoff", "ticket_created", "turn_completed", "turn_failed", "turn_aborted", "turn_abandoned",
+        "handoff", "ticket_created", "fact_proposed", "turn_completed", "turn_failed", "turn_aborted", "turn_abandoned",
     }
     assert TERMINAL_TYPES == {"turn_completed", "turn_failed", "turn_aborted"} <= EVENT_TYPES
     # turn_abandoned 不是终结事件（不是跑这一轮的进程自己发的），但这一轮也算结束了
@@ -911,7 +911,8 @@ async def test_a_turn_is_bracketed_by_started_and_completed(monkeypatch):
     assert completed["data"]["agent_type"] == answer.agent_type
     assert completed["data"]["latency_ms"] == answer.latency_ms
     assert completed["data"]["partial"] is False and completed["data"]["ticket_id"] is None
-    assert completed["body"] == {"response": answer.response}
+    assert set(completed["body"]) == {"response", "selected_evidence"}
+    assert completed["body"]["response"] == answer.response
     assert {e["request_id"] for e in recorded} == {answer.request_id}
     # 结构里没有原话、user_id、回答：清空原文之后剩下的行指不到人
     structure = json.dumps([e["data"] for e in recorded], ensure_ascii=False)
@@ -930,7 +931,9 @@ async def test_the_stream_carries_the_turn_id_and_records_what_was_shown(monkeyp
     recorded = await _recorded(log.store, result["turn_id"])
     started, completed = recorded[0], recorded[-1]
     assert (started["type"], started["data"]["transport"]) == ("turn_started", "stream")
-    assert completed["type"] == "turn_completed" and completed["body"] == {"response": shown}
+    assert completed["type"] == "turn_completed"
+    assert set(completed["body"]) == {"response", "selected_evidence"}
+    assert completed["body"]["response"] == shown
     assert shown == result["response"] and completed["data"]["partial"] is False
 
 
@@ -1101,7 +1104,7 @@ async def test_a_client_leaving_mid_stream_leaves_what_it_saw_in_the_audit(monke
     primary = next(data for kind, data in frames if kind == "routing")["primary_agent"]
 
     assert await _audit(main, conv_log, "c1") == [
-        ("user", CANARY_MESSAGE, "", turn_id), ("assistant", "第一句已经发出去了。", primary, turn_id)]
+        ("user", CANARY_MESSAGE, "", turn_id), ("assistant", "".join(data["text"] for kind, data in frames if kind == "delta"), primary, turn_id)]
     await conv_log.close()
 
 

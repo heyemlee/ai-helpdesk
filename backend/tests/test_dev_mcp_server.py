@@ -173,6 +173,9 @@ async def test_tools_read_recorded_turns_over_stdio():
         await store.insert(_turn(older, instance, "conv-a", now - 60, "handoff"))
         await store.insert(_turn(newer, instance, "conv-b", now - 30, "answered"))
         await PgEventStore(db, other).insert(_turn(f"turn-c-{tag}", other, "conv-a", now - 30, "answered"))
+        from evidence_fixtures import PUBLISHED
+        await PgStore(db).kb_doc_add(dict(id=f"doc-{tag}",title="探针文档",content=f"这一片里有 {keyword}",
+            content_hash=tag,created_at=now,policy=PUBLISHED,policy_revision="fixture-v1"))
         await PgStore(db).kb_add([{
             "id": chunk_id, "title": "探针文档", "content": f"这一片里有 {keyword}", "chunk_index": 0,
             "total_chunks": 1, "ingested_at": now, "embedding": [0.1] * 256,
@@ -225,5 +228,5 @@ async def test_tools_read_recorded_turns_over_stdio():
             assert results[0]["doc_id"] == f"doc-{tag}"
     finally:
         await db.execute("DELETE FROM turn_events WHERE instance = ANY($1::text[])", [instance, other])
-        await db.execute("DELETE FROM kb_chunks WHERE id = $1", chunk_id)
+        await db.execute("DELETE FROM policy_chunks WHERE id = $1", chunk_id)
         await db.close()

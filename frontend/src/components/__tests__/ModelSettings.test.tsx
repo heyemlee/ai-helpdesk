@@ -153,7 +153,7 @@ describe('对话模型', () => {
     await userEvent.click(save)
 
     expect(mocks.saveChatModel).toHaveBeenCalledWith({
-      provider: 'anthropic', base_url: 'https://relay.example/api', api_key: '', model: 'claude-opus-5-5',
+      provider: 'anthropic', api_mode: 'chat', base_url: 'https://relay.example/api', api_key: '', model: 'claude-opus-5-5',
     })
     expect(window.confirm).not.toHaveBeenCalled()
     expect(await card.findByText(/Saved\. Now using claude-opus-5-5\./)).toBeInTheDocument()
@@ -199,7 +199,7 @@ describe('对话模型', () => {
     await userEvent.click(within(card.getByRole('alertdialog')).getByRole('button', { name: 'Save' }))
 
     expect(mocks.saveChatModel).toHaveBeenCalledWith({
-      provider: 'openai', base_url: 'https://api.openai.com/v1', api_key: KEY, model: 'gpt-6-luna',
+      provider: 'openai', api_mode: 'chat', base_url: 'https://api.openai.com/v1', api_key: KEY, model: 'gpt-6-luna',
     })
     expect(await card.findByText(/Saved\. Now using gpt-6-luna\./)).toBeInTheDocument()
     expect((card.getByPlaceholderText('Leave blank to keep the current key') as HTMLInputElement).value).toBe('')
@@ -372,4 +372,19 @@ describe('向量模型', () => {
     const card = within(await waitFor(embeddingCard))
     expect(card.getByRole('alert')).toHaveTextContent('nothing changed: EmbeddingUnavailable: HTTP 503')
   })
+})
+
+it('changing only the OpenAI API mode is saved and probed explicitly', async () => {
+  const status: ModelStatus = { ...STATUS, chat: { ...STATUS.chat, provider: 'openai', api_mode: 'chat' } }
+  mocks.modelStatus.mockResolvedValue(status)
+  mocks.testChatModel.mockResolvedValue(OK_CHAT)
+  mocks.saveChatModel.mockResolvedValue({ ...status, chat: { ...status.chat, api_mode: 'responses' }, test: OK_CHAT })
+  show()
+  const card = within(await waitFor(chatCard))
+  await userEvent.click(card.getByText('Connection settings'))
+  await userEvent.selectOptions(card.getByLabelText('OpenAI API'), 'responses')
+  await userEvent.click(card.getByRole('button', { name: 'Test connection' }))
+  expect(mocks.testChatModel).toHaveBeenCalledWith(expect.objectContaining({ api_mode: 'responses' }))
+  await userEvent.click(card.getByRole('button', { name: 'Save' }))
+  expect(mocks.saveChatModel).toHaveBeenCalledWith(expect.objectContaining({ api_mode: 'responses', api_key: '' }))
 })

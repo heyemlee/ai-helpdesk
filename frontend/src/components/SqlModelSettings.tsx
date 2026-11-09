@@ -255,6 +255,7 @@ function ChatCard({ status }: { status: SqlModelStatus }) {
   const current = status.providers?.[status.provider]
   const trimSlash = (value: string | undefined) => String(value ?? '').trim().replace(/\/+$/, '')
   const changed = form.provider !== status.provider
+    || form.apiMode !== (status.api_mode ?? 'chat')
     || trimSlash(form.baseUrl) !== trimSlash(current?.base_url)
     || form.chatModel.trim() !== status.chat_model
     || coderModel.trim() !== status.coder_model
@@ -416,6 +417,14 @@ function ChatCard({ status }: { status: SqlModelStatus }) {
                   {SQL_PROVIDERS.map((name) => <option key={name} value={name}>{providerLabel(t, name)}</option>)}
                 </select>
               </label>
+              {form.provider === 'openai' && <label className="field-row">
+                <span>{t('sq.model.apiMode')}</span>
+                <select className="field" value={form.apiMode ?? 'chat'} disabled={off}
+                        onChange={(e) => set({ apiMode: e.target.value as 'chat' | 'responses' })}>
+                  <option value="chat">Chat Completions</option>
+                  <option value="responses">Responses</option>
+                </select>
+              </label>}
               <label className="field-row">
                 <span>{t('sq.model.baseUrl')}</span>
                 <input className="field mono" value={form.baseUrl} placeholder={entry?.official_base_url ?? ''}

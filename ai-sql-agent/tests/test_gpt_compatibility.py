@@ -518,7 +518,9 @@ class PromptRulesTest(unittest.TestCase):
         self.assertIn("操作指令没要求汇总，就逐条输出，不要聚合", prompt)
         self.assertIn("不要自己补充操作指令没写的条件", prompt)
         self.assertIn("「逐条」不等于不去重", prompt)
-        self.assertIn("只输出「输出目标」里列出的字段", prompt)
+        self.assertIn("输出「输出目标」列出的全部字段", prompt)
+        self.assertIn("保留规则 9 要求的真实业务目标绑定", prompt)
+        self.assertIn("不为附加编号或内部主键改变结果粒度", prompt)
         self.assertIn("不要用 LEFT JOIN 和 COALESCE 补行", prompt)
 
     def test_planning_keeps_the_output_to_what_was_asked(self):
@@ -529,7 +531,8 @@ class PromptRulesTest(unittest.TestCase):
         from ai_sql_agent.planning.prompt_builder import CotPromptBuilder
 
         instruction = CotPromptBuilder()._build_task_instruction()
-        self.assertIn("输出目标只放Query问到的字段或计算结果", instruction)
+        self.assertIn("输出目标显式列出Query问到的真实字段或计算结果", instruction)
+        self.assertIn("名称不能替代该编号", instruction)
         self.assertIn("它的编号、名称等字段不要输出", instruction)
         self.assertIn("跨库拆步时，前一步为下一步", instruction, "跨库拆步的关联键照样输出")
         # 只说「用主键标识每一行」时，模型拿快照编号、工单内部编号当标识，用户认不出来

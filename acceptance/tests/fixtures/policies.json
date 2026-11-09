@@ -1,0 +1,307 @@
+{
+  "fixture_kind": "actual_services_simulated_http_provider",
+  "model_quality_claim": false,
+  "observed": {
+    "case": {
+      "case_id": "tk_50ca23e8c0e7",
+      "control_mode": "assistant",
+      "control_version": 1,
+      "conv_id": "edbd35c1-ce83-4fc1-bd69-5f9d693a6419",
+      "created_at": 1793968014.529141,
+      "created_by": "emp_33bc7eaaebfb4a72a18b7ff24de4e9cc",
+      "customer_ref": "",
+      "drafts": [
+        {
+          "approved_by": null,
+          "body": "政策摘录 [P1]：Cedar-01 cabinets 配送费用 2026-B（版本 2026-B；产品 Cedar-01 cabinets；区域 CA；受众 employee；适用时点 2026-11-05T20:00:01+00:00）\n> 办理配送费用适用产品 Cedar-01 cabinets。操作说明：处理时限为 4 个工作日内办结。须提供订单号及现场记录。\n\n以上为可核对的资料。涉及补件、责任、金额或交期承诺，请由员工按适用政策审核后处理。",
+          "body_hash": "02137182d15ede4553c00a24e7beacff845963e608fa8f1a683f2a963837a017",
+          "case_id": "tk_50ca23e8c0e7",
+          "control_version": 1,
+          "created_at": 1793968017.797761,
+          "evidence": [
+            {
+              "chunk_id": "c944cd65ec42c8ed5fdb419796441b5d",
+              "content": "办理配送费用适用产品 Cedar-01 cabinets。操作说明：处理时限为 4 个工作日内办结。须提供订单号及现场记录。",
+              "doc_id": "doc_e4d44dfc97d7cf3b7cc0",
+              "doc_title": "Cedar-01 cabinets 配送费用 2026-B",
+              "excerpt": "办理配送费用适用产品 Cedar-01 cabinets。操作说明：处理时限为 4 个工作日内办结。须提供订单号及现场记录。",
+              "passage": 0,
+              "policy": {
+                "audience": "employee",
+                "effective_at": "2026-11-05T20:00:00Z",
+                "expires_at": null,
+                "product": "Cedar-01 cabinets",
+                "region": "CA",
+                "status": "published",
+                "version": "2026-B"
+              },
+              "policy_as_of": "2026-11-05T20:00:01+00:00",
+              "policy_revision": "e4d44dfc97d7cf3b7cc0cb5839f75f8e82ee830cd02ec74a1b65da6c73b18bc3",
+              "policy_scope": {
+                "as_of": "2026-11-05T20:00:01Z",
+                "audience": "employee",
+                "product": "Cedar-01 cabinets",
+                "region": "CA"
+              },
+              "retrieval": "hybrid",
+              "score": 0.4331,
+              "title": "Cedar-01 cabinets 配送费用 2026-B"
+            },
+            {
+              "attempted": false,
+              "enabled": true,
+              "outcome": "skipped",
+              "source": "business_query"
+            }
+          ],
+          "evidence_version": 1,
+          "id": "dr_01a1b0d384c57536803b0ce209919dff",
+          "invalid_reason": "",
+          "run_id": "01a1b0d384c57536803b0ce209919dff",
+          "status": "pending",
+          "valid": true,
+          "version": 2
+        }
+      ],
+      "events": [
+        {
+          "actor_id": "emp_33bc7eaaebfb4a72a18b7ff24de4e9cc",
+          "case_id": "tk_50ca23e8c0e7",
+          "control_version": 1,
+          "created_at": 1793968014.537447,
+          "data": {
+            "changed": true,
+            "message_id": "acc_5b0c9e8695884e5980d97ea6c4bcb307",
+            "run_id": "01a1b0d384c57536803b0ce209919dff"
+          },
+          "id": 3,
+          "kind": "input_accepted",
+          "version": 1
+        },
+        {
+          "actor_id": null,
+          "case_id": "tk_50ca23e8c0e7",
+          "control_version": 1,
+          "created_at": 1793968017.798143,
+          "data": {
+            "draft_id": "dr_01a1b0d384c57536803b0ce209919dff",
+            "run_id": "01a1b0d384c57536803b0ce209919dff"
+          },
+          "id": 4,
+          "kind": "result_applied",
+          "version": 2
+        }
+      ],
+      "facts": {},
+      "id": "tk_50ca23e8c0e7",
+      "image_reviews": [],
+      "instance": "staff",
+      "issue_type": "general",
+      "last_message": "请在员工工单入口查看材料",
+      "managed": true,
+      "materials": [],
+      "messages": [
+        {
+          "attachment_ids": [],
+          "content": "请查Cedar-01 cabinets的配送费用规定。",
+          "created_at": 1793968014.53402,
+          "message_id": "acc_5b0c9e8695884e5980d97ea6c4bcb307",
+          "role": "user",
+          "run_id": "01a1b0d384c57536803b0ce209919dff",
+          "seq": 3,
+          "turn_id": "",
+          "version": 1
+        },
+        {
+          "attachment_ids": [],
+          "content": "政策摘录 [P1]：Cedar-01 cabinets 配送费用 2026-B（版本 2026-B；产品 Cedar-01 cabinets；区域 CA；受众 employee；适用时点 2026-11-05T20:00:01+00:00）\n> 办理配送费用适用产品 Cedar-01 cabinets。操作说明：处理时限为 4 个工作日内办结。须提供订单号及现场记录。\n\n以上为可核对的资料。涉及补件、责任、金额或交期承诺，请由员工按适用政策审核后处理。",
+          "created_at": 1793968017.798956,
+          "message_id": "reply_01a1b0d384c57536803b0ce209919dff",
+          "role": "assistant",
+          "run_id": "01a1b0d384c57536803b0ce209919dff",
+          "seq": 4,
+          "turn_id": "01a1b0d384cda0c7a5aca39e58",
+          "version": 2
+        }
+      ],
+      "order_refs": [],
+      "owner_actor_id": null,
+      "pending_fields": [],
+      "policy_scope": {
+        "as_of": "2026-11-05T20:00:01Z",
+        "audience": "employee",
+        "product": "Cedar-01 cabinets",
+        "region": "CA"
+      },
+      "reason": "员工创建的业务问题",
+      "runs": [
+        {
+          "applied": true,
+          "attempt": 1,
+          "error": "",
+          "reason": "",
+          "run_id": "01a1b0d384c57536803b0ce209919dff",
+          "status": "succeeded"
+        }
+      ],
+      "status": "in_progress",
+      "updated_at": 1793968017.79521,
+      "user_id": "case",
+      "version": 2
+    },
+    "case_ids": {
+      "primary": "tk_50ca23e8c0e7"
+    },
+    "completed": true,
+    "elapsed_seconds": 3.573534917086363,
+    "id": "development-policies-001",
+    "invariant_violations": [],
+    "runs": [
+      {
+        "attempt": 1,
+        "attempts": [
+          {
+            "attempt": 1,
+            "committed": true,
+            "ended_at": 1793968017.800105,
+            "outcome": "succeeded",
+            "reclaimed": false,
+            "started_at": 1793968014.539498,
+            "turn_id": "01a1b0d384cda0c7a5aca39e58"
+          }
+        ],
+        "conv_id": "edbd35c1-ce83-4fc1-bd69-5f9d693a6419",
+        "created_at": 1793968014.537138,
+        "degrade_level": 0,
+        "error": "",
+        "finished_at": 1793968017.800111,
+        "result": {
+          "agent_type": "general",
+          "agent_types": [
+            "general"
+          ],
+          "answer_confidence": 0.65,
+          "answer_usage": {},
+          "business_data": {
+            "attempted": false,
+            "enabled": true,
+            "outcome": "skipped"
+          },
+          "case_applied": true,
+          "case_id": "tk_50ca23e8c0e7",
+          "case_status": "in_progress",
+          "case_version": 2,
+          "control_version": 1,
+          "conv_id": "edbd35c1-ce83-4fc1-bd69-5f9d693a6419",
+          "draft_id": "dr_01a1b0d384c57536803b0ce209919dff",
+          "escalated": false,
+          "handoff": false,
+          "handoff_reason": "",
+          "intent": "query",
+          "intent_group": "query",
+          "knowledge": {
+            "attempted": true,
+            "corrected": true,
+            "degraded": false,
+            "evidence_ok": false,
+            "mode": "rewrite_rerank",
+            "reranked": false
+          },
+          "knowledge_sources": [
+            {
+              "chunk_id": "c944cd65ec42c8ed5fdb419796441b5d",
+              "content": "办理配送费用适用产品 Cedar-01 cabinets。操作说明：处理时限为 4 个工作日内办结。须提供订单号及现场记录。",
+              "doc_id": "doc_e4d44dfc97d7cf3b7cc0",
+              "doc_title": "Cedar-01 cabinets 配送费用 2026-B",
+              "excerpt": "办理配送费用适用产品 Cedar-01 cabinets。操作说明：处理时限为 4 个工作日内办结。须提供订单号及现场记录。",
+              "passage": 0,
+              "policy": {
+                "audience": "employee",
+                "effective_at": "2026-11-05T20:00:00Z",
+                "expires_at": null,
+                "product": "Cedar-01 cabinets",
+                "region": "CA",
+                "status": "published",
+                "version": "2026-B"
+              },
+              "policy_as_of": "2026-11-05T20:00:01+00:00",
+              "policy_revision": "e4d44dfc97d7cf3b7cc0cb5839f75f8e82ee830cd02ec74a1b65da6c73b18bc3",
+              "policy_scope": {
+                "as_of": "2026-11-05T20:00:01Z",
+                "audience": "employee",
+                "product": "Cedar-01 cabinets",
+                "region": "CA"
+              },
+              "retrieval": "hybrid",
+              "score": 0.4331,
+              "title": "Cedar-01 cabinets 配送费用 2026-B"
+            }
+          ],
+          "knowledge_used": true,
+          "latency_ms": 807.8793752938509,
+          "needs_clarification": false,
+          "policy_violations": [],
+          "primary_agent": "general",
+          "request_id": "ec911cb418e9",
+          "response": "政策摘录 [P1]：Cedar-01 cabinets 配送费用 2026-B（版本 2026-B；产品 Cedar-01 cabinets；区域 CA；受众 employee；适用时点 2026-11-05T20:00:01+00:00）\n> 办理配送费用适用产品 Cedar-01 cabinets。操作说明：处理时限为 4 个工作日内办结。须提供订单号及现场记录。\n\n以上为可核对的资料。涉及补件、责任、金额或交期承诺，请由员工按适用政策审核后处理。",
+          "routing_confidence": 0.65,
+          "routing_reason": "intent=query, group=query, primary=general, supporting=none, scores=[general=0.65, billing=0.12, technical=0.00, order=0.00]",
+          "run": {
+            "attempt": 1,
+            "run_id": "01a1b0d384c57536803b0ce209919dff"
+          },
+          "service_unavailable": false,
+          "supporting_agents": [],
+          "ticket_id": "tk_50ca23e8c0e7",
+          "trajectory": [],
+          "turn_id": "01a1b0d384cda0c7a5aca39e58",
+          "unavailable_reason": ""
+        },
+        "run_id": "01a1b0d384c57536803b0ce209919dff",
+        "started_at": 1793968014.539504,
+        "status": "succeeded",
+        "turn_id": "01a1b0d384cda0c7a5aca39e58"
+      }
+    ],
+    "side_effects": {
+      "actions": [],
+      "handoff": 0,
+      "notification": 0,
+      "notifications": []
+    },
+    "step_checks": []
+  },
+  "original_recording_sha256": "11ded2f58d73b08c5f568ba35f2056b66cd591e8c8c80c1ed2d1b5e23ce22af8",
+  "provenance": {
+    "api_mode": "responses",
+    "cross_session_memory": false,
+    "fresh_database": true,
+    "fresh_model_retrieval_extraction_caches": true,
+    "helpdesk_embedding": "local-hash-256",
+    "http_retries": 0,
+    "manifest_sha256": "88a8954e19b0c7e7870b41e42b16f47b61630a83553e9eb6446640ee61f92b9b",
+    "max_output_tokens": 2048,
+    "model": "gpt-6.1-sol",
+    "owned_resources": [
+      "aihd-stage6-aa4cd0069aff-pg",
+      "aihd-stage6-aa4cd0069aff-redis"
+    ],
+    "ports": {
+      "api": 62387,
+      "frontend": 62390,
+      "gateway": 62389,
+      "pg": 62385,
+      "redis": 62386,
+      "sql": 62388
+    },
+    "production_touched": false,
+    "provider_mode": "simulated",
+    "real_provider": false,
+    "replicas": 1,
+    "simulated_delay_seconds": 0.8,
+    "source_sha256": "ab8fddf02892686a456fc261be93c8b478a27c7887140127c29db8d70dd44396",
+    "sql_embedding": "local-hash",
+    "sql_rerank": "local-lexical",
+    "worker_concurrency": 4
+  }
+}

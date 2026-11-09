@@ -1,0 +1,390 @@
+{
+  "started_at": 1793963142.800884,
+  "project": "aihd-stage5-56e58e4b28",
+  "object_backend": "local-private-files",
+  "release_manifest_sha256": "657c91318e1dc95617a6f8fb4611aaa68639d7370cb671597d00c6821c83b30e",
+  "tested_image_ids": {
+    "backend": "sha256:601e57dc9a6a4159be5e00fe439810b1d7fec8e4a6ba39a6ee3d8a5caea2cd85",
+    "frontend": "sha256:8c3b7545ffa43ff9584e61c5720b51f231ad80c975cb916f13af45f4f05d1b3f",
+    "sql": "sha256:369636e7739892b98b02aa2b48331ab618c216100ce02c749ab5d13420db0b83"
+  },
+  "operations_source_sha256": {
+    "deploy/release/compose.yml": "a65152bbfaf4f86b13cb6f68285d0b8aaa3ee4c5b14d51cde8493ba6198da3c9",
+    "deploy/release/ingress.conf": "c4f880087e423f2c6eb6e7eee3e7e6bf53e011c9c368a2f7a54d13668cdb4abf",
+    "scripts/operations/build_release.py": "609d5103de6f3b2287b5c7d5d6779364128e714ae26296b5d6dbe1ec2255fc38",
+    "scripts/operations/drill.py": "d21ee904efe595a0b18e8594ec79703feb40abc363fa8696c896ebe21016570a",
+    "scripts/operations/publish_release.py": "9466b5f47ca436cb64f894458095c8acb5ffd3d7a71750b1d0c32518ec40d4ab",
+    "scripts/operations/recovery.py": "0cb9725e8b73ca06697402340a52ae5a122ea213aae088256e29736ca5b9a43b",
+    "scripts/operations/release.py": "3e8f537b020a21e318605cd53f277a6c6c54a06a3e973a160d9b3b05fb5666c1",
+    "scripts/operations/test_operations.py": "0f7b9d3730566655524784de6bd3987697fdf202f6e7a54d4f859b17dfa9e3fa",
+    "scripts/operations/verify.py": "f87b31078916236c633a8a83c7f3ec6e705e5c13d9389472f097f386c4ea00c9"
+  },
+  "resource_isolation_verified": true,
+  "initial_release": {
+    "outcome": "validated",
+    "revision": "bca85be1845d13499c80e10ba96e8b39b734bd21",
+    "images": {
+      "backend": "sha256:601e57dc9a6a4159be5e00fe439810b1d7fec8e4a6ba39a6ee3d8a5caea2cd85",
+      "frontend": "sha256:8c3b7545ffa43ff9584e61c5720b51f231ad80c975cb916f13af45f4f05d1b3f",
+      "sql": "sha256:369636e7739892b98b02aa2b48331ab618c216100ce02c749ab5d13420db0b83"
+    },
+    "checks": {
+      "passed": true,
+      "attachment_downloads_verified": 2,
+      "checks": [
+        "employee_login",
+        "admin_denied",
+        "sql_admin_denied",
+        "legacy_bypass_denied",
+        "history_owner",
+        "case_facts",
+        "private_attachment_hashes"
+      ],
+      "workers_closed_during_business_smoke": true
+    },
+    "sql_gateway": {
+      "passed": true,
+      "status_code": 200,
+      "check": "employee_session_through_sql_gateway"
+    }
+  },
+  "public_ingress_auth_verified": true,
+  "backup": {
+    "artifact": "20261106T110558Z-e3a310d2.aihdbak",
+    "snapshot_at": 1793963158.9659069,
+    "completed_at": 1793963160.8023748,
+    "bytes": 440356,
+    "files": 28,
+    "objects": 6,
+    "offsite": false,
+    "sha256": "52cd96b6fe85ee748ade664a11f85325d6c7dba4c92ffdd6fa615dbfd4cb5e69",
+    "business": {
+      "tickets": {
+        "count": 12,
+        "digest": "03ac504a977aa4a4b385ac9480262a4f"
+      },
+      "ticket_turns": {
+        "count": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "ticket_notifications": {
+        "count": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "ticket_case_state": {
+        "count": 12,
+        "digest": "7dfdf648cf6a259394cf5721ac940868"
+      },
+      "case_messages": {
+        "count": 24,
+        "digest": "28bd605e7449c740747559d8dad4c5df"
+      },
+      "case_materials": {
+        "count": 6,
+        "digest": "0646b0d857cc8cced7144d508d0b2959"
+      },
+      "case_drafts": {
+        "count": 12,
+        "digest": "795b8a01422ac27923cea1f809ba8002"
+      },
+      "case_actions": {
+        "count": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "case_run_receipts": {
+        "count": 12,
+        "digest": "0a4da236dfe715105774923e05811351"
+      },
+      "case_events": {
+        "count": 24,
+        "digest": "4ae567f2eb460008ca80be993c9cb8ad"
+      },
+      "ticket_notification_claims": {
+        "count": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "attachments": {
+        "count": 6,
+        "digest": "c17952e7d74f19e55869563f6742b0d2"
+      },
+      "attachment_extractions": {
+        "count": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "case_image_reviews": {
+        "count": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "policy_documents": {
+        "count": 1,
+        "digest": "50493a5d228617f116f9036efd05f7d7"
+      },
+      "policy_chunks": {
+        "count": 1,
+        "digest": "ffc366111c95bfa168f3f7c8a80f9488"
+      },
+      "agent_runs": {
+        "count": 12,
+        "digest": "5563b348554c1e941bf57d866d5575e6"
+      },
+      "conversation_log": {
+        "count": 24,
+        "digest": "edfc125f233820c5bc1c767594a64699"
+      },
+      "conversation_log_turns": {
+        "count": 24,
+        "digest": "0db77fd4d608b652ed18abcc196e59fd"
+      },
+      "staff_conversations": {
+        "count": 12,
+        "digest": "0577973b5b912638008edf386d14542e"
+      },
+      "staff_sql_runs": {
+        "count": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      }
+    }
+  },
+  "scheduled_verification": {
+    "verified_at": 1793963172.270947,
+    "elapsed_seconds": 5.188989162445068,
+    "snapshot_at": 1793963158.9659069,
+    "artifact_sha256": "52cd96b6fe85ee748ade664a11f85325d6c7dba4c92ffdd6fa615dbfd4cb5e69",
+    "business": {
+      "tickets": {
+        "count": 12,
+        "digest": "03ac504a977aa4a4b385ac9480262a4f"
+      },
+      "ticket_turns": {
+        "count": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "ticket_notifications": {
+        "count": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "ticket_case_state": {
+        "count": 12,
+        "digest": "7dfdf648cf6a259394cf5721ac940868"
+      },
+      "case_messages": {
+        "count": 24,
+        "digest": "28bd605e7449c740747559d8dad4c5df"
+      },
+      "case_materials": {
+        "count": 6,
+        "digest": "0646b0d857cc8cced7144d508d0b2959"
+      },
+      "case_drafts": {
+        "count": 12,
+        "digest": "795b8a01422ac27923cea1f809ba8002"
+      },
+      "case_actions": {
+        "count": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "case_run_receipts": {
+        "count": 12,
+        "digest": "0a4da236dfe715105774923e05811351"
+      },
+      "case_events": {
+        "count": 24,
+        "digest": "4ae567f2eb460008ca80be993c9cb8ad"
+      },
+      "ticket_notification_claims": {
+        "count": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "attachments": {
+        "count": 6,
+        "digest": "c17952e7d74f19e55869563f6742b0d2"
+      },
+      "attachment_extractions": {
+        "count": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "case_image_reviews": {
+        "count": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "policy_documents": {
+        "count": 1,
+        "digest": "50493a5d228617f116f9036efd05f7d7"
+      },
+      "policy_chunks": {
+        "count": 1,
+        "digest": "ffc366111c95bfa168f3f7c8a80f9488"
+      },
+      "agent_runs": {
+        "count": 12,
+        "digest": "5563b348554c1e941bf57d866d5575e6"
+      },
+      "conversation_log": {
+        "count": 24,
+        "digest": "edfc125f233820c5bc1c767594a64699"
+      },
+      "conversation_log_turns": {
+        "count": 24,
+        "digest": "0db77fd4d608b652ed18abcc196e59fd"
+      },
+      "staff_conversations": {
+        "count": 12,
+        "digest": "0577973b5b912638008edf386d14542e"
+      },
+      "staff_sql_runs": {
+        "count": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      }
+    },
+    "closed_accounts": true,
+    "applications_started": false
+  },
+  "nonroot_api_reads_backup_verification_metrics": true,
+  "maintenance_public_port_closed_verified": true,
+  "corrupt_snapshot_fail_closed": true,
+  "partial_restore_fail_closed_after_pg_commit": true,
+  "rpo_observation": {
+    "snapshot_to_simulated_loss_seconds": 20.6290340423584,
+    "post_snapshot_write_at": 1793963179.516265,
+    "post_snapshot_writes_expected_lost": 1,
+    "post_snapshot_writes_observed_lost": 1
+  },
+  "recovery": {
+    "business": {
+      "tickets": {
+        "count": 12,
+        "digest": "03ac504a977aa4a4b385ac9480262a4f"
+      },
+      "ticket_turns": {
+        "count": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "ticket_notifications": {
+        "count": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "ticket_case_state": {
+        "count": 12,
+        "digest": "7dfdf648cf6a259394cf5721ac940868"
+      },
+      "case_messages": {
+        "count": 24,
+        "digest": "28bd605e7449c740747559d8dad4c5df"
+      },
+      "case_materials": {
+        "count": 6,
+        "digest": "0646b0d857cc8cced7144d508d0b2959"
+      },
+      "case_drafts": {
+        "count": 12,
+        "digest": "795b8a01422ac27923cea1f809ba8002"
+      },
+      "case_actions": {
+        "count": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "case_run_receipts": {
+        "count": 12,
+        "digest": "0a4da236dfe715105774923e05811351"
+      },
+      "case_events": {
+        "count": 24,
+        "digest": "4ae567f2eb460008ca80be993c9cb8ad"
+      },
+      "ticket_notification_claims": {
+        "count": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "attachments": {
+        "count": 6,
+        "digest": "c17952e7d74f19e55869563f6742b0d2"
+      },
+      "attachment_extractions": {
+        "count": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "case_image_reviews": {
+        "count": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "policy_documents": {
+        "count": 1,
+        "digest": "50493a5d228617f116f9036efd05f7d7"
+      },
+      "policy_chunks": {
+        "count": 1,
+        "digest": "ffc366111c95bfa168f3f7c8a80f9488"
+      },
+      "agent_runs": {
+        "count": 12,
+        "digest": "5563b348554c1e941bf57d866d5575e6"
+      },
+      "conversation_log": {
+        "count": 24,
+        "digest": "edfc125f233820c5bc1c767594a64699"
+      },
+      "conversation_log_turns": {
+        "count": 24,
+        "digest": "0db77fd4d608b652ed18abcc196e59fd"
+      },
+      "staff_conversations": {
+        "count": 12,
+        "digest": "0577973b5b912638008edf386d14542e"
+      },
+      "staff_sql_runs": {
+        "count": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      }
+    },
+    "restored_at": 1793963181.678983,
+    "snapshot_at": 1793963158.9659069,
+    "restore_seconds": 1.9055218696594238,
+    "artifact": "20261106T110558Z-e3a310d2.aihdbak",
+    "phase": "awaiting_access_review_and_business_smoke",
+    "writers_started": false
+  },
+  "sessions_revoked_and_accounts_closed": true,
+  "reopened_release": {
+    "outcome": "validated",
+    "revision": "bca85be1845d13499c80e10ba96e8b39b734bd21",
+    "images": {
+      "backend": "sha256:601e57dc9a6a4159be5e00fe439810b1d7fec8e4a6ba39a6ee3d8a5caea2cd85",
+      "frontend": "sha256:8c3b7545ffa43ff9584e61c5720b51f231ad80c975cb916f13af45f4f05d1b3f",
+      "sql": "sha256:369636e7739892b98b02aa2b48331ab618c216100ce02c749ab5d13420db0b83"
+    },
+    "checks": {
+      "passed": true,
+      "attachment_downloads_verified": 2,
+      "checks": [
+        "employee_login",
+        "admin_denied",
+        "sql_admin_denied",
+        "legacy_bypass_denied",
+        "history_owner",
+        "case_facts",
+        "private_attachment_hashes"
+      ],
+      "workers_closed_during_business_smoke": true
+    },
+    "sql_gateway": {
+      "passed": true,
+      "status_code": 200,
+      "check": "employee_session_through_sql_gateway"
+    }
+  },
+  "rto_seconds_including_review_and_http_smoke": 12.975355863571167,
+  "observed_snapshot_age_seconds": 33.60440015792847,
+  "rotated_sql_key_fail_closed_through_employee_gateway": true,
+  "legacy_binary": {
+    "image": "sha256:e3bd5c98419a4936937157ad70bcf59597126e48a6f0d1827f46d3eca947d404",
+    "exit_code": 1,
+    "startup_ok": false,
+    "reopen_allowed": false
+  },
+  "failed_release_rolled_back_to_safe_images": true,
+  "failed_candidate_image": "sha256:7300d0180d9c5624a3c7507f474911771b84f24b3cb3ee93aafe438a8e72080e",
+  "rollback_seconds_including_candidate_failure": 12.386243104934692,
+  "persisted_release_matches_running": true,
+  "completed_at": 1793963253.9449,
+  "original_report_sha256": "841198f34fab6e5d82dd2947e39ec430cec2168c9b17c067175a64c95a281282"
+}

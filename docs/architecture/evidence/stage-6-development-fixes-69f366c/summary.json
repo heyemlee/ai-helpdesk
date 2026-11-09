@@ -1,0 +1,57 @@
+{
+  "archive_file_count": 172,
+  "candidate_revision": "69f366ce70ca4daed8501c6cd8080f678de4300f",
+  "components_started_for_this_revision": false,
+  "cumulative_usage_unchanged": {
+    "full_usage_and_money": null,
+    "known_input_subtotal": 17761225,
+    "known_output_subtotal": 355649,
+    "reservations": 3439,
+    "unknown_usage_requests": 5
+  },
+  "formal_candidate_rounds_completed": 0,
+  "helper_sha256": "0086140f201fa63e8438e79bb74960dbdef1bbfa362126f05de1c90732441b7b",
+  "independent_checks": {
+    "all_original_cases_passed": true,
+    "full_supplier_chain_failure_proven_by_local_probes": false,
+    "model_semantics_proven_by_local_probes": false,
+    "new_actual_consumer_rejection_checks_passed": 18,
+    "new_complete_business_properties_unproved": 22,
+    "new_controlled_consumer_scope_counterexamples": 6,
+    "new_frozen_business_cases": 40,
+    "one_ambiguous_historical_fixture_retained_unscored": true,
+    "original_image_query_boundary": 33,
+    "original_policy_handoff": 23,
+    "original_recovery": 6,
+    "original_source_boundary": 39
+  },
+  "local_gates": {
+    "backend": 2234,
+    "contract_subset_not_added": 41,
+    "erp": 6,
+    "frontend": 433,
+    "frontend_typecheck_and_build": true,
+    "operations": 33,
+    "skipped": 0,
+    "sql": 1283
+  },
+  "operations_revision": "ad06003ff50ac3af6da9ef60026f7af27ca495b9",
+  "production_deployed": false,
+  "real_development_started_for_this_revision": false,
+  "release_eligible": false,
+  "root_verification": {
+    "operations_reexecuted_in_fixed_export": 33,
+    "product_files_match_tested_and_committed_bytes": 15,
+    "product_logs_verified": 10,
+    "selected_archived_events": 148,
+    "selected_archived_runs": 13,
+    "selected_archived_sql_audits": 13
+  },
+  "scope_gap": {
+    "finding": "A healthy zero-row receipt for another source/entity/range can become grounding for the current question; later business tool evidence can replace earlier evidence, and generic final rendering omits that scope distinction",
+    "followup_repair_delegated": true,
+    "no_fresh_supplier_failure_claim": true,
+    "product_writer_source_review": "The tool loop permits a legitimate B query while answering A; SQL self-check compares B to SQL-B rather than to the original A objective"
+  },
+  "status": "Local product and operations fixes passed; independent review found a current-request scope gap; follow-up product repair active"
+}

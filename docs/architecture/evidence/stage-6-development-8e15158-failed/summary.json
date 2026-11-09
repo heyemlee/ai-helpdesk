@@ -1,0 +1,346 @@
+{
+  "status": "failed_complete_development_not_release_qualified",
+  "candidate": {
+    "images": {
+      "backend": "sha256:3de48d21f06ed694ce45443e6f6b8188b9ea2c0b958fa1f0ffdd66c858ff438f",
+      "frontend": "sha256:c0b690f05e93518e3003de7a4cf861eb479efa76ff03ab558d273196db18fe02",
+      "sql": "sha256:3ca335e77d500d388928043fd1e7d17f4e12d6fa43a845d7652087ff01229c41"
+    },
+    "revision": "8e15158eb96001b9c31f80f55b3f5d796af3a472"
+  },
+  "score": {
+    "accuracy": 0.8703703703703703,
+    "business_resolved": 0,
+    "complete": true,
+    "correct": 47,
+    "error_counts": {
+      "no_current_visible_draft": 1,
+      "required_fact_missing:contract_amount": 3,
+      "required_fact_missing:current_stage": 3,
+      "required_fact_missing:model": 1,
+      "required_fact_missing:order_status": 3,
+      "required_fact_missing:production_status": 3,
+      "unproven_visible_prose:各项按各自来源时点列出；草稿仍需员工审批。": 6,
+      "unproven_visible_prose:数据时点：2026-11-07T07:49:19.967Z": 1,
+      "unproven_visible_prose:数据时点：2026-11-07T07:49:24.675Z": 1,
+      "unproven_visible_prose:数据时点：2026-11-07T07:49:53.539Z": 1,
+      "unproven_visible_prose:数据时点：2026-11-07T07:50:07.120Z": 1,
+      "unproven_visible_prose:数据时点：2026-11-07T07:50:50.309Z": 1,
+      "unproven_visible_prose:数据时点：2026-11-07T07:50:52.022Z": 1,
+      "unproven_visible_prose:系统记录已核对：订单 SO-2026-11000": 1,
+      "unproven_visible_prose:系统记录已核对：订单 SO-2026-11001": 1,
+      "unproven_visible_prose:系统记录已核对：订单 SO-2026-11006": 1,
+      "unproven_visible_prose:系统记录已核对：订单 SO-2026-11007": 1,
+      "unproven_visible_prose:系统记录已核对：订单 SO-2026-11012": 1,
+      "unproven_visible_prose:系统记录已核对：订单 SO-2026-11013": 1,
+      "wrong_entity_or_citation_header": 6
+    },
+    "groups": {
+      "cross_message": {
+        "accuracy": 1.0,
+        "correct": 10,
+        "total": 10
+      },
+      "images": {
+        "accuracy": 0.9333333333333333,
+        "correct": 14,
+        "total": 15
+      },
+      "orders": {
+        "accuracy": 0.5714285714285714,
+        "correct": 8,
+        "total": 14
+      },
+      "policies": {
+        "accuracy": 1.0,
+        "correct": 15,
+        "total": 15
+      }
+    },
+    "image_extraction": {
+      "date/all": {
+        "correct": 15,
+        "total": 15
+      },
+      "date/clear": {
+        "correct": 14,
+        "total": 14
+      },
+      "date/missing": {
+        "correct": 1,
+        "total": 1
+      },
+      "model/all": {
+        "correct": 15,
+        "total": 15
+      },
+      "model/clear": {
+        "correct": 14,
+        "total": 14
+      },
+      "model/missing": {
+        "correct": 1,
+        "total": 1
+      },
+      "order_ref/all": {
+        "correct": 15,
+        "total": 15
+      },
+      "order_ref/clear": {
+        "correct": 14,
+        "total": 14
+      },
+      "order_ref/unclear": {
+        "correct": 1,
+        "total": 1
+      },
+      "quantity/all": {
+        "correct": 15,
+        "total": 15
+      },
+      "quantity/clear": {
+        "correct": 14,
+        "total": 14
+      },
+      "quantity/unclear": {
+        "correct": 1,
+        "total": 1
+      },
+      "status/all": {
+        "correct": 15,
+        "total": 15
+      },
+      "status/clear": {
+        "correct": 14,
+        "total": 14
+      },
+      "status/unclear": {
+        "correct": 1,
+        "total": 1
+      }
+    },
+    "image_fields": {
+      "date/all": {
+        "correct": 15,
+        "total": 15
+      },
+      "date/conflict": {
+        "correct": 2,
+        "total": 2
+      },
+      "date/matched": {
+        "correct": 8,
+        "total": 8
+      },
+      "date/missing": {
+        "correct": 1,
+        "total": 1
+      },
+      "date/unverified": {
+        "correct": 4,
+        "total": 4
+      },
+      "model/all": {
+        "correct": 15,
+        "total": 15
+      },
+      "model/conflict": {
+        "correct": 2,
+        "total": 2
+      },
+      "model/matched": {
+        "correct": 9,
+        "total": 9
+      },
+      "model/missing": {
+        "correct": 1,
+        "total": 1
+      },
+      "model/unverified": {
+        "correct": 3,
+        "total": 3
+      },
+      "order_ref/all": {
+        "correct": 15,
+        "total": 15
+      },
+      "order_ref/conflict": {
+        "correct": 1,
+        "total": 1
+      },
+      "order_ref/matched": {
+        "correct": 8,
+        "total": 8
+      },
+      "order_ref/unclear": {
+        "correct": 1,
+        "total": 1
+      },
+      "order_ref/unverified": {
+        "correct": 5,
+        "total": 5
+      },
+      "quantity/all": {
+        "correct": 15,
+        "total": 15
+      },
+      "quantity/conflict": {
+        "correct": 2,
+        "total": 2
+      },
+      "quantity/matched": {
+        "correct": 8,
+        "total": 8
+      },
+      "quantity/unclear": {
+        "correct": 1,
+        "total": 1
+      },
+      "quantity/unverified": {
+        "correct": 4,
+        "total": 4
+      },
+      "status/all": {
+        "correct": 15,
+        "total": 15
+      },
+      "status/conflict": {
+        "correct": 2,
+        "total": 2
+      },
+      "status/matched": {
+        "correct": 8,
+        "total": 8
+      },
+      "status/unclear": {
+        "correct": 1,
+        "total": 1
+      },
+      "status/unverified": {
+        "correct": 4,
+        "total": 4
+      }
+    },
+    "invariant_violations": 0,
+    "missing": [],
+    "run_terminal": 54,
+    "total": 54
+  },
+  "failures": [
+    {
+      "id": "development-images-001",
+      "errors": [
+        "no_current_visible_draft",
+        "required_fact_missing:model"
+      ],
+      "invariant_violations": []
+    },
+    {
+      "id": "development-orders-001",
+      "errors": [
+        "required_fact_missing:contract_amount",
+        "required_fact_missing:order_status",
+        "unproven_visible_prose:各项按各自来源时点列出；草稿仍需员工审批。",
+        "unproven_visible_prose:数据时点：2026-11-07T07:49:19.967Z",
+        "unproven_visible_prose:系统记录已核对：订单 SO-2026-11000",
+        "wrong_entity_or_citation_header"
+      ],
+      "invariant_violations": []
+    },
+    {
+      "id": "development-orders-002",
+      "errors": [
+        "required_fact_missing:current_stage",
+        "required_fact_missing:production_status",
+        "unproven_visible_prose:各项按各自来源时点列出；草稿仍需员工审批。",
+        "unproven_visible_prose:数据时点：2026-11-07T07:49:24.675Z",
+        "unproven_visible_prose:系统记录已核对：订单 SO-2026-11001",
+        "wrong_entity_or_citation_header"
+      ],
+      "invariant_violations": []
+    },
+    {
+      "id": "development-orders-007",
+      "errors": [
+        "required_fact_missing:contract_amount",
+        "required_fact_missing:order_status",
+        "unproven_visible_prose:各项按各自来源时点列出；草稿仍需员工审批。",
+        "unproven_visible_prose:数据时点：2026-11-07T07:49:53.539Z",
+        "unproven_visible_prose:系统记录已核对：订单 SO-2026-11006",
+        "wrong_entity_or_citation_header"
+      ],
+      "invariant_violations": []
+    },
+    {
+      "id": "development-orders-008",
+      "errors": [
+        "required_fact_missing:current_stage",
+        "required_fact_missing:production_status",
+        "unproven_visible_prose:各项按各自来源时点列出；草稿仍需员工审批。",
+        "unproven_visible_prose:数据时点：2026-11-07T07:50:07.120Z",
+        "unproven_visible_prose:系统记录已核对：订单 SO-2026-11007",
+        "wrong_entity_or_citation_header"
+      ],
+      "invariant_violations": []
+    },
+    {
+      "id": "development-orders-013",
+      "errors": [
+        "required_fact_missing:contract_amount",
+        "required_fact_missing:order_status",
+        "unproven_visible_prose:各项按各自来源时点列出；草稿仍需员工审批。",
+        "unproven_visible_prose:数据时点：2026-11-07T07:50:50.309Z",
+        "unproven_visible_prose:系统记录已核对：订单 SO-2026-11012",
+        "wrong_entity_or_citation_header"
+      ],
+      "invariant_violations": []
+    },
+    {
+      "id": "development-orders-014",
+      "errors": [
+        "required_fact_missing:current_stage",
+        "required_fact_missing:production_status",
+        "unproven_visible_prose:各项按各自来源时点列出；草稿仍需员工审批。",
+        "unproven_visible_prose:数据时点：2026-11-07T07:50:52.022Z",
+        "unproven_visible_prose:系统记录已核对：订单 SO-2026-11013",
+        "wrong_entity_or_citation_header"
+      ],
+      "invariant_violations": []
+    }
+  ],
+  "requests": {
+    "all_requests_have_successful_receipts": true,
+    "known_input_tokens": 2835710,
+    "known_output_tokens": 53416,
+    "ledger_end": 4027,
+    "ledger_start": 3513,
+    "new": 514,
+    "successful_real_receipts": 514,
+    "unknown_usage": 0
+  },
+  "lifetime_usage": {
+    "known_input_subtotal": 62819341,
+    "known_output_subtotal": 1182979,
+    "reserved_requests": 11467,
+    "unknown_usage_requests": 9
+  },
+  "all54_scenarios_bound_to_successful_real_receipts": true,
+  "full_database_archives_available": true,
+  "normal_owned_shutdown_verified": true,
+  "formal_rounds_started": 0,
+  "browser_real_load_and_mock80_started": false,
+  "scoped_historical_components": {
+    "invariants": true,
+    "recovery_local": true,
+    "recovery_s3": true,
+    "rollback_local": true,
+    "not_applicable_to_future_candidate": true
+  },
+  "diagnosis": {
+    "orders": "New FactProposal body diverges from established field/header/citation presentation contract. Structured requested values remain verified. Reuse canonical renderer without changing scorer.",
+    "images001": "All5 image fields extracted and verified; subsequent SQL UNION ALL returns ordered_qty without a schema-proven unit. Existing evidence guard rejects draft; do not bypass the unit requirement."
+  },
+  "root_full_audit_sha256": "2bd155c00bb6aeb191d9b400989aead2a020a4e427c5f56024f49e96c5c8e674",
+  "archive_index_sha256": "ab87e4022eb161e6558ffead1a1f21cf7689768600653b77717fd8730424cbeb",
+  "production_deployed": false
+}

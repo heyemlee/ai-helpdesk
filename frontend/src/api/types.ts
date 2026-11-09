@@ -1,8 +1,19 @@
+export interface PolicyMetadata {
+  status: 'draft' | 'published' | 'retired'
+  version: string
+  product: string
+  region: string
+  audience: string
+  effective_at: string | null
+  expires_at: string | null
+}
+export interface PolicyScope { product?: string; region?: string; audience?: string; as_of?: string | null }
+
 // 与后端 Pydantic 模型对齐的类型定义。
 // 后端返回 snake_case，这里不做 camelCase 转换——保持字段名一致，
 // 改后端模型时 tsc 能直接指出前端哪里没跟上。
 
-export interface ChatRequest {
+export interface ChatRequest extends Partial<CaseInput> {
   message: string
   user_id: string
   conv_id?: string
@@ -25,6 +36,9 @@ export interface PolicyViolation {
  * 没有文档归属的片段 doc_id 为空，这时只能显示片段自己的标题。
  */
 export interface KnowledgeSource {
+  policy?: PolicyMetadata
+  policy_revision?: string
+  policy_as_of?: string
   doc_id: string
   chunk_id: string
   /** 片段标题（导入时填的，常常只是文件名） */
@@ -59,6 +73,9 @@ export type BusinessDataOutcome =
   | 'paused'
 
 export interface BusinessDataTrace {
+  evidence?: Record<string, unknown>[]
+  evidence_issues?: string[]
+  observed_at?: string | null
   enabled?: boolean
   attempted?: boolean
   outcome?: BusinessDataOutcome | string
@@ -74,6 +91,8 @@ export interface BusinessDataTrace {
 }
 
 export interface ChatResponse {
+  case_id?: string
+  next_run_id?: string
   conv_id: string
   response: string
   intent: string
@@ -94,8 +113,19 @@ export interface ChatResponse {
   intent_latency_ms: number
   handoff: boolean
   handoff_reason: string
+  /** Case commit review; answer_confidence/policy_violations still describe the original model answer. */
+  handoff_review?: {
+    basis: 'direct' | 'answer_quality' | 'uncertain_routing' | 'unresolved_answer'
+    outcome: 'retained' | 'replaced_by_verified_draft'
+    model_answer_sha256: string
+    draft_sha256: string
+    original_handoff_reason: string
+    original_answer_confidence: number
+  }
   needs_clarification: boolean
-  answer_confidence: number
+  answer_confidence?: number
+  answer_origin?: 'verified_fact_projection' | 'verified_policy_projection' | 'verified_image_projection'
+  answer_model_invoked?: boolean
   policy_violations: PolicyViolation[]
   /** 请求追踪 id，与响应头 X-Request-ID 一致，报障时携带 */
   request_id?: string
@@ -298,6 +328,7 @@ export interface StreamMetaEvent {
 
 /** 排队模式的第一帧：run_id 是断线之后续流的凭据（GET /runs/{run_id}/events） */
 export interface StreamRunEvent {
+  case_id?: string
   run_id: string
   conv_id: string
   status: string
@@ -498,6 +529,8 @@ export interface SearchResponse {
 export type DocumentOrigin = 'original' | 'legacy' | 'legacy_partial'
 
 export interface KnowledgeDocument {
+  policy?: PolicyMetadata
+  policy_revision?: string
   id: string
   /** 导入时填的标题（上传文件时是文件名） */
   title: string
@@ -662,6 +695,7 @@ export type ModelEditReason = '' | 'disabled' | 'read_only_instance' | 'not_loca
 export interface ChatModelStatus {
   source: ModelSource
   provider: ModelProvider
+  api_mode?: 'chat' | 'responses'
   base_url: string
   model: string
   key_set: boolean
@@ -713,7 +747,7 @@ export interface ModelStatus {
 }
 
 export interface ModelCheck {
-  check: 'chat' | 'structured' | 'embedding'
+  check: 'chat' | 'structured' | 'embedding' | 'tools' | 'tool_roundtrip' | 'stream'
   outcome: string
   status: number | null
   /** 服务商自己的那句报错，已去掉 Key */
@@ -731,6 +765,7 @@ export interface ModelTestResult {
 
 export interface ChatConnectionBody {
   provider: ModelProvider
+  api_mode?: 'chat' | 'responses'
   base_url: string
   /** 留空 = 沿用现在这一把（只在协议和主机都没换时允许） */
   api_key: string
@@ -761,4 +796,71 @@ export interface ModelListResult {
   outcome: string
   status: number | null
   detail: string
+}
+
+/** Canonical state behind the existing ticket ID. Actor comes from server login. */
+export type CaseStatus = 'open' | 'waiting_for_info' | 'in_progress' | 'resolved' | 'cancelled'
+export interface CaseSummary {
+  policy_scope?: PolicyScope
+  id: string
+  case_id: string
+  conv_id: string
+  status: CaseStatus
+  issue_type: 'general' | 'order' | 'missing_parts' | 'wrong_item'
+  customer_ref: string
+  order_refs: string[]
+  owner_actor_id: string | null
+  control_mode: 'assistant' | 'human'
+  version: number
+  control_version: number
+  facts: Record<string, { value: string; source: string; message_id?: string; evidence_id?: string }>
+  pending_fields: string[]
+}
+export interface CaseDetail extends CaseSummary {
+  messages: { seq: number; role: string; content: string; message_id: string; run_id: string; version: number; attachment_ids?: string[] }[]
+  drafts: { id: string; body: string; body_hash: string; version: number; control_version: number;
+    status: string; valid: boolean; invalid_reason: string; approved_by: string | null; evidence: unknown[] }[]
+  materials: { attachment_id: string; sha256: string; message_id: string; version: number; attachment?: Attachment }[]
+  image_reviews?: { attachment_id: string; run_id: string; version: number; result: ImageReview }[]
+  runs: { run_id: string; status: string | null; applied: boolean | null; reason: string | null }[]
+  events: { id: number; kind: string; actor_id: string | null; version: number; data: Record<string, unknown> }[]
+}
+export interface Attachment {
+  id: string; filename: string; sha256: string; media_type: string; byte_size: number
+  width: number; height: number; state: string; error_code: string
+}
+export interface ImageReview {
+  query_outcome: string
+  fields: { field: string; value: string | null; unit: string | null; outcome: string; db_value: string | null;
+    source: { database: string; column: string; as_of: string; as_of_source: string; trace_id: string; run_id: string } | null }[]
+}
+export interface CaseInput {
+  policy_scope?: PolicyScope
+  message_id: string
+  message: string
+  conv_id: string
+  case_id?: string
+  new_case?: boolean
+  expected_version?: number
+  expected_control_version?: number
+  issue_type?: CaseSummary['issue_type']
+  customer_ref?: string
+  order_refs?: string[]
+  facts?: Record<string, string>
+  pending_fields?: string[]
+  attachment_ids?: string[]
+}
+export interface CaseReceipt {
+  case_id: string
+  message_id: string
+  case_version: number
+  run_id: string
+  deduplicated: boolean
+}
+export interface CaseAction {
+  expected_version: number
+  expected_control_version: number
+  operation: 'status' | 'takeover' | 'release' | 'reopen'
+  status?: CaseStatus
+  reason?: string
 }

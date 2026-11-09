@@ -6,7 +6,9 @@
   "has_risk": false,
   "degraded": false,
   "degrade_reason": "",
-  "selected_databases": ["hr_db"],
+  "selected_databases": [
+    "hr_db"
+  ],
   "trace_id": "7c1d9a03be5f4412",
   "steps": [
     {
@@ -16,10 +18,60 @@
       "success": true,
       "row_count": 1,
       "truncated": false,
-      "rows": [{"installer_name": "Diego Ramirez", "cert_expiry": "2027-04-30"}],
+      "rows": [
+        {
+          "installer_name": "Diego Ramirez",
+          "cert_expiry": "2027-04-30"
+        }
+      ],
       "error": null,
       "repair_attempts": [],
-      "risk_findings": []
+      "risk_findings": [],
+      "as_of": "2026-11-06T00:00:00Z",
+      "as_of_source": "query_time",
+      "column_units": {},
+      "source_records": []
     }
-  ]
+  ],
+  "evidence": [
+    {
+      "evidence_id": "ev_0109ee20bfcbf909aabe612b29d287e2e8e6e8f09fd508f29f6720f5d7ddf8ba",
+      "entity": {
+        "kind": "query_row",
+        "query_hash": "a087b9445fe45314ae486b89f20de56f96145ab431c7bf90668fdb8c95346b28",
+        "row_index": 0
+      },
+      "field": "installer_name",
+      "value": "Diego Ramirez",
+      "unit": null,
+      "as_of": "2026-11-06T00:00:00Z",
+      "as_of_source": "query_time",
+      "database": "hr_db",
+      "step_index": 0,
+      "row_index": 0,
+      "query_hash": "a087b9445fe45314ae486b89f20de56f96145ab431c7bf90668fdb8c95346b28",
+      "source_records": [],
+      "issues": []
+    },
+    {
+      "evidence_id": "ev_b31d77b509ce8521775529ea3201ca5ca0b4c5e2592d1b32aabc5134c842db1e",
+      "entity": {
+        "kind": "query_row",
+        "query_hash": "a087b9445fe45314ae486b89f20de56f96145ab431c7bf90668fdb8c95346b28",
+        "row_index": 0
+      },
+      "field": "cert_expiry",
+      "value": "2027-04-30",
+      "unit": null,
+      "as_of": "2026-11-06T00:00:00Z",
+      "as_of_source": "query_time",
+      "database": "hr_db",
+      "step_index": 0,
+      "row_index": 0,
+      "query_hash": "a087b9445fe45314ae486b89f20de56f96145ab431c7bf90668fdb8c95346b28",
+      "source_records": [],
+      "issues": []
+    }
+  ],
+  "observed_at": "2026-11-06T00:00:00Z"
 }

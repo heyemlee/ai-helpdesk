@@ -30,6 +30,7 @@ from app.core.preflight import (
 )
 
 COMPLETE = {
+    "AI_HELPDESK_INSTANCE": "customer",
     "APP_ENV": "production",
     "AI_HELPDESK_API_KEY": "k",
     "AI_HELPDESK_AUTH_SECRET": "s",
@@ -106,6 +107,7 @@ class TestAuthTokenNeverFailsOpen:
         monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
         monkeypatch.setenv("AI_HELPDESK_FRONTEND_DIST", "/nonexistent")
         monkeypatch.setenv("AI_HELPDESK_API_KEY", env.get("AI_HELPDESK_API_KEY", ""))
+        monkeypatch.setenv("AI_HELPDESK_INSTANCE", env.get("AI_HELPDESK_INSTANCE", ""))
         monkeypatch.setenv("APP_ENV", env.get("APP_ENV", "development"))
         monkeypatch.setenv(TOKEN_ISSUER_CIDRS_VAR, env.get(TOKEN_ISSUER_CIDRS_VAR, ""))
         sys.modules.pop("app.api.main", None)
@@ -139,7 +141,7 @@ class TestAuthTokenNeverFailsOpen:
         """
         # 两种模式都会 503，但原因不同——所以断言看的是原因，不是状态码：
         # 生产模式被鉴权依赖挡住，demo 模式是越过了鉴权、落到"服务未就绪"。
-        m = self._load(monkeypatch, AI_HELPDESK_API_KEY="", APP_ENV="production")
+        m = self._load(monkeypatch, AI_HELPDESK_API_KEY="", APP_ENV="production", AI_HELPDESK_INSTANCE="customer")
         resp = TestClient(m.app).post("/skills/reload")
         assert resp.status_code == 503 and "AI_HELPDESK_API_KEY" in resp.text
 

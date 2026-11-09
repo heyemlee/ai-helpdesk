@@ -35,7 +35,7 @@ STARTED=0
 cleanup() {
     if [ "$STARTED" = 1 ]; then
         # 只删这次自己起的容器。几个会话可能在并行跑，别人的测试库不能动
-        docker rm -f "$SERVICES-pg" "$SERVICES-redis" "$SERVICES-kafka" >/dev/null 2>&1 || true
+        docker rm -f "$SERVICES-pg" "$SERVICES-redis" "$SERVICES-kafka" "$SERVICES-s3" >/dev/null 2>&1 || true
     fi
     rm -rf "$COPY"
 }
@@ -63,8 +63,16 @@ CONTRACT="$COPY/a2a-contract"
 [ -f "$CONTRACT/fixtures/index.json" ] || fail "副本里没有 a2a-contract/fixtures/index.json"
 RUN_ENV+=("A2A_CONTRACT_DIR=$CONTRACT" A2A_CONTRACT_REQUIRED=1)
 
-free_port() {
-    "$PY" -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])'
+free_ports() {
+    # Hold all four binds until selection finishes so this invocation cannot
+    # select the same port twice. Other processes can still race after release.
+    "$PY" -c 'import socket
+from contextlib import ExitStack
+with ExitStack() as held:
+    sockets = [held.enter_context(socket.socket()) for _ in range(4)]
+    for sock in sockets:
+        sock.bind(("127.0.0.1", 0))
+    print(*(sock.getsockname()[1] for sock in sockets))'
 }
 
 wait_for() {
@@ -82,9 +90,8 @@ wait_for() {
 if [ "$FULL" = 1 ]; then
     step "起一次性的 pgvector、Redis、Kafka"
     STARTED=1
-    PG_PORT="$(free_port)"
-    REDIS_PORT="$(free_port)"
-    KAFKA_PORT="$(free_port)"
+    SERVICE_PORTS="$(free_ports)"
+    read -r PG_PORT REDIS_PORT KAFKA_PORT S3_PORT <<<"$SERVICE_PORTS"
     PG_PASSWORD="$(openssl rand -hex 12)"
 
     docker run -d --rm --name "$SERVICES-pg" \
@@ -93,6 +100,9 @@ if [ "$FULL" = 1 ]; then
         pgvector/pgvector:pg16 >/dev/null
     docker run -d --rm --name "$SERVICES-redis" -p "127.0.0.1:$REDIS_PORT:6379" \
         redis:7-alpine >/dev/null
+    docker run -d --rm --name "$SERVICES-s3" -p "127.0.0.1:$S3_PORT:8333" \
+        -e AWS_ACCESS_KEY_ID=attachment-test -e AWS_SECRET_ACCESS_KEY=attachment-test-secret \
+        chrislusf/seaweedfs:4.52 mini -dir=/data >/dev/null
     # 配置和 ci.yml 的 kafka 服务一样。容器内外用同一个端口号：broker 把这个地址告诉客户端，
     # 下面容器里的探活和宿主机上的测试都要连得上
     docker run -d --rm --name "$SERVICES-kafka" -p "127.0.0.1:$KAFKA_PORT:$KAFKA_PORT" \
@@ -113,12 +123,14 @@ if [ "$FULL" = 1 ]; then
     # -h 127.0.0.1：Postgres 初始化时的临时实例只听 unix socket，不带 -h 会过早报就绪
     wait_for Postgres docker exec "$SERVICES-pg" pg_isready -h 127.0.0.1 -U test -d test
     wait_for Redis docker exec "$SERVICES-redis" redis-cli ping
+    wait_for S3 curl -sS -o /dev/null "http://127.0.0.1:$S3_PORT/"
     wait_for Kafka docker exec "$SERVICES-kafka" /opt/kafka/bin/kafka-broker-api-versions.sh \
         --bootstrap-server "localhost:$KAFKA_PORT"
 
     RUN_ENV+=("TEST_POSTGRES_DSN=postgresql://test:$PG_PASSWORD@127.0.0.1:$PG_PORT/test"
         "TEST_REDIS_URL=redis://127.0.0.1:$REDIS_PORT/0"
-        "TEST_KAFKA_BOOTSTRAP=localhost:$KAFKA_PORT")
+        "TEST_KAFKA_BOOTSTRAP=localhost:$KAFKA_PORT"
+        "TEST_S3_ENDPOINT=http://127.0.0.1:$S3_PORT")
 fi
 
 step "契约自检（a2a-contract/tools/check_contract.py）"

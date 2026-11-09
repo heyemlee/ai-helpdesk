@@ -103,6 +103,12 @@ def rebuild_request(events) -> RebuiltTurn:
         raise ReplayError("这一轮没有 intent_voted 事件，重建不了")
     rule = _rule_calls(evs)
     order = rule.get("order_data_query")
+    knowledge = rule.get("knowledge_search")
+    from app.core.policy_scope import policy_reference_times
+    from app.events.shapes import merge_trace
+    knowledge_trace = merge_trace(knowledge["data"].get("trace", {}), knowledge.get("body")) if knowledge else {}
+    reference_times = policy_reference_times(sources=knowledge_trace.get("sources", []))
+    reference_times.update(memory.get("reference_times") or {})
     request = build_request(
         started.get("message", ""),
         user_id=started.get("user_id", ""),
@@ -114,6 +120,11 @@ def rebuild_request(events) -> RebuiltTurn:
         knowledge_text=_context_text(rule.get("knowledge_search")),
         order_text=_context_text(order),
         order_is_evidence=bool(order and order["data"].get("evidence")),
+        knowledge_evidence=((knowledge.get("body") or {}).get("evidence", _context_text(knowledge))
+                            if knowledge and knowledge["data"].get("evidence") else ""),
+        order_evidence=((order.get("body") or {}).get("evidence", _context_text(order))
+                        if order and order["data"].get("evidence") else ""),
+        reference_times=reference_times,
     )
     rebuilt = RebuiltTurn(turn_id=head["turn_id"], request=request)
     first_agent = _first(evs, "agent_started")
@@ -252,9 +263,9 @@ def replay_guard(events, policy: AnswerPolicy | None = None) -> list[GuardReplay
         if started["data"].get("mode") == "single" and not started["data"].get("stream"):
             # 非流式单次生成是整段 enforce（先摘掉转人工标记），和线上 _handle_inner 一样
             content, _ = BaseAgent._split_handoff_trailer("".join(texts))
-            replayed = policy.enforce(content, sources).violations
+            replayed = policy.enforce(content, sources, reference_times=rebuilt.request.reference_times).violations
         else:
-            guard = PolicyStreamGuard(policy, sources)
+            guard = PolicyStreamGuard(policy, sources, reference_times=rebuilt.request.reference_times)
             for step, text in zip(steps, texts):
                 guard.feed(text)
                 if not step["data"].get("tool_uses"):
@@ -264,6 +275,11 @@ def replay_guard(events, policy: AnswerPolicy | None = None) -> list[GuardReplay
                              and e["step"] == step["step"] and e["data"].get("evidence")):
                     body = _needs_body(call, "tool_call")
                     guard.add_sources([body.get("evidence") or body.get("content", "")])
+                    if call["data"].get("tool") == "knowledge_search":
+                        from app.core.policy_scope import policy_reference_times
+                        from app.events.shapes import merge_trace
+                        trace = merge_trace(call["data"].get("trace", {}), body)
+                        guard.add_reference_times(policy_reference_times(sources=trace.get("sources", [])))
             guard.flush()
             replayed = guard.violations
         recorded_event = next((e for e in evs if e["type"] == "guard_replaced" and e["agent"] == agent

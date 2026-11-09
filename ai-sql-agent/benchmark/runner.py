@@ -855,6 +855,12 @@ class BenchmarkRunner:
 
     def _run_item(self, item: Dict) -> BenchmarkItemResult:
         gold_rows = self.gold_executor.execute(item["gold_sql"])
+        # Equivalent answer forms are explicitly frozen in the dataset, never
+        # inferred from a model response. Each form must match in its entirety.
+        gold_variants = [gold_rows] + [
+            self.gold_executor.execute(sql)
+            for sql in item.get("gold_sql_alternatives", [])
+        ]
         route, route_signals = self._route(item["query"])
 
         try:
@@ -888,6 +894,7 @@ class BenchmarkRunner:
                 route_signals=route_signals,
             )
 
+        gold_rows = self._select_gold_variant(gold_variants, pipeline_result)
         final_log = pipeline_result.step_logs[-1]
         execution = final_log.execution_result
         matched_step = (
@@ -973,6 +980,22 @@ class BenchmarkRunner:
             route=route,
             route_signals=route_signals,
         )
+
+    def _select_gold_variant(self, variants, pipeline_result):
+        """Prefer an equivalent final answer, then an eligible earlier shape.
+
+        This only selects the reference representation. Risk, visibility and
+        contradiction checks below still decide whether an earlier match counts.
+        """
+        logs = pipeline_result.step_logs
+        candidates = [logs[-1]] + (list(logs[:-1]) if self.score_all_steps else [])
+        for log in candidates:
+            execution = log.execution_result or {}
+            if execution.get("success"):
+                for rows in variants:
+                    if result_matches(rows, list(execution.get("rows") or [])):
+                        return rows
+        return variants[0]
 
     @classmethod
     def _earlier_match_usable(

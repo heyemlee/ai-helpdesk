@@ -1,0 +1,163 @@
+{
+  "run": {
+    "commit": "26c4a75a4bd3ad5d5408a38611ff100d0c47bd9e",
+    "source": "running SQL service model settings; new frozen source",
+    "generation_model": "gpt-6.1-sol",
+    "api_mode": "chat",
+    "generation_endpoint_class": "existing third-party OpenAI-compatible gateway",
+    "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+    "embedding_backend": "remote",
+    "rounds": 1,
+    "case_count": 24,
+    "generation_request_safety_cap": 280,
+    "started_at_utc": "2026-11-06T17:11:14.978064+00:00",
+    "dataset_sha256": "2aac3f23251019e76551020c3540cfffd87ee3d2288c6d086cf85c8be2f2170e",
+    "embedding_status": {
+      "backend": "remote",
+      "model": "Qwen/Qwen3-Embedding-0.6B",
+      "dimensions": 1024,
+      "signature": "Qwen/Qwen3-Embedding-0.6B/1024",
+      "fallback": ""
+    },
+    "finished_at_utc": "2026-11-06T17:26:51.999391+00:00",
+    "elapsed_seconds": 937.029,
+    "generation_requests": 185,
+    "request_counts": {
+      "embedding": 34,
+      "generation": 185
+    },
+    "items_observed": 24,
+    "model_configuration": {
+      "model_provider": "openai",
+      "chat_model": "gpt-6.1-sol",
+      "coder_model": "gpt-6.1-sol",
+      "openai_base_url": "https://relay.invalid/v1",
+      "anthropic_base_url": "https://claude-relay.liziqiao.com/api",
+      "embedding_backend": "remote",
+      "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+      "embedding_url": "https://api.siliconflow.com/v1/embeddings",
+      "embedding_dimensions": 1024,
+      "embedding_batch_size": 10,
+      "http_timeout_seconds": 60.0,
+      "http_max_retries": 2,
+      "http_backoff_base_seconds": 0.5,
+      "http_backoff_max_seconds": 8.0,
+      "max_completion_tokens": 8192,
+      "rerank_model": "qwen3-rerank",
+      "rerank_url": "",
+      "openai_api_mode": "chat"
+    },
+    "pgvector_enabled": false,
+    "data_source": "Deterministic simple ERP generated in a temporary directory; no existing business DB used.",
+    "harness_sha256": "bc3412dc50ef17f38fcc823ab5cd5c72e93a6930916cc0f30ad27fd89f254969",
+    "scoring_rules_commit": "c5aeacce92eab52fa612b532001e337b6843e82d"
+  },
+  "summary": {
+    "total": 24,
+    "correct": 15,
+    "accuracy": 0.625,
+    "wrong_by_mismatch": {
+      "extra_columns": 6,
+      "row_count": 1,
+      "empty": 1,
+      "wrong_values": 1
+    },
+    "silent_error_ids": [
+      "c02",
+      "c04",
+      "c05",
+      "c10",
+      "c12",
+      "c16",
+      "c23",
+      "c24"
+    ],
+    "wrong_values_or_row_count_silent_ids": [
+      "c10",
+      "c24"
+    ],
+    "accepted_earlier_steps": [
+      "c03"
+    ],
+    "unusable_match_ids": [
+      "c18"
+    ],
+    "last_step_only_correct_ids": [
+      "c01",
+      "c06",
+      "c07",
+      "c08",
+      "c09",
+      "c11",
+      "c13",
+      "c14",
+      "c15",
+      "c17",
+      "c19",
+      "c20",
+      "c21",
+      "c22"
+    ],
+    "any_step_before_eligibility_checks_ids": [
+      "c01",
+      "c03",
+      "c06",
+      "c07",
+      "c08",
+      "c09",
+      "c11",
+      "c13",
+      "c14",
+      "c15",
+      "c17",
+      "c18",
+      "c19",
+      "c20",
+      "c21",
+      "c22"
+    ],
+    "request_counts": {
+      "embedding": 34,
+      "generation": 185
+    },
+    "http_statuses": {
+      "200": 218,
+      "ConnectTimeout": 1
+    },
+    "usage": {
+      "embedding": {
+        "attempts": 34,
+        "responses_with_usage": 34,
+        "prompt_tokens": 8420,
+        "completion_tokens": 0,
+        "total_tokens": 8420
+      },
+      "generation": {
+        "attempts": 185,
+        "responses_with_usage": 184,
+        "prompt_tokens": 227032,
+        "completion_tokens": 14334,
+        "total_tokens": 241366
+      }
+    },
+    "model_call_events_by_component": {
+      "embedding": 34,
+      "thinking": 123,
+      "keyword_extractor": 24,
+      "coder": 38
+    },
+    "sequential_latency_seconds": {
+      "p50": 29.115000000000002,
+      "p95_nearest_rank": 75.774,
+      "min": 20.448,
+      "max": 78.728
+    },
+    "billed_cost": null,
+    "cost_note": "Gateway billing and unit prices were not available; no dollar cost inferred.",
+    "offline_checks": {
+      "passed": 19,
+      "failed": 0,
+      "command": "python -m pytest -q tests/test_customer_cases.py tests/test_score_all_steps.py"
+    }
+  }
+}

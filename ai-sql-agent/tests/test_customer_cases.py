@@ -16,11 +16,12 @@ import re
 import sqlite3
 import tempfile
 import unittest
+import warnings
 from pathlib import Path
 from unittest import mock
 
 from benchmark.customer import CUSTOMER_CASES, build_simple_erp, customer_summary
-from benchmark.runner import CUSTOMER_CATEGORY
+from benchmark.runner import CUSTOMER_CATEGORY, result_matches
 
 ORDER_NO = re.compile(r"\b[Jj]\d{2}-\d{5}\b")
 TABLE_REF = re.compile(r"\b(erp|prod|svc|wms)\.([a-z_]+)\b")
@@ -33,6 +34,11 @@ class CustomerCasesTest(unittest.TestCase):
         from ai_sql_agent.semantic import load_semantic_dir
 
         cls.items = json.loads(CUSTOMER_CASES.read_text(encoding="utf-8"))
+        cls.answer_forms = [
+            {**item, "gold_sql": sql}
+            for item in cls.items
+            for sql in [item["gold_sql"], *item.get("gold_sql_alternatives", [])]
+        ]
         cls.tmpdir = tempfile.TemporaryDirectory()
         root = Path(cls.tmpdir.name)
         cls.layer = load_semantic_dir(build_simple_erp(root))
@@ -67,14 +73,14 @@ class CustomerCasesTest(unittest.TestCase):
             self.assertEqual(set(ORDER_NO.findall(item["gold_sql"])), asked, item["id"])
 
     def test_gold_sql_returns_rows_without_duplicates(self):
-        for item in self.items:
+        for item in self.answer_forms:
             rows = [tuple(row) for row in self.conn.execute(item["gold_sql"])]
             self.assertGreater(len(rows), 0, item["id"])
             self.assertEqual(len(rows), len(set(rows)), item["id"])
 
     def test_gold_reads_one_database(self):
         # 评测比的是最后一步的结果集，标准答案的输出不能横跨两个库
-        for item in self.items:
+        for item in self.answer_forms:
             aliases = {alias for alias, _ in TABLE_REF.findall(item["gold_sql"])}
             self.assertEqual(len(aliases), 1, item["id"])
 
@@ -85,19 +91,19 @@ class CustomerCasesTest(unittest.TestCase):
         模型会把单号当标识带上（规划提示词规则 11），判分允许多输出一列，正好容下它；
         标准答案再带一份单号，模型多带一个别的字段就要被判错了。
         """
-        for item in self.items:
+        for item in self.answer_forms:
             select_list = item["gold_sql"].split(" FROM ")[0]
             several = len(set(ORDER_NO.findall(item["query"]))) > 1
             self.assertEqual("order_no" in select_list, several, item["id"])
 
     def test_gold_does_not_depend_on_names(self):
         # 生成器里的客户名、供应商名和生产那份写法不同，按单号查到的其它字段一致
-        for item in self.items:
+        for item in self.answer_forms:
             for column in ("customer_name", "supplier_name"):
                 self.assertNotIn(column, item["gold_sql"], item["id"])
 
     def test_gold_columns_exist_in_the_semantic_layer(self):
-        for item in self.items:
+        for item in self.answer_forms:
             self.assertTrue(item["gold_columns"], item["id"])
             for qualified in item["gold_columns"]:
                 database, table, column = qualified.split(".")
@@ -105,6 +111,51 @@ class CustomerCasesTest(unittest.TestCase):
                 self.assertIn(column, tables[table]["columns"], f"{item['id']}: {qualified}")
             for alias, table in TABLE_REF.findall(item["gold_sql"]):
                 self.assertIn(table, self.layer.databases[SIMPLE_ERP[alias]].tables, item["id"])
+
+    def test_shipping_question_accepts_boolean_and_date_from_same_record(self):
+        item = next(i for i in self.items if i["id"] == "c24")
+        self.assertEqual(list(self.conn.execute(item["gold_sql"])), [(1,)])
+        self.assertEqual(list(self.conn.execute(item["gold_sql_alternatives"][0])), [("2026-04-13",)])
+        # The Boolean reference follows the DB state; it must not be a constant
+        # tailored to this recorded positive example.
+        self.conn.execute("SAVEPOINT shipping_reference")
+        try:
+            self.conn.execute("UPDATE svc.replacement_part SET shipped_date=NULL WHERE order_no='J25-00060'")
+            self.assertEqual(list(self.conn.execute(item["gold_sql"])), [(0,)])
+        finally:
+            self.conn.execute("ROLLBACK TO shipping_reference")
+            self.conn.execute("RELEASE shipping_reference")
+
+    def test_problem_description_reference_preserves_each_ticket_status(self):
+        item = next(i for i in self.items if i["id"] == "c11")
+        records = list(self.conn.execute(
+            "SELECT issue_type, description, service_status FROM svc.service_ticket "
+            "WHERE order_no = 'J25-00137'"
+        ))
+        primary = list(self.conn.execute(item["gold_sql"]))
+        alternative = list(self.conn.execute(item["gold_sql_alternatives"][0]))
+        self.assertEqual(primary, [(r[0], r[2]) for r in records])
+        self.assertEqual(alternative, [(r[1], r[2]) for r in records])
+        gold = [dict(description=r[0], service_status=r[1]) for r in alternative]
+        self.assertTrue(result_matches(gold, list(reversed(gold))))
+        swapped = [dict(description=r[0], service_status=alternative[1-i][1])
+                   for i, r in enumerate(alternative)]
+        for invalid in (swapped, gold[:1], [gold[0], gold[0]],
+                        [dict(service_status=r[1]) for r in alternative]):
+            with self.subTest(invalid=invalid):
+                self.assertFalse(result_matches(gold, invalid))
+        self.conn.execute("SAVEPOINT problem_reference")
+        try:
+            self.conn.execute(
+                "UPDATE svc.service_ticket SET service_status='待处理' "
+                "WHERE order_no='J25-00137' AND issue_type='质量问题'"
+            )
+            updated = dict(self.conn.execute(item["gold_sql_alternatives"][0]))
+            description = next(r[1] for r in records if r[0] == "质量问题")
+            self.assertEqual(updated[description], "待处理")
+        finally:
+            self.conn.execute("ROLLBACK TO problem_reference")
+            self.conn.execute("RELEASE problem_reference")
 
 
 class CustomerOfflineRunTest(unittest.TestCase):
@@ -152,6 +203,31 @@ class CustomerOfflineRunTest(unittest.TestCase):
         lines = customer_summary(report)
         self.assertTrue(lines[0].startswith(f"客服转来的问法（{CUSTOMER_CATEGORY}，单独一行，不计入门禁，每一步都比）"))
         self.assertTrue(any("生产入口的路由（规则判）" in line for line in lines))
+
+    def test_vector_retrieval_does_not_emit_runtime_warnings(self):
+        # The pipeline catches retrieval exceptions, so turning warnings into
+        # errors alone would otherwise leave this test green after a failure.
+        from ai_sql_agent.retrieval.vector_index import VectorIndex
+        from benchmark.customer import customer_runner
+
+        original = VectorIndex.search
+        failures = []
+        calls = []
+
+        def checked(index, *args, **kwargs):
+            calls.append(1)
+            with warnings.catch_warnings():
+                warnings.simplefilter("error", RuntimeWarning)
+                try:
+                    return original(index, *args, **kwargs)
+                except RuntimeWarning as exc:
+                    failures.append(str(exc))
+                    raise
+
+        with mock.patch.object(VectorIndex, "search", checked), customer_runner() as runner:
+            runner.run()
+        self.assertTrue(calls)
+        self.assertEqual(failures, [])
 
     def test_never_touches_a_configured_pgvector(self):
         """

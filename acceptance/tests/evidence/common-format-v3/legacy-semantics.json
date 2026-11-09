@@ -1,0 +1,1269 @@
+{
+  "changed_call_count": 40,
+  "changes": [
+    {
+      "frozen_line": 52,
+      "frozen_test_file": "test_common_formats.py",
+      "independent_full_answer_review_required": true,
+      "input_sha256": "5056e37d72668323d46026160bb444e4427e6df5c262c6c5bbb9d7fafaf4798f",
+      "new_errors": [
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "new_status": "review_required",
+      "old_errors": [
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "old_status": "incorrect",
+      "semantic_change": "An unparsed number/fee or malformed presentation is not a bound counterexample. Preserve the full answer and require independent review.",
+      "test": "test_all_negative_controls_remain_blocked",
+      "variant": {
+        "variant": "extra_charge_under_ordinal"
+      }
+    },
+    {
+      "frozen_line": 52,
+      "frozen_test_file": "test_common_formats.py",
+      "independent_full_answer_review_required": true,
+      "input_sha256": "fc3480331a67324f6d4dc5fcaadc07723892cb6619567b1336040d1b24e95c1f",
+      "new_errors": [
+        "unparsed_query_time_provenance",
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "new_status": "review_required",
+      "old_errors": [
+        "unparsed_query_time_provenance",
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "old_status": "incorrect",
+      "semantic_change": "An unparsed number/fee or malformed presentation is not a bound counterexample. Preserve the full answer and require independent review.",
+      "test": "test_all_negative_controls_remain_blocked",
+      "variant": {
+        "variant": "metadata_followed_by_business_number"
+      }
+    },
+    {
+      "frozen_line": 52,
+      "frozen_test_file": "test_common_formats.py",
+      "independent_full_answer_review_required": true,
+      "input_sha256": "58a61f4dce250bd382a3867b77203bbb6f2a6fed024547ecb10f469f8677a1ac",
+      "new_errors": [
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "new_status": "review_required",
+      "old_errors": [
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "old_status": "incorrect",
+      "semantic_change": "An unparsed number/fee or malformed presentation is not a bound counterexample. Preserve the full answer and require independent review.",
+      "test": "test_all_negative_controls_remain_blocked",
+      "variant": {
+        "variant": "extra_charge_in_parenthesis"
+      }
+    },
+    {
+      "frozen_line": 52,
+      "frozen_test_file": "test_common_formats.py",
+      "independent_full_answer_review_required": true,
+      "input_sha256": "e4360eb3d03143339a46cd139491a947ef165ce124532c0a4e31f059ca8b1c50",
+      "new_errors": [
+        "unparsed_table_header_context",
+        "unparsed_required_fact:part_status",
+        "unparsed_required_fact:quantity"
+      ],
+      "new_status": "review_required",
+      "old_errors": [
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "old_status": "incorrect",
+      "semantic_change": "An unparsed number/fee or malformed presentation is not a bound counterexample. Preserve the full answer and require independent review.",
+      "test": "test_all_negative_controls_remain_blocked",
+      "variant": {
+        "variant": "unproved_extra_column"
+      }
+    },
+    {
+      "frozen_line": 52,
+      "frozen_test_file": "test_common_formats.py",
+      "independent_full_answer_review_required": true,
+      "input_sha256": "b0f20a6b35689c38ea6dbe20e3e52b15383d0bb09a26c85a60dde2859dd66210",
+      "new_errors": [
+        "unparsed_entity_relation",
+        "unparsed_claim:part_name",
+        "unparsed_additional_prose"
+      ],
+      "new_status": "review_required",
+      "old_errors": [
+        "wrong_entity",
+        "unparsed_claim:part_name",
+        "unparsed_additional_prose"
+      ],
+      "old_status": "incorrect",
+      "semantic_change": "Missing source joins do not disprove a relationship without a declared complete catalog. Known foreign parents remain errors.",
+      "test": "test_all_negative_controls_remain_blocked",
+      "variant": {
+        "variant": "nonexistent_part"
+      }
+    },
+    {
+      "frozen_line": 52,
+      "frozen_test_file": "test_common_formats.py",
+      "independent_full_answer_review_required": true,
+      "input_sha256": "5915eb86df4a0e1cef06db2f572c65a51041ed4c374d8b61ab1916a090438efc",
+      "new_errors": [
+        "unparsed_table_row_context"
+      ],
+      "new_status": "review_required",
+      "old_errors": [
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "old_status": "incorrect",
+      "semantic_change": "An unparsed number/fee or malformed presentation is not a bound counterexample. Preserve the full answer and require independent review.",
+      "test": "test_all_negative_controls_remain_blocked",
+      "variant": {
+        "variant": "extra_unsupported_row"
+      }
+    },
+    {
+      "frozen_line": 52,
+      "frozen_test_file": "test_common_formats.py",
+      "independent_full_answer_review_required": true,
+      "input_sha256": "e18498f94d6ec25f63feae543e0077cfde522f7a9b55e6206d986a68d0f06594",
+      "new_errors": [
+        "unparsed_aggregate_provenance",
+        "unparsed_aggregate_provenance"
+      ],
+      "new_status": "review_required",
+      "old_errors": [
+        "incorrect_claim:record_count",
+        "unparsed_aggregate_provenance",
+        "unparsed_aggregate_provenance"
+      ],
+      "old_status": "incorrect",
+      "semantic_change": "Source records are not a trusted query result set. Neither query row_count, projection, nor completeness is supplied to the API.",
+      "test": "test_all_negative_controls_remain_blocked",
+      "variant": {
+        "variant": "wrong_record_count"
+      }
+    },
+    {
+      "frozen_line": 52,
+      "frozen_test_file": "test_common_formats.py",
+      "independent_full_answer_review_required": true,
+      "input_sha256": "30e6d6c814cb334353375c807372d8a4d91e625cafcf3eb00bc37397256ab181",
+      "new_errors": [
+        "unparsed_aggregate_provenance",
+        "unparsed_aggregate_provenance"
+      ],
+      "new_status": "review_required",
+      "old_errors": [
+        "unparsed_aggregate_provenance",
+        "incorrect_claim:quantity_total",
+        "unparsed_aggregate_provenance"
+      ],
+      "old_status": "incorrect",
+      "semantic_change": "Source records are not a trusted query result set. Neither query row_count, projection, nor completeness is supplied to the API.",
+      "test": "test_all_negative_controls_remain_blocked",
+      "variant": {
+        "variant": "wrong_total"
+      }
+    },
+    {
+      "frozen_line": 119,
+      "frozen_test_file": "test_common_formats.py",
+      "independent_full_answer_review_required": true,
+      "input_sha256": "fed5bdbb4996c7c4cdc5a6a8d905d7852ab41fef0d1e918f5ece911b710c99c2",
+      "new_errors": [
+        "unparsed_table_header_context",
+        "unparsed_required_fact:part_status",
+        "unparsed_required_fact:quantity"
+      ],
+      "new_status": "review_required",
+      "old_errors": [
+        "wrong_entity",
+        "unparsed_required_fact:part_status",
+        "unparsed_or_ambiguous_claim:quantity",
+        "unparsed_or_ambiguous_claim:part_name",
+        "unparsed_additional_prose"
+      ],
+      "old_status": "incorrect",
+      "semantic_change": "Automatic success now requires every requested entity and source field to have a positive proof.",
+      "test": "test_generic_status_requires_source_identity_and_relationship_scope",
+      "variant": {
+        "change": "missing_source"
+      }
+    },
+    {
+      "frozen_line": 119,
+      "frozen_test_file": "test_common_formats.py",
+      "independent_full_answer_review_required": true,
+      "input_sha256": "8759cf92f6619d1eeb802a4ccf7343b5e9ae3761a49e15ff3bff0369e38dff93",
+      "new_errors": [
+        "unparsed_table_header_context",
+        "unparsed_required_fact:part_status",
+        "unparsed_required_fact:quantity"
+      ],
+      "new_status": "review_required",
+      "old_errors": [
+        "wrong_entity",
+        "unparsed_required_fact:part_status",
+        "unparsed_or_ambiguous_claim:quantity",
+        "unparsed_or_ambiguous_claim:part_name",
+        "unparsed_additional_prose"
+      ],
+      "old_status": "incorrect",
+      "semantic_change": "Automatic success now requires every requested entity and source field to have a positive proof.",
+      "test": "test_generic_status_requires_source_identity_and_relationship_scope",
+      "variant": {
+        "change": "other_order"
+      }
+    },
+    {
+      "frozen_line": 75,
+      "frozen_test_file": "test_common_formats.py",
+      "independent_full_answer_review_required": true,
+      "input_sha256": "57869faddaf0212c15301e1f8438b5f9fe36ba7339a3d16529e39100c70f176e",
+      "new_errors": [
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "new_status": "review_required",
+      "old_errors": [
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "old_status": "incorrect",
+      "semantic_change": "An unparsed number/fee or malformed presentation is not a bound counterexample. Preserve the full answer and require independent review.",
+      "test": "test_numbered_lists_preserve_every_business_item",
+      "variant": {
+        "extra": "3. 加收款：61.25 USD",
+        "marker": "8. "
+      }
+    },
+    {
+      "frozen_line": 75,
+      "frozen_test_file": "test_common_formats.py",
+      "independent_full_answer_review_required": true,
+      "input_sha256": "1d6b1dc069184bddb5d94fc249a55036f2196ec0b7286963f7d8a5424f650a38",
+      "new_errors": [
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "new_status": "review_required",
+      "old_errors": [
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "old_status": "incorrect",
+      "semantic_change": "An unparsed number/fee or malformed presentation is not a bound counterexample. Preserve the full answer and require independent review.",
+      "test": "test_numbered_lists_preserve_every_business_item",
+      "variant": {
+        "extra": "3. 加收款：61.25 USD",
+        "marker": "8) "
+      }
+    },
+    {
+      "frozen_line": 75,
+      "frozen_test_file": "test_common_formats.py",
+      "independent_full_answer_review_required": true,
+      "input_sha256": "a913d9af18be82e6787916e4b19e1c0632be6aabb3a67191310edb53982e6a82",
+      "new_errors": [
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "new_status": "review_required",
+      "old_errors": [
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "old_status": "incorrect",
+      "semantic_change": "An unparsed number/fee or malformed presentation is not a bound counterexample. Preserve the full answer and require independent review.",
+      "test": "test_numbered_lists_preserve_every_business_item",
+      "variant": {
+        "extra": "3. 加收款：61.25 USD",
+        "marker": "(8) "
+      }
+    },
+    {
+      "frozen_line": 75,
+      "frozen_test_file": "test_common_formats.py",
+      "independent_full_answer_review_required": true,
+      "input_sha256": "c1f1d61f28faa669d89da68289e0a618ca22542e795ce6550cd772bf27ecc2fa",
+      "new_errors": [
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "new_status": "review_required",
+      "old_errors": [
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "old_status": "incorrect",
+      "semantic_change": "An unparsed number/fee or malformed presentation is not a bound counterexample. Preserve the full answer and require independent review.",
+      "test": "test_numbered_lists_preserve_every_business_item",
+      "variant": {
+        "extra": "3. 加收款：61.25 USD",
+        "marker": "（8） "
+      }
+    },
+    {
+      "frozen_line": 75,
+      "frozen_test_file": "test_common_formats.py",
+      "independent_full_answer_review_required": true,
+      "input_sha256": "fed556794dd66916183c7c7eaa6a9e0afa2b79558ce66829c59749140fa26bee",
+      "new_errors": [
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "new_status": "review_required",
+      "old_errors": [
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "old_status": "incorrect",
+      "semantic_change": "An unparsed number/fee or malformed presentation is not a bound counterexample. Preserve the full answer and require independent review.",
+      "test": "test_numbered_lists_preserve_every_business_item",
+      "variant": {
+        "extra": "3. 加收款：61.25 USD",
+        "marker": "  8. "
+      }
+    },
+    {
+      "frozen_line": 86,
+      "frozen_test_file": "test_common_formats.py",
+      "independent_full_answer_review_required": true,
+      "input_sha256": "d34448e6c6c06079430e230bc10f2c26520abe884f602f4b69fd305bbec25d6c",
+      "new_errors": [
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "new_status": "review_required",
+      "old_errors": [
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "old_status": "incorrect",
+      "semantic_change": "An unparsed number/fee or malformed presentation is not a bound counterexample. Preserve the full answer and require independent review.",
+      "test": "test_parenthetical_prefix_suffix_and_nested_notes_keep_numeric_assertions",
+      "variant": {
+        "amount": "（订单记录）328.40 USD"
+      }
+    },
+    {
+      "frozen_line": 86,
+      "frozen_test_file": "test_common_formats.py",
+      "independent_full_answer_review_required": true,
+      "input_sha256": "b10ca783754c17eea5ac39355d8c4a359540d7046034152dcbbedb9a69e5bac3",
+      "new_errors": [
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "new_status": "review_required",
+      "old_errors": [
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "old_status": "incorrect",
+      "semantic_change": "An unparsed number/fee or malformed presentation is not a bound counterexample. Preserve the full answer and require independent review.",
+      "test": "test_parenthetical_prefix_suffix_and_nested_notes_keep_numeric_assertions",
+      "variant": {
+        "amount": "328.40 USD（订单记录）"
+      }
+    },
+    {
+      "frozen_line": 86,
+      "frozen_test_file": "test_common_formats.py",
+      "independent_full_answer_review_required": true,
+      "input_sha256": "1f14485c2cd1bba70445f8d51717812ab9e55a110d5f53920f932e2c725a8b4a",
+      "new_errors": [
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "new_status": "review_required",
+      "old_errors": [
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "old_status": "incorrect",
+      "semantic_change": "An unparsed number/fee or malformed presentation is not a bound counterexample. Preserve the full answer and require independent review.",
+      "test": "test_parenthetical_prefix_suffix_and_nested_notes_keep_numeric_assertions",
+      "variant": {
+        "amount": "328.40 USD（来源（订单记录））"
+      }
+    },
+    {
+      "frozen_line": 159,
+      "frozen_test_file": "test_common_formats.py",
+      "independent_full_answer_review_required": true,
+      "input_sha256": "739a671941f406cfbbfe9ac6de87612a8e8a87f50f6d00f1f8d39ef6bdd5b6b0",
+      "new_errors": [
+        "unparsed_query_time_provenance",
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "new_status": "review_required",
+      "old_errors": [
+        "unparsed_query_time_provenance",
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "old_status": "incorrect",
+      "semantic_change": "An unparsed number/fee or malformed presentation is not a bound counterexample. Preserve the full answer and require independent review.",
+      "test": "test_query_and_date_reference_parsing_does_not_eat_extra_assertions",
+      "variant": {
+        "suffix": "；另收61.25 USD"
+      }
+    },
+    {
+      "frozen_line": 159,
+      "frozen_test_file": "test_common_formats.py",
+      "independent_full_answer_review_required": true,
+      "input_sha256": "a75edf6d1b91c7bb270734c646cae9d11ababfba8c7e36f489518abd40aa7500",
+      "new_errors": [
+        "unparsed_query_time_provenance",
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "new_status": "review_required",
+      "old_errors": [
+        "unparsed_query_time_provenance",
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "old_status": "incorrect",
+      "semantic_change": "An unparsed number/fee or malformed presentation is not a bound counterexample. Preserve the full answer and require independent review.",
+      "test": "test_query_and_date_reference_parsing_does_not_eat_extra_assertions",
+      "variant": {
+        "suffix": "。另收61.25 USD"
+      }
+    },
+    {
+      "frozen_line": 159,
+      "frozen_test_file": "test_common_formats.py",
+      "independent_full_answer_review_required": true,
+      "input_sha256": "24f336de1c1aba3f791fb7dff299c10113bcef204bda56ebeb5c2ac66f864017",
+      "new_errors": [
+        "unparsed_query_time_provenance",
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "new_status": "review_required",
+      "old_errors": [
+        "unparsed_query_time_provenance",
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "old_status": "incorrect",
+      "semantic_change": "An unparsed number/fee or malformed presentation is not a bound counterexample. Preserve the full answer and require independent review.",
+      "test": "test_query_and_date_reference_parsing_does_not_eat_extra_assertions",
+      "variant": {
+        "suffix": "，另收61.25 USD"
+      }
+    },
+    {
+      "frozen_line": 159,
+      "frozen_test_file": "test_common_formats.py",
+      "independent_full_answer_review_required": true,
+      "input_sha256": "9db52cd92587709f56f43e2902fb4f2dac8d4f2b6fbd4d21e723c9f5ca16e5bb",
+      "new_errors": [
+        "unparsed_query_time_provenance",
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "new_status": "review_required",
+      "old_errors": [
+        "unparsed_query_time_provenance",
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "old_status": "incorrect",
+      "semantic_change": "An unparsed number/fee or malformed presentation is not a bound counterexample. Preserve the full answer and require independent review.",
+      "test": "test_query_and_date_reference_parsing_does_not_eat_extra_assertions",
+      "variant": {
+        "suffix": "\n另收61.25 USD"
+      }
+    },
+    {
+      "frozen_line": 165,
+      "frozen_test_file": "test_common_formats.py",
+      "independent_full_answer_review_required": true,
+      "input_sha256": "01e29410098df74dc26632695dbb1322f35ed9c3799a88761a32a10af1b973af",
+      "new_errors": [
+        "unparsed_date_reference",
+        "unparsed_date_reference",
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "new_status": "review_required",
+      "old_errors": [
+        "unparsed_date_reference",
+        "unparsed_date_reference",
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "old_status": "incorrect",
+      "semantic_change": "An unparsed number/fee or malformed presentation is not a bound counterexample. Preserve the full answer and require independent review.",
+      "test": "test_query_and_date_reference_parsing_does_not_eat_extra_assertions",
+      "variant": {
+        "suffix": "\n另收61.25 USD"
+      }
+    },
+    {
+      "frozen_line": 190,
+      "frozen_test_file": "test_common_formats.py",
+      "independent_full_answer_review_required": true,
+      "input_sha256": "5e09d4da16c405a2275ab238082b93e85d2d3c3a1fda89a7b1aa32876dd6ef54",
+      "new_errors": [
+        "unparsed_aggregate_provenance",
+        "unparsed_unit_binding:quantity",
+        "unparsed_claim:quantity",
+        "unparsed_required_fact:quantity",
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "new_status": "review_required",
+      "old_errors": [
+        "incorrect_claim:quantity_total",
+        "unparsed_aggregate_provenance",
+        "incorrect_claim:quantity"
+      ],
+      "old_status": "incorrect",
+      "semantic_change": "Source records are not a trusted query result set. Neither query row_count, projection, nor completeness is supplied to the API.",
+      "test": "test_shared_total_unit_requires_one_matching_source_row",
+      "variant": {
+        "change": "wrong_total"
+      }
+    },
+    {
+      "frozen_line": 190,
+      "frozen_test_file": "test_common_formats.py",
+      "independent_full_answer_review_required": true,
+      "input_sha256": "fc64e8cb1b57e24eef0c01a6a42597702bd9c639a748cd5dcb3b678893606cb6",
+      "new_errors": [
+        "unparsed_table_header_context",
+        "unparsed_aggregate_provenance",
+        "unparsed_required_fact:part_status",
+        "unparsed_required_fact:quantity"
+      ],
+      "new_status": "review_required",
+      "old_errors": [
+        "unparsed_aggregate_provenance",
+        "wrong_entity",
+        "unparsed_required_fact:part_status",
+        "incorrect_claim:quantity",
+        "unparsed_or_ambiguous_claim:part_name",
+        "unparsed_additional_prose"
+      ],
+      "old_status": "incorrect",
+      "semantic_change": "Automatic success now requires every requested entity and source field to have a positive proof.",
+      "test": "test_shared_total_unit_requires_one_matching_source_row",
+      "variant": {
+        "change": "no_source"
+      }
+    },
+    {
+      "frozen_line": 431,
+      "frozen_test_file": "test_source_semantics.py",
+      "independent_full_answer_review_required": true,
+      "input_sha256": "f0ff40510d37bd81f44b02c239d3680a6dbe4d2b74e515e21c00d52bf0e8da73",
+      "new_errors": [
+        "unparsed_field_meaning_provenance",
+        "unparsed_field_meaning_provenance",
+        "unparsed_query_time_provenance",
+        "unparsed_query_time_provenance",
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "new_status": "review_required",
+      "old_errors": [
+        "unparsed_field_meaning_provenance",
+        "unparsed_field_meaning_provenance",
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "old_status": "incorrect",
+      "semantic_change": "An unparsed number/fee or malformed presentation is not a bound counterexample. Preserve the full answer and require independent review.",
+      "test": "test_common_facts_uses_identical_catalog_rules_and_keeps_real_errors",
+      "variant": {}
+    },
+    {
+      "frozen_line": 431,
+      "frozen_test_file": "test_source_semantics.py",
+      "independent_full_answer_review_required": true,
+      "input_sha256": "011603e42f1fa062475e96a697d95c96cbbc887e29761fe4628ea04d906dd8ce",
+      "new_errors": [
+        "unparsed_field_meaning_provenance",
+        "unparsed_field_meaning_provenance",
+        "unparsed_query_time_provenance",
+        "unparsed_query_time_provenance",
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "new_status": "review_required",
+      "old_errors": [
+        "unparsed_field_meaning_provenance",
+        "unparsed_field_meaning_provenance",
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "old_status": "incorrect",
+      "semantic_change": "An unparsed number/fee or malformed presentation is not a bound counterexample. Preserve the full answer and require independent review.",
+      "test": "test_common_facts_uses_identical_catalog_rules_and_keeps_real_errors",
+      "variant": {}
+    },
+    {
+      "frozen_line": 495,
+      "frozen_test_file": "test_source_semantics.py",
+      "independent_full_answer_review_required": true,
+      "input_sha256": "1b6b15391fb929a082d25caaa7ef7c35926c335e81c132e439ec4be24f917841",
+      "new_errors": [
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "new_status": "review_required",
+      "old_errors": [
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "old_status": "incorrect",
+      "semantic_change": "An unparsed number/fee or malformed presentation is not a bound counterexample. Preserve the full answer and require independent review.",
+      "test": "test_common_format_normalization_never_rescues_explicit_wrong_values",
+      "variant": {}
+    },
+    {
+      "frozen_line": 499,
+      "frozen_test_file": "test_source_semantics.py",
+      "independent_full_answer_review_required": true,
+      "input_sha256": "955a45cfc6d13fe440b093396ac0fff92eee68038f4519acf8a7116ec7845aa6",
+      "new_errors": [
+        "unparsed_claim:delivery_date",
+        "unparsed_required_fact:delivery_date",
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "new_status": "review_required",
+      "old_errors": [
+        "unparsed_claim:delivery_date",
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "old_status": "incorrect",
+      "semantic_change": "An unparsed number/fee or malformed presentation is not a bound counterexample. Preserve the full answer and require independent review.",
+      "test": "test_common_format_normalization_never_rescues_explicit_wrong_values",
+      "variant": {}
+    },
+    {
+      "frozen_line": 448,
+      "frozen_test_file": "test_source_semantics.py",
+      "independent_full_answer_review_required": true,
+      "input_sha256": "61b955ea8b97445c2eb2cf6e3d3fee4e5c32ffc6e6a29bd98b4a927035934e17",
+      "new_errors": [
+        "unparsed_field_meaning",
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "new_status": "review_required",
+      "old_errors": [
+        "unparsed_field_meaning",
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "old_status": "incorrect",
+      "semantic_change": "An unparsed number/fee or malformed presentation is not a bound counterexample. Preserve the full answer and require independent review.",
+      "test": "test_common_known_numeric_definition_is_reviewable_not_a_row_number",
+      "variant": {}
+    },
+    {
+      "frozen_line": 449,
+      "frozen_test_file": "test_source_semantics.py",
+      "independent_full_answer_review_required": true,
+      "input_sha256": "9861d24abff85861f3bced5420b2c7309ca54b1916b323b03f03d2752e401985",
+      "new_errors": [
+        "unparsed_field_meaning_provenance",
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "new_status": "review_required",
+      "old_errors": [
+        "unparsed_field_meaning_provenance",
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "old_status": "incorrect",
+      "semantic_change": "An unparsed number/fee or malformed presentation is not a bound counterexample. Preserve the full answer and require independent review.",
+      "test": "test_common_known_numeric_definition_is_reviewable_not_a_row_number",
+      "variant": {}
+    },
+    {
+      "frozen_line": 507,
+      "frozen_test_file": "test_source_semantics.py",
+      "independent_full_answer_review_required": true,
+      "input_sha256": "622f8d27ceb18233dc9f41d5e16c80af41e4e908411d1b658d576f7b8ef71fde",
+      "new_errors": [
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "new_status": "review_required",
+      "old_errors": [
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "old_status": "incorrect",
+      "semantic_change": "An unparsed number/fee or malformed presentation is not a bound counterexample. Preserve the full answer and require independent review.",
+      "test": "test_independently_authored_format_handoff_and_five_negative_controls",
+      "variant": {
+        "case": "extra_unsupported_amount"
+      }
+    },
+    {
+      "frozen_line": 513,
+      "frozen_test_file": "test_source_semantics.py",
+      "independent_full_answer_review_required": true,
+      "input_sha256": "622f8d27ceb18233dc9f41d5e16c80af41e4e908411d1b658d576f7b8ef71fde",
+      "new_errors": [
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "new_status": "review_required",
+      "old_errors": [
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "old_status": "incorrect",
+      "semantic_change": "An unparsed number/fee or malformed presentation is not a bound counterexample. Preserve the full answer and require independent review.",
+      "test": "test_independently_authored_format_handoff_and_five_negative_controls",
+      "variant": {
+        "case": "extra_unsupported_amount"
+      }
+    },
+    {
+      "frozen_line": 521,
+      "frozen_test_file": "test_source_semantics.py",
+      "independent_full_answer_review_required": true,
+      "input_sha256": "788a198429e26782cc4d49347b0e3114938c46004f8bbd9e49d434a301a48712",
+      "new_errors": [
+        "unparsed_claim_context:part_status",
+        "unparsed_claim_context:quantity",
+        "unparsed_required_fact:part_status",
+        "unparsed_required_fact:quantity",
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "new_status": "review_required",
+      "old_errors": [
+        "unparsed_claim:part_status",
+        "unparsed_claim:quantity",
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "old_status": "incorrect",
+      "semantic_change": "An unparsed number/fee or malformed presentation is not a bound counterexample. Preserve the full answer and require independent review.",
+      "test": "test_table_quote_time_and_relationship_controls_preserve_errors",
+      "variant": {}
+    },
+    {
+      "frozen_line": 521,
+      "frozen_test_file": "test_source_semantics.py",
+      "independent_full_answer_review_required": true,
+      "input_sha256": "95c297f860d43d2d97ab24ab999d9b88a11a6113e39a309fd75b5fe06d42d664",
+      "new_errors": [
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "new_status": "review_required",
+      "old_errors": [
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "old_status": "incorrect",
+      "semantic_change": "An unparsed number/fee or malformed presentation is not a bound counterexample. Preserve the full answer and require independent review.",
+      "test": "test_table_quote_time_and_relationship_controls_preserve_errors",
+      "variant": {}
+    },
+    {
+      "frozen_line": 528,
+      "frozen_test_file": "test_source_semantics.py",
+      "independent_full_answer_review_required": true,
+      "input_sha256": "9ad6da9ccc5aec6f5b35292e67dfec3a224ee26eab15d7670483a7c213447ebe",
+      "new_errors": [
+        "unparsed_query_time_provenance",
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "new_status": "review_required",
+      "old_errors": [
+        "unparsed_query_time_provenance",
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "old_status": "incorrect",
+      "semantic_change": "An unparsed number/fee or malformed presentation is not a bound counterexample. Preserve the full answer and require independent review.",
+      "test": "test_table_quote_time_and_relationship_controls_preserve_errors",
+      "variant": {}
+    },
+    {
+      "frozen_line": 528,
+      "frozen_test_file": "test_source_semantics.py",
+      "independent_full_answer_review_required": true,
+      "input_sha256": "1f20947026925f3ed1d1dc9dbbc89cf3b74c04684c2948043cb5d803ea4e262f",
+      "new_errors": [
+        "unparsed_query_time_provenance",
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "new_status": "review_required",
+      "old_errors": [
+        "unparsed_query_time_provenance",
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "old_status": "incorrect",
+      "semantic_change": "An unparsed number/fee or malformed presentation is not a bound counterexample. Preserve the full answer and require independent review.",
+      "test": "test_table_quote_time_and_relationship_controls_preserve_errors",
+      "variant": {}
+    },
+    {
+      "frozen_line": 528,
+      "frozen_test_file": "test_source_semantics.py",
+      "independent_full_answer_review_required": true,
+      "input_sha256": "cab7153fd0e4637f5aa31d8a56bd0c648039795fa3510ba965ffa4436fbe2513",
+      "new_errors": [
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "new_status": "review_required",
+      "old_errors": [
+        "unbound_numeric_claim",
+        "unparsed_additional_prose"
+      ],
+      "old_status": "incorrect",
+      "semantic_change": "An unparsed number/fee or malformed presentation is not a bound counterexample. Preserve the full answer and require independent review.",
+      "test": "test_table_quote_time_and_relationship_controls_preserve_errors",
+      "variant": {}
+    },
+    {
+      "frozen_line": 541,
+      "frozen_test_file": "test_source_semantics.py",
+      "independent_full_answer_review_required": true,
+      "input_sha256": "72155bfcca7f2d335c0a1a9e1b32b212b2940d00b285a5ea37a2d24c1a8585a2",
+      "new_errors": [
+        "unparsed_entity_relation",
+        "unparsed_additional_prose"
+      ],
+      "new_status": "review_required",
+      "old_errors": [
+        "wrong_entity",
+        "unparsed_additional_prose"
+      ],
+      "old_status": "incorrect",
+      "semantic_change": "Missing source joins do not disprove a relationship without a declared complete catalog. Known foreign parents remain errors.",
+      "test": "test_table_quote_time_and_relationship_controls_preserve_errors",
+      "variant": {
+        "change": "missing_source"
+      }
+    },
+    {
+      "frozen_line": 541,
+      "frozen_test_file": "test_source_semantics.py",
+      "independent_full_answer_review_required": true,
+      "input_sha256": "d7865398360c61a085ac753afdd674a999c0f23655d8af2ef0476178f33f6283",
+      "new_errors": [
+        "unparsed_entity_relation",
+        "unparsed_additional_prose"
+      ],
+      "new_status": "review_required",
+      "old_errors": [
+        "wrong_entity",
+        "unparsed_additional_prose"
+      ],
+      "old_status": "incorrect",
+      "semantic_change": "Missing source joins do not disprove a relationship without a declared complete catalog. Known foreign parents remain errors.",
+      "test": "test_table_quote_time_and_relationship_controls_preserve_errors",
+      "variant": {
+        "change": "other_material"
+      }
+    }
+  ],
+  "distinct_changed_calls": 40,
+  "forbidden_input_or_io_attempts": [],
+  "frozen_commit": "607ad9fe8fa3ad8ead11afa8e583172c9a33e7af",
+  "frozen_helper_sha256": "68964a48f9d688038ab318471e4279a153655d42b0b53ddefa1d8e0113feb75e",
+  "kind": "classification_migration_explanation_not_a_test_pass",
+  "method": "Replay frozen test source; compare old and new status per exact input; capture all changed assertions without claiming this diagnostic is a passing regression.",
+  "new_harness_sha256": "0086140f201fa63e8438e79bb74960dbdef1bbfa362126f05de1c90732441b7b",
+  "no_unknown_or_negative_became_automatic_correct": true,
+  "old_assertion_edits": [
+    {
+      "file": "acceptance/tests/test_common_formats.py",
+      "line": 56,
+      "new_expected": "review_required",
+      "old_expected": "incorrect",
+      "test": "acceptance.tests.test_common_formats.CommonFormatTests.test_all_negative_controls_remain_blocked",
+      "variant": {
+        "subtest": "test_all_negative_controls_remain_blocked (acceptance.tests.test_common_formats.CommonFormatTests) (family='v2_ordered_list', variant='extra_charge_under_ordinal')"
+      }
+    },
+    {
+      "file": "acceptance/tests/test_common_formats.py",
+      "line": 56,
+      "new_expected": "review_required",
+      "old_expected": "incorrect",
+      "test": "acceptance.tests.test_common_formats.CommonFormatTests.test_all_negative_controls_remain_blocked",
+      "variant": {
+        "subtest": "test_all_negative_controls_remain_blocked (acceptance.tests.test_common_formats.CommonFormatTests) (family='v2_inline_query_metadata', variant='metadata_followed_by_business_number')"
+      }
+    },
+    {
+      "file": "acceptance/tests/test_common_formats.py",
+      "line": 56,
+      "new_expected": "review_required",
+      "old_expected": "incorrect",
+      "test": "acceptance.tests.test_common_formats.CommonFormatTests.test_all_negative_controls_remain_blocked",
+      "variant": {
+        "subtest": "test_all_negative_controls_remain_blocked (acceptance.tests.test_common_formats.CommonFormatTests) (family='v2_parenthetical_amount', variant='extra_charge_in_parenthesis')"
+      }
+    },
+    {
+      "file": "acceptance/tests/test_common_formats.py",
+      "line": 56,
+      "new_expected": "review_required",
+      "old_expected": "incorrect",
+      "test": "acceptance.tests.test_common_formats.CommonFormatTests.test_all_negative_controls_remain_blocked",
+      "variant": {
+        "subtest": "test_all_negative_controls_remain_blocked (acceptance.tests.test_common_formats.CommonFormatTests) (family='v2_contextual_parts_table', variant='unproved_extra_column')"
+      }
+    },
+    {
+      "file": "acceptance/tests/test_common_formats.py",
+      "line": 56,
+      "new_expected": "review_required",
+      "old_expected": "incorrect",
+      "test": "acceptance.tests.test_common_formats.CommonFormatTests.test_all_negative_controls_remain_blocked",
+      "variant": {
+        "subtest": "test_all_negative_controls_remain_blocked (acceptance.tests.test_common_formats.CommonFormatTests) (family='v2_source_linked_part', variant='nonexistent_part')"
+      }
+    },
+    {
+      "file": "acceptance/tests/test_common_formats.py",
+      "line": 56,
+      "new_expected": "review_required",
+      "old_expected": "incorrect",
+      "test": "acceptance.tests.test_common_formats.CommonFormatTests.test_all_negative_controls_remain_blocked",
+      "variant": {
+        "subtest": "test_all_negative_controls_remain_blocked (acceptance.tests.test_common_formats.CommonFormatTests) (family='v2_key_value_table', variant='extra_unsupported_row')"
+      }
+    },
+    {
+      "file": "acceptance/tests/test_common_formats.py",
+      "line": 56,
+      "new_expected": "review_required",
+      "old_expected": "incorrect",
+      "test": "acceptance.tests.test_common_formats.CommonFormatTests.test_all_negative_controls_remain_blocked",
+      "variant": {
+        "subtest": "test_all_negative_controls_remain_blocked (acceptance.tests.test_common_formats.CommonFormatTests) (family='v2_record_count_and_total', variant='wrong_record_count')"
+      }
+    },
+    {
+      "file": "acceptance/tests/test_common_formats.py",
+      "line": 56,
+      "new_expected": "review_required",
+      "old_expected": "incorrect",
+      "test": "acceptance.tests.test_common_formats.CommonFormatTests.test_all_negative_controls_remain_blocked",
+      "variant": {
+        "subtest": "test_all_negative_controls_remain_blocked (acceptance.tests.test_common_formats.CommonFormatTests) (family='v2_record_count_and_total', variant='wrong_total')"
+      }
+    },
+    {
+      "file": "acceptance/tests/test_common_formats.py",
+      "line": 75,
+      "new_expected": "review_required",
+      "old_expected": "incorrect",
+      "test": "acceptance.tests.test_common_formats.CommonFormatTests.test_numbered_lists_preserve_every_business_item",
+      "variant": {
+        "extra": "3. 加收款：61.25 USD",
+        "marker": "8. ",
+        "subtest": "test_numbered_lists_preserve_every_business_item (acceptance.tests.test_common_formats.CommonFormatTests) (marker='8. ')",
+        "text": "订单 SO-2026-Z88001\n1. 合同金额：328.40 USD\n2. 订单状态：待发货",
+        "variant": "订单 SO-2026-Z88001\n8. 合同金额：328.40 USD\n8. 订单状态：待发货"
+      }
+    },
+    {
+      "file": "acceptance/tests/test_common_formats.py",
+      "line": 75,
+      "new_expected": "review_required",
+      "old_expected": "incorrect",
+      "test": "acceptance.tests.test_common_formats.CommonFormatTests.test_numbered_lists_preserve_every_business_item",
+      "variant": {
+        "extra": "3. 加收款：61.25 USD",
+        "marker": "8) ",
+        "subtest": "test_numbered_lists_preserve_every_business_item (acceptance.tests.test_common_formats.CommonFormatTests) (marker='8) ')",
+        "text": "订单 SO-2026-Z88001\n1. 合同金额：328.40 USD\n2. 订单状态：待发货",
+        "variant": "订单 SO-2026-Z88001\n8) 合同金额：328.40 USD\n8) 订单状态：待发货"
+      }
+    },
+    {
+      "file": "acceptance/tests/test_common_formats.py",
+      "line": 75,
+      "new_expected": "review_required",
+      "old_expected": "incorrect",
+      "test": "acceptance.tests.test_common_formats.CommonFormatTests.test_numbered_lists_preserve_every_business_item",
+      "variant": {
+        "extra": "3. 加收款：61.25 USD",
+        "marker": "(8) ",
+        "subtest": "test_numbered_lists_preserve_every_business_item (acceptance.tests.test_common_formats.CommonFormatTests) (marker='(8) ')",
+        "text": "订单 SO-2026-Z88001\n1. 合同金额：328.40 USD\n2. 订单状态：待发货",
+        "variant": "订单 SO-2026-Z88001\n(8) 合同金额：328.40 USD\n(8) 订单状态：待发货"
+      }
+    },
+    {
+      "file": "acceptance/tests/test_common_formats.py",
+      "line": 75,
+      "new_expected": "review_required",
+      "old_expected": "incorrect",
+      "test": "acceptance.tests.test_common_formats.CommonFormatTests.test_numbered_lists_preserve_every_business_item",
+      "variant": {
+        "extra": "3. 加收款：61.25 USD",
+        "marker": "（8） ",
+        "subtest": "test_numbered_lists_preserve_every_business_item (acceptance.tests.test_common_formats.CommonFormatTests) (marker='（8） ')",
+        "text": "订单 SO-2026-Z88001\n1. 合同金额：328.40 USD\n2. 订单状态：待发货",
+        "variant": "订单 SO-2026-Z88001\n（8） 合同金额：328.40 USD\n（8） 订单状态：待发货"
+      }
+    },
+    {
+      "file": "acceptance/tests/test_common_formats.py",
+      "line": 75,
+      "new_expected": "review_required",
+      "old_expected": "incorrect",
+      "test": "acceptance.tests.test_common_formats.CommonFormatTests.test_numbered_lists_preserve_every_business_item",
+      "variant": {
+        "extra": "3. 加收款：61.25 USD",
+        "marker": "  8. ",
+        "subtest": "test_numbered_lists_preserve_every_business_item (acceptance.tests.test_common_formats.CommonFormatTests) (marker='  8. ')",
+        "text": "订单 SO-2026-Z88001\n1. 合同金额：328.40 USD\n2. 订单状态：待发货",
+        "variant": "订单 SO-2026-Z88001\n  8. 合同金额：328.40 USD\n  8. 订单状态：待发货"
+      }
+    },
+    {
+      "file": "acceptance/tests/test_common_formats.py",
+      "line": 86,
+      "new_expected": "review_required",
+      "old_expected": "incorrect",
+      "test": "acceptance.tests.test_common_formats.CommonFormatTests.test_parenthetical_prefix_suffix_and_nested_notes_keep_numeric_assertions",
+      "variant": {
+        "amount": "（订单记录）328.40 USD",
+        "subtest": "test_parenthetical_prefix_suffix_and_nested_notes_keep_numeric_assertions (acceptance.tests.test_common_formats.CommonFormatTests) (amount='（订单记录）328.40 USD')",
+        "text": "订单 SO-2026-Z88001\n合同金额：328.40 USD（订单记录）\n订单状态：待发货",
+        "variant": "订单 SO-2026-Z88001\n合同金额：（订单记录）328.40 USD\n订单状态：待发货"
+      }
+    },
+    {
+      "file": "acceptance/tests/test_common_formats.py",
+      "line": 86,
+      "new_expected": "review_required",
+      "old_expected": "incorrect",
+      "test": "acceptance.tests.test_common_formats.CommonFormatTests.test_parenthetical_prefix_suffix_and_nested_notes_keep_numeric_assertions",
+      "variant": {
+        "amount": "328.40 USD（订单记录）",
+        "subtest": "test_parenthetical_prefix_suffix_and_nested_notes_keep_numeric_assertions (acceptance.tests.test_common_formats.CommonFormatTests) (amount='328.40 USD（订单记录）')",
+        "text": "订单 SO-2026-Z88001\n合同金额：328.40 USD（订单记录）\n订单状态：待发货",
+        "variant": "订单 SO-2026-Z88001\n合同金额：328.40 USD（订单记录）\n订单状态：待发货"
+      }
+    },
+    {
+      "file": "acceptance/tests/test_common_formats.py",
+      "line": 86,
+      "new_expected": "review_required",
+      "old_expected": "incorrect",
+      "test": "acceptance.tests.test_common_formats.CommonFormatTests.test_parenthetical_prefix_suffix_and_nested_notes_keep_numeric_assertions",
+      "variant": {
+        "amount": "328.40 USD（来源（订单记录））",
+        "subtest": "test_parenthetical_prefix_suffix_and_nested_notes_keep_numeric_assertions (acceptance.tests.test_common_formats.CommonFormatTests) (amount='328.40 USD（来源（订单记录））')",
+        "text": "订单 SO-2026-Z88001\n合同金额：328.40 USD（订单记录）\n订单状态：待发货",
+        "variant": "订单 SO-2026-Z88001\n合同金额：328.40 USD（来源（订单记录））\n订单状态：待发货"
+      }
+    },
+    {
+      "file": "acceptance/tests/test_common_formats.py",
+      "line": 159,
+      "new_expected": "review_required",
+      "old_expected": "incorrect",
+      "test": "acceptance.tests.test_common_formats.CommonFormatTests.test_query_and_date_reference_parsing_does_not_eat_extra_assertions",
+      "variant": {
+        "subtest": "test_query_and_date_reference_parsing_does_not_eat_extra_assertions (acceptance.tests.test_common_formats.CommonFormatTests) (suffix='；另收61.25 USD')",
+        "suffix": "；另收61.25 USD",
+        "text": "订单 SO-2026-Z88001\n订单状态：待发货\n查询时间：2028 年 4 月 12 日 08:17（UTC）。"
+      }
+    },
+    {
+      "file": "acceptance/tests/test_common_formats.py",
+      "line": 159,
+      "new_expected": "review_required",
+      "old_expected": "incorrect",
+      "test": "acceptance.tests.test_common_formats.CommonFormatTests.test_query_and_date_reference_parsing_does_not_eat_extra_assertions",
+      "variant": {
+        "subtest": "test_query_and_date_reference_parsing_does_not_eat_extra_assertions (acceptance.tests.test_common_formats.CommonFormatTests) (suffix='。另收61.25 USD')",
+        "suffix": "。另收61.25 USD",
+        "text": "订单 SO-2026-Z88001\n订单状态：待发货\n查询时间：2028 年 4 月 12 日 08:17（UTC）。"
+      }
+    },
+    {
+      "file": "acceptance/tests/test_common_formats.py",
+      "line": 159,
+      "new_expected": "review_required",
+      "old_expected": "incorrect",
+      "test": "acceptance.tests.test_common_formats.CommonFormatTests.test_query_and_date_reference_parsing_does_not_eat_extra_assertions",
+      "variant": {
+        "subtest": "test_query_and_date_reference_parsing_does_not_eat_extra_assertions (acceptance.tests.test_common_formats.CommonFormatTests) (suffix='，另收61.25 USD')",
+        "suffix": "，另收61.25 USD",
+        "text": "订单 SO-2026-Z88001\n订单状态：待发货\n查询时间：2028 年 4 月 12 日 08:17（UTC）。"
+      }
+    },
+    {
+      "file": "acceptance/tests/test_common_formats.py",
+      "line": 159,
+      "new_expected": "review_required",
+      "old_expected": "incorrect",
+      "test": "acceptance.tests.test_common_formats.CommonFormatTests.test_query_and_date_reference_parsing_does_not_eat_extra_assertions",
+      "variant": {
+        "subtest": "test_query_and_date_reference_parsing_does_not_eat_extra_assertions (acceptance.tests.test_common_formats.CommonFormatTests) (suffix='\\n另收61.25 USD')",
+        "suffix": "\n另收61.25 USD",
+        "text": "订单 SO-2026-Z88001\n订单状态：待发货\n查询时间：2028 年 4 月 12 日 08:17（UTC）。"
+      }
+    },
+    {
+      "file": "acceptance/tests/test_common_formats.py",
+      "line": 165,
+      "new_expected": "review_required",
+      "old_expected": "incorrect",
+      "test": "acceptance.tests.test_common_formats.CommonFormatTests.test_query_and_date_reference_parsing_does_not_eat_extra_assertions",
+      "variant": {
+        "suffix": "\n另收61.25 USD",
+        "text": "订单 SO-2026-Z88001\n| 项目 | 查询结果 |\n|---|---|\n| 约定交付日期 | 2028年4月17日 |\n| 配送状态 | 已送达 |\n| 实际送达日期 | 2028年4月9日 |\n计划为4月17日；实际送达为4月9日。",
+        "variant": "订单 SO-2026-Z88001\n订单状态：待发货\n查询时间：2028 年 4 月 12 日 08:17（UTC+15:00）。"
+      }
+    },
+    {
+      "file": "acceptance/tests/test_source_semantics.py",
+      "line": 496,
+      "new_expected": "review_required",
+      "old_expected": "incorrect",
+      "test": "acceptance.tests.test_source_semantics.SourceSemanticsTests.test_common_format_normalization_never_rescues_explicit_wrong_values",
+      "variant": {
+        "subtest": "test_common_format_normalization_never_rescues_explicit_wrong_values (acceptance.tests.test_source_semantics.SourceSemanticsTests) (text='订单 SO-2026-99991\\n**合同金额：USD 123.50**；**订单状态：生产中**；**交付日期：2026年12月1日**\\n**另收999美元**')",
+        "text": "订单 SO-2026-99991\n**合同金额：USD 123.50**；**订单状态：生产中**；**交付日期：2026年12月1日**\n**另收999美元**"
+      }
+    },
+    {
+      "file": "acceptance/tests/test_source_semantics.py",
+      "line": 509,
+      "new_expected": "review_required",
+      "old_expected": "incorrect",
+      "test": "acceptance.tests.test_source_semantics.SourceSemanticsTests.test_independently_authored_format_handoff_and_five_negative_controls",
+      "variant": {
+        "case_id": "extra_unsupported_amount",
+        "subtest": "test_independently_authored_format_handoff_and_five_negative_controls (acceptance.tests.test_source_semantics.SourceSemanticsTests) (case='extra_unsupported_amount')"
+      }
+    },
+    {
+      "file": "acceptance/tests/test_source_semantics.py",
+      "line": 521,
+      "new_expected": "review_required",
+      "old_expected": "incorrect",
+      "test": "acceptance.tests.test_source_semantics.SourceSemanticsTests.test_table_quote_time_and_relationship_controls_preserve_errors",
+      "variant": {
+        "text": "订单 SO-2026-99001\n| 补件状态 | 补件数量 |\n| --- | --- |\n| 处理中 | 7件 | 19 USD |"
+      }
+    },
+    {
+      "file": "acceptance/tests/test_source_semantics.py",
+      "line": 521,
+      "new_expected": "review_required",
+      "old_expected": "incorrect",
+      "test": "acceptance.tests.test_source_semantics.SourceSemanticsTests.test_table_quote_time_and_relationship_controls_preserve_errors",
+      "variant": {
+        "text": "订单 SO-2026-99001\n| 补件状态 | 补件数量 |\n| --- | --- |\n| 处理中 | 7件 |\n额外费用：19 USD"
+      }
+    },
+    {
+      "file": "acceptance/tests/test_source_semantics.py",
+      "line": 528,
+      "new_expected": "review_required",
+      "old_expected": "incorrect",
+      "test": "acceptance.tests.test_source_semantics.SourceSemanticsTests.test_table_quote_time_and_relationship_controls_preserve_errors",
+      "variant": {
+        "text": "订单 SO-2026-99001\n订单状态：配送中\n查询时间：2027年2月3日 09:10 UTC\n另收19 USD"
+      }
+    },
+    {
+      "file": "acceptance/tests/test_source_semantics.py",
+      "line": 528,
+      "new_expected": "review_required",
+      "old_expected": "incorrect",
+      "test": "acceptance.tests.test_source_semantics.SourceSemanticsTests.test_table_quote_time_and_relationship_controls_preserve_errors",
+      "variant": {
+        "text": "订单 SO-2026-99001\n订单状态：配送中\n查询时间：2027年2月3日 09:10 UTC；另收19 USD"
+      }
+    },
+    {
+      "file": "acceptance/tests/test_source_semantics.py",
+      "line": 528,
+      "new_expected": "review_required",
+      "old_expected": "incorrect",
+      "test": "acceptance.tests.test_source_semantics.SourceSemanticsTests.test_table_quote_time_and_relationship_controls_preserve_errors",
+      "variant": {
+        "text": "订单 SO-2026-99001\n订单状态：配送中\n查询时间：19 USD"
+      }
+    },
+    {
+      "file": "acceptance/tests/test_source_semantics.py",
+      "line": 541,
+      "new_expected": "review_required",
+      "old_expected": "incorrect",
+      "test": "acceptance.tests.test_source_semantics.SourceSemanticsTests.test_table_quote_time_and_relationship_controls_preserve_errors",
+      "variant": {
+        "change": "missing_source",
+        "subtest": "test_table_quote_time_and_relationship_controls_preserve_errors (acceptance.tests.test_source_semantics.SourceSemanticsTests) (change='missing_source')",
+        "text": "订单 SO-2026-99001\n关联配件 Hinge BX-99001-24\n补件状态：处理中\n补件数量：7件"
+      }
+    },
+    {
+      "file": "acceptance/tests/test_source_semantics.py",
+      "line": 541,
+      "new_expected": "review_required",
+      "old_expected": "incorrect",
+      "test": "acceptance.tests.test_source_semantics.SourceSemanticsTests.test_table_quote_time_and_relationship_controls_preserve_errors",
+      "variant": {
+        "change": "other_material",
+        "subtest": "test_table_quote_time_and_relationship_controls_preserve_errors (acceptance.tests.test_source_semantics.SourceSemanticsTests) (change='other_material')",
+        "text": "订单 SO-2026-99001\n关联配件 Hinge BX-99002-24\n补件状态：处理中\n补件数量：7件"
+      }
+    }
+  ],
+  "original_fixture_bytes_and_old_evidence_modified": false,
+  "scope": "All common_score calls made by the frozen generic/source-semantics/development-recording test modules.",
+  "truthiness_assertions_clarified": [
+    {
+      "change": "assertFalse(None) used to conflate pending and false; now explicitly assert review_required for both unbound-fee variants.",
+      "test": "test_common_facts_uses_identical_catalog_rules_and_keeps_real_errors",
+      "variants": [
+        "English source labels plus unknown fee",
+        "Chinese source labels plus unknown fee"
+      ]
+    },
+    {
+      "change": "Unknown added fees require review; no authoritative fee field or applicable fee rule is provided to this API.",
+      "test": "test_common_known_numeric_definition_is_reviewable_not_a_row_number",
+      "variants": [
+        "unknown fee appended to meaning line",
+        "unknown fee on new line"
+      ]
+    }
+  ]
+}

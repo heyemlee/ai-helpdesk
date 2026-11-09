@@ -53,6 +53,7 @@ from typing import Any
 
 from app.core.embedder import EmbeddingUnavailable
 from app.core.lexical import index_text, query_tokens
+from app.core.policy_scope import PolicyMetadata, PolicyScope, current_scope, eligible, metadata, policy_digest
 from app.core.telemetry import span
 
 logger = logging.getLogger(__name__)
@@ -354,7 +355,7 @@ def fuse_candidates(
     unique: list[dict[str, Any]] = []
     seen: set[tuple[str, str]] = set()
     for row in fused:
-        key = (row["title"], row["content"])
+        key = (row.get("doc_id"), row.get("policy_revision"), row["title"], row["content"])
         if key not in seen:
             seen.add(key)
             unique.append(row)
@@ -417,6 +418,7 @@ class KnowledgeBase:
         整批一篇都不导：先校验，再动库。
         """
         default_category = normalize_category(category)
+        policies = [PolicyMetadata.model_validate(doc.get("policy") or {}) for doc in documents]
         wanted: list[str] = []
         for doc in documents:
             try:
@@ -431,7 +433,7 @@ class KnowledgeBase:
 
         results: list[dict[str, Any]] = []
         batch: dict[str, tuple[str, str]] = {}  # 本批内已处理的哈希 → (文档 id, 分类)
-        for doc, doc_category in zip(documents, wanted):
+        for doc, doc_category, policy in zip(documents, wanted, policies, strict=True):
             title = str(doc.get("title") or "").strip()
             content = str(doc.get("content") or "")
             chunks = self._chunk_text(content, chunk_size=CHUNK_SIZE)
@@ -440,7 +442,7 @@ class KnowledgeBase:
                                 "category": ""})
                 continue
 
-            digest = document_hash(title, content)
+            digest = policy_digest([title.strip(), content.strip(), policy.model_dump(mode="json")])
             known_id, known_category = batch.get(digest, (None, ""))
             if known_id is None:
                 known = await self._store.kb_doc_find_by_hash(digest)
@@ -464,18 +466,15 @@ class KnowledgeBase:
                                 "category": known_category})
                 continue
 
-            restored = await self._restore_legacy(title, content, chunks, digest)
-            if restored is not None:
-                batch[digest] = restored
-                results.append({"id": restored[0], "title": title, "status": "restored", "chunks": 0,
-                                "category": restored[1]})
-                continue
-
             # 文档 ID 由标题和正文算出来，不是随机数。导入因此在并发下也是幂等的：
             # 两个实例同时导同一篇（空库启动时两边一起导默认文档就是这种情况），
             # 算出的文档 ID 和分片 ID 完全相同，后到的插入落空，库里只有一份。
             # 用随机 ID 的话，"先查有没有、再写"之间的那道缝会让同一篇进去两次。
             doc_id = f"doc_{digest[:20]}"
+            # A reviewed document can change policy while retaining its URL.
+            # Its old import identity must then be free to create a distinct version.
+            while (occupied := await self._store.kb_doc_get(doc_id)) and occupied["content_hash"] != digest:
+                doc_id = "doc_" + policy_digest([digest, doc_id, occupied["policy_revision"]])[:20]
             now = time.time()
             # 向量先算完再落库：这是导入里唯一慢的一步，放在登记文档之前，
             # 文档记录和它的分片之间就只隔着两次写入。整篇的分片一批送去算；
@@ -501,6 +500,7 @@ class KnowledgeBase:
             ]
             inserted = await self._store.kb_doc_add({
                 "id": doc_id,
+                "policy": policy.model_dump(mode="json"), "policy_revision": digest,
                 "title": title,
                 "content": content,
                 "content_hash": digest,
@@ -511,6 +511,10 @@ class KnowledgeBase:
                 "created_at": now,
                 "category": doc_category,
             })
+            if not inserted:
+                existing = await self._store.kb_doc_get(doc_id)
+                if not existing or existing["content_hash"] != digest:
+                    raise ValueError("policy_changed_during_import; retry import")
             try:
                 # 文档记录是别人刚写的也照样写分片：ID 相同，已有的不会重复，
                 # 缺的补上——两边谁先谁后，最后都是完整的一篇。
@@ -547,33 +551,6 @@ class KnowledgeBase:
             + (f"，跳过 {skipped} 篇（重复或空）" if skipped else "")
         )
         return results
-
-    async def _restore_legacy(
-        self, title: str, content: str, chunks: list[str], digest: str
-    ) -> tuple[str, str] | None:
-        """
-        这次导入的如果正是某篇历史文档，把原文补给它，返回它的 (id, 分类)。
-
-        长文档的历史分片拼不回原文（切片时换行变成了句号），所以它的哈希和
-        重新导入的这份对不上，按文档判重会漏过去，老文档就在库里出现两次。
-        这里按老办法再认一遍：分片 ID 曾经是 md5(标题 + 片段)，同一份文档切出来
-        的 ID 必然逐片相同。全部对上、都归在同一篇历史文档名下、片数也一致，
-        才认定是同一篇——差一片都不算，那是另一个版本。
-        """
-        old_ids = [hashlib.md5(f"{title}\n{chunk}".encode()).hexdigest() for chunk in chunks]
-        owners = await self._store.kb_chunk_owners(old_ids)
-        if len(owners) != len(set(old_ids)) or len(set(owners.values())) != 1:
-            return None
-        doc = await self._store.kb_doc_get(next(iter(owners.values())))
-        if doc is None or doc["origin"] != ORIGIN_LEGACY or doc["chunks"] != len(set(old_ids)):
-            return None
-        # 只补原文。来源和导入时间不动：那次导入是从哪来的当时没记，
-        # 不能拿这一次的文件名去顶替。
-        await self._store.kb_doc_update(doc["id"], {
-            "content": content, "content_hash": digest, "origin": ORIGIN_ORIGINAL,
-        })
-        logger.info(f"历史文档 {doc['id']}（{title!r}）已由重新导入的原文补全")
-        return doc["id"], stored_category(doc["category"])
 
     async def ensure_documents(self) -> int:
         """
@@ -670,6 +647,8 @@ class KnowledgeBase:
             "chars": row.get("chars", len(head)),
             "created_at": row["created_at"],
             "category": stored_category(row.get("category", "")),
+            "policy": metadata(row.get("policy")).model_dump(mode="json"),
+            "policy_revision": row.get("policy_revision", "legacy"),
         }
 
     @staticmethod
@@ -680,7 +659,7 @@ class KnowledgeBase:
         return facets, uncategorized
 
     async def list_documents(
-        self, query: str = "", limit: int = 100, offset: int = 0, category: str | None = None,
+        self, query: str = "", limit: int = 100, offset: int = 0, category: str | None = None, actor=None,
     ) -> dict[str, Any]:
         """
         文档列表。query 为空是浏览全部（新导入的在前）；非空时按空白拆成词，
@@ -693,6 +672,7 @@ class KnowledgeBase:
         `categories` 是每个大类里满足筛选词的篇数，不受 category 影响——工作台
         拿它画分类目录：选中了"送货与收货"，其它分类各有几篇匹配也照样看得见。
         """
+        access = {"audiences": actor.readable_audiences()} if actor is not None else {}
         terms = [t for t in (query or "").split() if t][:8]
         selected = (category or "").strip()
         filters: dict[str, list[str]] = {}
@@ -709,7 +689,7 @@ class KnowledgeBase:
             applied = key or selected
 
         rows, matched = await self._store.kb_doc_list(
-            terms, limit=limit, offset=offset, with_content=bool(terms), **filters
+            terms, limit=limit, offset=offset, with_content=bool(terms), **filters, **access
         )
         documents = []
         for row in rows:
@@ -722,9 +702,9 @@ class KnowledgeBase:
                 }
             documents.append(item)
         facets, uncategorized = self._category_facets(
-            await self._store.kb_doc_category_counts(terms)
+            await self._store.kb_doc_category_counts(terms, **access)
         )
-        stats = await self._store.kb_doc_stats()
+        stats = await self._store.kb_doc_stats(**access)
         return {
             "query": " ".join(terms),
             "category": applied,
@@ -734,12 +714,13 @@ class KnowledgeBase:
             "uncategorized": uncategorized,
             "total_documents": stats["total"],
             "legacy_documents": stats["legacy"],
-            "total_chunks": await self._store.kb_count(),
+            "total_chunks": await self._store.kb_count(**access),
         }
 
-    async def category_overview(self) -> dict[str, Any]:
+    async def category_overview(self, actor=None) -> dict[str, Any]:
         """全部大类（按 CATEGORIES 的顺序）和各自的篇数，外加未分类的篇数。"""
-        facets, uncategorized = self._category_facets(await self._store.kb_doc_category_counts([]))
+        access = {"audiences": actor.readable_audiences()} if actor is not None else {}
+        facets, uncategorized = self._category_facets(await self._store.kb_doc_category_counts([], **access))
         return {"categories": facets, "uncategorized": uncategorized}
 
     async def set_document_category(self, doc_id: str, category: Any) -> dict[str, Any] | None:
@@ -758,10 +739,12 @@ class KnowledgeBase:
             logger.info(f"文档 {doc_id} 的分类改为 {key or '未分类'}")
         return self._present({**row, "category": key})
 
-    async def get_document(self, doc_id: str) -> dict[str, Any] | None:
+    async def get_document(self, doc_id: str, actor=None) -> dict[str, Any] | None:
         """一篇文档的正文和它名下的分片。不存在返回 None。"""
         row = await self._store.kb_doc_get(doc_id)
         if row is None:
+            return None
+        if actor is not None and actor.readable_audiences() is not None and metadata(row.get("policy")).audience not in actor.readable_audiences():
             return None
         passages = await self._store.kb_doc_chunks(doc_id)
         return {
@@ -789,12 +772,13 @@ class KnowledgeBase:
         briefs = await self._store.kb_doc_briefs(wanted)
         return {b["id"]: document_heading(b["head"]) or b["title"] for b in briefs}
 
-    async def document_stats(self) -> dict[str, int]:
-        stats = await self._store.kb_doc_stats()
+    async def document_stats(self, actor=None) -> dict[str, int]:
+        access = {"audiences": actor.readable_audiences()} if actor is not None else {}
+        stats = await self._store.kb_doc_stats(**access)
         return {
             "total_documents": stats["total"],
             "legacy_documents": stats["legacy"],
-            "total_chunks": await self._store.kb_count(),
+            "total_chunks": await self._store.kb_count(**access),
         }
 
     async def search_async(self, query: str, top_k: int = 5) -> list[dict[str, Any]]:
@@ -821,6 +805,9 @@ class KnowledgeBase:
         if not (query or "").strip():
             return []
 
+        scope = current_scope()
+        # Freeze one retrieval's timestamp across both channels.
+        scope = scope.model_copy(update={"as_of": scope.at()})
         recall_k = max(top_k * 3, 10)
         tokens = query_tokens(query)
         with span(
@@ -838,11 +825,11 @@ class KnowledgeBase:
                 embedding = None
             if embedding is None:
                 dense = []
-                lexical = await self._store.kb_search_lexical(tokens, None, recall_k)
+                lexical = await self._store.kb_search_lexical(tokens, None, recall_k, scope=scope)
             else:
                 dense, lexical = await asyncio.gather(
-                    self._store.kb_search(embedding, recall_k),
-                    self._store.kb_search_lexical(tokens, embedding, recall_k),
+                    self._store.kb_search(embedding, recall_k, scope=scope),
+                    self._store.kb_search_lexical(tokens, embedding, recall_k, scope=scope),
                     return_exceptions=True,
                 )
                 failed = next(
@@ -855,7 +842,7 @@ class KnowledgeBase:
                     # 不是向量的问题时，这一次照样会失败，错误原样抛出去。
                     logger.warning(f"带向量的检索失败，这次只走关键词: {type(failed).__name__}: {failed}")
                     dense = []
-                    lexical = await self._store.kb_search_lexical(tokens, None, recall_k)
+                    lexical = await self._store.kb_search_lexical(tokens, None, recall_k, scope=scope)
             # 没有 semantic 属性的 Embedder（测试里的替身）按"有语义"处理
             semantic = getattr(self._embedder, "semantic", True)
             fused = fuse_candidates(dense, lexical, semantic)[:top_k]
@@ -869,6 +856,10 @@ class KnowledgeBase:
                 "retrieval": r["retrieval"],
                 "doc_id": r.get("doc_id", ""),
                 "chunk_id": r.get("id", ""),
+                "policy": metadata(r.get("policy")).model_dump(mode="json"),
+                "policy_revision": r.get("policy_revision", "legacy"),
+                "policy_scope": current_scope().model_dump(mode="json"),
+                "policy_as_of": scope.as_of.isoformat(),
             }
             for r in fused
         ]
@@ -936,7 +927,161 @@ class KnowledgeBase:
         """
         kb_revision = getattr(self._store, "kb_revision", None)
         revision = await kb_revision() if kb_revision is not None else ""
-        return f"{revision}/{getattr(self._embedder, 'epoch', 0)}"
+        scope = current_scope()
+        rows = await self._store.kb_policy_state()
+        # Clock-only transitions must also revoke cache and durable run memo entries.
+        phase = [(r["id"], r["policy_revision"], eligible(metadata(r.get("policy")), scope)) for r in rows]
+        return policy_digest([revision, getattr(self._embedder, "epoch", 0), scope.model_dump(mode="json"), phase])
+
+    async def set_document_policy(self, doc_id: str, policy: PolicyMetadata, expected_revision: str):
+        row = await self._store.kb_doc_get(doc_id)
+        if row is None:
+            return None
+        if row["policy_revision"] != expected_revision:
+            raise ValueError("policy_revision_changed")
+        digest = policy_digest([row["title"].strip(), row["content"].strip(), policy.model_dump(mode="json")])
+        if not await self._store.kb_policy_update(doc_id, policy.model_dump_json(), expected_revision, digest):
+            raise ValueError("policy_revision_changed")
+        return await self.get_document(doc_id)
+
+    async def _policy_projection_candidates(self, task, *, conn=None, lock=True):
+        from app.core import policy_completion as pc
+        scope = PolicyScope.model_validate(task["scope"])
+        records = await self._store.kb_fact_candidates(scope, conn=conn, lock=lock)
+        documents = []
+        for record in records:
+            document = pc.document_payload(record)
+            if not pc.subject_matches(task, document):
+                continue
+            if (not eligible(metadata(document["policy"]), scope)
+                    or not pc.document_valid(document, self._chunk_text)):
+                return None
+            documents.append(document)
+        return documents
+
+    async def _policy_subject_identity(self, task, *, conn=None, lock=True):
+        from app.core import policy_completion as pc
+        records = await self._store.kb_fact_candidates(
+            PolicyScope.model_validate(task["scope"]), conn=conn, lock=lock, identity=True)
+        documents = []
+        for record in records:
+            document = pc.document_payload(record)
+            if not pc.subject_matches(task, document):
+                continue
+            if (document["policy"]["version"] == "legacy-unreviewed"
+                    or not pc.document_valid(document, self._chunk_text)):
+                return None
+            documents.append(document)
+        return pc.candidate_snapshot(task, documents) if documents else None
+
+    async def bind_policy_projection(self, task, knowledge_trace):
+        """Sign only an authentic, complete current document at the RAG boundary."""
+        from app.core import policy_completion as pc
+        from app.core.fact_completion import current_task
+        if not isinstance(knowledge_trace, dict):
+            return None
+        if (pc.blocked_evidence(knowledge_trace) or knowledge_trace.get("attempted") is not True
+                or knowledge_trace.get("policy_lookup") is not True or knowledge_trace.get("lookup_status") not in {"found", "empty"}
+                or (knowledge_trace.get("evidence_ok") is not None and knowledge_trace.get("evidence_ok") is not True)
+                or not pc.valid_task(task) or current_task() != task
+                or current_scope().model_dump(mode="json") != task["scope"]):
+            return None
+        if knowledge_trace.get("lookup_status") == "empty":
+            if pc.empty_state(task, knowledge_trace) is None:
+                return None
+            documents = await self._policy_projection_candidates(task)
+            if documents != []:
+                return None
+            identity = await self._policy_subject_identity(task)
+            proof = pc.bind_empty(task, knowledge_trace, candidates=pc.candidate_snapshot(task, documents), identity=identity)
+            return ({**knowledge_trace, "_policy_dispatch": proof} if proof else None)
+        candidates = {}
+        for ref in knowledge_trace.get("sources", []):
+            try:
+                # Authority is resolved before looking at any claimed title or
+                # version: a malformed same-target reference is never unrelated.
+                record = await self._store.kb_fact_document(ref["doc_id"])
+                if not record:
+                    return None
+                document = pc.document_payload(record)
+                if (not pc.document_valid(document, self._chunk_text)
+                        or not pc.source_valid(task, ref, document, require_subject=False)):
+                    return None
+                if not pc.subject_matches(task, document):
+                    requested, actual = pc.subject_name(task["subject"]), pc.document_subject(task, document)
+                    if requested in actual or actual in requested:
+                        return None  # qualified/partial names do not prove unrelatedness
+                    continue  # authenticated but genuinely different literal policy name
+                entry = candidates.setdefault(document["id"], {"document": document, "sources": []})
+                entry["sources"].append(pc.canonical_source(ref, document))
+            except (KeyError, TypeError, ValueError, AttributeError):
+                return None
+        try:
+            documents = await self._policy_projection_candidates(task)
+            if documents is not None and len(documents) > 1:
+                # This is an authoritative catalog finding, not a retrieval
+                # failure. Preserve it when the caller takes the answer path.
+                knowledge_trace.update(sources=[], lookup_status="conflict", evidence_ok=False,
+                    evidence_issues=["ambiguous_applicable_policy_versions"],
+                    conflicts=[{"kind": "applicable_policy_versions",
+                                "candidate_set": pc.candidate_snapshot(task, documents)}])
+                knowledge_trace.pop("_policy_dispatch", None)
+                return None
+            if len(candidates) != 1:
+                return None
+            entry = next(iter(candidates.values()))
+            if documents != [entry["document"]]:
+                return None
+        except (KeyError, TypeError, ValueError, AttributeError):
+            return None
+        proof = pc.bind_sources(task, entry["sources"], entry["document"],
+            candidates=pc.candidate_snapshot(task, documents), state=pc.trace_state(knowledge_trace))
+        return ({**knowledge_trace, "sources": entry["sources"], "_policy_dispatch": proof}
+                if proof else None)
+
+    async def validate_policy_projection(self, receipt, refs, *, conn=None, lock=True):
+        """Re-read actual body/chunks/metadata; revision equality alone is insufficient."""
+        from app.core import policy_completion as pc
+        try:
+            task, proof = receipt["task"], receipt["proof"]
+            if receipt["kind"] != pc.KIND or not pc.valid_task(task) or refs != proof["sources"]:
+                return False
+            knowledge = {**proof["state"], "sources": refs, "_policy_dispatch": proof}
+            if pc.projection(task, knowledge) is None:
+                return False
+            if conn is not None and self._store.backend != "postgres_pgvector":
+                return False
+            documents = await self._policy_projection_candidates(task, conn=conn, lock=lock)
+            if documents is None or pc.candidate_snapshot(task, documents) != proof["candidate_set"]:
+                return False
+            if proof.get("outcome") == "empty":
+                return (documents == [] and refs == [] and proof["document"] is None
+                        and await self._policy_subject_identity(task, conn=conn, lock=lock) == proof.get("subject_identity"))
+            if len(documents) != 1:
+                return False
+            document = documents[0]
+            return (document == proof["document"] and pc.document_valid(document, self._chunk_text)
+                    and all(pc.source_valid(task, ref, document) for ref in refs))
+        except (KeyError, TypeError, ValueError, AttributeError):
+            return False
+
+    async def validate_policy_refs(self, refs, *, conn=None, lock=True):
+        for ref in refs:
+            if not ref.get("policy_revision") or not ref.get("policy_scope"):
+                # Empty scope is serialized with explicit keys; missing metadata is legacy/untrusted.
+                return False
+            if conn is not None and self._store.backend == "postgres_pgvector":
+                # GET uses its existing read-only snapshot without another pool
+                # checkout. Commit/approval retains the row lock until commit.
+                row = await conn.fetchrow("SELECT * FROM policy_documents WHERE id=$1" + (" FOR SHARE" if lock else ""), ref["doc_id"])
+            else:
+                row = await self._store.kb_doc_get(ref["doc_id"])
+            if not row or row["policy_revision"] != ref["policy_revision"]:
+                return False
+            scope = PolicyScope.model_validate(ref["policy_scope"])
+            if not eligible(metadata(row["policy"]), scope):
+                return False
+        return True
 
     # ── 内部方法 ──────────────────────────────────────────────────────────────
 

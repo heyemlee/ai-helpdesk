@@ -62,6 +62,9 @@ export function TurnExplanation({ message, routingConfig, onInspect }: {
   const rows: Array<[Key, ReactNode]> = []
   const intent = <code className="mono">{meta?.intent ?? '—'}</code>
   const unavailable = !!result.service_unavailable
+  const policyProjected = result.answer_origin === 'verified_policy_projection' && result.answer_model_invoked === false
+  const imageProjected = result.answer_origin === 'verified_image_projection' && result.answer_model_invoked === false
+  const projected = imageProjected || policyProjected || result.answer_origin === 'verified_fact_projection' && result.answer_model_invoked === false
   // 准备阶段因为模型不可用整段跳过了（后端在同一处把检索和委派一起跳过，只在
   // business_data 上留了记号）
   const prepSkipped = unavailable && meta?.business_data?.outcome === 'model_unavailable'
@@ -108,7 +111,9 @@ export function TurnExplanation({ message, routingConfig, onInspect }: {
   }
 
   // 3. 专家选择
-  if (unavailable) {
+  if (projected) {
+    rows.push(['lm.route', t(imageProjected ? 'lm.route.imageFacts' : policyProjected ? 'lm.route.policyFacts' : 'lm.route.facts')])
+  } else if (unavailable) {
     // 选中过谁照实说（非流式和流式半途失败时后端报了），但没有谁作答
     const picked = routing?.primary_agent
     rows.push(['lm.route', <>
@@ -161,7 +166,7 @@ export function TurnExplanation({ message, routingConfig, onInspect }: {
     paused: 'lm.data.paused',
   }
   const dataKey = data?.outcome ? DATA_KEYS[data.outcome] : undefined
-  rows.push(['lm.data', dataKey
+  rows.push(['lm.data', imageProjected ? t('lm.data.imageFacts') : dataKey
     ? <>
         {t(dataKey, { dbs, reason: data?.reason || t('lm.data.noReason') })}
         {data?.trace_id && <> <span className="mono">trace {data.trace_id}</span></>}
@@ -206,7 +211,8 @@ export function TurnExplanation({ message, routingConfig, onInspect }: {
 
   // 5. 回答检查
   const cuts = result.policy_violations ?? []
-  rows.push(['lm.check', unavailable ? t('lm.check.none') : cuts.length
+  const replaced = result.handoff_review?.outcome === 'replaced_by_verified_draft'
+  rows.push(['lm.check', projected ? t(imageProjected ? 'lm.check.imageFacts' : policyProjected ? 'lm.check.policyFacts' : 'lm.check.facts') : unavailable ? t('lm.check.none') : replaced ? t('lm.check.replaced') : cuts.length
     ? t('lm.check.cut', {
         n: cuts.length,
         rule: [...new Set(cuts.map((c) => t(`policy.${c.rule}` as Key)))].join(', '),
@@ -216,7 +222,9 @@ export function TurnExplanation({ message, routingConfig, onInspect }: {
   // 6. 转人工
   const conf = result.answer_confidence
   const confText = conf === undefined ? '—' : num(conf)
-  if (unavailable) {
+  if (projected) {
+    rows.push(['lm.handoff', t(imageProjected ? 'lm.handoff.imageFacts' : policyProjected ? 'lm.handoff.policyFacts' : 'lm.handoff.facts')])
+  } else if (unavailable) {
     rows.push(['lm.handoff', t('lm.handoff.unavailable')])
   } else if (result.handoff) {
     rows.push(['lm.handoff', <>
@@ -232,7 +240,7 @@ export function TurnExplanation({ message, routingConfig, onInspect }: {
       {th !== undefined && <> {t('lm.handoff.threshold', { v: num(th) })}</>}
     </>])
   } else {
-    rows.push(['lm.handoff', t('lm.handoff.none', { conf: confText })])
+    rows.push(['lm.handoff', t(replaced ? 'lm.handoff.reconciled' : 'lm.handoff.none', { conf: confText })])
   }
 
   // 7. 排队模式（后端 app/runs/）：这一轮处理了几次、是不是按提交点收的尾、按哪一档降级。

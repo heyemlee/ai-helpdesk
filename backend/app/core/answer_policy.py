@@ -21,7 +21,8 @@
 import logging
 import re
 from collections.abc import Iterable, Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from datetime import UTC, datetime, timedelta, timezone
 from typing import Any
 
 from app.core.text_lang import detect_language
@@ -279,7 +280,7 @@ _COMMIT_RE = re.compile(
     # "什么时候能做好/送到/装好"和"多少钱"一样是说错就要赔的话术。
     r"|做好|做完|完工|出货|发出|补发|送到|送货|到货|到场|上门|安排好"
     r"|排产|开料|复尺|出图|装好|安装完|返工好|修好"
-    r"|费用|价格|收费|手续费|服务费|运费|邮费|差价|需支付|支付|付款"
+    r"|费用|价格|收费|手续费|服务费|运费|邮费|差价|需支付|支付|付款|扣款|办理"
     r"|只需|只要|仅需|报价|加价|金额为|金额是|一共|总共"
     # ── 英文 ──
     # will/we'll + 动词：英文承诺最常见的形状
@@ -292,6 +293,7 @@ _COMMIT_RE = re.compile(
     r"|(?:ship|deliver|dispatch|install|complete|replace|repair|resolve|schedule)"
     r"(?:s|d|ed|ing|ment|ry)?"
     r"|(?:cost|price|fee|total|surcharge|upcharge|freight|shipping|labor)s?"
+    r"|\b(?:pay|paid)\b"
     r"|no\s+charge|free\s+of\s+charge|at\s+no\s+cost"
     # "Production takes 6 weeks." —— 耗时陈述同样是时效承诺，
     # 主语是流程而不是"我们"，前面那组 will/we'll 覆盖不到。
@@ -307,6 +309,54 @@ _ABSOLUTE_RE = re.compile(
     r"|i\s+promise|we\s+promise|rest\s+assured|without\s+fail",
     re.I,
 )
+
+# Only a complete fee-noun + processing-limit caption may use a payment word
+# as a topic. Product/policy introductions remain in the action check, as do
+# payment or processing instructions outside this nominal phrase. The numeric
+# limit/value itself is never removed or grounded here.
+_REFERENCE_FEE_TOPIC_RE = re.compile(
+    r"(?P<topic>(?:(?:付款|支付|收费|扣款)?(?:手续费|服务费)|费用|价格|运费|邮费|差价)"
+    r"(?:的)?(?:处理|办理)(?:时限|期限|时效)\s*(?:为|是|[:：]))"
+)
+
+# One typed caption vocabulary serves both standalone fields and inline
+# metadata references. Matching a date under another role never authorizes it.
+_REFERENCE_TIME_LABELS = {
+    "policy_as_of": r"所选日期|所选时点|所选查询时点|政策时点|适用日期|适用时点|适用性判定时点|有效性判定时点|截至时点|判定时点|"
+                    r"查询基准|查询时间点|查询时点|selected date|as of|query time",
+    "policy_effective_at": r"政策生效日期|生效日期|生效时间|生效时点|effective date|effective at",
+    "policy_expires_at": r"政策失效日期|失效日期|失效时间|失效时点|(?:政策)?到期(?:日期|时间|时点)|"
+                        r"expires at|expiry date",
+}
+
+# Closed metadata-comparison grammar, never a general negation/date exemption.
+# An omitted applicability subject needs the immediately preceding, complete
+# selected-query-time clause. Unparsed prose or an action cannot join a match.
+_APPLICABILITY = r"(?:以上|上述|该|本|此|其)?(?:政策|规则|条款|版本)?的?(?:适用性|是否适用|有效性|是否有效)"
+_ASOF_DECISION = r"(?:来)?(?:判断|判定|确定|核定)"
+_ASOF_BY = r"(?:按|以|根据|依据)"
+_ASOF_NEGATION = r"(?:并非|而非|而不是|不是|不能|不可|不应当?|不要|不)"
+_CURRENT_DATE = r"(?:今天|今日)(?:的?(?:日期|时点))?"
+_SELECTED_TIME = rf"(?:{_REFERENCE_TIME_LABELS['policy_as_of']})"
+_EN_APPLICABILITY = r"(?:policy\s+applicability|applicability|whether\s+(?:the\s+)?policy\s+applies)"
+_ASOF_POSITIVE_RE = re.compile(
+    rf"(?:{_APPLICABILITY}(?:应当?|需要|须|必须|仅|只)?{_ASOF_BY}{_SELECTED_TIME}(?:{_ASOF_DECISION})?"
+    rf"|(?:应当?|需要|须|必须|仅|只)?{_ASOF_BY}{_SELECTED_TIME}{_ASOF_DECISION}{_APPLICABILITY}"
+    rf"|(?:判断|判定)依据(?:是|为){_SELECTED_TIME}"
+    r"|(?:本次|此次)?(?:只|仅)?(?:说明|介绍|查阅)(?:历史|所选|指定)(?:查询)?(?:时点|日期)的?(?:适用|有效)政策"
+    r"|(?:(?:this|the)\s+)?policy\s+selection\s+uses\s+(?:the\s+)?(?:selected|requested)\s+(?:historical\s+)?timestamp"
+    rf"|{_EN_APPLICABILITY}\s+(?:is\s+)?(?:determined|assessed|evaluated|judged)\s+"
+    r"(?:by|at|using)\s+(?:the\s+)?(?:selected\s+(?:(?:query|as-of)\s+)?(?:date|time)|query\s+time))", re.I)
+_ASOF_NEGATIVE_RE = re.compile(
+    rf"(?:{_ASOF_NEGATION}{_ASOF_BY}{_CURRENT_DATE}{_ASOF_DECISION}{_APPLICABILITY}"
+    rf"|{_APPLICABILITY}{_ASOF_NEGATION}{_ASOF_BY}{_CURRENT_DATE}{_ASOF_DECISION}"
+    rf"|(?:do\s+not|don't)\s+use\s+today(?:'s\s+date)?\s+to\s+"
+    rf"(?:determine|assess|evaluate|judge)\s+{_EN_APPLICABILITY})", re.I)
+_ASOF_ELLIPSIS_RE = re.compile(
+    rf"(?:{_ASOF_NEGATION}(?:{_ASOF_BY})?{_CURRENT_DATE}(?:{_ASOF_DECISION})?"
+    r"|(?:and\s+)?(?:not|rather\s+than)\s+(?:(?:by|at|using)\s+)?today(?:'s\s+date)?)", re.I)
+
+_ASOF_INLINE_RE = re.compile(rf"(?:{_ASOF_POSITIVE_RE.pattern})\s*(?:{_ASOF_ELLIPSIS_RE.pattern})", re.I)
 
 # 对冲措辞：SOP 要求的保守表达，命中即认为 Agent 已经守住了边界
 _HEDGE_RE = re.compile(
@@ -343,8 +393,13 @@ _ABBREVIATIONS = frozenset({
     "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec",
 })
 _WORD_BEFORE_DOT_RE = re.compile(r"([A-Za-z][A-Za-z.]*)\.$")
+_TIMESTAMP_BEFORE_DOT_RE = re.compile(
+    r"(?:\d{4}-\d{1,2}-\d{1,2}|\d{4}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日)"
+    r"[ T]*\d{2}:\d{2}(?::\d{2})?"
+    r"(?:\s*[（(]?\s*(?:UTC|Z|[+-]\d{2}:\d{2})\s*[）)]?)?$"
+)
 
-def _is_sentence_period(text: str, idx: int) -> bool:
+def _is_sentence_period(text: str, idx: int, *, final: bool = True) -> bool:
     """
     text[idx] 是 '.'。判断它是句末还是缩写点。
 
@@ -353,6 +408,25 @@ def _is_sentence_period(text: str, idx: int) -> bool:
     （"The total is $980. We will ship tomorrow."）必须切得开，所以这里
     不能因为句号前是数字就一律否掉。
     """
+    if _TIMESTAMP_BEFORE_DOT_RE.search(re.sub(r"[*`]", "", text[:idx])):
+        tail = text[idx + 1:]
+        line = tail.split("\n", 1)[0]
+        if not line.strip():
+            # A stream ending at "timestamp. " has not revealed whether the
+            # next token is a fractional continuation. A real line end or
+            # final flush can still finish an ordinary timestamp sentence.
+            return final or "\n" in tail
+        continuation = re.match(r"[ \t]*(\d\S*)[ \t]*(.*)", line)
+        if continuation:
+            token, following = continuation.groups()
+            if re.search(r"Z|UTC|[+-]", token):
+                return False
+            following = following.strip()
+            if not following:
+                return "\n" in tail
+            if (re.match(r"Z|UTC|[+-]", following) or "UTC".startswith(following)):
+                return False
+            # A separate numeric sentence ("500 items ...") is not a clock.
     head = re.search(_WORD_BEFORE_DOT_RE, text[: idx + 1])
     return not (head and head.group(1).rstrip(".").lower() in _ABBREVIATIONS)
 
@@ -369,7 +443,7 @@ def split_sentences(text: str, final: bool = True) -> tuple[list[str], str]:
     out: list[str] = []
     start = 0
     for m in pattern.finditer(text):
-        if m.group(0) == "." and not _is_sentence_period(text, m.start()):
+        if m.group(0) == "." and not _is_sentence_period(text, m.start(), final=final):
             continue
         out.append(text[start : m.end()])
         start = m.end()
@@ -477,7 +551,7 @@ class AnswerPolicy:
         self.mojibake_dropped_chars = 0
         self.mojibake_events = 0
 
-    def enforce(self, answer: str, sources: Iterable[str] | None = None) -> PolicyResult:
+    def enforce(self, answer: str, sources: Iterable[str] | None = None, *, reference_times=None) -> PolicyResult:
         """扫描 answer，拦截其中无依据的价格/时效承诺。"""
         # 先做数据卫生再谈策略：关掉策略开关也不该把乱码发给客户
         answer = self._drop_mojibake(answer or "")
@@ -497,12 +571,14 @@ class AnswerPolicy:
                 rebuilt.append(chunk)
                 continue
 
-            hit = self._check_sentence(sentence, normalized_sources)
+            checked_sentence = self._without_asof_comparisons(sentence, reference_times or {})
+            checked_sentence = self._without_reference_times(checked_sentence, reference_times or {})
+            hit = None if self._reference_time(sentence, reference_times or {}) else self._check_sentence(checked_sentence, normalized_sources)
             if hit is None:
                 rebuilt.append(chunk)
                 continue
 
-            violations.append(hit)
+            violations.append(replace(hit, sentence=sentence))
             # 句首和句尾的空白都要保留。只保尾部时，中文看不出来（句子之间没有空格），
             # 英文会把替换句和前一句黏成 "...before it's verified.The invoice..."。
             head = chunk[: len(chunk) - len(chunk.lstrip())]
@@ -530,6 +606,205 @@ class AnswerPolicy:
         }
 
     # ── 内部实现 ──────────────────────────────────────────────────────────────
+
+    def _without_asof_comparisons(self, sentence, reference_times):
+        """Exclude proven applicability comparisons, retaining every other claim."""
+        values = reference_times.get("policy_as_of", ())
+        if not isinstance(values, (list, tuple)):
+            return sentence
+        valid = False
+        for value in values:
+            try:
+                valid |= datetime.fromisoformat(value.replace("Z", "+00:00")).tzinfo is not None
+            except (ValueError, TypeError, AttributeError):
+                continue
+        if not valid:
+            return sentence
+        text = re.sub(r"[*`]", "", sentence)
+        spans, previous_selected = [], False
+        for match in re.finditer(r"[^，,；;]+", text):
+            clause = match[0].strip().rstrip("。.!！?？")
+            if (_ASOF_NEGATIVE_RE.fullmatch(clause) or _ASOF_INLINE_RE.fullmatch(clause)
+                    or previous_selected and _ASOF_ELLIPSIS_RE.fullmatch(clause)):
+                spans.append(match.span())
+            previous_selected = bool(_ASOF_POSITIVE_RE.fullmatch(clause))
+        residue = text
+        for start, end in reversed(spans):
+            residue = residue[:start] + " " * (end - start) + residue[end:]
+        # An action sharing an implicit clock cannot borrow metadata authority.
+        # Independent amounts/dates still go through the unchanged value checks.
+        if ((_ABSOLUTE_RE.search(residue) or _COMMIT_RE.search(residue)) and (
+                not (_PRICE_RE.search(residue) or _LEAD_TIME_RE.search(residue))
+                or re.search(r"届时|该时点|上述时间|at\s+that\s+time", residue, re.I))):
+            return sentence
+        return residue
+
+    def _without_reference_times(self, sentence, reference_times):
+        """Remove only source-checked metadata timestamp spans; check the rest.
+
+        A second date, price or delivery promise in the same sentence remains
+        subject to the normal guard. Metadata is never a grounding source.
+        """
+        text = re.sub(r"[*`]", "", sentence)
+        text = re.sub(r"^\s*>\s?", "", text)
+        date = r"(?:\d{4}-\d{1,2}-\d{1,2}|\d{4}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日)"
+        clock = r"(?:[ T]*\d{2}:\d{2}(?::\d{2})?)?"
+        zone = r"(?:\s*[（(]?\s*(?:UTC|Z|[+-]\d{2}:\d{2})\s*[）)]?)?"
+        # Never match only the date/UTC-looking prefix of a different or
+        # malformed full timestamp. The role check below compares instants.
+        # Fractional clocks are unsupported; their decimal continuation must
+        # not turn a trusted integral prefix into a complete metadata value.
+        stamp = rf"{date}{clock}{zone}(?![A-Za-z0-9:+-]|\s*[.,]\s*\d|\s*[（(]?\s*(?:[A-Za-z]|[+-]\d))"
+        # A whole, bounded retrieval observation may contain action nouns in
+        # the missing policy's subject. It is not an instruction or deadline.
+        # Keep every other value for the ordinary guard, and never accept an
+        # operational tail merely because it shares the selected timestamp.
+        lookup = re.fullmatch(
+            rf"截至\s*(?P<stamp>{stamp})\s*[，,]\s*"
+            r"(?:本次|此次)(?:针对[^。；;!?！？\n]{1,200}的)?(?:政策)?检索[，,]\s*"
+            r"未(?:找到|检索到|取得)(?:可引用的)?已发布[^。；;!?！？\n]{1,100}?(?:条款|政策|资料)"
+            r"(?:[，,]故暂无可列示的有效版本及条款引用)?[。.]?", text)
+        if lookup and self._reference_time("所选日期：" + lookup["stamp"], reference_times):
+            start, end = lookup.span("stamp")
+            return text[:start] + " " * (end - start) + text[end:]
+        # A shared timestamp can also be a deadline: "we guarantee shipment at
+        # query time: ...". Only independent metadata statements may lose a
+        # timestamp. Ambiguous action-bearing prose stays fully guarded.
+        captions = "|".join(_REFERENCE_TIME_LABELS.values())
+        # A retrieved eligible revision may be cited by its exact quoted title.
+        # Only its title's nominal wording is excluded from the action test;
+        # timestamps still need their own role/instant proof and other values
+        # remain in the ordinary guard. No arbitrary quoted subject is trusted.
+        titles = reference_times.get("policy_titles", [])
+        quoted_titles = []
+        if isinstance(titles, (list, tuple)):
+            for title in titles:
+                if isinstance(title, str) and title:
+                    for left, right in (("《", "》"), ("「", "」"), ("“", "”")):
+                        quoted_titles.extend(re.finditer(re.escape(left + title + right), text))
+        title_caption = any(re.fullmatch(r"\s*(?:\[\d+\]\s*)?", text[:m.start()]) for m in quoted_titles)
+        if not re.match(rf"^\s*(?:-\s*)?(?:按(?:所选)?(?:查询)?(?:时点|日期)|{captions}|适用性依据|有效版本|"
+                        r"(?:(?:该|本|此)(?:政策|规则|条款|版本))?自)", text, re.I) and not title_caption:
+            return sentence
+        patterns = (
+            ("policy_as_of", rf"(?:{_REFERENCE_TIME_LABELS['policy_as_of']})\s*(?:为|[:：])?\s*(?P<stamp>{stamp})", "所选日期："),
+            ("policy_effective_at", rf"(?:自\s*(?P<stamp>{stamp})\s*(?:起)?生效)", "生效日期："),
+            ("policy_effective_at", rf"(?P<stamp>{stamp})\s*生效", "生效日期："),
+            ("policy_effective_at", rf"(?:{_REFERENCE_TIME_LABELS['policy_effective_at']})\s*(?:为|[:：])?\s*(?P<stamp>{stamp})", "生效日期："),
+            ("policy_expires_at", rf"(?:{_REFERENCE_TIME_LABELS['policy_expires_at']})\s*(?:为|[:：])?\s*(?P<stamp>{stamp})", "失效日期："),
+        )
+        spans, metadata_spans = [], []
+        for kind, pattern, label in patterns:
+            for match in re.finditer(pattern, text, re.I):
+                times = reference_times
+                if kind == "policy_effective_at" and re.search(r"未(?:设置|记录)(?:失效日期|失效时间|到期时间)", text):
+                    times = {kind: reference_times.get("policy_open_ended_at", [])}
+                if self._reference_time(label + match["stamp"], times):
+                    spans.append(match.span("stamp"))
+                    metadata_spans.append(match.span())
+        # Only an explicitly verified metadata phrase (including its caption)
+        # may be removed before checking for actions sharing the timestamp.
+        # A fee topic is not an action; all remaining numeric claims below
+        # still pass through the unchanged _check_sentence grounding rules.
+        residue = text
+        for start, end in sorted(set(metadata_spans), reverse=True):
+            residue = residue[:start] + " " * (end - start) + residue[end:]
+        action_text = residue
+        for title in quoted_titles:
+            start, end = title.span()
+            action_text = action_text[:start] + " " * (end - start) + action_text[end:]
+        for topic in reversed(list(_REFERENCE_FEE_TOPIC_RE.finditer(residue))):
+            start, end = topic.span("topic")
+            action_text = action_text[:start] + " " * (end - start) + action_text[end:]
+        if _COMMIT_RE.search(action_text) or _ABSOLUTE_RE.search(residue):
+            return sentence
+        for start, end in sorted(set(spans), reverse=True):
+            text = text[:start] + " " * (end - start) + text[end:]
+        return text
+
+    def _reference_time(self, sentence, reference_times):
+        """Accept only a complete, correctly valued metadata field, not an action.
+
+        Metadata never enters grounding_sources: the same date in a delivery
+        promise must still have independent business evidence.
+        """
+        text = sentence.strip().strip("|").strip().removeprefix("- ")
+        text = re.sub(r"[*`]", "", text).rstrip("。.!！?？")
+        short = re.fullmatch(r"(生效|到期)\s*[:：|]\s*(.+)", text)
+        if short:
+            # A complete independent short caption has the same value semantics
+            # as its long form; the inline metadata/action grammar is unchanged.
+            label = "生效日期：" if short[1] == "生效" else "失效日期："
+            return self._reference_time(label + short[2], reference_times)
+        validity = re.fullmatch(r"(?:版本有效时间|版本有效期)\s*[:：|]\s*(.+?)\s*生效\s*[；;]\s*(.+?)\s*到期", text)
+        if validity:
+            # Pair the endpoints from one verified policy; never splice dates
+            # from different revisions into a claimed validity interval.
+            for interval in reference_times.get("policy_validity_ranges", []):
+                start, separator, end = interval.partition("/")
+                if (separator and self._reference_time("生效日期：" + validity[1], {"policy_effective_at": [start]})
+                        and self._reference_time("失效日期：" + validity[2], {"policy_expires_at": [end]})):
+                    return True
+            return False
+        for kind, names in _REFERENCE_TIME_LABELS.items():
+            field = re.fullmatch(rf"(?:{names})\s*[:：|]\s*(.+)", text, re.I)
+            values = reference_times.get(kind)
+            if not field or not isinstance(values, (list, tuple)) or not values:
+                continue
+            value = field[1]
+            if kind == "policy_effective_at":
+                unbounded = re.fullmatch(
+                    r"(.+?)\s*[；;]\s*未设置(?:失效时间|失效日期|到期时间)"
+                    r"(?:[，,]\s*(?:因此)?在(?:上述|所选)(?:查询|适用)?时点有效)?", value)
+                if unbounded:
+                    return self._reference_time("生效日期：" + unbounded[1], {
+                        "policy_effective_at": reference_times.get("policy_open_ended_at", [])})
+            dates = list(_LEAD_TIME_RE.finditer(value))
+            if len(dates) != 1:
+                return False
+            date = _date_of(self._normalize(dates[0][0]))
+            if date is None or date[0] is None or date[1] is None:
+                return False
+            rest = value[:dates[0].start()] + value[dates[0].end():]
+            zones = re.findall(r"UTC|Z|[+-]\d{2}:\d{2}", rest)
+            if len(zones) > 1:
+                return False
+            rest = re.sub(r"UTC|Z|[+-]\d{2}:\d{2}", "", rest)
+            # The closed grammar permits only a clock and its metadata caption.
+            # Any promise, second date, duration, or other prose falls through.
+            if not re.fullmatch(r"(?:[\s|（）():：.,，T]|查询基准|查询时间点|为|\d{2}:\d{2}(?::\d{2})?)*", rest):
+                return False
+            clocks = re.findall(r"\d{2}:\d{2}(?::\d{2})?", rest)
+            if len(clocks) > 1 or zones and not clocks and zones[0] not in {"UTC", "Z", "+00:00", "-00:00"}:
+                return False
+            stated = None
+            if clocks:
+                try:
+                    tz = UTC
+                    if zones and zones[0] not in {"UTC", "Z"}:
+                        offset = zones[0]
+                        hours, minutes = map(int, offset[1:].split(":"))
+                        if hours > 23 or minutes > 59:
+                            return False
+                        tz = timezone(timedelta(minutes=(hours * 60 + minutes) * (-1 if offset[0] == "-" else 1)))
+                    parts = [int(part) for part in clocks[0].split(":")]
+                    stated = datetime(*date, *parts, tzinfo=tz).astimezone(UTC)
+                except ValueError:
+                    return False
+            for raw in values:
+                try:
+                    at = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+                    if at.tzinfo is None:
+                        continue
+                    at = at.astimezone(UTC)
+                except (ValueError, AttributeError, TypeError):
+                    continue
+                if stated is not None:
+                    if stated == at:
+                        return True
+                elif date == (at.year, at.month, at.day):
+                    return True
+        return False
 
     def _drop_mojibake(self, text: str) -> str:
         """
@@ -568,29 +843,21 @@ class AnswerPolicy:
         sentence: str,
         normalized_sources: list[str],
     ) -> PolicyViolation | None:
-        """判断单句是否构成"无依据承诺"。四条同时成立才拦截。"""
-        price = _PRICE_RE.search(sentence)
+        """逐一核对单句的金额/时效，不因模糊措辞或缺少承诺动词放行。"""
+        prices = list(_PRICE_RE.finditer(sentence))
         lead_times = list(_LEAD_TIME_RE.finditer(sentence))
-        if not price and not lead_times:
+        if not prices and not lead_times:
             return None
 
-        # 2. 必须落在承诺语境里
-        if not _COMMIT_RE.search(sentence):
-            return None
-
-        # 3. 已经按 SOP 做了保守表述，且没有绝对化措辞 → 放行
-        if _HEDGE_RE.search(sentence) and not _ABSOLUTE_RE.search(sentence):
-            return None
-
-        # 4. 数字必须能在 grounding sources 中找到出处。
+        # 数字必须能在 grounding sources 中找到出处。
         #    时效表述照旧只核句子里的第一处，但具体日期不占这个名额，有几个核几个。
         #    日期对得上出处之后，要是还只核第一处，「10 月 28 日出厂，11 月 3 日送到」
         #    「10 月 28 日出厂，3-5 个工作日送到」后半句编出来的送货时间，就跟着
         #    有出处的出厂日期一起放行了。
         dates = [m for m in lead_times if _date_of(self._normalize(m.group(0)))]
         others = [m for m in lead_times if m not in dates]
-        checks = [("price_commitment", price)] + [
-            ("lead_time_commitment", m) for m in sorted(dates + others[:1], key=lambda m: m.start())
+        checks = [("price_commitment", price) for price in prices] + [
+            ("lead_time_commitment", m) for m in sorted(dates + others, key=lambda m: m.start())
         ]
         for rule, match in checks:
             if match is None:
@@ -705,9 +972,10 @@ class PolicyStreamGuard:
     非流式输出**受同一套策略约束**，不会出现"流式能说、非流式不能说"的口径不一致。
     """
 
-    def __init__(self, policy: AnswerPolicy, sources: Iterable[str] | None = None):
+    def __init__(self, policy: AnswerPolicy, sources: Iterable[str] | None = None, *, reference_times=None):
         self._policy = policy
         self._sources = list(sources or [])
+        self._reference_times = {k: list(v) for k, v in (reference_times or {}).items()}
         self._buffer = ""
         self.violations: list[PolicyViolation] = []
 
@@ -737,6 +1005,11 @@ class PolicyStreamGuard:
         """
         self._sources.extend(t for t in texts if t)
 
+    def add_reference_times(self, times: dict[str, list[str]]) -> None:
+        for kind, values in times.items():
+            known = self._reference_times.setdefault(kind, [])
+            known.extend(value for value in values if value not in known)
+
     def discard_pending(self) -> str:
         """
         丢掉缓冲区里还没凑成整句的部分，返回丢掉的内容（给调用方记日志）。
@@ -748,6 +1021,6 @@ class PolicyStreamGuard:
         return pending
 
     def _check(self, sentence: str) -> str:
-        result = self._policy.enforce(sentence, self._sources)
+        result = self._policy.enforce(sentence, self._sources, reference_times=self._reference_times)
         self.violations.extend(result.violations)
         return result.text

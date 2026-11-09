@@ -239,6 +239,31 @@ def assess(data: Mapping | None) -> Verdict:
     reasons: list[str] = []
     caveats: list[str] = []
 
+    derived, _ = derive_execution_status({k: v for k, v in data.items() if k != "execution_status"})
+    inconsistent = source != "contract" or derived != status
+    if steps is None or any(type(s.get("success")) is not bool or type(s.get("truncated")) is not bool
+                            or _strict_int(s.get("row_count")) is None
+                            or not isinstance(s.get("rows"), list)
+                            or s.get("row_count") != len(s.get("rows", []))
+                            or any(not isinstance(row, Mapping) for row in s.get("rows", []))
+                            or not isinstance(s.get("column_units", {}), Mapping)
+                            or any(not isinstance(k, str) or not isinstance(v, str) or not v.strip()
+                                   for k, v in s.get("column_units", {}).items())
+                            or not isinstance(s.get("source_records", []), list)
+                            or any(not isinstance(record, Mapping) for record in s.get("source_records", []))
+                            or (s.get("truncated") is True and (_strict_int(s.get("row_limit")) or 0) < 1)
+                            or (s.get("success") is True and (s.get("error") or s.get("risk_findings"))) for s in steps or []):
+        inconsistent = True
+    if "evidence" in data and (not isinstance(data["evidence"], list) or any(
+        not isinstance(c, Mapping) or not isinstance(c.get("field"), str) or not c.get("field")
+        or not isinstance(c.get("evidence_id"), str)
+        or (c.get("unit") is not None and (not isinstance(c["unit"], str) or not c["unit"].strip()))
+        or not isinstance(c.get("source_records", []), list)
+        or any(not isinstance(record, Mapping) for record in c.get("source_records", []))
+        for c in data["evidence"])):
+        inconsistent = True
+    if inconsistent:
+        reasons.append("execution_metadata_inconsistent")
     if not queried:
         reasons.append("queried_database 不是 true（字段缺失或类型不对时同此处置）")
     if status not in _SOURCEABLE:
@@ -272,7 +297,7 @@ def assess(data: Mapping | None) -> Verdict:
         execution_status=status,
         status_source=source,
         usable_as_source=(
-            queried and status in _SOURCEABLE and not has_risk and not degraded and not malformed
+            queried and source == "contract" and not inconsistent and status in _SOURCEABLE and not has_risk and not degraded and not malformed
         ),
         queried_database=queried,
         has_risk=has_risk,
@@ -350,7 +375,7 @@ def normalize_delegation_result(
     }
     # ➕/🔨 字段（§4.6）：服务端下发了就带上，没下发就别造。缺席时的处置在
     # assess() 里，不在这里——这里造一个默认值等于替服务端声明它没声明的事。
-    for optional in ("execution_status", "result_truncated", "as_of", "as_of_source", "currency"):
+    for optional in ("execution_status", "result_truncated", "as_of", "as_of_source", "currency", "evidence", "observed_at"):
         if optional in data:
             out[optional] = data[optional]
     return out

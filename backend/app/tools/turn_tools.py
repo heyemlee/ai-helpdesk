@@ -23,6 +23,7 @@ OrderDataQueryTool）也用它。
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 from collections.abc import Awaitable, Callable
@@ -34,6 +35,7 @@ from pydantic import BaseModel, Field
 from app.agents.tool_loop import LoopTool, ToolOutcome, TurnContext
 from app.core import evidence
 from app.core.evidence import assess
+from app.core.policy_scope import asks_for_policy, current_scope, policy_only_query, policy_source_metadata
 from app.core.preflight import outer_tool_timeout_s
 from app.tools.knowledge_base import document_excerpt, should_use_knowledge
 from app.tools.tool_manager import PASSAGE_CHARS
@@ -137,6 +139,7 @@ class Prefetch:
         progress_cb=None,
         trace: dict[str, Any] | None = None,
         raw: dict[str, Any] | None = None,
+        query_planned: bool = False,
     ) -> tuple[str, bool]:
         """
         为 /chat 主链路构建业务数据上下文：把问题委派给 ai-sql-agent 查真实数据。
@@ -159,7 +162,10 @@ class Prefetch:
         info.update(self.not_queried())
         if self.tool_manager is None or not self.data_enabled or self.data_paused:
             return "", False
-        if not should_query_business_data(message, intent=intent, entities=entities):
+        # prepare_turn already made this routing decision from the enhanced
+        # application context. Only source-bound entities reach this execution
+        # call; do not use their narrower set to silently change that routing.
+        if not query_planned and not should_query_business_data(message, intent=intent, entities=entities):
             return "", False
         return await delegate_order_query(
             self.tool_manager, message, user_id=user_id, conv_id=conv_id,
@@ -183,6 +189,8 @@ async def knowledge_lookup(
     `trace` 的字段见 `Prefetch.knowledge_context`。
     """
     info = trace
+    info["policy_lookup"] = asks_for_policy(query)
+    info["lookup_scope"] = current_scope().model_dump(mode="json")
     try:
         if fast_path:
             result = await tool_manager.call(
@@ -192,10 +200,20 @@ async def knowledge_lookup(
             result = await tool_manager.search_with_rewrite(
                 "knowledge_search", query, top_k=top_k
             )
-        if not result.success or not isinstance(result.data, list) or not result.data:
+        if not result.success or not isinstance(result.data, list):
+            info.update(lookup_status="unavailable", degraded=True)
+            return "政策检索未能完成，不能据此判断政策是否已发布或存在。" if info["policy_lookup"] else "", False
+        if not result.data:
+            info["lookup_status"] = "empty"
+            return ("本次未检索到符合所选范围和时点的已发布政策；不能引用草稿、已失效或其他范围的条款。"
+                    "这是已完成的限定范围检索结果，不是服务故障；只查询现有政策时可如实报告，"
+                    "不据此认定免费、获准或不存在政策。若用户要求办理业务而缺少适用依据，仍需补料或人工审核。"
+                    if info["policy_lookup"] else ""), False
+        if any(isinstance(item, dict) and item.get("fallback") for item in result.data):
+            info.update(lookup_status="unavailable", degraded=True)
             return "", False
         info.update(reranked=result.reranked, corrected=result.corrected,
-                    evidence_ok=result.evidence_ok)
+                    evidence_ok=result.evidence_ok, lookup_status="found")
 
         parts = ["[知识库检索结果]"]
         sources: list[dict[str, Any]] = []
@@ -208,14 +226,24 @@ async def knowledge_lookup(
             score = item.get("score", "")
             if not content:
                 continue
+            applicability = policy_source_metadata(item)
+            if item.get("fallback") or not applicability:
+                info["degraded"] = True
+                continue
             used = True
             # 只走了关键词一路的结果没有向量分（score 是 None），不给模型看一行"相关度: None"
             relevance = f"   相关度: {score}\n" if isinstance(score, (int, float)) else ""
             parts.append(f"{i}. 标题: {title}\n{relevance}   内容: {content[:PASSAGE_CHARS]}")
+            if applicability:
+                parts.append("   本条引用的已校验适用元数据（按查询时点判定，不按今天判定）："
+                             + json.dumps(applicability, ensure_ascii=False))
             if item.get("fallback"):
                 info["degraded"] = True
                 continue
             sources.append({
+                "policy": item.get("policy"), "policy_revision": item.get("policy_revision"),
+                "policy_scope": item.get("policy_scope"), "policy_as_of": item.get("policy_as_of"),
+                "content": content,
                 "doc_id": str(item.get("doc_id") or ""),
                 "chunk_id": str(item.get("chunk_id") or ""),
                 "title": title,
@@ -229,13 +257,28 @@ async def knowledge_lookup(
             })
 
         if not used:
+            info.update(lookup_status="unavailable", degraded=True)
             return "", False
         info["sources"] = await label_sources(sources) if label_sources else sources
         parts.append("请优先依据以上知识库内容回答；如果知识库内容不足，再结合通用客服能力说明。")
         return "\n".join(parts), True
     except Exception as ex:
+        info.update(lookup_status="unavailable", degraded=True)
         logger.warning(f"构建知识库上下文失败: {ex}")
         return "", False
+
+
+def knowledge_grounding(text, trace):
+    """Applicability dates explain selection; they cannot ground a delivery promise."""
+    sources = trace.get("sources") or []
+    return "\n\n".join(str(s.get("content") or s.get("excerpt") or "") for s in sources) if sources else text
+
+
+def business_grounding(text, trace):
+    """Field descriptions explain meaning; numbers inside them are not facts."""
+    from app.core.business_facts import render_cells, verified_nulls
+    return render_cells([*trace["evidence"], *verified_nulls(trace.get("evidence_payload") or {})],
+                        include_metadata=False) if trace.get("evidence") else text
 
 
 def currency_note(data: dict, configured: str = "") -> str:
@@ -293,6 +336,7 @@ async def delegate_order_query(
     trace: dict[str, Any],
     currency: str = "",
     raw: dict[str, Any] | None = None,
+    lookup_goal=None,
 ) -> tuple[str, bool]:
     """
     把问题委派给 ai-sql-agent，判定结果能不能当出处，写成给 Agent 读的上下文。不做门控。
@@ -341,13 +385,41 @@ async def delegate_order_query(
     """
     info = trace
     info.update(attempted=True, outcome="error")
+    from app.core.lookup_scope import assess_lookup, current_goal, dispatch_for
+    goal = lookup_goal or current_goal()
+    request_plan = goal.get("request_plan") if isinstance(goal, dict) else None
+    dispatch = dispatch_for(goal, query) if goal else None
+    context = {**({"progress_cb": progress_cb} if progress_cb else {}),
+               **({"lookup_dispatch": dispatch} if dispatch else {}),
+               **({"request_plan": request_plan} if request_plan else {})}
+    coverage_observations = None
+    data = {}
+
+    def with_coverage(text, usable, *, annotate=True):
+        if isinstance(request_plan, dict):
+            from app.core.business_facts import verified_cells, verified_nulls
+            from app.core.request_plan import coverage_note, request_coverage
+
+            # Failures have no positive observations; diagnostics never supply
+            # an alternate validator or upgrade the original usable flag.
+            if coverage_observations is None:
+                values, limits = verified_cells(data)
+                missing = verified_nulls(data)
+            else:
+                values, missing, limits = coverage_observations
+            coverage = request_coverage(request_plan, data, values, missing, limits, outcome=info.get("outcome", ""))
+            info["request_coverage"] = coverage
+            if annotate and (note := coverage_note(coverage)):
+                text += "\n原问核对说明：" + note + "仅说明本次核对范围，不授权业务操作或改变处理方式。"
+        return text, usable
+
 
     try:
         result = await tool_manager.call(
             "order_data_query",
             {"query": query, "user_id": user_id, "session_id": conv_id},
             # 走 A2A 流式时，下游的阶段进度经这个回调进 /chat/stream 的 progress 事件
-            context={"progress_cb": progress_cb} if progress_cb else None,
+            context=context or None,
         )
         data = result.data if isinstance(result.data, dict) else {}
         if raw is not None:
@@ -360,15 +432,15 @@ async def delegate_order_query(
         # 都分辨不出来。这里把失败明写进上下文，要求 Agent 说出来。
         if data.get("unavailable") or (not result.success and not data):
             reason = str(data.get("error") or result.error or "未知原因")
-            info.update(outcome="unavailable", reason=reason)
-            return "\n".join([
+            info.update(outcome="unavailable", reason=reason, evidence_issues=["failed"])
+            return with_coverage("\n".join([
                 "[业务系统查询未完成]",
                 f"本轮尝试查询订单/生产/库存/账款系统，但没有拿到结果（{reason}）。",
                 "回答时必须做到两点：",
                 "1. 不要给出任何具体的订单状态、日期、金额、库存数字——这些本轮没有系统依据；",
                 "2. 明确告诉客户这次没能查到系统记录，建议由人工跟进核实，不要让客户以为"
                 "你说的内容已经过系统核对。",
-            ]), False
+            ]), False)
 
         # 信任判定（契约 §4.6）。**唯一的一处**——三个承载者
         # （stream / send / 直连 /query）走的是同一个 assess()，
@@ -380,7 +452,7 @@ async def delegate_order_query(
         # 那段 answer 是模型说的话不是数据，连上下文都不该进。
         if verdict.execution_status == evidence.NOT_APPLICABLE:
             info.update(outcome="not_applicable")
-            return "", False
+            return with_coverage("", False, annotate=False)
 
         trace_id = str(data.get("trace_id", "") or "")
         info.update(
@@ -402,76 +474,55 @@ async def delegate_order_query(
                 trace_id, verdict.execution_status, verdict.status_source,
                 "；".join(verdict.reasons) or "-",
             )
-            info.update(outcome="failed", reasons=list(verdict.reasons))
-            return "\n".join([
+            info.update(outcome="failed", reasons=list(verdict.reasons), evidence_issues=["failed"])
+            return with_coverage("\n".join([
                 "[业务系统查询未成功]",
                 f"本轮查询业务系统的每一个步骤都没有成功执行（trace_id: {trace_id or '未知'}）。",
                 "回答时必须做到两点：",
                 "1. 不要给出任何具体的订单状态、日期、金额、库存数字——这些本轮没有系统依据；",
                 "2. 明确告诉客户这次没能查到系统记录，建议由人工跟进核实，不要让客户以为"
                 "你说的内容已经过系统核对。",
-            ]), False
+            ]), False)
 
-        answer = str(data.get("answer", "")).strip()
-        if not answer:
-            info.update(outcome="empty")
-            return "", False
-
-        # ai-sql-agent 的 answer 里嵌的是查询结果的 JSON 原文，行数多的时候
-        # 能到几万字符（它那边 max_rows 默认 10000）。整段塞进 prompt 会把
-        # 上下文顶爆，也会把知识库那部分挤掉，所以这里截断。
-        # 截断阈值调大之前先想清楚：真正该做的是让下游少返点行，不是这边多收点。
-        limit = int(os.getenv("SQL_AGENT_MAX_CONTEXT_CHARS", "2000"))
-        if len(answer) > limit:
-            answer = answer[:limit] + f"\n…（结果过长已截断，完整结果见 trace_id {trace_id}）"
-
-        databases = ", ".join(str(d) for d in data.get("selected_databases") or []) or "未标明"
-        # 标题就把可信度写在第一行：可作出处的那段叫「实时数据」，不可作出处的
-        # 那段绝不能也叫这个名字——Agent 读到的第一行决定它怎么措辞。
-        header = "[业务系统实时数据]" if verdict.usable_as_source else "[业务系统数据（未通过可信校验，仅供参考）]"
-        parts = [
-            header,
-            f"来源: ai-sql-agent（命中库: {databases}；trace_id: {trace_id}；"
-            f"执行状态: {verdict.execution_status}）",
-            answer,
-        ]
-        if verdict.has_risk:
-            parts.append(
-                "注意: 这条查询结果带有异常提示（空结果 / 基数异常 / 语义不一致），"
-                "SQL 跑通了但答的可能不是问的那件事。**不得**把其中的金额、日期、"
-                "订单状态说成已核实的结论，只能说明系统里查到了这些内容、需要人工核对。"
-            )
-        if verdict.degraded:
-            parts.append(
-                f"注意: 数据服务处于降级状态（{data.get('degrade_reason', '') or '原因未说明'}），"
-                "结果可能来自历史查询重放，可能已经过期。**不得**表述为当前状态，"
-                "必须请客户以正式单据为准。"
-            )
-        parts.extend(f"注意: {c}" for c in verdict.caveats)
-        parts.append(currency_note(data, currency))
-        parts.append(
-            "以上是业务系统查到的真实数据，回答订单/交期/库存/账款问题时优先依据它。"
-            if verdict.usable_as_source else
-            "以上内容**没有通过可信校验**，不能当作已核实的系统依据。"
-            "涉及具体日期、金额、库存数字时必须明说这一点，并建议人工核实。"
-        )
-        if not verdict.usable_as_source:
-            logger.warning(
-                "业务数据未通过可信校验，不进 grounding_sources trace_id=%s status=%s(%s) 原因=%s",
-                trace_id, verdict.execution_status, verdict.status_source,
-                "；".join(verdict.reasons) or "-",
-            )
-        info.update(
-            outcome="evidence" if verdict.usable_as_source else "unverified",
-            has_risk=verdict.has_risk,
-            degraded=verdict.degraded,
-            reasons=list(verdict.reasons),
-        )
-        return "\n".join(p for p in parts if p), verdict.usable_as_source
+        from app.core.business_facts import render_cells, verified_cells, verified_lookup_receipt, verified_nulls
+        cells, issues = verified_cells(data)
+        nulls = verified_nulls(data)
+        coverage_observations = cells, nulls, issues
+        receipt = verified_lookup_receipt(data)
+        if receipt:
+            if goal:
+                info["lookup_goal"] = goal
+            # Keep the existing non-value-source trace outcome. The verified
+            # negative lookup is explicit and distinct from a failed query.
+            info.update(outcome="unverified", lookup_status="empty", lookup_verified=True,
+                        evidence=[], evidence_issues=["no_data"], evidence_payload=data,
+                        has_risk=False, degraded=False, reasons=list(verdict.reasons))
+            info["lookup_evidence"] = receipt
+            checked = assess_lookup(info, goal)
+            info.update(lookup_verified=checked["covers_goal"], execution_verified=True, lookup_coverage=checked)
+            scope_note = ("本次执行范围与当前目标的实体和筛选范围一致。若本轮仅问是否存在记录，这个有限的否定结果已回答该问题。"
+                          if checked["covers_goal"] else "执行健康，但尚未证明该范围覆盖当前问题；不能据此回答当前目标没有记录。")
+            return with_coverage(("[本轮业务查询回执] 状态 no_data：有限范围的成功零行执行凭据已保存在结构化证据中。\n"
+                    + scope_note + "结论仅适用于上述来源、SQL筛选条件和时点，不证明其他范围不存在记录。"
+                    "正文只说明本次查询目标内未找到记录，不复述原始SQL、库表名或执行时间。"
+                    "查询时点是执行观测元数据，不是业务日期、交期或承诺。"
+                    "若要求实际状态、业务操作、审批或明确人工，仍须保留所缺事实及人工处理要求。"
+                    "该凭据只证明查询范围内的零行结果，不授权金额、日期、交期或其他业务承诺。"), False)
+        info.update(outcome="evidence" if cells else "unverified", evidence=cells, evidence_issues=issues,
+                    evidence_payload=data, has_risk=verdict.has_risk, degraded=verdict.degraded,
+                    reasons=list(verdict.reasons))
+        text = render_cells([*cells, *nulls], model_context=True)
+        if cells and not issues:
+            text = ("[本轮业务查询回执] 以下是针对本次请求新执行并通过核验的业务库结果，不是历史回答。"
+                    "NULL 明确表示该字段未登记，与未返回该字段不同。仅报告所查记录及其限制，"
+                    "不自行发起查找缺失值、变更记录或业务审批；准备待审核草稿不等于执行审批。\n" + text)
+        if issues:
+            text += "\n业务证据限制：" + ", ".join(issues)
+        return with_coverage(text, bool(cells))
     except Exception as ex:
         logger.warning(f"构建业务数据上下文失败: {ex}")
         info.update(outcome="error", reason=str(ex) or type(ex).__name__)
-        return "", False
+        return with_coverage("", False)
 
 
 # ── 工具循环里模型能调的两个工具 ──────────────────────────────────────────────
@@ -496,8 +547,10 @@ class OrderDataQueryArgs(BaseModel):
 def knowledge_outcome(text: str, used: bool, trace: dict[str, Any]) -> ToolOutcome:
     """一次知识库检索 → 交给模型的结果。检索到的片段和规则预取一样算出处。"""
     if used and text:
-        return ToolOutcome(content=text, evidence=text, trace=trace, outcome="found")
-    return ToolOutcome(content="知识库里没有找到相关内容。", trace=trace, outcome="empty")
+        return ToolOutcome(content=text, evidence=knowledge_grounding(text, trace), trace=trace, outcome="found")
+    unavailable = trace.get("lookup_status") == "unavailable"
+    return ToolOutcome(content=text or ("知识检索未能完成。" if unavailable else "知识库里没有找到相关内容。"),
+                       trace=trace, outcome="unavailable" if unavailable else "empty", is_error=unavailable)
 
 
 _ORDER_FAILED = frozenset({"unavailable", "failed", "error"})
@@ -523,7 +576,7 @@ def order_outcome(text: str, is_evidence: bool, trace: dict[str, Any]) -> ToolOu
     else:
         content = _ORDER_NO_TEXT.get(outcome, "业务系统没有返回数据。")
     return ToolOutcome(content=content, is_error=outcome in _ORDER_FAILED,
-                       evidence=text if is_evidence else "", trace=trace, outcome=outcome)
+                       evidence=business_grounding(text, trace) if is_evidence else "", trace=trace, outcome=outcome)
 
 
 class KnowledgeSearchTool(LoopTool):
@@ -571,6 +624,8 @@ class OrderDataQueryTool(LoopTool):
         return ""
 
     def skip(self, turn: TurnContext) -> str:
+        if turn.policy_only:
+            return "本轮只查询政策版本、时点和适用范围，请使用政策检索；没有需要核对的业务记录。"
         # 规则预取这一轮刚委派过，下游超时、熔断或出错（outcome=unavailable）：再委派多半
         # 还要等满一次超时（SQL_AGENT_TIMEOUT_S=90 时是 92 秒），一轮会拖到三分多钟，结果
         # 还是查不到。failed 不算：那是下游答了、只是没查成，换个查询词可能就对了。
@@ -584,11 +639,15 @@ class OrderDataQueryTool(LoopTool):
                 "建议由人工跟进核实。")
 
     async def run(self, args: OrderDataQueryArgs, turn: TurnContext) -> ToolOutcome:
+        if turn.policy_only or policy_only_query(args.query):
+            return ToolOutcome(content="此问题只需查询适用的已发布政策。", outcome="not_applicable",
+                               trace={"attempted": False, "outcome": "not_applicable"})
         trace: dict[str, Any] = {"enabled": True}
         raw: dict[str, Any] = {}
         text, is_evidence = await delegate_order_query(
             self.tool_manager, args.query, user_id=turn.user_id, conv_id=turn.conv_id,
             progress_cb=turn.progress_cb, trace=trace, currency=self.sql_agent.currency, raw=raw,
+            lookup_goal=turn.lookup_goal,
         )
         outcome = order_outcome(text, is_evidence, trace)
         outcome.raw = raw or None
@@ -632,6 +691,7 @@ def seed_from_prefetch(
     *,
     knowledge: tuple[str, bool, dict[str, Any]],
     order: tuple[str, bool, dict[str, Any]],
+    order_query: str | None = None,
     latency_ms: dict[str, float] | None = None,
 ) -> None:
     """
@@ -654,8 +714,12 @@ def seed_from_prefetch(
     text, is_evidence, trace = order
     if trace.get("attempted"):
         outcome = order_outcome(text, is_evidence, trace)
-        turn.trajectory.append(rule_record("order_data_query", message, outcome,
+        query = order_query or message
+        turn.trajectory.append(rule_record("order_data_query", query, outcome,
                                            latency_ms.get("order_data_query")))
         if "order_data_query" in turn.tools:
-            args = OrderDataQueryArgs.model_construct(query=message)
-            turn.remember(turn.tools["order_data_query"].memo_key(args), outcome)
+            # The Case wrapper and its original question are the same operation
+            # in this turn. Keep both keys without misreporting the executed query.
+            for text in {query, message}:
+                args = OrderDataQueryArgs.model_construct(query=text)
+                turn.remember(turn.tools["order_data_query"].memo_key(args), outcome)

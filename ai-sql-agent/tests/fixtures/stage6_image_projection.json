@@ -1,0 +1,18 @@
+{
+  "source_memory_sha256": "fb9268baeded500fe4d611abfda81291979b9a1f01c5ea3fa9b9493e67b90370",
+  "trace_id": "17ab39a529ce47a4",
+  "planning_output": "步骤1：\n(\n  数据库: erp_db,\n  处理对象: orders表（字段：order_no, order_status, signed_date, delivery_date）；order_item表（字段：order_no, model, quantity）；关联关系：order_item.order_no ↔ orders.order_no（orders一行对应order_item多行）,\n  操作指令: 先分别在orders和order_item中筛选order_no为字面量SO-2026-11039的记录；再分别逐行返回订单主记录和产品明细，避免关联复制订单主记录，保留同型号的多条原始明细且不汇总不去重；然后将order_no命名为order_ref，将order_item.quantity命名为ordered_qty，保留model、order_status及计划交付日期delivery_date，将signed_date命名为order_date并保留其签单日期口径；最后按来源表分别标明查询来源，输出order_ref供下一步传值；Schema未提供产品数量单位及记录快照或更新时间，不推断、不填充，业务日期不冒充数据时点,\n  输出目标: orders来源逐行输出order_no（别名order_ref）、order_status、signed_date（别名order_date）、delivery_date；order_item来源逐行输出order_no（别名order_ref）、model、quantity（别名ordered_qty）；各结果标明对应数据库与表作为查询来源,\n  预期输出量级: 数条\n)\n\n步骤2：\n(\n  数据库: svc_db,\n  处理对象: delivery表（字段：order_no, delivered_date, delivery_status）；service_ticket表（字段：order_no, reported_date, resolved_date, issue_type, service_status, description）；replacement_part表（字段：order_no, part_name, quantity, requested_date, shipped_date, part_status, part_notes）；三表均包含order_no，但Schema未提供可唯一匹配配送、工单与补件记录的关联键,\n  操作指令: 先将步骤1输出的order_ref取值作为字面量条件分别筛选delivery、service_ticket和replacement_part的order_no，若步骤1无记录仍使用用户明确提供的字面量SO-2026-11039独立核对；再按来源表分别逐行返回原始记录，不在三表间关联，不汇总、不去重；然后统一将order_no命名为order_ref，将delivered_date命名为delivery_date并标明实际送达日期口径，将shipped_date命名为ship_date，保留各来源的业务状态、申请日期、报修日期、解决日期及原始问题描述和补件备注；再显式输出补件记录的order_ref与part_name供下一步跨库传值；最后标明各行查询来源，说明quantity仅表示补件数量，不改称missing_qty或delivered_qty，part_name不改称model，也不从描述或备注推断missing_qty、expected_model、received_model；Schema没有送达数量、缺件数量、应收或实收型号、数量单位及数据快照时间字段，对缺失信息不填充,\n  输出目标: delivery来源逐行输出order_no（别名order_ref）、delivered_date（别名delivery_date）、delivery_status；service_ticket来源逐行输出order_no（别名order_ref）、reported_date、resolved_date、issue_type、service_status、description；replacement_part来源逐行输出order_no（别名order_ref）、part_name、quantity、requested_date、shipped_date（别名ship_date）、part_status、part_notes，其中order_ref与part_name同时作为下一步传递键；各结果标明对应数据库与表作为查询来源,\n  预期输出量级: 数条\n)\n\n步骤3：\n(\n  数据库: wms_db,\n  处理对象: material表（字段：material_name, uom；主键：material_name）,\n  操作指令: 先接收步骤2输出的order_ref与part_name对应取值，将part_name去重后作为字面量列表；再筛选material中material_name落在该列表内的记录，逐项获取material_name与uom，步骤2没有补件名称时不执行无条件查询；然后以material_name精确对应传入的part_name，在数据库查询结果之外为步骤2的补件明细附加物料单位及wms_db.material查询来源，并从传入映射保留每行order_ref，不读取其他数据库；最后保留补件原始记录的行数与数量语义，未匹配物料时不推断单位，物料单位不套用于订单产品数量，不查询采购收货记录来替代订单送达记录；Schema没有单位历史生效时间或数据快照时间，无法验证该单位在原业务日期的历史状态，不填充数据时点,\n  输出目标: material_name、uom；结果装配时保留步骤2传入的order_ref，并标明单位查询来源wms_db.material,\n  预期输出量级: 数条\n)",
+  "recorded_sql": "SELECT\n    order_no AS order_ref,\n    NULL AS ordered_qty,\n    'orders' AS query_source\nFROM orders\nWHERE order_no = 'SO-2026-11039'\nUNION ALL\nSELECT\n    order_no AS order_ref,\n    quantity AS ordered_qty,\n    'order_item' AS query_source\nFROM order_item\nWHERE order_no = 'SO-2026-11039';",
+  "recorded_rows": [
+    {
+      "order_ref": "SO-2026-11039",
+      "ordered_qty": null,
+      "query_source": "orders"
+    },
+    {
+      "order_ref": "SO-2026-11039",
+      "ordered_qty": 5,
+      "query_source": "order_item"
+    }
+  ]
+}

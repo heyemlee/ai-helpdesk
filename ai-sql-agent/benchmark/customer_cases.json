@@ -89,7 +89,11 @@
     "language": "zh",
     "query": "J25-00137 我们报的几个问题现在都处理好了吗？",
     "gold_sql": "SELECT issue_type, service_status FROM svc.service_ticket WHERE order_no = 'J25-00137'",
-    "gold_columns": ["svc_db.service_ticket.order_no", "svc_db.service_ticket.issue_type", "svc_db.service_ticket.service_status"]
+    "gold_sql_alternatives": [
+      "SELECT description, service_status FROM svc.service_ticket WHERE order_no = 'J25-00137'"
+    ],
+    "gold_columns": ["svc_db.service_ticket.order_no", "svc_db.service_ticket.issue_type", "svc_db.service_ticket.service_status"],
+    "note": "逐条确认每个问题的处理状态；允许用问题类型或同一条记录的问题描述标识问题。每行的标识和状态必须成对一致，不接受只列状态、交换状态或少答一条。"
   },
   {
     "id": "c12",
@@ -195,7 +199,11 @@
     "category": "customer",
     "language": "en",
     "query": "Has the replacement part for order J25-00060 been shipped?",
-    "gold_sql": "SELECT shipped_date FROM svc.replacement_part WHERE order_no = 'J25-00060'",
-    "gold_columns": ["svc_db.replacement_part.order_no", "svc_db.replacement_part.shipped_date"]
+    "gold_sql": "SELECT CASE WHEN shipped_date IS NOT NULL THEN 1 ELSE 0 END AS is_shipped FROM svc.replacement_part WHERE order_no = 'J25-00060'",
+    "gold_sql_alternatives": [
+      "SELECT shipped_date FROM svc.replacement_part WHERE order_no = 'J25-00060'"
+    ],
+    "gold_columns": ["svc_db.replacement_part.order_no", "svc_db.replacement_part.shipped_date"],
+    "note": "只问是否已发货：接受由发货日期判定的是/否（1/0），也接受该记录的实际发货日期；不要求回答未问到的日期。日期与布尔值两种标准答案都来自数据库，不从模型输出反推。"
   }
 ]

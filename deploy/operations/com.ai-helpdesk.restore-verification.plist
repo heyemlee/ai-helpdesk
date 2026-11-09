@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.ai-helpdesk.restore-verification</string>
+  <key>ProgramArguments</key><array>
+    <string>/opt/helpdesk/ops-venv/bin/python</string>
+    <string>/opt/helpdesk/scripts/operations/verify.py</string>
+    <string>--config</string><string>/etc/helpdesk/operations.json</string>
+  </array>
+  <key>WorkingDirectory</key><string>/opt/helpdesk</string>
+  <key>EnvironmentVariables</key><dict><key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string></dict>
+  <key>StartCalendarInterval</key><dict><key>Hour</key><integer>3</integer><key>Minute</key><integer>5</integer></dict>
+  <key>Umask</key><integer>63</integer>
+  <key>StandardOutPath</key><string>/var/log/helpdesk-restore-verification.log</string>
+  <key>StandardErrorPath</key><string>/var/log/helpdesk-restore-verification-error.log</string>
+</dict></plist>

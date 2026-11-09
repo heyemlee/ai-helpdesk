@@ -1,0 +1,104 @@
+{
+  "C3_new130_reviews_started": false,
+  "DevC": {
+    "closed": 1022,
+    "guard": 3000,
+    "new_calls_this_formal": 0,
+    "remaining": 1978
+  },
+  "E": {
+    "closed": 3337,
+    "guard": 12499,
+    "prior1423_typed_prefix_and_budget_TEXT_retained": true,
+    "remaining": 9162
+  },
+  "archive_files": 475,
+  "automatic_HTTP_retries": 0,
+  "automatic_campaign_relaunch": false,
+  "business_resolved": 0,
+  "candidate_revision": "41550843f8d6bc1d2391bda8e09368dd845533bf",
+  "correct": 197,
+  "failed_scenarios": [
+    {
+      "cause": "Unrequested handoff after policy metadata datetime guard violations; complete model output ends handoff:no",
+      "id": "release-policies-029",
+      "severity": "release_blocking_invariant"
+    },
+    {
+      "cause": "Unrequested handoff after policy metadata datetime guard violations; complete model output ends handoff:no",
+      "id": "release-policies-050",
+      "severity": "release_blocking_invariant"
+    },
+    {
+      "cause": "Single request3296 SSLError with unknown usage; application reported verification unavailable, five fields not completed",
+      "id": "release-images-034",
+      "invariants": 0,
+      "transport_root_cause_unproven": true
+    }
+  ],
+  "global_totals": {
+    "known_input_tokens": 113560390,
+    "known_output_tokens": 2133161,
+    "new_requests": 14074,
+    "requests": 20447,
+    "unknown": 12
+  },
+  "groups": {
+    "cross_message": {
+      "accuracy": 1.0,
+      "correct": 50,
+      "total": 50
+    },
+    "images": {
+      "accuracy": 0.975,
+      "correct": 39,
+      "total": 40
+    },
+    "orders": {
+      "accuracy": 1.0,
+      "correct": 60,
+      "total": 60
+    },
+    "policies": {
+      "accuracy": 0.96,
+      "correct": 48,
+      "total": 50
+    }
+  },
+  "invariant_violations": 2,
+  "known_input_tokens": 10942495,
+  "known_output_tokens": 203679,
+  "model_text_date_guard_diagnosis": "Root and two independent chats verified four blocked datetime spans describe selected retrieval time or policy effective time and match trusted archived inputs; no actual fulfillment promises in either full model output. Fix remains pending new source verification.",
+  "new_requests": 1914,
+  "new_unknown_usage": 1,
+  "no_requests_refunded": true,
+  "original_qualification_conditions": {
+    "complete": true,
+    "correct >= 190": true,
+    "cross_message.correct >= 48": true,
+    "cross_message.total == 50": true,
+    "invariant_violations == 0": false,
+    "total == 200": true
+  },
+  "originals_or_gold_or_scoring_changed": false,
+  "production_deployed": false,
+  "release_eligible": false,
+  "root_checks": {
+    "PG_and_three_SQL_archives": true,
+    "SQL_HMAC_and_task_receipts": 10,
+    "all200_original_scores_recomputed": true,
+    "both_drains_completed": true,
+    "five_producer_normal_exits": true,
+    "key_and_helper45_preserved_before_runtime_cleanup": true,
+    "owned_resources_absent": true,
+    "policy_projection_marked_results": 0,
+    "whole_actual_PG_Runs_scanned": 350
+  },
+  "root_failed_round_proof_sha256": "79e4c5cbfbf6f0567861407d098187ea4c1a0258b65a7f0e39226900d770e30f",
+  "round": 1,
+  "round2_and_round3_started": false,
+  "run_terminal": 200,
+  "status": "closed_failed_round_release_rejected",
+  "successful_HTTP_receipts": 1913,
+  "total": 200
+}

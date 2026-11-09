@@ -1,4 +1,4 @@
-import { ApiError, getStaffKey } from '@/api/client'
+import { ApiError } from '@/api/client'
 import type { Key } from '@/i18n/catalog'
 
 type T = (key: Key, vars?: Record<string, string | number>) => string
@@ -7,7 +7,7 @@ type T = (key: Key, vars?: Record<string, string | number>) => string
  * 401 的两种情况后端是同一句话（"缺少或错误的 X-API-Key"），但员工要做的事不一样：
  * 没填的去填，填了的去核对。这一页带没带钥匙前端自己知道，照实分开说。
  */
-export const unauthorizedKey = (): Key => (getStaffKey() ? 'err.401.rejected' : 'err.401')
+export const unauthorizedKey = (): Key => 'err.401'
 
 /**
  * 把接口错误翻成"接下来该做什么"。后端的原话放在 detail 里一起给——

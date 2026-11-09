@@ -17,23 +17,17 @@
       "llm": 0.0
     },
     "entities": {},
-    "knowledge_used": true,
-    "knowledge_sources": [
-      {
-        "doc_id": "doc_1",
-        "chunk_id": "c1",
-        "passage": 0,
-        "score": 0.6,
-        "retrieval": "hybrid"
-      }
-    ],
+    "knowledge_used": false,
+    "knowledge_sources": [],
     "knowledge": {
       "attempted": true,
       "mode": "direct",
       "reranked": false,
       "corrected": false,
       "evidence_ok": null,
-      "degraded": false
+      "degraded": true,
+      "policy_lookup": false,
+      "lookup_status": "unavailable"
     },
     "business_data": {
       "enabled": true,
@@ -45,6 +39,7 @@
         "wms_db"
       ],
       "execution_status": "success",
+      "evidence_issues": [],
       "has_risk": false,
       "degraded": false
     }

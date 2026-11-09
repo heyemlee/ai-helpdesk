@@ -87,6 +87,7 @@ class ToolResult:
     reranked:       bool = False   # 是否经过重排
     corrected:      bool = False   # 是否触发过检索自纠错（补检一轮）
     evidence_ok:    bool | None = None  # 证据充分性判定；None = 未判定
+    lookup_status: str = ""  # found / empty / unavailable; empty requires successful retrieval
     # 排队模式下这一轮是重跑，结果取自上一遍记下的（app/runs/memo.py），这一次没有真的调用
     replayed:       bool = False
 
@@ -111,6 +112,12 @@ class RewrittenQueries(list):
     def __init__(self, queries=(), failed: bool = False):
         super().__init__(queries)
         self.failed = failed
+
+
+class RecalledCandidates(list):
+    def __init__(self, items=(), *, healthy=False):
+        super().__init__(items)
+        self.healthy = healthy
 
 
 # 重排 + 证据充分性判定的返回形状，由结构化输出在服务端约束。
@@ -319,19 +326,15 @@ class ToolManager:
             return ToolResult(success=False, data=None, tool_name=name, error=f"工具不存在: {name}")
 
         cache_rerank_top_k = rerank_top_k if rerank_top_k > 0 and tool.supports_rerank else 0
-        # 排队模式：这一轮属于一个 run。重跑时同一个工具、同样的参数直接取上一遍记下的结果
-        # ——worker 在委派查库的第 35 秒被杀掉，接手的那一遍不该再让下游跑 40 秒（app/runs/memo.py）
+        version = await self._cache_version(tool) if tool.cache_ttl > 0 or name == "knowledge_search" else None
         scope = current_run()
-        memo = memo_key("call", name, {"params": params, "rerank_top_k": cache_rerank_top_k}) if scope else ""
-        if scope is not None:
+        memo = memo_key("call", name, {"params": params, "rerank_top_k": cache_rerank_top_k,
+                                      "version": version}) if scope else ""
+        if scope is not None and (name != "knowledge_search" or version is not None):
             recalled = await scope.recall(memo)
             if recalled is not None:
                 return ToolResult(success=True, data=recalled.get("data"), tool_name=name, cached=True,
                                   reranked=bool(recalled.get("reranked")), replayed=True)
-        # 在执行之前取版本，写缓存时用的也是它：执行期间数据被改了的话，
-        # 这次的结果记在旧版本底下，之后的调用拿新版本来取，不会用到它。
-        # None = 版本读不出来，这一次不读也不写缓存。
-        version = await self._cache_version(tool) if tool.cache_ttl > 0 else None
 
         # 缓存命中
         if use_cache and version is not None:
@@ -507,18 +510,22 @@ class ToolManager:
         if scope is None:
             return await self._search_with_rewrite(tool_name, query, top_k, context,
                                                    self_correct=self_correct)
-        key = memo_key("search", tool_name, {"query": query, "top_k": top_k, "self_correct": self_correct})
+        version = await self._cache_version(self._tools[tool_name]) if tool_name in self._tools else None
+        if version is None:
+            return await self._search_with_rewrite(tool_name, query, top_k, context, self_correct=self_correct)
+        key = memo_key("search", tool_name, {"query": query, "top_k": top_k, "self_correct": self_correct, "version": version})
         recalled = await scope.recall(key)
         if recalled is not None:
             return ToolResult(success=True, data=recalled.get("data"), tool_name=tool_name, cached=True,
                               reranked=bool(recalled.get("reranked")),
                               corrected=bool(recalled.get("corrected")),
-                              evidence_ok=recalled.get("evidence_ok"), replayed=True)
+                              evidence_ok=recalled.get("evidence_ok"), lookup_status=recalled.get("lookup_status", ""), replayed=True)
         result = await self._search_with_rewrite(tool_name, query, top_k, context,
                                                  self_correct=self_correct)
         if result.success:
             await scope.remember(key, {"data": result.data, "reranked": result.reranked,
-                                       "corrected": result.corrected, "evidence_ok": result.evidence_ok})
+                                       "corrected": result.corrected, "evidence_ok": result.evidence_ok,
+                                       "lookup_status": result.lookup_status})
         return result
 
     async def _search_with_rewrite(
@@ -547,7 +554,17 @@ class ToolManager:
         queries, rewrite_failed = await self._rewritten(query)
         candidates = await self._recall(tool_name, queries, top_k, context)
         if not candidates:
-            return ToolResult(success=False, data=[], tool_name=tool_name, error="所有子查询均无结果")
+            healthy = bool(getattr(candidates, "healthy", False))
+            return ToolResult(success=healthy, data=[], tool_name=tool_name,
+                              lookup_status="empty" if healthy else "unavailable",
+                              error=None if healthy else "未能完成知识检索")
+
+        # Preserve the existing reordering of larger candidate sets after a
+        # rewrite failure. Only suppress the new small-set coverage call: that
+        # path previously needed no model request and has no usable verdict.
+        if rewrite_failed and len(candidates) <= top_k:
+            return ToolResult(success=True, data=candidates[:top_k], tool_name=tool_name,
+                              reranked=False, evidence_ok=None)
 
         outcome = await self._rerank(query, candidates, top_k)
         # **模型调用失败不是"模型判断证据不足"。** 改写或重排没调成的时候，这一轮
@@ -613,7 +630,11 @@ class ToolManager:
         for r in results:
             if isinstance(r, ToolResult) and r.success and isinstance(r.data, list):
                 rows.extend(r.data)
-        return self._merge_unique(rows)
+        healthy = bool(results) and all(
+            isinstance(r, ToolResult) and r.success and isinstance(r.data, list)
+            and not any(isinstance(item, dict) and item.get("fallback") for item in r.data)
+            for r in results)
+        return RecalledCandidates(self._merge_unique(rows), healthy=healthy)
 
     @staticmethod
     def _identity(item: Any) -> str:
@@ -634,7 +655,7 @@ class ToolManager:
                     {k: v for k, v in item.items() if k != "score"},
                     sort_keys=True, ensure_ascii=False, default=str,
                 )
-            return hashlib.md5(str(body).encode()).hexdigest()
+            return hashlib.md5(str((item.get("doc_id"), item.get("policy_revision"), body)).encode()).hexdigest()
         return hashlib.md5(str(item).encode()).hexdigest()
 
     @classmethod
@@ -695,9 +716,17 @@ class ToolManager:
         query 和候选拼在一起过一遍前向，能建模两者的交互；LLM listwise 更慢
         更贵，但能一次看到全部候选、给出全局排序，并且顺带判定证据充分性。
 
-        候选数不超过 top_k 时没有可排的东西，直接原样返回且 reranked=False——
-        否则调用方会看到 reranked=True 但结果其实没经过任何重排。
+        普通查询的候选数不超过 top_k 时直接原样返回且 reranked=False；
+        政策查询仍需判定所选时点、范围和条款的覆盖情况。
         """
+        from app.core.policy_scope import asks_for_policy
+
+        # Policy coverage includes the requested version, date and scope. A
+        # filtered singleton has nothing to reorder, but similarity alone cannot
+        # decide whether it answers that question. Keep the same bounded verdict
+        # and correction path, with all applicability evidence visible to it.
+        if asks_for_policy(query):
+            return await self._llm_rerank(query, items, top_k)
         if len(items) <= top_k:
             return RerankOutcome(items=items, reranked=False)
 
@@ -728,7 +757,12 @@ class ToolManager:
             title = str(item.get("title", "")).strip()
             content = str(item.get("content", "")).strip()
             if title or content:
-                return f"{title}\n{content[:limit]}"
+                from app.core.policy_scope import policy_source_metadata
+
+                applicability = policy_source_metadata(item)
+                metadata = ("\n本条引用的已校验适用元数据：" + json.dumps(applicability, ensure_ascii=False)
+                            if applicability else "")
+                return f"{title}\n{content[:limit]}{metadata}"
         return json.dumps(item, ensure_ascii=False)[:limit]
 
     async def _llm_rerank(self, query: str, items: list[Any], top_k: int) -> RerankOutcome:
@@ -755,6 +789,8 @@ class ToolManager:
 order 是按相关性降序排列的候选索引。
 sufficient 判断标准：排在最前的内容能否直接支撑一个具体、有依据的回答；
 只是话题相关但答不到点上，算 false。
+适用元数据只证明所选时点、范围和版本，不代替正文中的处理条款；
+按原始查询要求的目标判断覆盖，不把未被请求的额外业务操作当作缺口。
 missing 在 sufficient 为 false 时用一句话说明缺什么信息，充分时留空字符串。"""
         prompt = self._clean_text(prompt)
 

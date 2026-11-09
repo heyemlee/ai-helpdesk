@@ -177,6 +177,20 @@ _LANGUAGE_RULE = (
 # 标记缺失时退回关键词三档，所以老模型 / 老 prompt 也不会断。
 _HANDOFF_RULE = (
     "\n\n[转人工声明 / Handoff declaration]\n"
+    "先按用户本轮目标判断是否需要人工，不自行增加调查或业务办理。"
+    "只读查询或材料比对可以报告已有记录、字段含义与限制；引用系统里的计划日期不是承诺该日送达。"
+    "计划日期与实际状态属于不同语义，不能仅因计划尚未到而状态已完成就认定冲突；"
+    "同一实体、同一口径的值确实矛盾时才按冲突处理，字段含义不明时如实说明未知。"
+    "不同字段按各自定义分别报告，不能仅因与通常流程预期不同就宣称系统记录矛盾。"
+    "例如当前工序与整体生产状态属于不同字段；未提供二者的联动约束时，不能推断某状态必须让工序清空或变成终点。"
+    "可如实列出两项值及其定义，不因这种未经证实的跨字段推断自行增加人工核实任务。"
+    "健康的政策检索返回所选范围和时点没有可引用的已发布条款时，可以如实回答该检索结果，"
+    "不代表免费、获准或没有规定，也不自动发起人工寻找政策。"
+    "覆盖本轮目标的已核验业务零行回执可回答‘系统是否有记录’：只说明本次查询目标内未找到，"
+    "来源、SQL条件与执行时点保存在结构化证据中，不作为业务正文复述或业务日期承诺，"
+    "不把存在性问题扩展为查明实际状态；它不授权业务操作或承诺。"
+    "查询失败、结果未通过核验、所问事实缺失、真实冲突、所请求的业务办理缺少依据或审批、"
+    "以及用户明确要求人工时，仍须补充材料或转人工；不要把这些情况说成已核实。\n"
     "回答的最后一行必须单独写一个标记（不展示给客户，只用于系统判定，不要在正文里解释它）：\n"
     "  [[handoff:yes]] —— 你决定把这件事转交人工处理：你做不到、需要人工审批或操作、"
     "或客户明确要求人工。\n"
@@ -185,9 +199,14 @@ _HANDOFF_RULE = (
     "Write exactly one of these markers alone on the final line: [[handoff:yes]] if you are "
     "handing this to a human (you cannot do it, it needs human approval or action, or the "
     "customer asked for a person); [[handoff:no]] if you answered. Merely offering a human as "
-    "an option is NOT a handoff -- that is no."
+    "an option is NOT a handoff -- that is no. Judge completion against the user's requested task: "
+    "reporting an existing planned date is not a delivery commitment, and a planned date plus a "
+    "completed status alone does not prove contradictory records. A healthy scoped policy lookup "
+    "with no applicable published terms can be reported as that limited outcome; it grants no "
+    "permission or fee waiver. Failed/unverified lookups, missing requested facts, actual conflicts, "
+    "required approvals or actions, and explicit requests for a person still need clarification or handoff."
 )
-_HANDOFF_TRAILER_RE = re.compile(r"\s*\[\[\s*handoff\s*:\s*(yes|no)\s*\]\]\s*$", re.I)
+_HANDOFF_TRAILER_RE = re.compile(r"\[\[\s*handoff\s*:\s*(yes|no)\s*\]\]", re.I)
 
 # 工具循环打开时追加（见 agents/tool_loop.py）。每个工具查什么写在工具定义的
 # description 里，这里只讲什么时候该调、调的前后怎么写——对每个专家都一样，
@@ -217,6 +236,7 @@ class AgentResponse:
     confidence:  float = 1.0
     latency_ms:  float = 0.0
     escalate:    bool  = False   # 是否需要升级
+    handoff_declared: bool | None = None
     policy_violations: list[PolicyViolation] = field(default_factory=list)
     # success=False 的原因若是"模型服务不可用"（凭证被拒、额度用尽、限流退避，
     # 见 core/llm_guard），这里是原因；其它失败（超时、5xx、代码异常）为空串。
@@ -241,6 +261,12 @@ class Request:
     # 本轮回答允许引用的出处（RAG 检索结果等）。AnswerPolicy 用它判断
     # 回复里的价格/时效是否"有依据"。
     grounding_sources: list[str] = field(default_factory=list)
+    # Typed query/policy metadata, never sources for delivery promises.
+    reference_times: dict[str, list[str]] = field(default_factory=dict)
+    fact_evidence: dict[str, Any] | None = None
+    lookup_goal: dict | None = None
+    policy_ref_validator: Any = None
+    response_language: str = ""
     request_id:  str = field(default_factory=lambda: str(uuid.uuid4())[:8])
     # 工具循环打开时由准备阶段挂上（agents/tool_loop.TurnContext）：这一轮能用的工具、
     # 可信身份、去重表和轨迹。为 None 时专家照旧只做一次生成。
@@ -263,6 +289,7 @@ class OrchestratorResult:
     # 转人工：由置信度不足或明确的转人工意图触发
     handoff:     bool = False
     handoff_reason: str = ""
+    answer_handoff_declared: bool | None = None
     answer_confidence: float = 1.0
     needs_clarification: bool = False
     policy_violations: list[PolicyViolation] = field(default_factory=list)
@@ -367,6 +394,32 @@ class BaseAgent:
                 return await self._handle_with_tools(req, tools)
             return await self._handle_inner(req)
 
+    async def _factual_text(self, req, fallback):
+        if req.fact_evidence is None:
+            return fallback
+        from app.core.business_facts import (
+            collect_evidence,
+            conversational_only,
+            language_of,
+            render_draft,
+            verified_cells,
+        )
+        language = req.response_language or language_of(req.message)
+        from app.core.lookup_scope import request_goal
+        goal = request_goal(req)
+        selected = collect_evidence(req.fact_evidence, req.turn.trajectory if req.turn else [], lookup_goal=goal)
+        sources, business = selected["knowledge"]["sources"], selected["business_data"]
+        if not sources and not business.get("attempted") and not (req.fact_evidence.get("knowledge") or {}).get("attempted"):
+            return conversational_only(fallback, language)
+        if sources and (req.policy_ref_validator is None or not await req.policy_ref_validator(sources)):
+            sources = []
+        if business.get("evidence"):
+            cells, issues = verified_cells(business.get("evidence_payload") or {})
+            business.update(evidence=cells, evidence_issues=issues)
+        selected["knowledge"]["sources"] = sources
+        req.fact_evidence.update(selected)
+        return render_draft(sources, business, language=language, knowledge_state=selected["knowledge"], lookup_goal=goal)
+
     async def _handle_inner(self, req: Request) -> AgentResponse:
         t0 = time.monotonic()
         # 统计只在请求结束时记（stats.record），在途期间不动——见 AgentStats.record
@@ -384,7 +437,7 @@ class BaseAgent:
             sources = list(req.grounding_sources)
             if skill_prompt:
                 sources.append(skill_prompt)
-            policy_result = self._policy.enforce(content, sources)
+            policy_result = self._policy.enforce(content, sources, reference_times=req.reference_times)
             if policy_result.blocked:
                 logger.warning(
                     "%s 回复触发答案策略拦截 %d 处: %s",
@@ -393,7 +446,8 @@ class BaseAgent:
                     "; ".join(v.evidence for v in policy_result.violations),
                 )
 
-            grounded = bool(req.grounding_sources) and not policy_result.violations
+            policy_result.text = await self._factual_text(req, policy_result.text)
+            grounded = self._answer_grounded(req, policy_result.violations)
             escalate, inferred = self._escalation(policy_result.text, declared, grounded)
             response = AgentResponse(
                 agent_type=self.agent_type,
@@ -402,6 +456,7 @@ class BaseAgent:
                 confidence=self._self_confidence(policy_result.violations, escalate),
                 latency_ms=ms,
                 escalate=escalate,
+                handoff_declared=declared,
                 policy_violations=policy_result.violations,
             )
             self._record_answered(response, declared=declared, inferred=inferred, grounded=grounded)
@@ -445,7 +500,7 @@ class BaseAgent:
         sources = list(req.grounding_sources)
         if skill_prompt:
             sources.append(skill_prompt)
-        guard = PolicyStreamGuard(self._policy, sources)
+        guard = PolicyStreamGuard(self._policy, sources, reference_times=req.reference_times)
 
         full: list[str] = []
         declared: bool | None = None
@@ -457,25 +512,29 @@ class BaseAgent:
                     # 换了行，\n 会把它当一句放出来——所以每一段都要摘一遍。
                     safe, seen = self._split_handoff_trailer(safe)
                     if seen is not None:
-                        declared = seen
+                        declared = declared is True or seen
                 if safe:
                     full.append(safe)
-                    yield {"type": "delta", "text": safe}
+                    if req.fact_evidence is None:
+                        yield {"type": "delta", "text": safe}
 
             tail = guard.flush()
             if tail:
                 tail, seen = self._split_handoff_trailer(tail)
                 if seen is not None:
-                    declared = seen
+                    declared = declared is True or seen
             if tail:
                 full.append(tail)
-                yield {"type": "delta", "text": tail}
+                if req.fact_evidence is None:
+                    yield {"type": "delta", "text": tail}
 
             ms = (time.monotonic() - t0) * 1000
             self._record(ok=True, ms=ms)
 
-            content = "".join(full)
-            grounded = bool(req.grounding_sources) and not guard.violations
+            content = await self._factual_text(req, "".join(full))
+            if req.fact_evidence is not None and content:
+                yield {"type": "delta", "text": content}
+            grounded = self._answer_grounded(req, guard.violations)
             escalate, inferred = self._escalation(content, declared, grounded)
             if guard.violations:
                 logger.warning(
@@ -490,6 +549,7 @@ class BaseAgent:
                 confidence=self._self_confidence(guard.violations, escalate),
                 latency_ms=ms,
                 escalate=escalate,
+                handoff_declared=declared,
                 policy_violations=guard.violations,
             )
             self._record_answered(response, declared=declared, inferred=inferred, grounded=grounded,
@@ -506,7 +566,7 @@ class BaseAgent:
                 latency_ms=ms,
                 unavailable_reason=reason,
             )
-            self._record_answered(response, sent_chars=sum(map(len, full)) if stream else 0)
+            self._record_answered(response, sent_chars=sum(map(len, full)) if stream and req.fact_evidence is None else 0)
             yield {"type": "end", "response": response}
 
     async def _stream_llm(self, req: Request, skill_prompt: str = "") -> AsyncIterator[str]:
@@ -673,7 +733,7 @@ class BaseAgent:
         sources = list(req.grounding_sources)
         if skill_prompt:
             sources.append(skill_prompt)
-        guard = PolicyStreamGuard(self._policy, sources)
+        guard = PolicyStreamGuard(self._policy, sources, reference_times=req.reference_times)
 
         agent = self.agent_type.value
         recorder = events()
@@ -700,10 +760,11 @@ class BaseAgent:
                     if safe:
                         safe, seen = self._split_handoff_trailer(safe)
                         if seen is not None:
-                            declared = seen
+                            declared = declared is True or seen
                     if safe:
                         full.append(safe)
-                        yield {"type": "delta", "text": safe}
+                        if req.fact_evidence is None:
+                            yield {"type": "delta", "text": safe}
                 elif isinstance(event, ToolStart):
                     recorder.emit("tool_started", {
                         "actor": "model", "tool": event.name, "decision": event.decision,
@@ -712,6 +773,9 @@ class BaseAgent:
                     yield {"type": "tool", "phase": "start", "step": event.step, "call_id": event.call_id,
                            "tool": event.name, "args": event.args, "agent": agent}
                 elif isinstance(event, ToolEnd):
+                    if event.name == "knowledge_search":
+                        from app.core.policy_scope import policy_reference_times
+                        guard.add_reference_times(policy_reference_times(sources=event.outcome.trace.get("sources", [])))
                     if event.outcome.evidence:
                         guard.add_sources([event.outcome.evidence])
                         found_evidence = True
@@ -745,12 +809,15 @@ class BaseAgent:
             if tail:
                 tail, seen = self._split_handoff_trailer(tail)
                 if seen is not None:
-                    declared = seen
+                    declared = declared is True or seen
             if tail:
                 full.append(tail)
-                yield {"type": "delta", "text": tail}
+                if req.fact_evidence is None:
+                    yield {"type": "delta", "text": tail}
 
-            content = "".join(full)
+            content = await self._factual_text(req, "".join(full))
+            if req.fact_evidence is not None and content:
+                yield {"type": "delta", "text": content}
             if not content.strip():
                 if last_stop == "max_tokens":
                     raise ValueError("模型在生成正文前耗尽了 max_tokens。推理模型会先输出 thinking 块——"
@@ -759,7 +826,7 @@ class BaseAgent:
 
             ms = (time.monotonic() - t0) * 1000
             self._record(ok=True, ms=ms)
-            grounded = bool(req.grounding_sources or found_evidence) and not guard.violations
+            grounded = self._answer_grounded(req, guard.violations, found_evidence=found_evidence)
             escalate, inferred = self._escalation(content, declared, grounded)
             if guard.violations:
                 logger.warning(
@@ -774,6 +841,7 @@ class BaseAgent:
                 confidence=self._self_confidence(guard.violations, escalate),
                 latency_ms=ms,
                 escalate=escalate,
+                handoff_declared=declared,
                 policy_violations=guard.violations,
             )
             self._record_answered(response, declared=declared, inferred=inferred, grounded=grounded,
@@ -797,11 +865,26 @@ class BaseAgent:
                     latency_ms=ms,
                     unavailable_reason=reason,
                 )
-                self._record_answered(response, sent_chars=sum(map(len, full)) if stream else 0)
+                self._record_answered(response, sent_chars=sum(map(len, full)) if stream and req.fact_evidence is None else 0)
                 yield {"type": "end", "response": response}
         if fallback:
             async for event in self._stream_plain(req, stream=stream):
                 yield event
+
+    @staticmethod
+    def _answer_grounded(req, violations, *, found_evidence=False):
+        """Absence has typed execution grounding, separate from value sources."""
+        if violations:
+            return False
+        if req.grounding_sources or found_evidence:
+            return True
+        if req.fact_evidence:
+            from app.core.business_facts import collect_evidence
+            from app.core.lookup_scope import assess_lookup, request_goal
+            goal = request_goal(req)
+            selected = collect_evidence(req.fact_evidence, req.turn.trajectory if req.turn else [], lookup_goal=goal)
+            return assess_lookup(selected["business_data"], goal)["covers_goal"]
+        return False
 
     @staticmethod
     def _self_confidence(violations: list[PolicyViolation], escalate: bool) -> float:
@@ -872,13 +955,13 @@ class BaseAgent:
     @staticmethod
     def _split_handoff_trailer(text: str) -> tuple[str, bool | None]:
         """
-        把末尾的 [[handoff:yes|no]] 标记摘掉，返回 (干净正文, 声明的决定)。
+        摘掉 [[handoff:yes|no]] 标记；矛盾或重复声明中 yes 优先。
         没有标记时第二项为 None，调用方退回关键词判断。
         """
-        m = _HANDOFF_TRAILER_RE.search(text or "")
-        if not m:
+        markers = list(_HANDOFF_TRAILER_RE.finditer(text or ""))
+        if not markers:
             return text, None
-        return text[: m.start()].rstrip(), m.group(1).lower() == "yes"
+        return _HANDOFF_TRAILER_RE.sub("", text).rstrip(), any(m.group(1).lower() == "yes" for m in markers)
 
     def _decide_escalation(self, content: str, declared: bool | None, grounded: bool) -> bool:
         """
@@ -1024,7 +1107,9 @@ class OrderAgent(BaseAgent):
     system_prompt = (
         "你是订单与交付专家。专注于：订单和生产进度、交期、改单（改尺寸/配置/饰面/取消）、"
         "缺件漏发的补件流程、送货与到场排期。没有查到系统记录时，先说明需要订单号或柜号，"
-        "不要凭空描述订单状态。交期以工厂排产实际情况为准，不要给出确定的完工或到货日期。"
+        "不要凭空描述订单状态。可以引用已核验的日期与状态，注明字段含义和查询时点；"
+        "计划送货日期不是实际送达日期。查询已有记录不等于重新安排或承诺日期。"
+        "新交期承诺或更改排期需工厂和物流确认，不要自行给出确定的完工或到货日期。"
     )
 
 
@@ -1454,6 +1539,43 @@ class AgentOrchestrator:
             result.answer_usage = req.turn.usage()
         return result
 
+    def fact_preflight(self, req: Request) -> RoutingDecision | None:
+        """Reuse routing safeguards without answering or emitting model events."""
+        if (req.intent is None or req.intent_degraded or self._unavailable_before_answer(req)
+                or self._needs_clarification(req) or req.intent_confidence < self.INTENT_MIN_CONFIDENCE):
+            return None
+        decision = self._route_decision(req)
+        if (decision.primary_agent == AgentType.HANDOFF or decision.multi_agent
+                or decision.confidence < self.ROUTING_MIN_CONFIDENCE):
+            return None
+        return decision
+
+    async def complete_facts(self, req: Request) -> dict | None:
+        from app.core.fact_completion import proposal, retained_execution_task
+        task = (req.lookup_goal or {}).get("fact_task")
+        if not task:
+            return None
+        decision = self.fact_preflight(req)
+        evidence = req.fact_evidence or {}
+        knowledge = evidence.get("knowledge") or {}
+        if decision is None or knowledge.get("degraded") or knowledge.get("evidence_ok") is False:
+            return None
+        business = evidence.get("business_data") or {}
+        from app.core import policy_completion as pc
+        if task.get("kind") == pc.KIND:
+            if (business.get("attempted") or pc.blocked_evidence(evidence)
+                    or pc.blocked_evidence(knowledge) or pc.blocked_evidence(business)):
+                return None
+            result = pc.proposal(task, knowledge)
+        elif "kind" in task:
+            return None
+        else:
+            result = proposal(retained_execution_task(task, business), business)
+        if result:
+            result.update(routing_reason=decision.reason, routing_confidence=decision.confidence,
+                          primary_agent=decision.primary_agent.value, supporting_agents=[])
+        return result
+
     async def _run(self, req: Request) -> OrchestratorResult:
         """run() 的实现体。出口很多，轨迹统一由 run() 挂上。"""
         t0 = time.monotonic()
@@ -1513,6 +1635,7 @@ class AgentOrchestrator:
                 answer_confidence=answer_confidence,
                 policy_violations=response.policy_violations,
                 executed_agent=response.agent_type,
+                answer_handoff_declared=response.handoff_declared,
             )
 
         return OrchestratorResult(
@@ -1527,6 +1650,7 @@ class AgentOrchestrator:
             supporting_agents=[],
             routing_reason=decision.reason,
             routing_confidence=decision.confidence,
+            answer_handoff_declared=response.handoff_declared,
             answer_confidence=answer_confidence,
             policy_violations=response.policy_violations,
         )
@@ -1560,6 +1684,8 @@ class AgentOrchestrator:
         escalated = any(r.escalate for r in ok)
         violations = [v for r in ok for v in r.policy_violations]
         answer_confidence = self._answer_confidence(req, decision, ok)
+        declared = (True if any(r.handoff_declared is True for r in ok)
+                    else False if ok and all(r.handoff_declared is False for r in ok) else None)
 
         handoff_reasons = self._handoff_signals(req, decision, ok)
         if handoff_reasons:
@@ -1568,6 +1694,7 @@ class AgentOrchestrator:
                 answer=combined if ok else "",
                 answer_confidence=answer_confidence,
                 policy_violations=violations,
+                answer_handoff_declared=declared,
             )
 
         return OrchestratorResult(
@@ -1582,6 +1709,7 @@ class AgentOrchestrator:
             supporting_agents=decision.supporting_agents,
             routing_reason=decision.reason,
             routing_confidence=decision.confidence,
+            answer_handoff_declared=declared,
             answer_confidence=answer_confidence,
             policy_violations=violations,
         )
@@ -1715,6 +1843,7 @@ class AgentOrchestrator:
                 policy_violations=response.policy_violations,
                 executed_agent=response.agent_type,
                 answer_already_sent=True,
+                answer_handoff_declared=response.handoff_declared,
             )
             # 回答本体已经流出去了，这里只补发转人工提示的增量部分
             yield {"type": "delta", "text": result.response[len(response.content):]}
@@ -1734,6 +1863,7 @@ class AgentOrchestrator:
                 primary_agent=decision.primary_agent,
                 routing_reason=decision.reason,
                 routing_confidence=decision.confidence,
+                answer_handoff_declared=response.handoff_declared,
                 answer_confidence=answer_confidence,
                 policy_violations=response.policy_violations,
             ),
@@ -1866,6 +1996,7 @@ class AgentOrchestrator:
         policy_violations: list[PolicyViolation] | None = None,
         executed_agent: AgentType | None = None,
         answer_already_sent: bool = False,
+        answer_handoff_declared: bool | None = None,
     ) -> OrchestratorResult:
         """
         产出转人工结果。
@@ -1921,6 +2052,7 @@ class AgentOrchestrator:
             routing_confidence=decision.confidence,
             handoff=True,
             handoff_reason=reason,
+            answer_handoff_declared=answer_handoff_declared,
             answer_confidence=answer_confidence,
             policy_violations=list(policy_violations or []),
         )

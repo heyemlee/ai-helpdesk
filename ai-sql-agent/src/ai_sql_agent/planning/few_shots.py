@@ -6,8 +6,8 @@
 导致第二步无从下手。模型跟随格式示例远强于跟随文字描述，
 所以给它一个从问题到两步计划、含关联键传递的完整走通例子。
 
-只在检索命中多个库时注入：单库问题看到这个例子会倾向于多拆一步，
-既费一次模型调用又多一次出错机会。
+只在检索命中多个库时注入。成对演示“多个候选库仍只需一步”和“确实需要跨库”：
+检索命中的库数量不应决定执行步骤数。
 """
 
 from __future__ import annotations
@@ -58,6 +58,21 @@ CROSS_DB_EXAMPLE = FewShotExample(
 )
 
 
+SINGLE_DB_EXAMPLE = FewShotExample(
+    user_query="项目 P-042 的预算是多少？",
+    schema_context=_CROSS_DB_SCHEMA,
+    output="""步骤1：
+(
+  数据库: pm_db,
+  处理对象: project表（字段：project_code, budget_amt）,
+  操作指令: 先按用户给定的project_code等于P-042筛选project；再返回该项目的预算，不查询用户未要求的采购金额或实际成本,
+  输出目标: project_code, budget_amt,
+  预期输出量级: 单条
+)
+""",
+)
+
+
 def few_shots_for(database_count: int) -> list:
     """按检索命中的库数量决定注入哪些范例。"""
-    return [CROSS_DB_EXAMPLE] if database_count > 1 else []
+    return [CROSS_DB_EXAMPLE, SINGLE_DB_EXAMPLE] if database_count > 1 else []

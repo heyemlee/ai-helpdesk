@@ -1,0 +1,1305 @@
+{
+  "records": {
+    "development-orders-004": {
+      "source_sha256": "d2d59072df222f4afb0049a75ee0e1e4a694639e7d8e2b42c3eb3fe3dc55b68f",
+      "message": "请提供 SO-2026-11003 补发配件的件数及进度。",
+      "business_data": {
+        "attempted": true,
+        "databases": [
+          "svc_db",
+          "prod_db",
+          "erp_db"
+        ],
+        "degraded": false,
+        "enabled": true,
+        "evidence": [],
+        "evidence_issues": [
+          "execution_metadata_inconsistent",
+          "has_risk=true（字段缺失或类型不对时同此处置）",
+          "success"
+        ],
+        "evidence_payload": {
+          "answer": "已完成数据库查询。查询结果：[{\"database\": \"svc_db\", \"sql\": \"SELECT order_no, part_name, quantity, part_status\\nFROM replacement_part\\nWHERE order_no = 'SO-2026-11003';\", \"success\": true, \"columns\": [\"order_no\", \"part_name\", \"quantity\", \"part_status\"], \"rows\": [{\"order_no\": \"SO-2026-11003\", \"part_name\": \"Hinge BX-11003-24\", \"quantity\": 3, \"part_status\": \"待处理\"}], \"row_count\": 1, \"error\": null, \"truncated\": false, \"row_limit\": 1000, \"as_of\": \"2026-11-06T23:00:31.605Z\", \"as_of_source\": \"query_time\"}]",
+          "as_of": "2026-11-06T23:00:31.605000+00:00",
+          "as_of_source": "query_time",
+          "currency": null,
+          "degrade_reason": "",
+          "degraded": false,
+          "evidence": [],
+          "execution_status": "success",
+          "has_risk": true,
+          "observed_at": "2026-11-06T23:00:31.605000+00:00",
+          "queried_database": true,
+          "result_truncated": false,
+          "route": "database_query",
+          "run_id": "1b752b7fcd564808b990f0549d0acde7",
+          "selected_databases": [
+            "svc_db",
+            "prod_db",
+            "erp_db"
+          ],
+          "steps": [
+            {
+              "as_of": "2026-11-06T23:00:31.605Z",
+              "as_of_source": "query_time",
+              "column_metadata": {
+                "order_no": {
+                  "business_usage": "四个数据库统一通过 order_no 关联订单，不使用工程号。",
+                  "column": "order_no",
+                  "database": "svc_db",
+                  "description": "订单号。四个数据库统一通过 order_no 关联订单，不使用工程号。",
+                  "label_en": "Order number",
+                  "label_zh": "订单号",
+                  "output_field": "order_no",
+                  "query_hash": "957222f8d0b73ec455d27f4a5741e83f239377364e3c6eab5ea64c442fca5ee2",
+                  "schema_revision": "3160ae8ea6dbfe8474854b6d0605d9cda6b749956c0f5285e89aac85f8af495d",
+                  "semantic_role": "join_key",
+                  "table": "replacement_part"
+                },
+                "part_name": {
+                  "business_usage": "补件名称包含规格，通过名称对应仓储物料。",
+                  "column": "part_name",
+                  "database": "svc_db",
+                  "description": "补件名称。补件名称包含规格，通过名称对应仓储物料。",
+                  "label_en": "Part name",
+                  "label_zh": "补件名称",
+                  "output_field": "part_name",
+                  "query_hash": "957222f8d0b73ec455d27f4a5741e83f239377364e3c6eab5ea64c442fca5ee2",
+                  "schema_revision": "4f9660b4688af411679919f67d3edec046453738141958143fa0820f40035a06",
+                  "semantic_role": "join_key",
+                  "table": "replacement_part"
+                },
+                "part_status": {
+                  "business_usage": "查询和展示补件状态。",
+                  "column": "part_status",
+                  "database": "svc_db",
+                  "description": "补件状态；选项：待处理、处理中、已解决。",
+                  "label_en": "Part status",
+                  "label_zh": "补件状态",
+                  "output_field": "part_status",
+                  "query_hash": "957222f8d0b73ec455d27f4a5741e83f239377364e3c6eab5ea64c442fca5ee2",
+                  "schema_revision": "65c6998b2a4ad0361909623f284556fbda5f116b0b3d731ee28eefe1e5c245af",
+                  "semantic_role": "filter",
+                  "table": "replacement_part"
+                },
+                "quantity": {
+                  "business_usage": "查询和展示补件数量。",
+                  "column": "quantity",
+                  "database": "svc_db",
+                  "description": "补件数量。",
+                  "label_en": "Part quantity",
+                  "label_zh": "补件数量",
+                  "output_field": "quantity",
+                  "query_hash": "957222f8d0b73ec455d27f4a5741e83f239377364e3c6eab5ea64c442fca5ee2",
+                  "schema_revision": "793d99ed1ef3efe2dd9a6dd5a0a162bbd6ba1fb31e106897309258cb0a60ceaf",
+                  "semantic_role": "metric",
+                  "table": "replacement_part"
+                }
+              },
+              "column_units": {
+                "quantity": "pcs"
+              },
+              "database": "svc_db",
+              "error": null,
+              "final_sql": "SELECT order_no, part_name, quantity, part_status\nFROM replacement_part\nWHERE order_no = 'SO-2026-11003';",
+              "observed_at": "2026-11-06T23:00:31.605Z",
+              "repair_attempts": [],
+              "risk_findings": [
+                {
+                  "anomaly": "semantic_mismatch",
+                  "detail": "SQL 实际行为与问题不一致：SQL虽返回了指定订单补发配件的件数和进度及真实订单号，但未返回明确要求保留的明细schema记录键。（复述：从 replacement_part 表中筛选 order_no 等于 'SO-2026-11003' 的记录，不进行分组，输出 order_no、part_name、quantity 和 part_status 四个字段。）",
+                  "severity": "block"
+                }
+              ],
+              "row_count": 1,
+              "row_limit": 1000,
+              "rows": [
+                {
+                  "order_no": "SO-2026-11003",
+                  "part_name": "Hinge BX-11003-24",
+                  "part_status": "待处理",
+                  "quantity": 3
+                }
+              ],
+              "source_records": [],
+              "sql": "SELECT order_no, part_name, quantity, part_status\nFROM replacement_part\nWHERE order_no = 'SO-2026-11003';",
+              "success": true,
+              "truncated": false
+            }
+          ],
+          "trace_id": "9503af1a14c94962"
+        },
+        "execution_status": "success",
+        "has_risk": true,
+        "outcome": "unverified",
+        "reasons": [
+          "execution_metadata_inconsistent",
+          "has_risk=true（字段缺失或类型不对时同此处置）"
+        ],
+        "run_id": "1b752b7fcd564808b990f0549d0acde7",
+        "trace_id": "9503af1a14c94962"
+      },
+      "decision": {
+        "answer_handoff_declared": true,
+        "handoff": true,
+        "handoff_reason": "Agent 自评置信度 0.65 低于 0.7",
+        "answer_confidence": 0.65,
+        "policy_violations": []
+      },
+      "raw_answers": [
+        "目前没有可核验的订单 **SO-2026-11003** 补发明细，因此暂时无法确认补发配件的件数及进度。当前工单已创建，但工单状态不代表补发或生产进度。\n\n这项查询需要转交人工核实补发记录，确认配件名称、件数，以及当前处于备货、生产或发货哪个阶段。如您有补发单号或相关柜号，也请提供，便于准确定位。\n[[handoff:yes]]"
+      ]
+    },
+    "development-orders-011": {
+      "source_sha256": "b6aebc85524a0e9320b505f6c65ad4a879f78404b4919b7c56383c35bb66e71e",
+      "message": "库存表中 Hinge BX-11010-24 有多少现存与占用件数？",
+      "business_data": {
+        "attempted": true,
+        "databases": [
+          "wms_db",
+          "svc_db",
+          "erp_db"
+        ],
+        "degraded": false,
+        "enabled": true,
+        "evidence": [],
+        "evidence_issues": [
+          "execution_metadata_inconsistent",
+          "has_risk=true（字段缺失或类型不对时同此处置）",
+          "success"
+        ],
+        "evidence_payload": {
+          "answer": "已完成数据库查询。查询结果：[{\"database\": \"wms_db\", \"sql\": \"SELECT material_name, on_hand_qty, allocated_qty\\nFROM material\\nWHERE material_name = 'Hinge BX-11010-24';\", \"success\": true, \"columns\": [\"material_name\", \"on_hand_qty\", \"allocated_qty\"], \"rows\": [{\"material_name\": \"Hinge BX-11010-24\", \"on_hand_qty\": 49, \"allocated_qty\": 9}], \"row_count\": 1, \"error\": null, \"truncated\": false, \"row_limit\": 1000, \"as_of\": \"2026-11-06T23:01:30.020Z\", \"as_of_source\": \"query_time\"}]",
+          "as_of": "2026-11-06T23:01:30.020000+00:00",
+          "as_of_source": "query_time",
+          "currency": null,
+          "degrade_reason": "",
+          "degraded": false,
+          "evidence": [],
+          "execution_status": "success",
+          "has_risk": true,
+          "observed_at": "2026-11-06T23:01:30.020000+00:00",
+          "queried_database": true,
+          "result_truncated": false,
+          "route": "database_query",
+          "run_id": "3e02ee9b0e554edd81fc2c8de8b59a49",
+          "selected_databases": [
+            "wms_db",
+            "svc_db",
+            "erp_db"
+          ],
+          "steps": [
+            {
+              "as_of": "2026-11-06T23:01:30.020Z",
+              "as_of_source": "query_time",
+              "column_metadata": {
+                "allocated_qty": {
+                  "business_usage": "查询和展示已占用库存。",
+                  "column": "allocated_qty",
+                  "database": "wms_db",
+                  "description": "已占用库存。",
+                  "label_en": "Allocated quantity",
+                  "label_zh": "已占用库存",
+                  "output_field": "allocated_qty",
+                  "query_hash": "191c291a8d33394d9092a098e92c5a92ba1a483c49ec834b8e1c377a9008c84b",
+                  "schema_revision": "556f7acf6dbd7138045bd22f59cc3fbf5a6544ad1e3653ba09399024523fe38e",
+                  "semantic_role": "metric",
+                  "table": "material"
+                },
+                "material_name": {
+                  "business_usage": "名称包含规格。同名、同计量单位的原物料合并库存。",
+                  "column": "material_name",
+                  "database": "wms_db",
+                  "description": "物料名称。名称包含规格。同名、同计量单位的原物料合并库存。",
+                  "label_en": "Material name",
+                  "label_zh": "物料名称",
+                  "output_field": "material_name",
+                  "query_hash": "191c291a8d33394d9092a098e92c5a92ba1a483c49ec834b8e1c377a9008c84b",
+                  "schema_revision": "8116cd5f95a429353a82d3e19023f23ff972855e496ffa07b60d6f9006a19ea5",
+                  "semantic_role": "join_key",
+                  "table": "material"
+                },
+                "on_hand_qty": {
+                  "business_usage": "查询和展示现有库存。",
+                  "column": "on_hand_qty",
+                  "database": "wms_db",
+                  "description": "现有库存。",
+                  "label_en": "On-hand quantity",
+                  "label_zh": "现有库存",
+                  "output_field": "on_hand_qty",
+                  "query_hash": "191c291a8d33394d9092a098e92c5a92ba1a483c49ec834b8e1c377a9008c84b",
+                  "schema_revision": "3a28b2124bc2b1ddab1f1d84829bf725b143516f73d58a835545a61608813abc",
+                  "semantic_role": "metric",
+                  "table": "material"
+                }
+              },
+              "column_units": {
+                "allocated_qty": "pcs",
+                "on_hand_qty": "pcs"
+              },
+              "database": "wms_db",
+              "error": null,
+              "final_sql": "SELECT material_name, on_hand_qty, allocated_qty\nFROM material\nWHERE material_name = 'Hinge BX-11010-24';",
+              "observed_at": "2026-11-06T23:01:30.020Z",
+              "repair_attempts": [],
+              "risk_findings": [
+                {
+                  "anomaly": "semantic_mismatch",
+                  "detail": "SQL 实际行为与问题不一致：SQL虽返回指定物料的现存与占用件数，但逐行库存明细未保留明确要求的schema记录键。（复述：这条SQL从material表中筛选material_name等于'Hinge BX-11010-24'的记录，不进行分组，输出material_name、on_hand_qty和allocated_qty三个字段。）",
+                  "severity": "block"
+                }
+              ],
+              "row_count": 1,
+              "row_limit": 1000,
+              "rows": [
+                {
+                  "allocated_qty": 9,
+                  "material_name": "Hinge BX-11010-24",
+                  "on_hand_qty": 49
+                }
+              ],
+              "source_records": [
+                {
+                  "database": "wms_db",
+                  "key_columns": [
+                    "material_name"
+                  ],
+                  "keys": [
+                    "Hinge BX-11010-24"
+                  ],
+                  "table": "material",
+                  "truncated": false
+                }
+              ],
+              "sql": "SELECT material_name, on_hand_qty, allocated_qty\nFROM material\nWHERE material_name = 'Hinge BX-11010-24';",
+              "success": true,
+              "truncated": false
+            }
+          ],
+          "trace_id": "60ff94fbd05a45e9"
+        },
+        "execution_status": "success",
+        "has_risk": true,
+        "outcome": "unverified",
+        "reasons": [
+          "execution_metadata_inconsistent",
+          "has_risk=true（字段缺失或类型不对时同此处置）"
+        ],
+        "run_id": "3e02ee9b0e554edd81fc2c8de8b59a49",
+        "trace_id": "60ff94fbd05a45e9"
+      },
+      "decision": {
+        "answer_handoff_declared": true,
+        "handoff": true,
+        "handoff_reason": "Agent 自评置信度 0.65 低于 0.7",
+        "answer_confidence": 0.65,
+        "policy_violations": []
+      },
+      "raw_answers": [
+        "您想查询订单 SO-2026-11010 涉及的 Hinge BX-11010-24 在库存表中的现存与占用件数。目前查询结果未通过核验，无法确认这两个数量。\n我会转交订单履约客服核查，并附上您提供的订单号和物料编码。\n[[handoff:yes]]"
+      ]
+    },
+    "development-orders-012": {
+      "source_sha256": "1e24987a17ca4f6b44cb0974fb2d263cc0f20578c83a31de80fe411c8f94a50c",
+      "message": "系统是否有 SO-2026-X11011 的状态记录？",
+      "business_data": {
+        "attempted": true,
+        "databases": [
+          "erp_db",
+          "svc_db",
+          "prod_db"
+        ],
+        "degraded": false,
+        "enabled": true,
+        "evidence": [],
+        "evidence_issues": [
+          "no_data"
+        ],
+        "evidence_payload": {
+          "answer": "已完成数据库查询。查询结果：[{\"database\": \"erp_db\", \"sql\": \"SELECT order_no, order_status\\nFROM orders\\nWHERE order_no = 'SO-2026-X11011';\", \"success\": true, \"columns\": [], \"rows\": [], \"row_count\": 0, \"error\": null, \"truncated\": false, \"row_limit\": 1000, \"as_of\": \"2026-11-06T23:01:38.930Z\", \"as_of_source\": \"query_time\"}]",
+          "as_of": "2026-11-06T23:01:38.930000+00:00",
+          "as_of_source": "query_time",
+          "currency": null,
+          "degrade_reason": "",
+          "degraded": false,
+          "evidence": [],
+          "execution_status": "no_data",
+          "has_risk": false,
+          "observed_at": "2026-11-06T23:01:38.930000+00:00",
+          "queried_database": true,
+          "result_truncated": false,
+          "route": "database_query",
+          "run_id": "c377a8168f9e44bbaf918f9685a828fd",
+          "selected_databases": [
+            "erp_db",
+            "svc_db",
+            "prod_db"
+          ],
+          "steps": [
+            {
+              "as_of": "2026-11-06T23:01:38.930Z",
+              "as_of_source": "query_time",
+              "column_metadata": {},
+              "column_units": {},
+              "database": "erp_db",
+              "error": null,
+              "final_sql": "SELECT order_no, order_status\nFROM orders\nWHERE order_no = 'SO-2026-X11011';",
+              "observed_at": "2026-11-06T23:01:38.930Z",
+              "repair_attempts": [],
+              "risk_findings": [],
+              "row_count": 0,
+              "row_limit": 1000,
+              "rows": [],
+              "source_records": [],
+              "sql": "SELECT order_no, order_status\nFROM orders\nWHERE order_no = 'SO-2026-X11011';",
+              "success": true,
+              "truncated": false
+            }
+          ],
+          "trace_id": "85866da43c064373"
+        },
+        "execution_status": "no_data",
+        "has_risk": false,
+        "lookup_status": "empty",
+        "lookup_verified": true,
+        "outcome": "unverified",
+        "reasons": [
+          "execution_status=no_data（来源: contract）"
+        ],
+        "run_id": "c377a8168f9e44bbaf918f9685a828fd",
+        "trace_id": "85866da43c064373"
+      },
+      "decision": {
+        "answer_handoff_declared": true,
+        "handoff": true,
+        "handoff_reason": "Agent 自评置信度 0.65 低于 0.7",
+        "answer_confidence": 0.65,
+        "policy_violations": []
+      },
+      "raw_answers": [
+        "本轮只读查询已成功执行，但在本次查询范围和条件下，未找到订单 **SO-2026-X11011** 的状态记录。\n\n这不代表其他范围也没有该订单记录，目前也无法据此确认订单或生产状态。当前工单的“open”仅表示工单流程状态，并非订单状态。\n\n由于缺少您要查询的订单状态信息，需要转人工进一步核实。\n[[handoff:yes]]"
+      ]
+    },
+    "development-images-001": {
+      "source_sha256": "7915f6a9448283c4288e09e49424cfe13ec5d212e1a04b5f931eac1e7118c3cf",
+      "message": "逐项检查附件的单号、型号、数量、日期和状态，跟系统记录比对后标记不能核实的项目。",
+      "business_data": {
+        "attempted": true,
+        "databases": [
+          "erp_db",
+          "svc_db",
+          "prod_db"
+        ],
+        "degraded": false,
+        "enabled": true,
+        "evidence": [],
+        "evidence_issues": [
+          "execution_metadata_inconsistent",
+          "has_risk=true（字段缺失或类型不对时同此处置）",
+          "success"
+        ],
+        "evidence_payload": {
+          "answer": "已完成数据库查询。查询结果：[{\"database\": \"erp_db\", \"sql\": \"SELECT\\n    orders.order_no AS order_ref,\\n    order_item.model AS model,\\n    order_item.quantity AS ordered_qty,\\n    orders.delivery_date AS delivery_date,\\n    orders.order_status AS order_status\\nFROM orders\\nJOIN order_item ON order_item.order_no = orders.order_no\\nWHERE orders.order_no = 'SO-2026-11039';\", \"success\": true, \"columns\": [\"order_ref\", \"model\", \"ordered_qty\", \"delivery_date\", \"order_status\"], \"rows\": [{\"order_ref\": \"SO-2026-11039\", \"model\": \"BX-11039-24\", \"ordered_qty\": 5, \"delivery_date\": \"2026-11-22\", \"order_status\": \"已交付\"}], \"row_count\": 1, \"error\": null, \"truncated\": false, \"row_limit\": 1000, \"as_of\": \"2026-11-06T23:06:25.018Z\", \"as_of_source\": \"query_time\"}]",
+          "as_of": "2026-11-06T23:06:25.018000+00:00",
+          "as_of_source": "query_time",
+          "currency": null,
+          "degrade_reason": "",
+          "degraded": false,
+          "evidence": [],
+          "execution_status": "success",
+          "has_risk": true,
+          "observed_at": "2026-11-06T23:06:25.019000+00:00",
+          "queried_database": true,
+          "result_truncated": false,
+          "route": "database_query",
+          "run_id": "e21f3a88347a48369f3f146ed01a683e",
+          "selected_databases": [
+            "erp_db",
+            "svc_db",
+            "prod_db"
+          ],
+          "steps": [
+            {
+              "as_of": "2026-11-06T23:06:25.018Z",
+              "as_of_source": "query_time",
+              "column_metadata": {
+                "delivery_date": {
+                  "business_usage": "迁移自原配送记录的计划送货日期。没有送货计划时为空；不是安装日期。实际送达日期在 svc_db.delivery.delivered_date。 日期为 YYYY-MM-DD 文本；本地时间相关查询使用 DATE('now','localtime')。",
+                  "column": "delivery_date",
+                  "database": "erp_db",
+                  "description": "交付日期。迁移自原配送记录的计划送货日期。没有送货计划时为空；不是安装日期。实际送达日期在 svc_db.delivery.delivered_date。",
+                  "label_en": "Delivery date",
+                  "label_zh": "交付日期",
+                  "output_field": "delivery_date",
+                  "query_hash": "25a850b523cde9c60df3890c0404b198b3b51dd88d2af9f0938286f5d1a3cebe",
+                  "schema_revision": "a525539d1bf4f9f5b7bd6b46b42cf25dbc1a640e6fd96fe842dfa9544f4550ff",
+                  "semantic_role": "time",
+                  "table": "orders"
+                },
+                "model": {
+                  "business_usage": "查询和展示型号。",
+                  "column": "model",
+                  "database": "erp_db",
+                  "description": "型号。",
+                  "label_en": "Model",
+                  "label_zh": "型号",
+                  "output_field": "model",
+                  "query_hash": "25a850b523cde9c60df3890c0404b198b3b51dd88d2af9f0938286f5d1a3cebe",
+                  "schema_revision": "f48b5b19df37cf14a968595f4ca8319b529c1af2549479abf71a4c7d3432ea53",
+                  "semantic_role": "filter",
+                  "table": "order_item"
+                },
+                "order_ref": {
+                  "business_usage": "四个数据库统一通过 order_no 关联订单，不使用工程号。",
+                  "column": "order_no",
+                  "database": "erp_db",
+                  "description": "订单号。四个数据库统一通过 order_no 关联订单，不使用工程号。",
+                  "label_en": "Order number",
+                  "label_zh": "订单号",
+                  "output_field": "order_ref",
+                  "query_hash": "25a850b523cde9c60df3890c0404b198b3b51dd88d2af9f0938286f5d1a3cebe",
+                  "schema_revision": "510a3f0402df9db6680615616b7ff24501ea822ea139dd41557b2aa91f16b05c",
+                  "semantic_role": "join_key",
+                  "table": "orders"
+                },
+                "order_status": {
+                  "business_usage": "查询和展示订单状态。",
+                  "column": "order_status",
+                  "database": "erp_db",
+                  "description": "订单状态；选项：已签单、生产中、待发货、配送中、已交付、已取消。",
+                  "label_en": "Order status",
+                  "label_zh": "订单状态",
+                  "output_field": "order_status",
+                  "query_hash": "25a850b523cde9c60df3890c0404b198b3b51dd88d2af9f0938286f5d1a3cebe",
+                  "schema_revision": "b8f5d093a60f4cfc81ad3801670ae537127994e9ede313d2853301f8163e0cb4",
+                  "semantic_role": "filter",
+                  "table": "orders"
+                },
+                "ordered_qty": {
+                  "business_usage": "查询和展示数量。",
+                  "column": "quantity",
+                  "database": "erp_db",
+                  "description": "数量。",
+                  "label_en": "Quantity",
+                  "label_zh": "数量",
+                  "output_field": "ordered_qty",
+                  "query_hash": "25a850b523cde9c60df3890c0404b198b3b51dd88d2af9f0938286f5d1a3cebe",
+                  "schema_revision": "fe4011937b2a3e4e33e5d37de66d87ab1f60624ea61a5fafc4a99f5ab41267e9",
+                  "semantic_role": "metric",
+                  "table": "order_item"
+                }
+              },
+              "column_units": {
+                "ordered_qty": "pcs"
+              },
+              "database": "erp_db",
+              "error": null,
+              "final_sql": "SELECT\n    orders.order_no AS order_ref,\n    order_item.model AS model,\n    order_item.quantity AS ordered_qty,\n    orders.delivery_date AS delivery_date,\n    orders.order_status AS order_status\nFROM orders\nJOIN order_item ON order_item.order_no = orders.order_no\nWHERE orders.order_no = 'SO-2026-11039';",
+              "observed_at": "2026-11-06T23:06:25.019Z",
+              "repair_attempts": [],
+              "risk_findings": [
+                {
+                  "anomaly": "semantic_mismatch",
+                  "detail": "SQL 实际行为与问题不一致：SQL虽返回指定订单的真实订单号、型号、数量、交货日期和业务状态，但未返回明确要求保留的明细schema记录键。（复述：该SQL将orders与order_item按order_no内连接，筛选订单号为“SO-2026-11039”的记录，不进行分组，输出订单号（别名order_ref）、商品型号（model）、订购数量（别名ordered_qty）、交货日期（delivery_date）和订单状态（order_status）。）",
+                  "severity": "block"
+                }
+              ],
+              "row_count": 1,
+              "row_limit": 1000,
+              "rows": [
+                {
+                  "delivery_date": "2026-11-22",
+                  "model": "BX-11039-24",
+                  "order_ref": "SO-2026-11039",
+                  "order_status": "已交付",
+                  "ordered_qty": 5
+                }
+              ],
+              "source_records": [
+                {
+                  "database": "erp_db",
+                  "key_columns": [
+                    "order_no"
+                  ],
+                  "keys": [
+                    "SO-2026-11039"
+                  ],
+                  "table": "orders",
+                  "truncated": false
+                }
+              ],
+              "sql": "SELECT\n    orders.order_no AS order_ref,\n    order_item.model AS model,\n    order_item.quantity AS ordered_qty,\n    orders.delivery_date AS delivery_date,\n    orders.order_status AS order_status\nFROM orders\nJOIN order_item ON order_item.order_no = orders.order_no\nWHERE orders.order_no = 'SO-2026-11039';",
+              "success": true,
+              "truncated": false
+            }
+          ],
+          "trace_id": "1c8684d307d04277"
+        },
+        "execution_status": "success",
+        "has_risk": true,
+        "outcome": "unverified",
+        "reasons": [
+          "execution_metadata_inconsistent",
+          "has_risk=true（字段缺失或类型不对时同此处置）"
+        ],
+        "run_id": "e21f3a88347a48369f3f146ed01a683e",
+        "trace_id": "1c8684d307d04277"
+      },
+      "decision": {
+        "answer_handoff_declared": true,
+        "handoff": true,
+        "handoff_reason": "Agent 自评置信度 0.40 低于 0.7，其中答案策略拦截 1 处无依据承诺",
+        "answer_confidence": 0.4,
+        "policy_violations": [
+          {
+            "evidence": "2026-11-22",
+            "reason": "无依据的时效承诺：'2026-11-22' 未出现在本轮知识库检索结果或 Skill SOP 中，且句子使用了承诺性表述。",
+            "rule": "lead_time_commitment",
+            "sentence": "| 日期 | 2026-11-22 | 2026-11-22 | 值相同，但不能核实 |"
+          }
+        ]
+      },
+      "raw_answers": [
+        "订单 **SO-2026-11039** 的附件字段比对结果如下；但本轮查询存在“执行元数据不一致”风险，核验结果未通过，因此以下项目均需标记为**不能核实**，不能仅凭字段值相同认定已核实。\n\n| 项目 | 附件值 | 返回的系统值 | 核实结论 |\n|---|---|---|---|\n| 单号 | SO-2026-11039 | SO-2026-11039 | 值相同，但不能核实 |\n| 型号 | BX-11039-24 | BX-11039-24 | 值相同，但不能核实 |\n| 数量 | 5 件 | 5 件 | 值相同，但不能核实 |\n| 日期 | 2026-11-22 | 2026-11-22 | 值相同，但不能核实 |\n| 状态 | 已交付 | 已交付 | 值相同，但不能核实 |\n\n其中，日期字段表示**计划送货日期**，不是实际送达或安装日期；“已交付”是订单状态，不是签收证明，两者本身不构成记录冲突。\n\n此项需要转交订单履约人工客服复核查询证据，确认后才能给出正式核实结论。\n[[handoff:yes]]"
+      ]
+    },
+    "development-images-002": {
+      "source_sha256": "444f05f0ca5cbadc19833149362b3b6ea64880201aa7eec938778b07b390eff4",
+      "message": "逐项检查附件的单号、型号、数量、日期和状态，跟系统记录比对后标记不能核实的项目。",
+      "business_data": {
+        "attempted": true,
+        "databases": [
+          "erp_db",
+          "svc_db",
+          "prod_db"
+        ],
+        "degraded": false,
+        "enabled": true,
+        "evidence": [],
+        "evidence_issues": [
+          "execution_metadata_inconsistent",
+          "has_risk=true（字段缺失或类型不对时同此处置）",
+          "success"
+        ],
+        "evidence_payload": {
+          "answer": "已完成数据库查询。查询结果：[{\"database\": \"erp_db\", \"sql\": \"SELECT\\n    orders.order_no AS order_ref,\\n    order_item.model AS model,\\n    order_item.quantity AS ordered_qty,\\n    orders.delivery_date AS delivery_date,\\n    orders.order_status AS order_status\\nFROM orders\\nLEFT JOIN order_item\\n    ON orders.order_no = order_item.order_no\\nWHERE orders.order_no = 'SO-2026-11040';\", \"success\": true, \"columns\": [\"order_ref\", \"model\", \"ordered_qty\", \"delivery_date\", \"order_status\"], \"rows\": [{\"order_ref\": \"SO-2026-11040\", \"model\": \"BX-11040-24\", \"ordered_qty\": 6, \"delivery_date\": \"2026-11-19\", \"order_status\": \"配送中\"}], \"row_count\": 1, \"error\": null, \"truncated\": false, \"row_limit\": 1000, \"as_of\": \"2026-11-06T23:06:54.179Z\", \"as_of_source\": \"query_time\"}]",
+          "as_of": "2026-11-06T23:06:54.179000+00:00",
+          "as_of_source": "query_time",
+          "currency": null,
+          "degrade_reason": "",
+          "degraded": false,
+          "evidence": [],
+          "execution_status": "success",
+          "has_risk": true,
+          "observed_at": "2026-11-06T23:06:54.180000+00:00",
+          "queried_database": true,
+          "result_truncated": false,
+          "route": "database_query",
+          "run_id": "9230aeaedfe142c6afa203d1d11e7d2b",
+          "selected_databases": [
+            "erp_db",
+            "svc_db",
+            "prod_db"
+          ],
+          "steps": [
+            {
+              "as_of": "2026-11-06T23:06:54.179Z",
+              "as_of_source": "query_time",
+              "column_metadata": {
+                "delivery_date": {
+                  "business_usage": "迁移自原配送记录的计划送货日期。没有送货计划时为空；不是安装日期。实际送达日期在 svc_db.delivery.delivered_date。 日期为 YYYY-MM-DD 文本；本地时间相关查询使用 DATE('now','localtime')。",
+                  "column": "delivery_date",
+                  "database": "erp_db",
+                  "description": "交付日期。迁移自原配送记录的计划送货日期。没有送货计划时为空；不是安装日期。实际送达日期在 svc_db.delivery.delivered_date。",
+                  "label_en": "Delivery date",
+                  "label_zh": "交付日期",
+                  "output_field": "delivery_date",
+                  "query_hash": "63dda557da890dfa3948a6e609f1c864298a95dfe2a13520cbb9225bf04cecbe",
+                  "schema_revision": "a525539d1bf4f9f5b7bd6b46b42cf25dbc1a640e6fd96fe842dfa9544f4550ff",
+                  "semantic_role": "time",
+                  "table": "orders"
+                },
+                "model": {
+                  "business_usage": "查询和展示型号。",
+                  "column": "model",
+                  "database": "erp_db",
+                  "description": "型号。",
+                  "label_en": "Model",
+                  "label_zh": "型号",
+                  "output_field": "model",
+                  "query_hash": "63dda557da890dfa3948a6e609f1c864298a95dfe2a13520cbb9225bf04cecbe",
+                  "schema_revision": "f48b5b19df37cf14a968595f4ca8319b529c1af2549479abf71a4c7d3432ea53",
+                  "semantic_role": "filter",
+                  "table": "order_item"
+                },
+                "order_ref": {
+                  "business_usage": "四个数据库统一通过 order_no 关联订单，不使用工程号。",
+                  "column": "order_no",
+                  "database": "erp_db",
+                  "description": "订单号。四个数据库统一通过 order_no 关联订单，不使用工程号。",
+                  "label_en": "Order number",
+                  "label_zh": "订单号",
+                  "output_field": "order_ref",
+                  "query_hash": "63dda557da890dfa3948a6e609f1c864298a95dfe2a13520cbb9225bf04cecbe",
+                  "schema_revision": "510a3f0402df9db6680615616b7ff24501ea822ea139dd41557b2aa91f16b05c",
+                  "semantic_role": "join_key",
+                  "table": "orders"
+                },
+                "order_status": {
+                  "business_usage": "查询和展示订单状态。",
+                  "column": "order_status",
+                  "database": "erp_db",
+                  "description": "订单状态；选项：已签单、生产中、待发货、配送中、已交付、已取消。",
+                  "label_en": "Order status",
+                  "label_zh": "订单状态",
+                  "output_field": "order_status",
+                  "query_hash": "63dda557da890dfa3948a6e609f1c864298a95dfe2a13520cbb9225bf04cecbe",
+                  "schema_revision": "b8f5d093a60f4cfc81ad3801670ae537127994e9ede313d2853301f8163e0cb4",
+                  "semantic_role": "filter",
+                  "table": "orders"
+                },
+                "ordered_qty": {
+                  "business_usage": "查询和展示数量。",
+                  "column": "quantity",
+                  "database": "erp_db",
+                  "description": "数量。",
+                  "label_en": "Quantity",
+                  "label_zh": "数量",
+                  "output_field": "ordered_qty",
+                  "query_hash": "63dda557da890dfa3948a6e609f1c864298a95dfe2a13520cbb9225bf04cecbe",
+                  "schema_revision": "fe4011937b2a3e4e33e5d37de66d87ab1f60624ea61a5fafc4a99f5ab41267e9",
+                  "semantic_role": "metric",
+                  "table": "order_item"
+                }
+              },
+              "column_units": {
+                "ordered_qty": "pcs"
+              },
+              "database": "erp_db",
+              "error": null,
+              "final_sql": "SELECT\n    orders.order_no AS order_ref,\n    order_item.model AS model,\n    order_item.quantity AS ordered_qty,\n    orders.delivery_date AS delivery_date,\n    orders.order_status AS order_status\nFROM orders\nLEFT JOIN order_item\n    ON orders.order_no = order_item.order_no\nWHERE orders.order_no = 'SO-2026-11040';",
+              "observed_at": "2026-11-06T23:06:54.180Z",
+              "repair_attempts": [],
+              "risk_findings": [
+                {
+                  "anomaly": "semantic_mismatch",
+                  "detail": "SQL 实际行为与问题不一致：SQL虽返回指定订单的订单号、型号、数量、交付日期和状态，但未返回明确要求保留的明细schema记录键。（复述：该SQL筛选订单号为“SO-2026-11040”的订单，按订单号左连接订单明细，不进行分组，输出订单号（别名order_ref）、明细型号（model）、明细数量（别名ordered_qty）、交付日期和订单状态，没有匹配明细时明细型号和数量为NULL。）",
+                  "severity": "block"
+                }
+              ],
+              "row_count": 1,
+              "row_limit": 1000,
+              "rows": [
+                {
+                  "delivery_date": "2026-11-19",
+                  "model": "BX-11040-24",
+                  "order_ref": "SO-2026-11040",
+                  "order_status": "配送中",
+                  "ordered_qty": 6
+                }
+              ],
+              "source_records": [
+                {
+                  "database": "erp_db",
+                  "key_columns": [
+                    "order_no"
+                  ],
+                  "keys": [
+                    "SO-2026-11040"
+                  ],
+                  "table": "orders",
+                  "truncated": false
+                }
+              ],
+              "sql": "SELECT\n    orders.order_no AS order_ref,\n    order_item.model AS model,\n    order_item.quantity AS ordered_qty,\n    orders.delivery_date AS delivery_date,\n    orders.order_status AS order_status\nFROM orders\nLEFT JOIN order_item\n    ON orders.order_no = order_item.order_no\nWHERE orders.order_no = 'SO-2026-11040';",
+              "success": true,
+              "truncated": false
+            }
+          ],
+          "trace_id": "87e414a662ad4278"
+        },
+        "execution_status": "success",
+        "has_risk": true,
+        "outcome": "unverified",
+        "reasons": [
+          "execution_metadata_inconsistent",
+          "has_risk=true（字段缺失或类型不对时同此处置）"
+        ],
+        "run_id": "9230aeaedfe142c6afa203d1d11e7d2b",
+        "trace_id": "87e414a662ad4278"
+      },
+      "decision": {
+        "answer_handoff_declared": true,
+        "handoff": true,
+        "handoff_reason": "Agent 自评置信度 0.40 低于 0.7，其中答案策略拦截 1 处无依据承诺",
+        "answer_confidence": 0.4,
+        "policy_violations": [
+          {
+            "evidence": "2026-11-19",
+            "reason": "无依据的时效承诺：'2026-11-19' 未出现在本轮知识库检索结果或 Skill SOP 中，且句子使用了承诺性表述。",
+            "rule": "lead_time_commitment",
+            "sentence": "| 日期 | 2026-11-19 | 不能核实；对应字段含义为计划送货日期，不代表实际送达或安装日期 |"
+          }
+        ]
+      },
+      "raw_answers": [
+        "附件字段已有比对结果，但本轮证据标记为“执行元数据不一致”，未通过核验，因此以下项目均需标记为**不能核实**，不能认定与系统记录一致：\n\n| 项目 | 附件所列值 | 核对结论 |\n|---|---|---|\n| 单号 | SO-2026-11040 | 不能核实 |\n| 型号 | BX-11040-24 | 不能核实 |\n| 数量 | 6 件 | 不能核实 |\n| 日期 | 2026-11-19 | 不能核实；对应字段含义为计划送货日期，不代表实际送达或安装日期 |\n| 状态 | 配送中 | 不能核实；对应字段为订单状态，不是工单状态或签收证明 |\n\n我将转交订单履约人工客服，重新核验上述五项记录及查询证据。\n[[handoff:yes]]"
+      ]
+    },
+    "development-images-003": {
+      "source_sha256": "42a1b68302d221163013cabf28198f9e9d22d99e0d319ad6ba8f353fe313ff27",
+      "message": "逐项检查附件的单号、型号、数量、日期和状态，跟系统记录比对后标记不能核实的项目。",
+      "business_data": {
+        "attempted": true,
+        "databases": [
+          "erp_db",
+          "svc_db",
+          "prod_db"
+        ],
+        "degraded": false,
+        "enabled": true,
+        "evidence": [],
+        "evidence_issues": [
+          "execution_metadata_inconsistent",
+          "has_risk=true（字段缺失或类型不对时同此处置）",
+          "success"
+        ],
+        "evidence_payload": {
+          "answer": "已完成数据库查询。查询结果：[{\"database\": \"erp_db\", \"sql\": \"SELECT\\n    orders.order_no AS order_ref,\\n    order_item.model AS model,\\n    order_item.quantity AS ordered_qty,\\n    orders.delivery_date AS delivery_date,\\n    orders.order_status AS order_status\\nFROM orders\\nJOIN order_item ON orders.order_no = order_item.order_no\\nWHERE orders.order_no = 'SO-2026-11041';\", \"success\": true, \"columns\": [\"order_ref\", \"model\", \"ordered_qty\", \"delivery_date\", \"order_status\"], \"rows\": [{\"order_ref\": \"SO-2026-11041\", \"model\": \"BX-11041-24\", \"ordered_qty\": 3, \"delivery_date\": \"2026-11-21\", \"order_status\": \"生产中\"}], \"row_count\": 1, \"error\": null, \"truncated\": false, \"row_limit\": 1000, \"as_of\": \"2026-11-06T23:07:09.241Z\", \"as_of_source\": \"query_time\"}]",
+          "as_of": "2026-11-06T23:07:09.241000+00:00",
+          "as_of_source": "query_time",
+          "currency": null,
+          "degrade_reason": "",
+          "degraded": false,
+          "evidence": [],
+          "execution_status": "success",
+          "has_risk": true,
+          "observed_at": "2026-11-06T23:07:09.241000+00:00",
+          "queried_database": true,
+          "result_truncated": false,
+          "route": "database_query",
+          "run_id": "26dabded21414758a2dc3f70be0c2e6c",
+          "selected_databases": [
+            "erp_db",
+            "svc_db",
+            "prod_db"
+          ],
+          "steps": [
+            {
+              "as_of": "2026-11-06T23:07:09.241Z",
+              "as_of_source": "query_time",
+              "column_metadata": {
+                "delivery_date": {
+                  "business_usage": "迁移自原配送记录的计划送货日期。没有送货计划时为空；不是安装日期。实际送达日期在 svc_db.delivery.delivered_date。 日期为 YYYY-MM-DD 文本；本地时间相关查询使用 DATE('now','localtime')。",
+                  "column": "delivery_date",
+                  "database": "erp_db",
+                  "description": "交付日期。迁移自原配送记录的计划送货日期。没有送货计划时为空；不是安装日期。实际送达日期在 svc_db.delivery.delivered_date。",
+                  "label_en": "Delivery date",
+                  "label_zh": "交付日期",
+                  "output_field": "delivery_date",
+                  "query_hash": "67485c11e209a5a1b5477b205a8a40994063727a569621df05a9e48d9d334091",
+                  "schema_revision": "a525539d1bf4f9f5b7bd6b46b42cf25dbc1a640e6fd96fe842dfa9544f4550ff",
+                  "semantic_role": "time",
+                  "table": "orders"
+                },
+                "model": {
+                  "business_usage": "查询和展示型号。",
+                  "column": "model",
+                  "database": "erp_db",
+                  "description": "型号。",
+                  "label_en": "Model",
+                  "label_zh": "型号",
+                  "output_field": "model",
+                  "query_hash": "67485c11e209a5a1b5477b205a8a40994063727a569621df05a9e48d9d334091",
+                  "schema_revision": "f48b5b19df37cf14a968595f4ca8319b529c1af2549479abf71a4c7d3432ea53",
+                  "semantic_role": "filter",
+                  "table": "order_item"
+                },
+                "order_ref": {
+                  "business_usage": "四个数据库统一通过 order_no 关联订单，不使用工程号。",
+                  "column": "order_no",
+                  "database": "erp_db",
+                  "description": "订单号。四个数据库统一通过 order_no 关联订单，不使用工程号。",
+                  "label_en": "Order number",
+                  "label_zh": "订单号",
+                  "output_field": "order_ref",
+                  "query_hash": "67485c11e209a5a1b5477b205a8a40994063727a569621df05a9e48d9d334091",
+                  "schema_revision": "510a3f0402df9db6680615616b7ff24501ea822ea139dd41557b2aa91f16b05c",
+                  "semantic_role": "join_key",
+                  "table": "orders"
+                },
+                "order_status": {
+                  "business_usage": "查询和展示订单状态。",
+                  "column": "order_status",
+                  "database": "erp_db",
+                  "description": "订单状态；选项：已签单、生产中、待发货、配送中、已交付、已取消。",
+                  "label_en": "Order status",
+                  "label_zh": "订单状态",
+                  "output_field": "order_status",
+                  "query_hash": "67485c11e209a5a1b5477b205a8a40994063727a569621df05a9e48d9d334091",
+                  "schema_revision": "b8f5d093a60f4cfc81ad3801670ae537127994e9ede313d2853301f8163e0cb4",
+                  "semantic_role": "filter",
+                  "table": "orders"
+                },
+                "ordered_qty": {
+                  "business_usage": "查询和展示数量。",
+                  "column": "quantity",
+                  "database": "erp_db",
+                  "description": "数量。",
+                  "label_en": "Quantity",
+                  "label_zh": "数量",
+                  "output_field": "ordered_qty",
+                  "query_hash": "67485c11e209a5a1b5477b205a8a40994063727a569621df05a9e48d9d334091",
+                  "schema_revision": "fe4011937b2a3e4e33e5d37de66d87ab1f60624ea61a5fafc4a99f5ab41267e9",
+                  "semantic_role": "metric",
+                  "table": "order_item"
+                }
+              },
+              "column_units": {
+                "ordered_qty": "pcs"
+              },
+              "database": "erp_db",
+              "error": null,
+              "final_sql": "SELECT\n    orders.order_no AS order_ref,\n    order_item.model AS model,\n    order_item.quantity AS ordered_qty,\n    orders.delivery_date AS delivery_date,\n    orders.order_status AS order_status\nFROM orders\nJOIN order_item ON orders.order_no = order_item.order_no\nWHERE orders.order_no = 'SO-2026-11041';",
+              "observed_at": "2026-11-06T23:07:09.241Z",
+              "repair_attempts": [],
+              "risk_findings": [
+                {
+                  "anomaly": "semantic_mismatch",
+                  "detail": "SQL 实际行为与问题不一致：SQL虽返回了指定订单的订单号、型号、数量、日期和状态，但未返回用户明确要求保留的明细schema记录键。（复述：该SQL按订单号内连接orders与order_item表，筛选订单号为“SO-2026-11041”的匹配记录，不进行分组，输出订单号（别名order_ref）、型号（model）、订购数量（别名ordered_qty）、交付日期（delivery_date）和订单状态（order_status）。）",
+                  "severity": "block"
+                }
+              ],
+              "row_count": 1,
+              "row_limit": 1000,
+              "rows": [
+                {
+                  "delivery_date": "2026-11-21",
+                  "model": "BX-11041-24",
+                  "order_ref": "SO-2026-11041",
+                  "order_status": "生产中",
+                  "ordered_qty": 3
+                }
+              ],
+              "source_records": [
+                {
+                  "database": "erp_db",
+                  "key_columns": [
+                    "order_no"
+                  ],
+                  "keys": [
+                    "SO-2026-11041"
+                  ],
+                  "table": "orders",
+                  "truncated": false
+                }
+              ],
+              "sql": "SELECT\n    orders.order_no AS order_ref,\n    order_item.model AS model,\n    order_item.quantity AS ordered_qty,\n    orders.delivery_date AS delivery_date,\n    orders.order_status AS order_status\nFROM orders\nJOIN order_item ON orders.order_no = order_item.order_no\nWHERE orders.order_no = 'SO-2026-11041';",
+              "success": true,
+              "truncated": false
+            }
+          ],
+          "trace_id": "f5e6c2eef0d84eed"
+        },
+        "execution_status": "success",
+        "has_risk": true,
+        "outcome": "unverified",
+        "reasons": [
+          "execution_metadata_inconsistent",
+          "has_risk=true（字段缺失或类型不对时同此处置）"
+        ],
+        "run_id": "26dabded21414758a2dc3f70be0c2e6c",
+        "trace_id": "f5e6c2eef0d84eed"
+      },
+      "decision": {
+        "answer_handoff_declared": true,
+        "handoff": true,
+        "handoff_reason": "Agent 自评置信度 0.40 低于 0.7，其中答案策略拦截 1 处无依据承诺",
+        "answer_confidence": 0.4,
+        "policy_violations": [
+          {
+            "evidence": "2026-11-21",
+            "reason": "无依据的时效承诺：'2026-11-21' 未出现在本轮知识库检索结果或 Skill SOP 中，且句子使用了承诺性表述。",
+            "rule": "lead_time_commitment",
+            "sentence": "| 日期 | 2026-11-21 | 2026-11-21 | 不能核实；该字段表示计划送货日期，不是实际送达或安装日期 |"
+          }
+        ]
+      },
+      "raw_answers": [
+        "订单 **SO-2026-11041** 的附件字段及所附系统比对值如下；但本次查询存在执行元数据不一致的风险，结果未通过核验，因此不能认定为已核实一致。\n\n| 项目 | 附件值 | 所附系统值 | 核对结论 |\n|---|---|---|---|\n| 单号 | SO-2026-11041 | SO-2026-11041 | 不能核实 |\n| 型号 | BX-11041-24 | BX-11041-24 | 不能核实 |\n| 数量 | 3 件 | 3 件 | 不能核实 |\n| 日期 | 2026-11-21 | 2026-11-21 | 不能核实；该字段表示计划送货日期，不是实际送达或安装日期 |\n| 状态 | 生产中 | 生产中 | 不能核实；该字段表示订单状态，不是工单状态 |\n\n以上五项虽表面相同，但受本次查询核验异常影响，均标记为“不能核实”，我会转交订单履约人工客服复核系统记录。\n[[handoff:yes]]"
+      ]
+    },
+    "development-images-004": {
+      "source_sha256": "57a74a3ea51262aa8828f59c531c22c038e9ee5e9f0bbed9c0f67f3d6e805b40",
+      "message": "逐项检查附件的单号、型号、数量、日期和状态，跟系统记录比对后标记不能核实的项目。",
+      "business_data": {
+        "attempted": true,
+        "databases": [
+          "erp_db",
+          "svc_db",
+          "prod_db"
+        ],
+        "degraded": false,
+        "enabled": true,
+        "evidence": [],
+        "evidence_issues": [
+          "execution_metadata_inconsistent",
+          "has_risk=true（字段缺失或类型不对时同此处置）",
+          "success"
+        ],
+        "evidence_payload": {
+          "answer": "已完成数据库查询。查询结果：[{\"database\": \"erp_db\", \"sql\": \"SELECT\\n    orders.order_no AS order_ref,\\n    order_item.model AS model,\\n    order_item.quantity AS ordered_qty,\\n    orders.delivery_date AS delivery_date,\\n    orders.order_status AS order_status\\nFROM orders\\nJOIN order_item ON orders.order_no = order_item.order_no\\nWHERE orders.order_no = 'SO-2026-11042';\", \"success\": true, \"columns\": [\"order_ref\", \"model\", \"ordered_qty\", \"delivery_date\", \"order_status\"], \"rows\": [{\"order_ref\": \"SO-2026-11042\", \"model\": \"BX-11042-24\", \"ordered_qty\": 3, \"delivery_date\": \"2026-11-12\", \"order_status\": \"待发货\"}], \"row_count\": 1, \"error\": null, \"truncated\": false, \"row_limit\": 1000, \"as_of\": \"2026-11-06T23:07:10.826Z\", \"as_of_source\": \"query_time\"}]",
+          "as_of": "2026-11-06T23:07:10.826000+00:00",
+          "as_of_source": "query_time",
+          "currency": null,
+          "degrade_reason": "",
+          "degraded": false,
+          "evidence": [],
+          "execution_status": "success",
+          "has_risk": true,
+          "observed_at": "2026-11-06T23:07:10.827000+00:00",
+          "queried_database": true,
+          "result_truncated": false,
+          "route": "database_query",
+          "run_id": "865f348f91cb41b19275bfd31da40fc7",
+          "selected_databases": [
+            "erp_db",
+            "svc_db",
+            "prod_db"
+          ],
+          "steps": [
+            {
+              "as_of": "2026-11-06T23:07:10.826Z",
+              "as_of_source": "query_time",
+              "column_metadata": {
+                "delivery_date": {
+                  "business_usage": "迁移自原配送记录的计划送货日期。没有送货计划时为空；不是安装日期。实际送达日期在 svc_db.delivery.delivered_date。 日期为 YYYY-MM-DD 文本；本地时间相关查询使用 DATE('now','localtime')。",
+                  "column": "delivery_date",
+                  "database": "erp_db",
+                  "description": "交付日期。迁移自原配送记录的计划送货日期。没有送货计划时为空；不是安装日期。实际送达日期在 svc_db.delivery.delivered_date。",
+                  "label_en": "Delivery date",
+                  "label_zh": "交付日期",
+                  "output_field": "delivery_date",
+                  "query_hash": "78cd5300b7aeeab3dc47d390144b2097132f5e64a670aac0f41f86affed75c37",
+                  "schema_revision": "a525539d1bf4f9f5b7bd6b46b42cf25dbc1a640e6fd96fe842dfa9544f4550ff",
+                  "semantic_role": "time",
+                  "table": "orders"
+                },
+                "model": {
+                  "business_usage": "查询和展示型号。",
+                  "column": "model",
+                  "database": "erp_db",
+                  "description": "型号。",
+                  "label_en": "Model",
+                  "label_zh": "型号",
+                  "output_field": "model",
+                  "query_hash": "78cd5300b7aeeab3dc47d390144b2097132f5e64a670aac0f41f86affed75c37",
+                  "schema_revision": "f48b5b19df37cf14a968595f4ca8319b529c1af2549479abf71a4c7d3432ea53",
+                  "semantic_role": "filter",
+                  "table": "order_item"
+                },
+                "order_ref": {
+                  "business_usage": "四个数据库统一通过 order_no 关联订单，不使用工程号。",
+                  "column": "order_no",
+                  "database": "erp_db",
+                  "description": "订单号。四个数据库统一通过 order_no 关联订单，不使用工程号。",
+                  "label_en": "Order number",
+                  "label_zh": "订单号",
+                  "output_field": "order_ref",
+                  "query_hash": "78cd5300b7aeeab3dc47d390144b2097132f5e64a670aac0f41f86affed75c37",
+                  "schema_revision": "510a3f0402df9db6680615616b7ff24501ea822ea139dd41557b2aa91f16b05c",
+                  "semantic_role": "join_key",
+                  "table": "orders"
+                },
+                "order_status": {
+                  "business_usage": "查询和展示订单状态。",
+                  "column": "order_status",
+                  "database": "erp_db",
+                  "description": "订单状态；选项：已签单、生产中、待发货、配送中、已交付、已取消。",
+                  "label_en": "Order status",
+                  "label_zh": "订单状态",
+                  "output_field": "order_status",
+                  "query_hash": "78cd5300b7aeeab3dc47d390144b2097132f5e64a670aac0f41f86affed75c37",
+                  "schema_revision": "b8f5d093a60f4cfc81ad3801670ae537127994e9ede313d2853301f8163e0cb4",
+                  "semantic_role": "filter",
+                  "table": "orders"
+                },
+                "ordered_qty": {
+                  "business_usage": "查询和展示数量。",
+                  "column": "quantity",
+                  "database": "erp_db",
+                  "description": "数量。",
+                  "label_en": "Quantity",
+                  "label_zh": "数量",
+                  "output_field": "ordered_qty",
+                  "query_hash": "78cd5300b7aeeab3dc47d390144b2097132f5e64a670aac0f41f86affed75c37",
+                  "schema_revision": "fe4011937b2a3e4e33e5d37de66d87ab1f60624ea61a5fafc4a99f5ab41267e9",
+                  "semantic_role": "metric",
+                  "table": "order_item"
+                }
+              },
+              "column_units": {
+                "ordered_qty": "pcs"
+              },
+              "database": "erp_db",
+              "error": null,
+              "final_sql": "SELECT\n    orders.order_no AS order_ref,\n    order_item.model AS model,\n    order_item.quantity AS ordered_qty,\n    orders.delivery_date AS delivery_date,\n    orders.order_status AS order_status\nFROM orders\nJOIN order_item ON orders.order_no = order_item.order_no\nWHERE orders.order_no = 'SO-2026-11042';",
+              "observed_at": "2026-11-06T23:07:10.827Z",
+              "repair_attempts": [],
+              "risk_findings": [
+                {
+                  "anomaly": "semantic_mismatch",
+                  "detail": "SQL 实际行为与问题不一致：SQL虽返回了指定订单的单号、型号、数量、日期和状态，但未返回明细的schema记录键，不满足明细保留记录键的明确要求。（复述：该SQL按订单号关联orders与order_item表，筛选订单号为“SO-2026-11042”的记录，不进行分组，输出订单号（别名order_ref）、型号、订购数量（别名ordered_qty）、交付日期和订单状态。）",
+                  "severity": "block"
+                }
+              ],
+              "row_count": 1,
+              "row_limit": 1000,
+              "rows": [
+                {
+                  "delivery_date": "2026-11-12",
+                  "model": "BX-11042-24",
+                  "order_ref": "SO-2026-11042",
+                  "order_status": "待发货",
+                  "ordered_qty": 3
+                }
+              ],
+              "source_records": [
+                {
+                  "database": "erp_db",
+                  "key_columns": [
+                    "order_no"
+                  ],
+                  "keys": [
+                    "SO-2026-11042"
+                  ],
+                  "table": "orders",
+                  "truncated": false
+                }
+              ],
+              "sql": "SELECT\n    orders.order_no AS order_ref,\n    order_item.model AS model,\n    order_item.quantity AS ordered_qty,\n    orders.delivery_date AS delivery_date,\n    orders.order_status AS order_status\nFROM orders\nJOIN order_item ON orders.order_no = order_item.order_no\nWHERE orders.order_no = 'SO-2026-11042';",
+              "success": true,
+              "truncated": false
+            }
+          ],
+          "trace_id": "1ba229bec85f41d2"
+        },
+        "execution_status": "success",
+        "has_risk": true,
+        "outcome": "unverified",
+        "reasons": [
+          "execution_metadata_inconsistent",
+          "has_risk=true（字段缺失或类型不对时同此处置）"
+        ],
+        "run_id": "865f348f91cb41b19275bfd31da40fc7",
+        "trace_id": "1ba229bec85f41d2"
+      },
+      "decision": {
+        "answer_handoff_declared": true,
+        "handoff": true,
+        "handoff_reason": "Agent 自评置信度 0.40 低于 0.7，其中答案策略拦截 1 处无依据承诺",
+        "answer_confidence": 0.4,
+        "policy_violations": [
+          {
+            "evidence": "2026-11-12",
+            "reason": "无依据的时效承诺：'2026-11-12' 未出现在本轮知识库检索结果或 Skill SOP 中，且句子使用了承诺性表述。",
+            "rule": "lead_time_commitment",
+            "sentence": "| 日期 | 2026-11-12 | 2026-11-12 | 暂不能核实；来源字段表示计划送货日期，并非实际送达或安装日期 |"
+          }
+        ]
+      },
+      "raw_answers": [
+        "订单 **SO-2026-11042** 的材料中虽有字段比对结果，但本轮同时标记了“执行元数据不一致”的业务证据限制，因此以下项目均暂不能认定为已核实：\n\n| 项目 | 附件值 | 材料所列系统值 | 核实结论 |\n|---|---|---|---|\n| 单号 | SO-2026-11042 | SO-2026-11042 | 暂不能核实 |\n| 型号 | BX-11042-24 | BX-11042-24 | 暂不能核实 |\n| 数量 | 3件 | 3件 | 暂不能核实 |\n| 日期 | 2026-11-12 | 2026-11-12 | 暂不能核实；来源字段表示计划送货日期，并非实际送达或安装日期 |\n| 状态 | 待发货 | 待发货 | 暂不能核实；来源字段表示订单状态，不是工单状态 |\n\n这些值在现有材料中表面一致，但不能据此作为有效核验结论；我会转交订单履约人工客服，复核本次查询证据及上述五项内容。\n[[handoff:yes]]"
+      ]
+    },
+    "development-images-005": {
+      "source_sha256": "9c0f468affc74e4b65fe585db8dbbbb96914c2af85e90e97ed355772bf5c727d",
+      "message": "逐项检查附件的单号、型号、数量、日期和状态，跟系统记录比对后标记不能核实的项目。",
+      "business_data": {
+        "attempted": true,
+        "databases": [
+          "erp_db",
+          "svc_db",
+          "prod_db"
+        ],
+        "degraded": false,
+        "enabled": true,
+        "evidence": [],
+        "evidence_issues": [
+          "execution_metadata_inconsistent",
+          "has_risk=true（字段缺失或类型不对时同此处置）",
+          "success"
+        ],
+        "evidence_payload": {
+          "answer": "已完成数据库查询。查询结果：[{\"database\": \"erp_db\", \"sql\": \"SELECT\\n    orders.order_no AS order_ref,\\n    order_item.model AS model,\\n    order_item.quantity AS ordered_qty,\\n    orders.delivery_date AS delivery_date,\\n    orders.order_status AS order_status\\nFROM orders\\nJOIN order_item ON orders.order_no = order_item.order_no\\nWHERE orders.order_no = 'SO-2026-11043';\", \"success\": true, \"columns\": [\"order_ref\", \"model\", \"ordered_qty\", \"delivery_date\", \"order_status\"], \"rows\": [{\"order_ref\": \"SO-2026-11043\", \"model\": \"BX-11043-24\", \"ordered_qty\": 2, \"delivery_date\": \"2026-11-13\", \"order_status\": \"已交付\"}], \"row_count\": 1, \"error\": null, \"truncated\": false, \"row_limit\": 1000, \"as_of\": \"2026-11-06T23:07:44.386Z\", \"as_of_source\": \"query_time\"}]",
+          "as_of": "2026-11-06T23:07:44.386000+00:00",
+          "as_of_source": "query_time",
+          "currency": null,
+          "degrade_reason": "",
+          "degraded": false,
+          "evidence": [],
+          "execution_status": "success",
+          "has_risk": true,
+          "observed_at": "2026-11-06T23:07:44.386000+00:00",
+          "queried_database": true,
+          "result_truncated": false,
+          "route": "database_query",
+          "run_id": "8f4f0f13aaf34200b0084f7b78e2c464",
+          "selected_databases": [
+            "erp_db",
+            "svc_db",
+            "prod_db"
+          ],
+          "steps": [
+            {
+              "as_of": "2026-11-06T23:07:44.386Z",
+              "as_of_source": "query_time",
+              "column_metadata": {
+                "delivery_date": {
+                  "business_usage": "迁移自原配送记录的计划送货日期。没有送货计划时为空；不是安装日期。实际送达日期在 svc_db.delivery.delivered_date。 日期为 YYYY-MM-DD 文本；本地时间相关查询使用 DATE('now','localtime')。",
+                  "column": "delivery_date",
+                  "database": "erp_db",
+                  "description": "交付日期。迁移自原配送记录的计划送货日期。没有送货计划时为空；不是安装日期。实际送达日期在 svc_db.delivery.delivered_date。",
+                  "label_en": "Delivery date",
+                  "label_zh": "交付日期",
+                  "output_field": "delivery_date",
+                  "query_hash": "1174fb1ff268b409817dbee517a927281d97261e5bbf9eac814d9cf4c74e6e26",
+                  "schema_revision": "a525539d1bf4f9f5b7bd6b46b42cf25dbc1a640e6fd96fe842dfa9544f4550ff",
+                  "semantic_role": "time",
+                  "table": "orders"
+                },
+                "model": {
+                  "business_usage": "查询和展示型号。",
+                  "column": "model",
+                  "database": "erp_db",
+                  "description": "型号。",
+                  "label_en": "Model",
+                  "label_zh": "型号",
+                  "output_field": "model",
+                  "query_hash": "1174fb1ff268b409817dbee517a927281d97261e5bbf9eac814d9cf4c74e6e26",
+                  "schema_revision": "f48b5b19df37cf14a968595f4ca8319b529c1af2549479abf71a4c7d3432ea53",
+                  "semantic_role": "filter",
+                  "table": "order_item"
+                },
+                "order_ref": {
+                  "business_usage": "四个数据库统一通过 order_no 关联订单，不使用工程号。",
+                  "column": "order_no",
+                  "database": "erp_db",
+                  "description": "订单号。四个数据库统一通过 order_no 关联订单，不使用工程号。",
+                  "label_en": "Order number",
+                  "label_zh": "订单号",
+                  "output_field": "order_ref",
+                  "query_hash": "1174fb1ff268b409817dbee517a927281d97261e5bbf9eac814d9cf4c74e6e26",
+                  "schema_revision": "510a3f0402df9db6680615616b7ff24501ea822ea139dd41557b2aa91f16b05c",
+                  "semantic_role": "join_key",
+                  "table": "orders"
+                },
+                "order_status": {
+                  "business_usage": "查询和展示订单状态。",
+                  "column": "order_status",
+                  "database": "erp_db",
+                  "description": "订单状态；选项：已签单、生产中、待发货、配送中、已交付、已取消。",
+                  "label_en": "Order status",
+                  "label_zh": "订单状态",
+                  "output_field": "order_status",
+                  "query_hash": "1174fb1ff268b409817dbee517a927281d97261e5bbf9eac814d9cf4c74e6e26",
+                  "schema_revision": "b8f5d093a60f4cfc81ad3801670ae537127994e9ede313d2853301f8163e0cb4",
+                  "semantic_role": "filter",
+                  "table": "orders"
+                },
+                "ordered_qty": {
+                  "business_usage": "查询和展示数量。",
+                  "column": "quantity",
+                  "database": "erp_db",
+                  "description": "数量。",
+                  "label_en": "Quantity",
+                  "label_zh": "数量",
+                  "output_field": "ordered_qty",
+                  "query_hash": "1174fb1ff268b409817dbee517a927281d97261e5bbf9eac814d9cf4c74e6e26",
+                  "schema_revision": "fe4011937b2a3e4e33e5d37de66d87ab1f60624ea61a5fafc4a99f5ab41267e9",
+                  "semantic_role": "metric",
+                  "table": "order_item"
+                }
+              },
+              "column_units": {
+                "ordered_qty": "pcs"
+              },
+              "database": "erp_db",
+              "error": null,
+              "final_sql": "SELECT\n    orders.order_no AS order_ref,\n    order_item.model AS model,\n    order_item.quantity AS ordered_qty,\n    orders.delivery_date AS delivery_date,\n    orders.order_status AS order_status\nFROM orders\nJOIN order_item ON orders.order_no = order_item.order_no\nWHERE orders.order_no = 'SO-2026-11043';",
+              "observed_at": "2026-11-06T23:07:44.386Z",
+              "repair_attempts": [],
+              "risk_findings": [
+                {
+                  "anomaly": "semantic_mismatch",
+                  "detail": "SQL 实际行为与问题不一致：SQL虽返回指定订单的单号、型号、数量、日期和状态，但未返回问题明确要求保留的明细schema记录键。（复述：该SQL按订单号关联orders和order_item表，筛选订单号为“SO-2026-11043”的记录，不进行分组，输出订单号（别名order_ref）、型号（model）、订购数量（别名ordered_qty）、交货日期（delivery_date）和订单状态（order_status）。）",
+                  "severity": "block"
+                }
+              ],
+              "row_count": 1,
+              "row_limit": 1000,
+              "rows": [
+                {
+                  "delivery_date": "2026-11-13",
+                  "model": "BX-11043-24",
+                  "order_ref": "SO-2026-11043",
+                  "order_status": "已交付",
+                  "ordered_qty": 2
+                }
+              ],
+              "source_records": [
+                {
+                  "database": "erp_db",
+                  "key_columns": [
+                    "order_no"
+                  ],
+                  "keys": [
+                    "SO-2026-11043"
+                  ],
+                  "table": "orders",
+                  "truncated": false
+                }
+              ],
+              "sql": "SELECT\n    orders.order_no AS order_ref,\n    order_item.model AS model,\n    order_item.quantity AS ordered_qty,\n    orders.delivery_date AS delivery_date,\n    orders.order_status AS order_status\nFROM orders\nJOIN order_item ON orders.order_no = order_item.order_no\nWHERE orders.order_no = 'SO-2026-11043';",
+              "success": true,
+              "truncated": false
+            }
+          ],
+          "trace_id": "1568e2396873406f"
+        },
+        "execution_status": "success",
+        "has_risk": true,
+        "outcome": "unverified",
+        "reasons": [
+          "execution_metadata_inconsistent",
+          "has_risk=true（字段缺失或类型不对时同此处置）"
+        ],
+        "run_id": "8f4f0f13aaf34200b0084f7b78e2c464",
+        "trace_id": "1568e2396873406f"
+      },
+      "decision": {
+        "answer_handoff_declared": true,
+        "handoff": true,
+        "handoff_reason": "Agent 自评置信度 0.15 低于 0.7，其中答案策略拦截 2 处无依据承诺",
+        "answer_confidence": 0.15,
+        "policy_violations": [
+          {
+            "evidence": "2026-11-13",
+            "reason": "无依据的时效承诺：'2026-11-13' 未出现在本轮知识库检索结果或 Skill SOP 中，且句子使用了承诺性表述。",
+            "rule": "lead_time_commitment",
+            "sentence": "| 日期 | 2026-11-13 | 2026-11-13 | 表面一致，**暂不能核实** |"
+          },
+          {
+            "evidence": "2026-11-06",
+            "reason": "无依据的时效承诺：'2026-11-06' 未出现在本轮知识库检索结果或 Skill SOP 中，且句子使用了承诺性表述。",
+            "rule": "lead_time_commitment",
+            "sentence": "- 回执所列来源为 ERP 订单及订单明细，查询时点为 **2026-11-06 23:07:07 UTC**；不代表当前实时记录。"
+          }
+        ]
+      },
+      "raw_answers": [
+        "订单 **SO-2026-11043** 的附件字段核对结果如下。材料中虽有字段一致的回执，但本轮证据同时标记了 **执行元数据不一致、存在风险**，因此不能将这些结果作为已通过核验的系统比对结论，需要转人工复核。\n\n| 项目 | 附件值 | 核对回执所列系统值 | 本轮结论 |\n|---|---|---|---|\n| 单号 | SO-2026-11043 | SO-2026-11043 | 表面一致，**暂不能核实** |\n| 型号 | BX-11043-24 | BX-11043-24 | 表面一致，**暂不能核实** |\n| 数量 | 2 件 | 2 件 | 表面一致，**暂不能核实** |\n| 日期 | 2026-11-13 | 2026-11-13 | 表面一致，**暂不能核实** |\n| 状态 | 已交付 | 已交付 | 表面一致，**暂不能核实** |\n\n**字段含义与范围：**\n- 回执所列来源为 ERP 订单及订单明细，查询时点为 **2026-11-06 23:07:07 UTC**；不代表当前实时记录。\n- 日期字段是**计划送货日期**，不是实际送达日期，也不是安装日期。\n- “已交付”是**订单状态**，不是签收证明。计划日期与该状态本身不构成记录冲突。\n\n本次五项均已标记为“暂不能核实”，将转交人工复核查询证据及字段比对结果；不额外发起送达或签收调查。\n[[handoff:yes]]"
+      ]
+    }
+  }
+}

@@ -54,6 +54,8 @@ def _data_shape(data: dict) -> dict:
     return {
         "data_keys": sorted(data),
         "step_keys": sorted({key for step in data.get("steps") or [] for key in step}),
+        "evidence_keys": sorted({key for cell in data.get("evidence") or [] for key in cell}),
+        "entity_keys": sorted({key for cell in data.get("evidence") or [] for key in cell.get("entity", {})}),
     }
 
 

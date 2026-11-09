@@ -1,0 +1,560 @@
+{
+  "actual_cost": null,
+  "candidate": {
+    "contract": "1.14",
+    "format": 1,
+    "images": {
+      "backend": "sha256:12cca5b2dc9eb9a2792ecdc98750bac33dcb28757b65199c26aea81556b4b2f1",
+      "frontend": "sha256:5575b8b775149a9419ea4fdfad4b85d03682087078a498907052717af77fd4eb",
+      "sql": "sha256:d2dcffd8f94f793b09b5bfb5585ee7e8b33fd3cec8734cb462d93456edb05ea3"
+    },
+    "revision": "000e2b73c15c19e0cdf56be29314132f51f274ca",
+    "staff_boundary": 1
+  },
+  "completed_batch_usage": {
+    "input_tokens": 708309,
+    "non_200_requests": 0,
+    "output_tokens": 13524,
+    "requests": 134,
+    "unfinished_requests": 0,
+    "unknown_usage_requests": 0
+  },
+  "corpus_manifest_sha256": "403fd101f834ee384b46c07570e1efefd3ac5275353d991f872f98b88b206b2e",
+  "cumulative_stage6_usage": {
+    "input_tokens": 4032279,
+    "output_tokens": 70184,
+    "requests": 782
+  },
+  "harness_sha256": "6584531bd1281e3b7e8df045262f1437b403f0ece3705b344bda73196495d674",
+  "kind": "root_independently_rescored_development_revalidation",
+  "observed_findings": [
+    "All three cross-message cases passed, including the two previously failing fresh-query follow-ups.",
+    "Three policy cases have unsupported lead-time violations on selected/as-of date metadata; unpublished-policy distinction was lost after answer replacement.",
+    "Order delivery and matched image cases retain model-declared handoff due to ambiguous planned-versus-actual date semantics.",
+    "No handoff was removed to manufacture a passing result."
+  ],
+  "other_chat_usage_excluded": true,
+  "previous_v2_stage6_usage": {
+    "input_tokens": 3214124,
+    "output_tokens": 55115,
+    "requests": 627
+  },
+  "prior_orchestrator_interruption_usage": {
+    "input_tokens": 109846,
+    "non_200_requests": 0,
+    "output_tokens": 1545,
+    "requests": 21,
+    "unfinished_requests": 0,
+    "unknown_usage_requests": 0
+  },
+  "product_validation": {
+    "before_scope_note": "The initial 14 regression cases ran before the production fix. One additional policy-query-scope regression was then added; the final regression file contains 15 tests.",
+    "candidate_commit": "000e2b73c15c19e0cdf56be29314132f51f274ca",
+    "checks": {
+      "backend_full": {
+        "failed": 0,
+        "log": ".stage6/validation/000e2b7/backend_full.log",
+        "passed": 1981,
+        "sha256": "dff576aa4d884e5c044b7d57f03905b00b1cd1ddde72f10b99d9cfb98753acfb",
+        "skipped": 0
+      },
+      "before": {
+        "failed": 9,
+        "log": ".stage6/validation/000e2b7/before.log",
+        "passed": 5,
+        "sha256": "f305372791890c299a71dfe5773e73962a9858f09a05b39af1f0a46a4bbfc601",
+        "skipped": 0,
+        "tests": 14
+      },
+      "targeted": {
+        "failed": 0,
+        "log": ".stage6/validation/000e2b7/targeted.log",
+        "passed": 86,
+        "sha256": "4c72eb3a2c8eec8c15fca3d8657d50b24ef4c8e0ac50506025fe980e12b5cacf",
+        "skipped": 0
+      }
+    },
+    "clean_worktree": "/private/tmp/aihd-stage6-check-000e2b7",
+    "fixture": {
+      "path": "backend/tests/fixtures/stage6_case_followups.json",
+      "sha256": "2e2796fe3ab0b1614ce4c103b6ae1376b8010f9db0d250ca2fec092d663612df",
+      "source_sha256": "a7c09743cb5f57b8a36823e498ce1ae625fe9cd441f208f599c7afca581edcba"
+    },
+    "product_image_build": "not_run_child",
+    "real_model_revalidation": "pending_parent",
+    "real_provider_http_requests": 0,
+    "unchanged_runtime_components": [
+      "ai-sql-agent",
+      "frontend",
+      "a2a-contract"
+    ]
+  },
+  "release_eligible": false,
+  "results": [
+    {
+      "business_resolved": false,
+      "elapsed_seconds": 34.74010320799425,
+      "errors": [],
+      "fact_correct": true,
+      "file": ".stage6/evaluation/2026-11-06/development-v3-000e2b7-calibration-clients/development-orders-001.json",
+      "group": "orders",
+      "id": "development-orders-001",
+      "image_fields": [],
+      "invariant_violations": [],
+      "run_count": 1,
+      "run_terminal": true,
+      "sha256": "4ed4f5bb3ab3333030e2c17070c8c452e2ca8e1c920c1d9690f5b29c52306c80",
+      "subtype": "order"
+    },
+    {
+      "business_resolved": false,
+      "elapsed_seconds": 37.929449249990284,
+      "errors": [],
+      "fact_correct": true,
+      "file": ".stage6/evaluation/2026-11-06/development-v3-000e2b7-calibration-clients/development-orders-002.json",
+      "group": "orders",
+      "id": "development-orders-002",
+      "image_fields": [],
+      "invariant_violations": [],
+      "run_count": 1,
+      "run_terminal": true,
+      "sha256": "89597d1bfcbe94a9cc2545ccd9382a8c2704a8ffa666057c6dc029b10a9dab24",
+      "subtype": "production"
+    },
+    {
+      "business_resolved": false,
+      "elapsed_seconds": 44.650052125100046,
+      "errors": [],
+      "fact_correct": false,
+      "file": ".stage6/evaluation/2026-11-06/development-v3-000e2b7-calibration-clients/development-orders-003.json",
+      "group": "orders",
+      "id": "development-orders-003",
+      "image_fields": [],
+      "invariant_violations": [
+        "unauthorized_or_duplicate_handoff"
+      ],
+      "run_count": 1,
+      "run_terminal": true,
+      "sha256": "becf7e5e86917c4bc73b6e39ac8b693d5be87afc2e88dad7a12bfb87c673e744",
+      "subtype": "delivery"
+    },
+    {
+      "business_resolved": false,
+      "elapsed_seconds": 48.917009457945824,
+      "errors": [],
+      "fact_correct": false,
+      "file": ".stage6/evaluation/2026-11-06/development-v3-000e2b7-calibration-clients/development-policies-001.json",
+      "group": "policies",
+      "id": "development-policies-001",
+      "image_fields": [],
+      "invariant_violations": [
+        "unauthorized_or_duplicate_handoff"
+      ],
+      "run_count": 1,
+      "run_terminal": true,
+      "sha256": "2bef0889498605bf760974fcaf507557839002b51f62b4d09393ae8349ad6501",
+      "subtype": "active"
+    },
+    {
+      "business_resolved": false,
+      "elapsed_seconds": 36.23791962489486,
+      "errors": [],
+      "fact_correct": false,
+      "file": ".stage6/evaluation/2026-11-06/development-v3-000e2b7-calibration-clients/development-policies-002.json",
+      "group": "policies",
+      "id": "development-policies-002",
+      "image_fields": [],
+      "invariant_violations": [
+        "unauthorized_or_duplicate_handoff"
+      ],
+      "run_count": 1,
+      "run_terminal": true,
+      "sha256": "911b459f0fc6759ba1986edb95a40c77e436d4b1d6be4bdd8313e93bedcc7eef",
+      "subtype": "boundary"
+    },
+    {
+      "business_resolved": false,
+      "elapsed_seconds": 32.79182987520471,
+      "errors": [
+        "unpublished_policy_not_distinguished"
+      ],
+      "fact_correct": false,
+      "file": ".stage6/evaluation/2026-11-06/development-v3-000e2b7-calibration-clients/development-policies-004.json",
+      "group": "policies",
+      "id": "development-policies-004",
+      "image_fields": [],
+      "invariant_violations": [
+        "unauthorized_or_duplicate_handoff"
+      ],
+      "run_count": 1,
+      "run_terminal": true,
+      "sha256": "6fb5d49e7e72ee34d74089a3286056d34c045387206fef52cd41a29b37745b44",
+      "subtype": "unpublished"
+    },
+    {
+      "business_resolved": false,
+      "elapsed_seconds": 29.53999604191631,
+      "errors": [],
+      "fact_correct": true,
+      "file": ".stage6/evaluation/2026-11-06/development-v3-000e2b7-calibration-clients/development-cross_message-001.json",
+      "group": "cross_message",
+      "id": "development-cross_message-001",
+      "image_fields": [],
+      "invariant_violations": [],
+      "run_count": 3,
+      "run_terminal": true,
+      "sha256": "e32bf9161d04b1e044c944b766489526b5b1ddc33a32ccb28d388eea297ce650",
+      "subtype": "supplement"
+    },
+    {
+      "business_resolved": false,
+      "elapsed_seconds": 63.847634334117174,
+      "errors": [],
+      "fact_correct": true,
+      "file": ".stage6/evaluation/2026-11-06/development-v3-000e2b7-calibration-clients/development-cross_message-002.json",
+      "group": "cross_message",
+      "id": "development-cross_message-002",
+      "image_fields": [],
+      "invariant_violations": [],
+      "run_count": 3,
+      "run_terminal": true,
+      "sha256": "d825837c82e310050854ddc2838f39fdfce6c97909760cb82f7cceaf4ae3dca3",
+      "subtype": "reference"
+    },
+    {
+      "business_resolved": false,
+      "elapsed_seconds": 95.31604479206726,
+      "errors": [],
+      "fact_correct": true,
+      "file": ".stage6/evaluation/2026-11-06/development-v3-000e2b7-calibration-clients/development-cross_message-003.json",
+      "group": "cross_message",
+      "id": "development-cross_message-003",
+      "image_fields": [],
+      "invariant_violations": [],
+      "run_count": 4,
+      "run_terminal": true,
+      "sha256": "4d95e7d7730a3bb56f802d8b28450f8315ded97ef5b69f0ccc471eab0506c9d1",
+      "subtype": "multiple_cases"
+    },
+    {
+      "business_resolved": false,
+      "elapsed_seconds": 84.64481541700661,
+      "errors": [],
+      "fact_correct": false,
+      "file": ".stage6/evaluation/2026-11-06/development-v3-000e2b7-calibration-clients/development-images-001.json",
+      "group": "images",
+      "id": "development-images-001",
+      "image_fields": [
+        {
+          "expected_outcome": "matched",
+          "extraction_passed": true,
+          "field": "date",
+          "passed": true,
+          "verification_passed": true
+        },
+        {
+          "expected_outcome": "matched",
+          "extraction_passed": true,
+          "field": "model",
+          "passed": true,
+          "verification_passed": true
+        },
+        {
+          "expected_outcome": "matched",
+          "extraction_passed": true,
+          "field": "order_ref",
+          "passed": true,
+          "verification_passed": true
+        },
+        {
+          "expected_outcome": "matched",
+          "extraction_passed": true,
+          "field": "quantity",
+          "passed": true,
+          "verification_passed": true
+        },
+        {
+          "expected_outcome": "matched",
+          "extraction_passed": true,
+          "field": "status",
+          "passed": true,
+          "verification_passed": true
+        }
+      ],
+      "invariant_violations": [
+        "unauthorized_or_duplicate_handoff"
+      ],
+      "run_count": 2,
+      "run_terminal": true,
+      "sha256": "6cecfb4c762e29ec29725a67e94e34ffb10aa38ad92f9971c9473bdf7cf9d3e4",
+      "subtype": "order"
+    },
+    {
+      "business_resolved": false,
+      "elapsed_seconds": 38.312463415786624,
+      "errors": [],
+      "fact_correct": true,
+      "file": ".stage6/evaluation/2026-11-06/development-v3-000e2b7-calibration-clients/development-images-006.json",
+      "group": "images",
+      "id": "development-images-006",
+      "image_fields": [
+        {
+          "expected_outcome": "matched",
+          "extraction_passed": true,
+          "field": "date",
+          "passed": true,
+          "verification_passed": true
+        },
+        {
+          "expected_outcome": "matched",
+          "extraction_passed": true,
+          "field": "model",
+          "passed": true,
+          "verification_passed": true
+        },
+        {
+          "expected_outcome": "unclear",
+          "extraction_passed": true,
+          "field": "order_ref",
+          "passed": true,
+          "verification_passed": true
+        },
+        {
+          "expected_outcome": "matched",
+          "extraction_passed": true,
+          "field": "quantity",
+          "passed": true,
+          "verification_passed": true
+        },
+        {
+          "expected_outcome": "matched",
+          "extraction_passed": true,
+          "field": "status",
+          "passed": true,
+          "verification_passed": true
+        }
+      ],
+      "invariant_violations": [],
+      "run_count": 2,
+      "run_terminal": true,
+      "sha256": "bc0a0fc496156ed31d578c2ef09790dee19bf4db89276dfcea9ba3b130aca5be",
+      "subtype": "unclear"
+    },
+    {
+      "business_resolved": false,
+      "elapsed_seconds": 15.023016666993499,
+      "errors": [],
+      "fact_correct": true,
+      "file": ".stage6/evaluation/2026-11-06/development-v3-000e2b7-calibration-clients/development-images-011.json",
+      "group": "images",
+      "id": "development-images-011",
+      "image_fields": [
+        {
+          "expected_outcome": "conflict",
+          "extraction_passed": true,
+          "field": "date",
+          "passed": true,
+          "verification_passed": true
+        },
+        {
+          "expected_outcome": "conflict",
+          "extraction_passed": true,
+          "field": "model",
+          "passed": true,
+          "verification_passed": true
+        },
+        {
+          "expected_outcome": "conflict",
+          "extraction_passed": true,
+          "field": "order_ref",
+          "passed": true,
+          "verification_passed": true
+        },
+        {
+          "expected_outcome": "conflict",
+          "extraction_passed": true,
+          "field": "quantity",
+          "passed": true,
+          "verification_passed": true
+        },
+        {
+          "expected_outcome": "conflict",
+          "extraction_passed": true,
+          "field": "status",
+          "passed": true,
+          "verification_passed": true
+        }
+      ],
+      "invariant_violations": [],
+      "run_count": 2,
+      "run_terminal": true,
+      "sha256": "edb87623578e90d749acea6ac4d9272083a2136f9594401f7c3806ceb9894b02",
+      "subtype": "conflict"
+    }
+  ],
+  "runtime_component_equivalence_to_61d88ef": {
+    "ai-sql-agent": "only benchmark/README.zh-CN.md differs; runtime and test sources unchanged",
+    "frontend": "identical",
+    "frontend_prior_build_passed": true,
+    "frontend_prior_checks": 433,
+    "sql_additional_checks": 6,
+    "sql_prior_full_checks": 1262
+  },
+  "summary": {
+    "accuracy": 0.5833333333333334,
+    "business_resolved": 0,
+    "complete": true,
+    "correct": 7,
+    "error_counts": {
+      "unpublished_policy_not_distinguished": 1
+    },
+    "groups": {
+      "cross_message": {
+        "accuracy": 1.0,
+        "correct": 3,
+        "total": 3
+      },
+      "images": {
+        "accuracy": 0.6666666666666666,
+        "correct": 2,
+        "total": 3
+      },
+      "orders": {
+        "accuracy": 0.6666666666666666,
+        "correct": 2,
+        "total": 3
+      },
+      "policies": {
+        "accuracy": 0.0,
+        "correct": 0,
+        "total": 3
+      }
+    },
+    "image_extraction": {
+      "date/all": {
+        "correct": 3,
+        "total": 3
+      },
+      "date/clear": {
+        "correct": 3,
+        "total": 3
+      },
+      "model/all": {
+        "correct": 3,
+        "total": 3
+      },
+      "model/clear": {
+        "correct": 3,
+        "total": 3
+      },
+      "order_ref/all": {
+        "correct": 3,
+        "total": 3
+      },
+      "order_ref/clear": {
+        "correct": 2,
+        "total": 2
+      },
+      "order_ref/unclear": {
+        "correct": 1,
+        "total": 1
+      },
+      "quantity/all": {
+        "correct": 3,
+        "total": 3
+      },
+      "quantity/clear": {
+        "correct": 3,
+        "total": 3
+      },
+      "status/all": {
+        "correct": 3,
+        "total": 3
+      },
+      "status/clear": {
+        "correct": 3,
+        "total": 3
+      }
+    },
+    "image_fields": {
+      "date/all": {
+        "correct": 3,
+        "total": 3
+      },
+      "date/conflict": {
+        "correct": 1,
+        "total": 1
+      },
+      "date/matched": {
+        "correct": 2,
+        "total": 2
+      },
+      "model/all": {
+        "correct": 3,
+        "total": 3
+      },
+      "model/conflict": {
+        "correct": 1,
+        "total": 1
+      },
+      "model/matched": {
+        "correct": 2,
+        "total": 2
+      },
+      "order_ref/all": {
+        "correct": 3,
+        "total": 3
+      },
+      "order_ref/conflict": {
+        "correct": 1,
+        "total": 1
+      },
+      "order_ref/matched": {
+        "correct": 1,
+        "total": 1
+      },
+      "order_ref/unclear": {
+        "correct": 1,
+        "total": 1
+      },
+      "quantity/all": {
+        "correct": 3,
+        "total": 3
+      },
+      "quantity/conflict": {
+        "correct": 1,
+        "total": 1
+      },
+      "quantity/matched": {
+        "correct": 2,
+        "total": 2
+      },
+      "status/all": {
+        "correct": 3,
+        "total": 3
+      },
+      "status/conflict": {
+        "correct": 1,
+        "total": 1
+      },
+      "status/matched": {
+        "correct": 2,
+        "total": 2
+      }
+    },
+    "invariant_violations": 5,
+    "missing": [],
+    "run_terminal": 12,
+    "total": 12
+  },
+  "supplier_rates": null,
+  "temporary_stacks_closed": true,
+  "v3_development_usage": {
+    "input_tokens": 818155,
+    "non_200_requests": 0,
+    "output_tokens": 15069,
+    "requests": 155,
+    "unfinished_requests": 0,
+    "unknown_usage_requests": 0
+  }
+}

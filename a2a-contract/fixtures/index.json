@@ -1,138 +1,313 @@
 {
   "$comment": "跨仓库 golden fixtures 的清单。两侧 CI 都读这个文件，不要各自维护一份用例表——用例表分叉就是副本漂移的老毛病换个地方复发。字段含义见 fixtures/README.md 与 CONSUMER-TESTS.md。",
   "contract": "a2a-streaming-contract.md",
-  "contract_version": "v1.13",
+  "contract_version": "v1.15",
   "cases": [
-    {"id": "dp-valid-01", "group": "A", "file": "data-part/valid/01-success-single-step.json",
-     "schema": "schema/artifact-data-part.schema.json", "expect": "valid",
-     "trust": "usable_as_source",
-     "why": "正常查库成功：三布尔齐全且为 false/true 的可信组合，单步 success=true 有行"},
-
-    {"id": "dp-valid-02", "group": "A", "file": "data-part/valid/02-conversation-route.json",
-     "schema": "schema/artifact-data-part.schema.json", "expect": "valid",
-     "trust": "not_usable",
-     "why": "对话路径：queried_database=false。schema 通过，但那段 answer 是模型说的话不是数据，不得当出处（§4.6.1 的 not_applicable）"},
-
-    {"id": "dp-valid-03", "group": "A", "file": "data-part/valid/03-cross-database-two-steps.json",
-     "schema": "schema/artifact-data-part.schema.json", "expect": "valid",
-     "trust": "usable_as_source",
-     "why": "跨库两步全成功。第二步 row_count=0 但 success=true——不影响整体可用"},
-
-    {"id": "dp-valid-04", "group": "D", "file": "data-part/valid/04-unlisted-database.json",
-     "schema": "schema/artifact-data-part.schema.json", "expect": "valid",
-     "trust": "usable_as_source",
-     "why": "清单外但形状合法的标识符 hr_db。v1.6 起新增库不算契约变更，所以这是**常规路径不是异常路径**：调用方必须照常采信，中文映射退化为显示原始标识符，不得崩溃、不得因为不认识就判不可信"},
-
-    {"id": "dp-bad-01", "group": "B", "file": "data-part/schema-invalid/01-missing-has-risk.json",
-     "schema": "schema/artifact-data-part.schema.json", "expect": "invalid",
-     "trust": "not_usable",
-     "why": "缺 has_risk。§9.1 缺口的核心用例：调用方今天会把它当成「无风险」并采信（fail-open）。必须校验失败，且回落判定必须是不可信"},
-
-    {"id": "dp-bad-02", "group": "B", "file": "data-part/schema-invalid/02-missing-degraded.json",
-     "schema": "schema/artifact-data-part.schema.json", "expect": "invalid",
-     "trust": "not_usable",
-     "why": "缺 degraded。同上，方向同样是反的"},
-
-    {"id": "dp-bad-03", "group": "B", "file": "data-part/schema-invalid/03-string-boolean.json",
-     "schema": "schema/artifact-data-part.schema.json", "expect": "invalid",
-     "trust": "not_usable",
-     "why": "三个布尔都是字符串 \"true\"/\"false\"。bool(\"false\") 为真——字面写着 false 的字段会被读成 True"},
-
-    {"id": "dp-bad-04", "group": "B", "file": "data-part/schema-invalid/04-missing-all-three-booleans.json",
-     "schema": "schema/artifact-data-part.schema.json", "expect": "invalid",
-     "trust": "not_usable",
-     "why": "三个全缺。最像「服务端换了版本 / 序列化坏了」的形态"},
-
-    {"id": "dp-bad-05", "group": "B", "file": "data-part/schema-invalid/05-step-success-with-error.json",
-     "schema": "schema/artifact-data-part.schema.json", "expect": "invalid",
-     "trust": "not_usable",
-     "why": "success=true 同时带 error 字符串，自相矛盾（§4.6.2：error 为 null ⟺ success 为 true）"},
-
-    {"id": "dp-bad-06", "group": "D", "file": "data-part/schema-invalid/06-database-id-wrong-shape.json",
-     "schema": "schema/artifact-data-part.schema.json", "expect": "invalid",
-     "trust": "not_usable",
-     "why": "database 写成 \"ERP\"，不符合 ^[a-z][a-z0-9_]*_db$。调用方的中文映射会静默退化成显示原始串"},
-
-    {"id": "dp-trust-01", "group": "B", "file": "data-part/trust-negative/01-failed-step.json",
-     "schema": "schema/artifact-data-part.schema.json", "expect": "invalid",
-     "trust": "not_usable",
-     "why": "**v1.12 由 C 组改判到 B 组，是提级这件事本身的反例。** 它没有 execution_status：v1.11 之前这是 C 组核心用例（合法载荷，按 §4.6.7 过渡判据从 steps[] 推导，status_source=derived）。v1.12 把该字段提级为 required、过渡判据作废，于是这份载荷不再合法，**唯一的拒绝理由就是缺这个字段**（其余六个 B 组反例各自的理由不受影响，已逐条复核）。它现在证明的是「缺字段会被挡住」，不再是「缺字段会被静默推导」。**文件路径故意不动**——两侧按字面路径读它，挪文件会红在别人仓库里。两侧仍应保留推导能力，但那是对非合规载荷的防御，不是契约路径"},
-
-    {"id": "dp-trust-02", "group": "C", "file": "data-part/trust-negative/02-partial-success.json",
-     "schema": "schema/artifact-data-part.schema.json", "expect": "valid",
-     "trust": "partial",
-     "why": "两步一成一败。execution_status 应为 partial_success：成功那步的数据是真的，不该整段丢，但也不能当完整答案"},
-
-    {"id": "dp-trust-03", "group": "C", "file": "data-part/trust-negative/03-has-risk.json",
-     "schema": "schema/artifact-data-part.schema.json", "expect": "valid",
-     "trust": "not_usable",
-     "why": "has_risk=true（semantic_mismatch）。SQL 跑通了、有结果，但答的不是问的那件事"},
-
-    {"id": "dp-trust-04", "group": "C", "file": "data-part/trust-negative/04-degraded-history-replay.json",
-     "schema": "schema/artifact-data-part.schema.json", "expect": "valid",
-     "trust": "not_usable",
-     "why": "degraded=true，历史 SQL 重放。state 仍是 completed（§4.6.8 保留这一点），所以只能靠这个字段区分"},
-
-    {"id": "dp-trust-05", "group": "C", "file": "data-part/trust-negative/05-truncated.json",
-     "schema": "schema/artifact-data-part.schema.json", "expect": "valid",
-     "trust": "partial",
-     "why": "truncated=true，10000 行封顶。数据本身可用，但任何「共有 N 条 / 全部 / 一共」的表述都不成立（§4.6.3）"},
-
-    {"id": "dp-trust-06", "group": "C", "file": "data-part/trust-negative/06-no-data.json",
-     "schema": "schema/artifact-data-part.schema.json", "expect": "valid",
-     "trust": "no_data",
-     "why": "查成功了，零行。必须与 failed 分开——「查到了，答案是没有」和「没查成」对客户是两句不同的话（§4.6.1）"},
-
-    {"id": "dp-trust-07", "group": "C", "file": "data-part/trust-negative/07-failed-step-with-status.json",
-     "schema": "schema/artifact-data-part.schema.json", "expect": "valid",
-     "trust": "not_usable",
-     "why": "与 dp-trust-01 同一份载荷，但**带着** execution_status。v1.12 起它是 C 组 failed 这一档的正主——01 因为缺字段已改判 B 组，两条的关系由「同一判据的两条路径」变成「合规载荷与不合规载荷的对照」。业务结论仍是不可作出处，status_source=contract。进度标记不挂在 fixture 上，见 CONSUMER-TESTS 的 C 组"},
-
-    {"id": "pe-valid-01", "group": "E", "file": "progress-event/valid/01-routing.json",
-     "schema": "schema/progress-event.schema.json", "expect": "valid", "trust": "n/a",
-     "why": "不重复的 stage，metadata 只有 stage + trace_id"},
-
-    {"id": "pe-valid-02", "group": "E", "file": "progress-event/valid/02-execution-with-step-and-database.json",
-     "schema": "schema/progress-event.schema.json", "expect": "valid", "trust": "n/a",
-     "why": "按 step 重复的 stage，带 step 与 database"},
-
-    {"id": "pe-valid-03", "group": "E", "file": "progress-event/valid/03-repair-step-2.json",
-     "schema": "schema/progress-event.schema.json", "expect": "valid", "trust": "n/a",
-     "why": "repair 带 step=2。调用方的「同一个 step 收到第二个 repair = 服务端有 bug」判据要靠这个字段"},
-
-    {"id": "pe-bad-01", "group": "E", "file": "progress-event/schema-invalid/01-missing-stage.json",
-     "schema": "schema/progress-event.schema.json", "expect": "invalid", "trust": "n/a",
-     "why": "缺 stage。stage 是契约面里唯一的机器可读标识，缺了整条事件没有意义"},
-
-    {"id": "pe-bad-02", "group": "E", "file": "progress-event/schema-invalid/02-unknown-stage.json",
-     "schema": "schema/progress-event.schema.json", "expect": "invalid", "trust": "n/a",
-     "why": "stage=memory_context——§4.5 明确「内部有而契约不暴露」。发出来说明服务端漏了过滤"},
-
-    {"id": "pe-bad-03", "group": "E", "file": "progress-event/schema-invalid/03-final-true.json",
-     "schema": "schema/progress-event.schema.json", "expect": "invalid", "trust": "n/a",
-     "why": "进度事件的 final 恒为 false（§4.3）。final=true 却 state=working 会让调用方提前认为流结束"},
-
-    {"id": "pe-bad-04", "group": "E", "file": "progress-event/schema-invalid/04-execution-without-step.json",
-     "schema": "schema/progress-event.schema.json", "expect": "invalid", "trust": "n/a",
-     "why": "会重复的 stage 不带 step。缺了它，「repair 的 step 必须严格递增」那条判据就无法执行"},
-
-    {"id": "pe-bad-05", "group": "E", "file": "progress-event/schema-invalid/05-metadata-carries-post-hoc-field.json",
-     "schema": "schema/progress-event.schema.json", "expect": "invalid", "trust": "n/a",
-     "why": "把 route/confidence 塞进了进度事件。它们要到 stage 结束才有值——出现即说明服务端把事后信息当成了事前信息（§4.5 的诚实说明）"},
-    {"id": "te-valid-01", "group": "F", "file": "terminal-event/valid/01-completed.json",
-     "schema": "schema/terminal-event.schema.json", "expect": "valid", "trust": "n/a",
-     "why": "载荷完整送达（§4.4）。只有这一种终态算成功（§5.1），而且它不表示查询成功——业务终态在 data part 里"},
-    {"id": "te-valid-02", "group": "F", "file": "terminal-event/valid/02-failed.json",
-     "schema": "schema/terminal-event.schema.json", "expect": "valid", "trust": "n/a",
-     "why": "没有可用载荷：pipeline 抛异常、准入被拒、流中途出错（§4.4 / §5.2），metadata.error 说明原因"},
-    {"id": "te-valid-03", "group": "F", "file": "terminal-event/valid/03-canceled.json",
-     "schema": "schema/terminal-event.schema.json", "expect": "valid", "trust": "n/a",
-     "why": "v1.13 新增：流打开期间被本连接以外的途径取消（服务端取消接口、运维、关停）。调用方按 §5.1 回落，和 failed 走同一条路"},
-    {"id": "te-bad-01", "group": "F", "file": "terminal-event/schema-invalid/01-unknown-state.json",
-     "schema": "schema/terminal-event.schema.json", "expect": "invalid", "trust": "n/a",
-     "why": "state=cancelled（多一个 l）。metadata.error 里的 cancelled: 是取消原因的写法，state 只能用 A2A 规范的 canceled——两个拼写挨在一起，最容易抄错"},
-    {"id": "te-bad-02", "group": "F", "file": "terminal-event/schema-invalid/02-final-false.json",
-     "schema": "schema/terminal-event.schema.json", "expect": "invalid", "trust": "n/a",
-     "why": "终态事件 final=false。调用方靠 final:true 认出最后一条（§4.2），final=false 的 completed 会让它一直等到超时"}
+    {
+      "id": "dp-valid-01",
+      "group": "A",
+      "file": "data-part/valid/01-success-single-step.json",
+      "schema": "schema/artifact-data-part.schema.json",
+      "expect": "valid",
+      "trust": "usable_as_source",
+      "why": "正常查库成功：三布尔齐全且为 false/true 的可信组合，单步 success=true 有行"
+    },
+    {
+      "id": "dp-valid-02",
+      "group": "A",
+      "file": "data-part/valid/02-conversation-route.json",
+      "schema": "schema/artifact-data-part.schema.json",
+      "expect": "valid",
+      "trust": "not_usable",
+      "why": "对话路径：queried_database=false。schema 通过，但那段 answer 是模型说的话不是数据，不得当出处（§4.6.1 的 not_applicable）"
+    },
+    {
+      "id": "dp-valid-03",
+      "group": "A",
+      "file": "data-part/valid/03-cross-database-two-steps.json",
+      "schema": "schema/artifact-data-part.schema.json",
+      "expect": "valid",
+      "trust": "usable_as_source",
+      "why": "跨库两步全成功。第二步 row_count=0 但 success=true——不影响整体可用"
+    },
+    {
+      "id": "dp-valid-04",
+      "group": "D",
+      "file": "data-part/valid/04-unlisted-database.json",
+      "schema": "schema/artifact-data-part.schema.json",
+      "expect": "valid",
+      "trust": "usable_as_source",
+      "why": "清单外但形状合法的标识符 hr_db。v1.6 起新增库不算契约变更，所以这是**常规路径不是异常路径**：调用方必须照常采信，中文映射退化为显示原始标识符，不得崩溃、不得因为不认识就判不可信"
+    },
+    {
+      "id": "dp-bad-01",
+      "group": "B",
+      "file": "data-part/schema-invalid/01-missing-has-risk.json",
+      "schema": "schema/artifact-data-part.schema.json",
+      "expect": "invalid",
+      "trust": "not_usable",
+      "why": "缺 has_risk。§9.1 缺口的核心用例：调用方今天会把它当成「无风险」并采信（fail-open）。必须校验失败，且回落判定必须是不可信"
+    },
+    {
+      "id": "dp-bad-02",
+      "group": "B",
+      "file": "data-part/schema-invalid/02-missing-degraded.json",
+      "schema": "schema/artifact-data-part.schema.json",
+      "expect": "invalid",
+      "trust": "not_usable",
+      "why": "缺 degraded。同上，方向同样是反的"
+    },
+    {
+      "id": "dp-bad-03",
+      "group": "B",
+      "file": "data-part/schema-invalid/03-string-boolean.json",
+      "schema": "schema/artifact-data-part.schema.json",
+      "expect": "invalid",
+      "trust": "not_usable",
+      "why": "三个布尔都是字符串 \"true\"/\"false\"。bool(\"false\") 为真——字面写着 false 的字段会被读成 True"
+    },
+    {
+      "id": "dp-bad-04",
+      "group": "B",
+      "file": "data-part/schema-invalid/04-missing-all-three-booleans.json",
+      "schema": "schema/artifact-data-part.schema.json",
+      "expect": "invalid",
+      "trust": "not_usable",
+      "why": "三个全缺。最像「服务端换了版本 / 序列化坏了」的形态"
+    },
+    {
+      "id": "dp-bad-05",
+      "group": "B",
+      "file": "data-part/schema-invalid/05-step-success-with-error.json",
+      "schema": "schema/artifact-data-part.schema.json",
+      "expect": "invalid",
+      "trust": "not_usable",
+      "why": "success=true 同时带 error 字符串，自相矛盾（§4.6.2：error 为 null ⟺ success 为 true）"
+    },
+    {
+      "id": "dp-bad-06",
+      "group": "D",
+      "file": "data-part/schema-invalid/06-database-id-wrong-shape.json",
+      "schema": "schema/artifact-data-part.schema.json",
+      "expect": "invalid",
+      "trust": "not_usable",
+      "why": "database 写成 \"ERP\"，不符合 ^[a-z][a-z0-9_]*_db$。调用方的中文映射会静默退化成显示原始串"
+    },
+    {
+      "id": "dp-trust-01",
+      "group": "B",
+      "file": "data-part/trust-negative/01-failed-step.json",
+      "schema": "schema/artifact-data-part.schema.json",
+      "expect": "invalid",
+      "trust": "not_usable",
+      "why": "**v1.12 由 C 组改判到 B 组，是提级这件事本身的反例。** 它没有 execution_status：v1.11 之前这是 C 组核心用例（合法载荷，按 §4.6.7 过渡判据从 steps[] 推导，status_source=derived）。v1.12 把该字段提级为 required、过渡判据作废，于是这份载荷不再合法，**唯一的拒绝理由就是缺这个字段**（其余六个 B 组反例各自的理由不受影响，已逐条复核）。它现在证明的是「缺字段会被挡住」，不再是「缺字段会被静默推导」。**文件路径故意不动**——两侧按字面路径读它，挪文件会红在别人仓库里。两侧仍应保留推导能力，但那是对非合规载荷的防御，不是契约路径"
+    },
+    {
+      "id": "dp-trust-02",
+      "group": "C",
+      "file": "data-part/trust-negative/02-partial-success.json",
+      "schema": "schema/artifact-data-part.schema.json",
+      "expect": "valid",
+      "trust": "partial",
+      "why": "两步一成一败。execution_status 应为 partial_success：成功那步的数据是真的，不该整段丢，但也不能当完整答案"
+    },
+    {
+      "id": "dp-trust-03",
+      "group": "C",
+      "file": "data-part/trust-negative/03-has-risk.json",
+      "schema": "schema/artifact-data-part.schema.json",
+      "expect": "valid",
+      "trust": "not_usable",
+      "why": "has_risk=true（semantic_mismatch）。SQL 跑通了、有结果，但答的不是问的那件事"
+    },
+    {
+      "id": "dp-trust-04",
+      "group": "C",
+      "file": "data-part/trust-negative/04-degraded-history-replay.json",
+      "schema": "schema/artifact-data-part.schema.json",
+      "expect": "valid",
+      "trust": "not_usable",
+      "why": "degraded=true，历史 SQL 重放。state 仍是 completed（§4.6.8 保留这一点），所以只能靠这个字段区分"
+    },
+    {
+      "id": "dp-trust-05",
+      "group": "C",
+      "file": "data-part/trust-negative/05-truncated.json",
+      "schema": "schema/artifact-data-part.schema.json",
+      "expect": "valid",
+      "trust": "partial",
+      "why": "truncated=true，10000 行封顶。数据本身可用，但任何「共有 N 条 / 全部 / 一共」的表述都不成立（§4.6.3）"
+    },
+    {
+      "id": "dp-trust-06",
+      "group": "C",
+      "file": "data-part/trust-negative/06-no-data.json",
+      "schema": "schema/artifact-data-part.schema.json",
+      "expect": "valid",
+      "trust": "no_data",
+      "why": "查成功了，零行。必须与 failed 分开——「查到了，答案是没有」和「没查成」对客户是两句不同的话（§4.6.1）"
+    },
+    {
+      "id": "dp-trust-07",
+      "group": "C",
+      "file": "data-part/trust-negative/07-failed-step-with-status.json",
+      "schema": "schema/artifact-data-part.schema.json",
+      "expect": "valid",
+      "trust": "not_usable",
+      "why": "与 dp-trust-01 同一份载荷，但**带着** execution_status。v1.12 起它是 C 组 failed 这一档的正主——01 因为缺字段已改判 B 组，两条的关系由「同一判据的两条路径」变成「合规载荷与不合规载荷的对照」。业务结论仍是不可作出处，status_source=contract。进度标记不挂在 fixture 上，见 CONSUMER-TESTS 的 C 组"
+    },
+    {
+      "id": "pe-valid-01",
+      "group": "E",
+      "file": "progress-event/valid/01-routing.json",
+      "schema": "schema/progress-event.schema.json",
+      "expect": "valid",
+      "trust": "n/a",
+      "why": "不重复的 stage，metadata 只有 stage + trace_id"
+    },
+    {
+      "id": "pe-valid-02",
+      "group": "E",
+      "file": "progress-event/valid/02-execution-with-step-and-database.json",
+      "schema": "schema/progress-event.schema.json",
+      "expect": "valid",
+      "trust": "n/a",
+      "why": "按 step 重复的 stage，带 step 与 database"
+    },
+    {
+      "id": "pe-valid-03",
+      "group": "E",
+      "file": "progress-event/valid/03-repair-step-2.json",
+      "schema": "schema/progress-event.schema.json",
+      "expect": "valid",
+      "trust": "n/a",
+      "why": "repair 带 step=2。调用方的「同一个 step 收到第二个 repair = 服务端有 bug」判据要靠这个字段"
+    },
+    {
+      "id": "pe-bad-01",
+      "group": "E",
+      "file": "progress-event/schema-invalid/01-missing-stage.json",
+      "schema": "schema/progress-event.schema.json",
+      "expect": "invalid",
+      "trust": "n/a",
+      "why": "缺 stage。stage 是契约面里唯一的机器可读标识，缺了整条事件没有意义"
+    },
+    {
+      "id": "pe-bad-02",
+      "group": "E",
+      "file": "progress-event/schema-invalid/02-unknown-stage.json",
+      "schema": "schema/progress-event.schema.json",
+      "expect": "invalid",
+      "trust": "n/a",
+      "why": "stage=memory_context——§4.5 明确「内部有而契约不暴露」。发出来说明服务端漏了过滤"
+    },
+    {
+      "id": "pe-bad-03",
+      "group": "E",
+      "file": "progress-event/schema-invalid/03-final-true.json",
+      "schema": "schema/progress-event.schema.json",
+      "expect": "invalid",
+      "trust": "n/a",
+      "why": "进度事件的 final 恒为 false（§4.3）。final=true 却 state=working 会让调用方提前认为流结束"
+    },
+    {
+      "id": "pe-bad-04",
+      "group": "E",
+      "file": "progress-event/schema-invalid/04-execution-without-step.json",
+      "schema": "schema/progress-event.schema.json",
+      "expect": "invalid",
+      "trust": "n/a",
+      "why": "会重复的 stage 不带 step。缺了它，「repair 的 step 必须严格递增」那条判据就无法执行"
+    },
+    {
+      "id": "pe-bad-05",
+      "group": "E",
+      "file": "progress-event/schema-invalid/05-metadata-carries-post-hoc-field.json",
+      "schema": "schema/progress-event.schema.json",
+      "expect": "invalid",
+      "trust": "n/a",
+      "why": "把 route/confidence 塞进了进度事件。它们要到 stage 结束才有值——出现即说明服务端把事后信息当成了事前信息（§4.5 的诚实说明）"
+    },
+    {
+      "id": "te-valid-01",
+      "group": "F",
+      "file": "terminal-event/valid/01-completed.json",
+      "schema": "schema/terminal-event.schema.json",
+      "expect": "valid",
+      "trust": "n/a",
+      "why": "载荷完整送达（§4.4）。只有这一种终态算成功（§5.1），而且它不表示查询成功——业务终态在 data part 里"
+    },
+    {
+      "id": "te-valid-02",
+      "group": "F",
+      "file": "terminal-event/valid/02-failed.json",
+      "schema": "schema/terminal-event.schema.json",
+      "expect": "valid",
+      "trust": "n/a",
+      "why": "没有可用载荷：pipeline 抛异常、准入被拒、流中途出错（§4.4 / §5.2），metadata.error 说明原因"
+    },
+    {
+      "id": "te-valid-03",
+      "group": "F",
+      "file": "terminal-event/valid/03-canceled.json",
+      "schema": "schema/terminal-event.schema.json",
+      "expect": "valid",
+      "trust": "n/a",
+      "why": "v1.13 新增：流打开期间被本连接以外的途径取消（服务端取消接口、运维、关停）。调用方按 §5.1 回落，和 failed 走同一条路"
+    },
+    {
+      "id": "te-bad-01",
+      "group": "F",
+      "file": "terminal-event/schema-invalid/01-unknown-state.json",
+      "schema": "schema/terminal-event.schema.json",
+      "expect": "invalid",
+      "trust": "n/a",
+      "why": "state=cancelled（多一个 l）。metadata.error 里的 cancelled: 是取消原因的写法，state 只能用 A2A 规范的 canceled——两个拼写挨在一起，最容易抄错"
+    },
+    {
+      "id": "te-bad-02",
+      "group": "F",
+      "file": "terminal-event/schema-invalid/02-final-false.json",
+      "schema": "schema/terminal-event.schema.json",
+      "expect": "invalid",
+      "trust": "n/a",
+      "why": "终态事件 final=false。调用方靠 final:true 认出最后一条（§4.2），final=false 的 completed 会让它一直等到超时"
+    },
+    {
+      "id": "dp-bad-07",
+      "group": "B",
+      "file": "data-part/schema-invalid/07-success-missing-status.json",
+      "schema": "schema/artifact-data-part.schema.json",
+      "expect": "invalid",
+      "trust": "not_usable",
+      "why": "v1.14 strict structured evidence / explicit status consistency"
+    },
+    {
+      "id": "dp-trust-08",
+      "group": "C",
+      "file": "data-part/trust-negative/08-declared-success-failed-step.json",
+      "schema": "schema/artifact-data-part.schema.json",
+      "expect": "valid",
+      "trust": "not_usable",
+      "why": "v1.14 strict structured evidence / explicit status consistency"
+    },
+    {
+      "id": "dp-bad-08",
+      "group": "B",
+      "file": "data-part/schema-invalid/08-truncated-without-limit.json",
+      "schema": "schema/artifact-data-part.schema.json",
+      "expect": "invalid",
+      "trust": "not_usable",
+      "why": "v1.14 strict structured evidence / explicit status consistency"
+    },
+    {
+      "id": "dp-bad-09",
+      "group": "B",
+      "file": "data-part/schema-invalid/09-malformed-evidence-field.json",
+      "schema": "schema/artifact-data-part.schema.json",
+      "expect": "invalid",
+      "trust": "not_usable",
+      "why": "v1.14 strict structured evidence / explicit status consistency"
+    }
   ]
 }

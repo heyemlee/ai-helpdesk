@@ -47,7 +47,10 @@ class VectorIndex:
         query_vector = self.embedding_client.embed_texts([query])[0]
 
         # embeddings 和 query_vector 都已经归一化，点积等价于 cosine similarity。
-        scores = self.embeddings @ query_vector
+        # Avoid platform BLAS floating-point status warnings observed with
+        # finite, normalized sparse vectors on Apple Accelerate. This computes
+        # the same row-wise dot products without dispatching to that BLAS path.
+        scores = np.einsum("ij,j->i", self.embeddings, query_vector)
 
         # 稳定排序：同分时按 doc_index 升序，与 pgvector 后端保持一致的名次。
         # Hash Embedding 下大量文档相似度为 0，名次全靠平局顺序决定，

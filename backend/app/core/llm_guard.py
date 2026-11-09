@@ -395,13 +395,15 @@ class _GuardedStream:
         finally:
             # 调用方没取最终消息（中途出错）时没有用量，照实记 null
             final = self._stream.final if self._stream is not None else None
+            if final is None and exc is not None:
+                final = getattr(exc, "response_message", None)
             await admission.current().settle(self._guard.bucket, self._estimate,
                                              admission.usage_tokens(final))
             if exc is None:
                 self._call.finish(status="ok", sent=True, message=final)
             else:
                 self._call.finish(status="error", sent=True, message=final, error=exc,
-                                  reason=blocked.reason if blocked else "")
+                                  reason=blocked.reason if blocked else getattr(exc, "reason", ""))
         if blocked is not None:
             raise blocked from exc
         return suppressed
@@ -429,7 +431,11 @@ class _GuardedMessages:
             result = await method(*args, **kwargs)
         except Exception as ex:
             blocked = self._guard.record_failure(ex)
-            call.finish(status="error", sent=True, error=ex, reason=blocked.reason if blocked else "")
+            failed_message = getattr(ex, "response_message", None)
+            call.finish(status="error", sent=True, message=failed_message, error=ex,
+                        reason=blocked.reason if blocked else getattr(ex, "reason", ""))
+            await admission.current().settle(self._guard.bucket, estimate,
+                                             admission.usage_tokens(failed_message))
             if blocked is not None:
                 raise blocked from ex
             raise

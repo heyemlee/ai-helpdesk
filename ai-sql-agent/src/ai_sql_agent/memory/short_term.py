@@ -5,6 +5,7 @@ import math
 import re
 import threading
 from concurrent.futures import Future, ThreadPoolExecutor
+from contextvars import copy_context
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -172,11 +173,17 @@ class ShortTermMemoryService:
                 self._run_summary(user_id, session_id, previous, overflow)
                 self._schedule_if_needed(user_id=user_id, session_id=session_id)
                 return
+            # ThreadPoolExecutor does not propagate ContextVars. Retain the
+            # initiating Run/trace (and cancellation) for late model requests;
+            # a later foreground request must never become their owner.
+            context = copy_context()
             future = self._executor.submit(
-                self._run_summary, user_id, session_id, previous, overflow
+                context.run, self._run_summary, user_id, session_id, previous, overflow
             )
             self._jobs[key] = future
-            future.add_done_callback(lambda done, job_key=key: self._on_job_done(job_key, done))
+            future.add_done_callback(
+                lambda done, job_key=key: context.run(self._on_job_done, job_key, done)
+            )
 
     def _run_summary(
         self,

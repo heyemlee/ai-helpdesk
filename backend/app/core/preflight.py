@@ -318,6 +318,11 @@ def check_deployment_scope(env: Mapping[str, str] | None = None) -> None:
 
 def run_startup_checks(env: Mapping[str, str] | None = None) -> None:
     """启动时逐条跑。任何一条硬约束不满足就抛，让进程起不来。"""
+    from app.core.staff_auth import check_config
+    try:
+        check_config(_env(env))
+    except ValueError as exc:
+        raise InsecureDeploymentError(str(exc)) from None
     check_security_config(env)
     check_token_issuer_binding(env)
     check_deployment_scope(env)

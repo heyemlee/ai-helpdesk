@@ -1,0 +1,9 @@
+{
+  "checked_at": "2026-11-06T14:00:37.394246+00:00",
+  "method": "Read-only Docker inventory and exact owned temporary-root process matches",
+  "remaining_owned_containers": [],
+  "remaining_owned_processes": [],
+  "final_stack_session_exit_code": 0,
+  "production_modified": false,
+  "passed": true
+}

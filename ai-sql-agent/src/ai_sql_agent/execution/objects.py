@@ -74,6 +74,7 @@ class MCPExecutionResult:
     `row_limit` 两个字段已经够调用方判断，不为这件事给线上载荷加字段。
     """
 
+    observed_at: str = ""
     as_of: str = ""
     """
     数据时点，RFC 3339（契约 §4.6.4）。SQL 真正执行的时刻，由执行器打点。
@@ -99,4 +100,5 @@ class MCPExecutionResult:
             "row_limit": self.row_limit,
             "as_of": self.as_of,
             "as_of_source": self.as_of_source,
+            "observed_at": self.observed_at,
         }

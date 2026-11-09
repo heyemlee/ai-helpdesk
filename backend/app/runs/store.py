@@ -44,7 +44,7 @@ def lost_attempts(run: RunRecord) -> int:
 
 def same_request(a: RunRecord, b: RunRecord) -> bool:
     """同一个 Idempotency-Key 的两次提交是不是同一件事：会话、用户、原话都一样。"""
-    return a.conv_id == b.conv_id and a.message == b.message and a.user_id == b.user_id
+    return a.conv_id == b.conv_id and a.message == b.message and a.user_id == b.user_id and a.case_context == b.case_context and a.policy_scope == b.policy_scope and a.actor_context == b.actor_context
 
 
 # ── 进程内 ────────────────────────────────────────────────────────────────────
@@ -62,7 +62,8 @@ class MemoryRunStore:
         self._lock = asyncio.Lock()
 
     def _copy(self, run: RunRecord) -> RunRecord:
-        return replace(run, history=[dict(h) for h in run.history],
+        return replace(run, actor_context=json.loads(json.dumps(run.actor_context)), policy_scope=json.loads(json.dumps(run.policy_scope)), history=[dict(h) for h in run.history],
+                       case_context=json.loads(json.dumps(run.case_context)) if run.case_context is not None else None,
                        result=json.loads(json.dumps(run.result)) if run.result is not None else None,
                        checkpoint=(json.loads(json.dumps(run.checkpoint))
                                    if run.checkpoint is not None else None))
@@ -135,7 +136,7 @@ class MemoryRunStore:
     async def checkpoint(self, run_id: str, owner: str, attempt: int, data: dict[str, Any]) -> bool:
         async with self._lock:
             run = self._fenced(run_id, owner, attempt)
-            if run is None:
+            if run is None or run.lease_until <= self._clock():
                 return False
             run.checkpoint = json.loads(json.dumps(data, ensure_ascii=False))
             run.updated_at = self._clock()
@@ -210,7 +211,7 @@ _NOW = "extract(epoch from clock_timestamp())::float8"
 _COLUMNS = (
     "run_id, instance, idempotency_key, conv_id, user_id, message, request_id, transport, status,"
     " attempt, lease_owner, lease_until, turn_id, degrade_level, checkpoint, result, error, history,"
-    " created_at, updated_at, dispatched_at, started_at, finished_at"
+    " created_at, updated_at, dispatched_at, started_at, finished_at, case_context, policy_scope, actor_context"
 )
 
 # 这一次执行收场：history 的最后一条补上结束时间、结局和那一轮的 turn_id
@@ -234,6 +235,9 @@ def _record(row: Any) -> RunRecord:
         checkpoint=json.loads(checkpoint) if isinstance(checkpoint, str) else checkpoint,
         result=json.loads(result) if isinstance(result, str) else result,
         error=row["error"],
+        policy_scope=(json.loads(row["policy_scope"]) if isinstance(row["policy_scope"], str) else row["policy_scope"]) or {},
+        actor_context=(json.loads(row["actor_context"]) if isinstance(row["actor_context"], str) else row["actor_context"]) or {},
+        case_context=(json.loads(row["case_context"]) if isinstance(row["case_context"], str) else row["case_context"]),
         history=json.loads(history) if isinstance(history, str) else (history or []),
         created_at=row["created_at"], updated_at=row["updated_at"],
         dispatched_at=row["dispatched_at"], started_at=row["started_at"],
@@ -246,18 +250,43 @@ class PgRunStore:
 
     backend = "postgres"
 
-    def __init__(self, db, instance: str):
+    def __init__(self, db, instance: str, legacy_instances=()):
         self._db = db
         self.instance = instance
+        # Namespaces this instance used before; their runs are adopted, never left orphaned.
+        self.legacy_instances = [i for i in legacy_instances if i and i != instance]
+
+    async def adopt_legacy(self) -> int:
+        """Move runs left in an earlier namespace of this instance into the current one.
+
+        Queued runs, runs whose lease has expired, and finished runs (still read by
+        GET /runs and idempotency lookups) are adopted; a dispatch is then due, so the
+        sweeper hands queued and expired ones to a current worker. A run an old worker
+        still holds is left alone until its lease expires. A run whose idempotency key
+        already exists in the current namespace is never duplicated.
+        """
+        if not self.legacy_instances:
+            return 0
+        status = await self._db.execute(
+            f"UPDATE agent_runs AS r SET instance = $1, dispatched_at = 0, updated_at = {_NOW}"
+            f" WHERE r.instance = ANY($2::text[])"
+            f" AND NOT (r.status = 'running' AND r.lease_until >= {_NOW})"
+            f" AND NOT EXISTS (SELECT 1 FROM agent_runs n WHERE n.instance = $1"
+            f" AND n.idempotency_key = r.idempotency_key AND r.idempotency_key <> '')",
+            self.instance, self.legacy_instances,
+        )
+        return int(status.split()[-1]) if status else 0
 
     async def create(self, run: RunRecord) -> tuple[RunRecord, bool]:
         row = await self._db.fetchrow(
             f"INSERT INTO agent_runs (run_id, instance, idempotency_key, conv_id, user_id, message,"
-            f" request_id, transport, status, created_at, updated_at, dispatched_at)"
-            f" VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'queued', {_NOW}, {_NOW}, {_NOW})"
+            f" request_id, transport, case_context, policy_scope, actor_context, status, created_at, updated_at, dispatched_at)"
+            f" VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11::jsonb, 'queued', {_NOW}, {_NOW}, {_NOW})"
             f" ON CONFLICT (instance, idempotency_key) DO NOTHING RETURNING {_COLUMNS}",
             run.run_id, self.instance, run.idempotency_key, run.conv_id, run.user_id,
             run.message, run.request_id, run.transport,
+            json.dumps(run.case_context, ensure_ascii=False) if run.case_context is not None else None,
+            json.dumps(run.policy_scope), json.dumps(run.actor_context),
         )
         if row is not None:
             return _record(row), True
@@ -327,7 +356,7 @@ class PgRunStore:
             f" jsonb_set(history, ARRAY[(jsonb_array_length(history) - 1)::text],"
             f" (history -> -1) || jsonb_build_object('committed', true)) END"
             f" WHERE run_id = $1 AND instance = $5 AND lease_owner = $2 AND attempt = $3"
-            f" AND status = 'running'",
+            f" AND status = 'running' AND lease_until > {_NOW}",
             run_id, owner, attempt, json.dumps(data, ensure_ascii=False), self.instance,
         )
         return status.endswith(" 1")

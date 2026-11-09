@@ -1,0 +1,475 @@
+{
+  "file_count": 117,
+  "files": {
+    ".stage6/evaluation/2026-11-06/container_ledger.py": {
+      "bytes": 8063,
+      "sha256": "ed1e6d9f88988b75fb5f83ed6b6c6812d591585e3beda5eb4e2fce9c57447192"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-complete.json": {
+      "bytes": 9534,
+      "sha256": "e6cf4f32bd151684f430d2fc5fa0d9876af3fddaa2fe1ece8cec7af6cc198caa"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining.entry.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/agent_runs.json": {
+      "bytes": 1135035,
+      "sha256": "47233c995b15486debc1a0797070be0ac009c5160cef38be25420fe4cb8a3e13"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/candidate.json": {
+      "bytes": 406,
+      "sha256": "bf0543e73aaa59ef73f769576db8ad7f639b8ecbe160368018fb7982e50a9d75"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/case_events.json": {
+      "bytes": 43444,
+      "sha256": "68fdfb9d01e6ac2a13c8e036f1f9fd0982ecdc50dbcc20d5fd4bc14f4041a3ea"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/case_image_reviews.json": {
+      "bytes": 112524,
+      "sha256": "c593664cb1a312ad2ea789976f1a3d6f11f0aede623307d1d4c22daa979c1c18"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/compose.log": {
+      "bytes": 1173513,
+      "sha256": "3935d97a1f8bd96ad7b36a0eb624efe2849a6b2d4ba03f0861f43976dbcf04a7"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/containers-shutdown.log": {
+      "bytes": 603434,
+      "sha256": "d0c56e588272fed6886cfa781fd0c6b9c2c94dce45951ddef5579b2e1e38d0fc"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/containers.log": {
+      "bytes": 552505,
+      "sha256": "12737f3ab3846987f557db8296a8000f29201a7cc536552417b038a998f24725"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/development-cross_message-004.json": {
+      "bytes": 71290,
+      "sha256": "af3de2232757983d7a6d666304a4077187e723c98be363718991d47afb74c37f"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/development-cross_message-005.json": {
+      "bytes": 70741,
+      "sha256": "5a9e8189dff33655f9fe0d3805530fcc0fc00506ecefb1816b6ae112968bbe47"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/development-cross_message-006.json": {
+      "bytes": 43566,
+      "sha256": "4e3c74c9cfe54fb2ae1ff666d165c4b7060a22b818eb61673ba177da56268c14"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/development-cross_message-007.json": {
+      "bytes": 70009,
+      "sha256": "a91251da75ffd5b0004b1ee3df047b003a9c810dd0352dd412c96c45ba413bc5"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/development-cross_message-008.json": {
+      "bytes": 72407,
+      "sha256": "4db9b45ffee67cb4209d4ec222d55737d3ea84063838ac9ca371a476134e843f"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/development-cross_message-009.json": {
+      "bytes": 71296,
+      "sha256": "342266597c58ff3da0d596f9f574a9f45af01f6331c6c16fc0c0f1ed74bffde4"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/development-cross_message-010.json": {
+      "bytes": 70745,
+      "sha256": "b5856610c4c137e15dfa7b02433d9f5932b718a94cbed128a3d9eb79b5c8e65c"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/development-images-002.json": {
+      "bytes": 115585,
+      "sha256": "6afa135077dbd606cd0560e4db82ee491eb19378b0a0fb04b56d016ff8cdea63"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/development-images-003.json": {
+      "bytes": 115551,
+      "sha256": "66c9092177c43e316ee4bae900594fb5af7c7d4747cb59ec27efd472b74fdb32"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/development-images-004.json": {
+      "bytes": 115602,
+      "sha256": "33893ecad8659c66899fd33ccbf65357d4a15341a80bd8bdaae59aac60eb4dd1"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/development-images-005.json": {
+      "bytes": 115566,
+      "sha256": "41fe41050890412035299858b6298998380f950c7285090ce667ab3ec3d36ea8"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/development-images-007.json": {
+      "bytes": 48732,
+      "sha256": "24adeb76c0d8b90bf98abfa7fd63ef4e5ee8624a1987f787a5b3b180a4fe027a"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/development-images-008.json": {
+      "bytes": 48075,
+      "sha256": "4c1cdcdbced0c4f0f28d606ad8df185ce330e0749becb4a730f4ad5d45301fb0"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/development-images-009.json": {
+      "bytes": 42681,
+      "sha256": "08596bd48ba636233a02998972234d5765c17fe7daae515f1c9211422cf10394"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/development-images-010.json": {
+      "bytes": 47680,
+      "sha256": "7da60b29d86d51a8625179d4803ee5dc33c69185fe2342fc0861ca812aceb678"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/development-images-012.json": {
+      "bytes": 28743,
+      "sha256": "518e64352aca11cf74bbaad8b0f715c4b931b6f928d748beaaaaf2fe4b67930f"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/development-images-013.json": {
+      "bytes": 28742,
+      "sha256": "3de84b214c8a6db294b758fc68985b39b8050fc482bc7740b180438e47613482"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/development-images-014.json": {
+      "bytes": 28727,
+      "sha256": "18ed7fce9cc6fc902d7ad6b32a923fafdc6548033dd2c584a5bcd3d833539a93"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/development-images-015.json": {
+      "bytes": 28736,
+      "sha256": "07e16df04424282635ecf38538fb0bb2367eac0565152ece7bee5f313918e661"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/development-orders-004.json": {
+      "bytes": 38841,
+      "sha256": "f54b9281554e953ae13d4bf63f257c422e7945a87da9b987f36d55253d68bf0c"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/development-orders-005.json": {
+      "bytes": 44137,
+      "sha256": "670aa3debb98945bcb351e5b2391c1d188910546f73932a75d1a372fe4d0ad73"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/development-orders-006.json": {
+      "bytes": 28703,
+      "sha256": "6d90884ba8778b4c808a06997b80f3f8c81a80b8d93b36d67adf6b8e2a65f749"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/development-orders-007.json": {
+      "bytes": 46132,
+      "sha256": "b8be1ec5450d0b03925dee5c785dac522138ca34f76abda0f86e8b5eb280a042"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/development-orders-008.json": {
+      "bytes": 44560,
+      "sha256": "d4756b1445cdea45d182b9812d16e778fb6d93ce7c35e305ecd70f562796ecb2"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/development-orders-009.json": {
+      "bytes": 54680,
+      "sha256": "552a01f47c76cc5b725ef60228d348724a7f9677b0b1d1961002307d8ebf1525"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/development-orders-010.json": {
+      "bytes": 38842,
+      "sha256": "a6628de86ebe059f5c5cfc4f7cf28d7d14d627c4172c15f8201a20dc73d54b6b"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/development-orders-011.json": {
+      "bytes": 44131,
+      "sha256": "21825c2c98a25d3e6b3ac6ee6e180a99f16a44fdd8fdb28ef2cd2bba90230a73"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/development-orders-012.json": {
+      "bytes": 17986,
+      "sha256": "2ab7e528b7de916767c2a3aed6a238254b729d5c2bcc228f8aaecd9f5339de43"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/development-orders-013.json": {
+      "bytes": 46133,
+      "sha256": "172b8cebea962e2a50f88c045591b598340a79d323883c47d6f1366a786f6a43"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/development-orders-014.json": {
+      "bytes": 44571,
+      "sha256": "45dcbb8ea4ee7e95464487b32d39062eb590fea762577c02df7d437798ca8fc1"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/development-policies-003.json": {
+      "bytes": 14419,
+      "sha256": "2a9b8b81e3e45390d98f5e4f2d03fc2665d6fddc24d8122a46c74a5d471741b0"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/development-policies-005.json": {
+      "bytes": 16846,
+      "sha256": "ea4b22a8ce455034b86d92f2d3bc6a73ff9f2b0c8d26dd03125774c5718c6757"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/development-policies-006.json": {
+      "bytes": 16318,
+      "sha256": "84bf353b32705fd463894195bb263cfcecdefb4d515fcb4647ff6369ff44450e"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/development-policies-007.json": {
+      "bytes": 15148,
+      "sha256": "75a0b95cfbe423994dd565d2f520f733f4b8900857d958219bad98d8c63ed3a7"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/development-policies-008.json": {
+      "bytes": 16109,
+      "sha256": "903d039cd33af7c335a87807530b83c69f79355de94c6dc2e5b436f991a0f4d7"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/development-policies-009.json": {
+      "bytes": 11433,
+      "sha256": "b1205984d75841fddaee61991b9d743cce4b927bc82459ce05ca69d2d1a64534"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/development-policies-010.json": {
+      "bytes": 16593,
+      "sha256": "d1d8cdef36cc020cf05062fa00f052cc5011f082abe0f6037e19606c64d368df"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/development-policies-011.json": {
+      "bytes": 16265,
+      "sha256": "1a3282bb353f91ad37caf9107f320eb287b31ff79f14c09733d5d369f67faaf4"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/development-policies-012.json": {
+      "bytes": 16274,
+      "sha256": "7bb24ab5e1afbfbd89beb26bd91d7f49d470185ed00706756b1e9465a110974b"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/development-policies-013.json": {
+      "bytes": 16097,
+      "sha256": "512ab6c92869d5d60d26c8ae3646e216d45218ce406401b4173cd176479659f4"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/development-policies-014.json": {
+      "bytes": 10901,
+      "sha256": "cedeb874c21eef38b826ef421f13d3e8ae3dc75fd20d3b86aab188698b95c39a"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/development-policies-015.json": {
+      "bytes": 16557,
+      "sha256": "c1f3785b697f9278ec9a10159440d649009d03bb6f05ba6e4305d184fbfbcbe1"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/execution.json": {
+      "bytes": 7375,
+      "sha256": "03acc557e73fbe3629c29abbb7e1cafaf30c8afd72f0d2a1a345ad01b8544ee6"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/ledger-after-down.json": {
+      "bytes": 2578523,
+      "sha256": "62e962a2d3930b2c2e8f087c2376a6b84bed73175b3ed5615c12978c7428975c"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/ledger-before-stop.json": {
+      "bytes": 2578523,
+      "sha256": "62e962a2d3930b2c2e8f087c2376a6b84bed73175b3ed5615c12978c7428975c"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/ledger-drain.json": {
+      "bytes": 3637,
+      "sha256": "a29c15822a158973c2a89beaf9ea634f392e63a172b3d7680536d42f3d264398"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/observed/development-cross_message-004.json": {
+      "bytes": 70903,
+      "sha256": "a947796fe510b7b889ed107e3d808537034856af8cd0e7a7c3394db211ca2919"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/observed/development-cross_message-005.json": {
+      "bytes": 70406,
+      "sha256": "0a641f9506970d7c65406288de26980bfc8462e2397dc3e45c7891072d4b1370"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/observed/development-cross_message-006.json": {
+      "bytes": 43227,
+      "sha256": "47773dc1e8576e9c654ca69c218247cabc6900c44988e6db11fc74af57284985"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/observed/development-cross_message-007.json": {
+      "bytes": 69672,
+      "sha256": "bfd7fca3c791a0fb4e3fa4ace073cc19505aa630972a3e9161971577a8a3ad95"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/observed/development-cross_message-008.json": {
+      "bytes": 72017,
+      "sha256": "01ab32eef96a761228b1539d1970fd224dae120ec62414d0e081f03b3c4652d4"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/observed/development-cross_message-009.json": {
+      "bytes": 70909,
+      "sha256": "cabf790853a03406f37344a703c310f8e4b785f6dac3788616f61d07a9978d91"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/observed/development-cross_message-010.json": {
+      "bytes": 70409,
+      "sha256": "6dfae501d551783b316e5faed87de1972282284127054a6d0793a2b34cbd2cb1"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/observed/development-images-002.json": {
+      "bytes": 114369,
+      "sha256": "e606d90b589f378633aa99bdb62abdba9871b7e9887cc5c1f94cc15015b7187e"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/observed/development-images-003.json": {
+      "bytes": 114335,
+      "sha256": "f766c3d8a482f253d637d7debfdbb3c7be22c2ab0747486908120bb0da190a3d"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/observed/development-images-004.json": {
+      "bytes": 114386,
+      "sha256": "61fb1d14e3d387382b08ae14f8a35efa4ca4a84eaab9856c1c71ecc2cc5f41de"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/observed/development-images-005.json": {
+      "bytes": 114350,
+      "sha256": "2e3df4b58ac8dbb52512c721d837fe72989ee06cac99e528163813c5e9a6179b"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/observed/development-images-007.json": {
+      "bytes": 47040,
+      "sha256": "10494046521f6b44ab083615cec13db4c8cfba423b301d3a69c907263f7fb344"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/observed/development-images-008.json": {
+      "bytes": 46856,
+      "sha256": "e1c3a35cfc0b859587b6b11e9a1286d0718f8b1f916adb237c67cb08cfa7966b"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/observed/development-images-009.json": {
+      "bytes": 41463,
+      "sha256": "6b7f682f1fac7d814f13e2b20a93d1c961bed7a17a33702885a52148dbbece6a"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/observed/development-images-010.json": {
+      "bytes": 46462,
+      "sha256": "6730ae2bc1369c6befbddaa439a8c0123289d6b55cb500d7c7b994f1bdf58632"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/observed/development-images-012.json": {
+      "bytes": 27511,
+      "sha256": "6aa057fffe23d626b774d3beb9141b105b3e0de0683bd09bf4467a3ff1ae3c65"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/observed/development-images-013.json": {
+      "bytes": 27509,
+      "sha256": "27180b1d7e37040b2d3301d42fbb396a4ec35c1d0183d52b15345f4ba04765ac"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/observed/development-images-014.json": {
+      "bytes": 27494,
+      "sha256": "07857f43b1eb42558521a59b7100111a250efd8f77c936419bf54625a6619a64"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/observed/development-images-015.json": {
+      "bytes": 27503,
+      "sha256": "db630dd83b6a426015330b5622f8f80a11dcf398f8c6ab88a857085c4c0feef7"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/observed/development-orders-004.json": {
+      "bytes": 38153,
+      "sha256": "1dd82ad97283b161c9d4757938350aceb40aabbb85b320f20ed4652a84e1d842"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/observed/development-orders-005.json": {
+      "bytes": 43814,
+      "sha256": "bfe1d0d1979e97e20045af08d93ec84e1605d46712baced5b47220e549fc1522"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/observed/development-orders-006.json": {
+      "bytes": 28327,
+      "sha256": "0122e6c4011c41a9385743c0a06485836298b37dfb51861bc68e2c7a1d2d5eff"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/observed/development-orders-007.json": {
+      "bytes": 45812,
+      "sha256": "d7be4dfceca58c693d47a38abfad39f85114be8e41469366afde2e880c6d3586"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/observed/development-orders-008.json": {
+      "bytes": 44236,
+      "sha256": "1223ebc3ff5f845c6d0cb80c85de936685013f13a50a053bda2e68f673ffb6e9"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/observed/development-orders-009.json": {
+      "bytes": 54357,
+      "sha256": "6ab8eaa083b4c5d1b7db91c63b9d45adf364bcae8887c114b03301591cfba72f"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/observed/development-orders-010.json": {
+      "bytes": 38155,
+      "sha256": "1d147ba885f46adf2c1b7650b945352d2b8352c0e3a2608d0dce3d576f1f3d65"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/observed/development-orders-011.json": {
+      "bytes": 43806,
+      "sha256": "66ae2c0050b8f96ce30b8e421abd22cdeb262304f6769092df6dd4a9a66a17fa"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/observed/development-orders-012.json": {
+      "bytes": 17470,
+      "sha256": "34736721035c139bb8fde12d76edef7fb64efc08e39d059e4958299570f011bf"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/observed/development-orders-013.json": {
+      "bytes": 45813,
+      "sha256": "af4699180cfdb124323d9141674921e8b8f9092fabd275a05dac0d105eac5d50"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/observed/development-orders-014.json": {
+      "bytes": 44245,
+      "sha256": "a3aed9e1f9e7d24db2f9a7099137f13f331328af551648d7463ace7e9913773e"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/observed/development-policies-003.json": {
+      "bytes": 14094,
+      "sha256": "8a3283f6ce2217585b5512142c7cb60bed19f8464c8f9fb7748597973cf25383"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/observed/development-policies-005.json": {
+      "bytes": 16469,
+      "sha256": "07e594a5568665ddb9193190997f586366dffa15b9aa99e1cd40159743db7e59"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/observed/development-policies-006.json": {
+      "bytes": 15944,
+      "sha256": "e07394d6a591d7deaa7f696d764e5d801a33e7de102aff3fcf17a3ea21f707f5"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/observed/development-policies-007.json": {
+      "bytes": 14821,
+      "sha256": "54961562beeca9470885b7c348d4724c5feba6518b7fc0a22ebd341dcbbfedcf"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/observed/development-policies-008.json": {
+      "bytes": 15736,
+      "sha256": "6e0600237561444c4913ce8378c4ed755b633634f9be279dcaf2bf7c906c6cc9"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/observed/development-policies-009.json": {
+      "bytes": 11103,
+      "sha256": "e86d8517295edf65d55e0acead1ae93843559eb19e761aa07504cbb2f6b3c751"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/observed/development-policies-010.json": {
+      "bytes": 16216,
+      "sha256": "95a0ca3d6dd5fc4d629f27997d559ddbdf19fcd005e6cad7f7300a7c62851d9b"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/observed/development-policies-011.json": {
+      "bytes": 15891,
+      "sha256": "ec2f3f3b1337dd872c9e709f3921e988e8981c496ab5f43d2eb85f4c599e0968"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/observed/development-policies-012.json": {
+      "bytes": 15899,
+      "sha256": "165dab8cddb266bf41c8b557418c775a3ba8834a4dc39daca88edf2a766dd4b0"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/observed/development-policies-013.json": {
+      "bytes": 15725,
+      "sha256": "5057bedf53349f279707f8850c0e9278cb6ea3b29df33fded0eeeee4db110c1f"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/observed/development-policies-014.json": {
+      "bytes": 10570,
+      "sha256": "1bfa26fdfab1a9458e90f3f546e96fd163f653d8cd24f80c80b4dd636e5aff01"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/observed/development-policies-015.json": {
+      "bytes": 16180,
+      "sha256": "713a15e013019c1b65a9737a9104f16007c82e30d06c085312385a21d28f4173"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/postgres.dump": {
+      "bytes": 526392,
+      "sha256": "1a65719aba4edf1e9557a7a3a52daa870f19d127182d3a95d5a98cf79c3d529c"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/progress.json": {
+      "bytes": 42041,
+      "sha256": "7c7e4df633216626512ed15087ebf8448898211185df78e94c0a1f992e16b28e"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/provenance.json": {
+      "bytes": 2895,
+      "sha256": "bc9cba4a3148d5b4c29367556ce28c369fe924fa0434d34223bad798701a0155"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/report.json": {
+      "bytes": 42042,
+      "sha256": "e81553b9907bb17bbb3d681da89204d9821929a1e68d17cbdd6c30cbd9273e6f"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/root-drain-verification.json": {
+      "bytes": 879,
+      "sha256": "bebc4ecaea98f8cb74c3d01d22f9f80921ebc249470e51446e9356a142d3d294"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/root-postgres.toc": {
+      "bytes": 12035,
+      "sha256": "5cf6ce743cf770dd61c559b21c77d32e057c579a3f3a0eadbd4ffdeacef21bfb"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/root-verification.json": {
+      "bytes": 6728,
+      "sha256": "cd4536417b35f02dbfd110e968fb60a29950331a494f0c7aaec508c676a421e8"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/shutdown-container-states.json": {
+      "bytes": 21498,
+      "sha256": "591994f729463bc2b2cb9f33f6a66b12899d0cef2a17ceeb9358abad6a6993cf"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/sql-state/audit.db": {
+      "bytes": 204800,
+      "sha256": "f681f93122f676c485bee2aecdc9054a9f966b19a233721f0af589ab861aff94"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/sql-state/memory.db": {
+      "bytes": 819200,
+      "sha256": "e337f4299e5625b9e7a2a8733ed309b3b87a35880e7fe9bafb5364a7f0e69013"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/sql-state/runs.db": {
+      "bytes": 557056,
+      "sha256": "c3ca35cd078039cb25883fe38ccc95bacfb5aa413bb28fe40de4acfc39546fb9"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/turn_events.json": {
+      "bytes": 1700096,
+      "sha256": "6ae7eaf85070bdd88e8669a7f9c7df8e7c2cd9655fe13edcb12ffcdeebf95fc3"
+    },
+    ".stage6/evaluation/2026-11-06/development-v3-fada020-remaining/usage/51004f0f81a9f288985e6aafc5d4621fb481ce79b514896a6a00753fa900d3ed.json": {
+      "bytes": 2578523,
+      "sha256": "62e962a2d3930b2c2e8f087c2376a6b84bed73175b3ed5615c12978c7428975c"
+    },
+    ".stage6/evaluation/2026-11-06/formal-v3-20261106/orchestrators/candidate-drain-v1-sources.json": {
+      "bytes": 181443,
+      "sha256": "0551a9e0e9a998a93ca147251f48d2f637dfaba7a81a0ab6a55c3a78b66039be"
+    },
+    ".stage6/evaluation/2026-11-06/ledger_drain_v1.py": {
+      "bytes": 5389,
+      "sha256": "200fd0d6e38bef4bbb4ad3faad2302edc0ccba6fcef14c70acec3433c057105e"
+    },
+    ".stage6/evaluation/2026-11-06/run-development-v3-candidate-drain-v1.py": {
+      "bytes": 5207,
+      "sha256": "74331e98ea9ca022c58e7b33a8a1482be443da2c6d83ae44901cb9b169a431c4"
+    },
+    ".stage6/evaluation/2026-11-06/v3_client_run_safety.py": {
+      "bytes": 14530,
+      "sha256": "b97ca4d549951b6427add9965a5f2d874c6b83d819fe501fb9e55f4bf63d23b2"
+    },
+    ".stage6/evaluation/2026-11-06/v3_shutdown_support_v1.py": {
+      "bytes": 12570,
+      "sha256": "74201bcfbc1086292807884e588c2bfc88db54e9fcce9a5b42fda3434c2eb48b"
+    },
+    ".stage6/evaluation/2026-11-06/verify-development-candidate.py": {
+      "bytes": 7128,
+      "sha256": "8e5767efbe1ed4a71ea167fed81537a48ef9da57994b0e8ebb7b08bc8e1bd1fc"
+    }
+  },
+  "kind": "root_verified_complete_development_extension",
+  "raw_evidence_git_ignored": true
+}

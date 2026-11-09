@@ -1,18 +1,62 @@
 {
-  "route": "database_query", "confidence": 0.9,
+  "route": "database_query",
+  "confidence": 0.9,
   "queried_database": true,
   "execution_status": "success",
   "has_risk": true,
   "degraded": false,
   "degrade_reason": "",
-  "selected_databases": ["erp_db"],
+  "selected_databases": [
+    "erp_db"
+  ],
   "trace_id": "3c4d5e6f708192a3",
-  "steps": [{"database": "erp_db",
-             "sql": "SELECT SUM(contract_amt) AS total FROM job WHERE business_unit = 'West'",
-             "final_sql": "SELECT SUM(contract_amt) AS total FROM job WHERE business_unit = 'West'",
-             "success": true, "row_count": 1, "truncated": false,
-             "rows": [{"total": 0}],
-             "error": null, "repair_attempts": [],
-             "risk_findings": [{"type": "semantic_mismatch",
-                                "detail": "问题问的是「未回款金额」，SQL 求的是合同额"}]}]
+  "steps": [
+    {
+      "database": "erp_db",
+      "sql": "SELECT SUM(contract_amt) AS total FROM job WHERE business_unit = 'West'",
+      "final_sql": "SELECT SUM(contract_amt) AS total FROM job WHERE business_unit = 'West'",
+      "success": true,
+      "row_count": 1,
+      "truncated": false,
+      "rows": [
+        {
+          "total": 0
+        }
+      ],
+      "error": null,
+      "repair_attempts": [],
+      "risk_findings": [
+        {
+          "type": "semantic_mismatch",
+          "detail": "问题问的是「未回款金额」，SQL 求的是合同额"
+        }
+      ],
+      "as_of": "2026-11-06T00:00:00Z",
+      "as_of_source": "query_time",
+      "column_units": {},
+      "source_records": []
+    }
+  ],
+  "evidence": [
+    {
+      "evidence_id": "ev_cd9f48c91f49e9c6445fe5a36106c038275a7ebd1d0ca0b54ba4efa2941b8189",
+      "entity": {
+        "kind": "query_row",
+        "query_hash": "9ea7f030415d845de015cc84dd487666e659d77a94ad39da231653ec22d7abfd",
+        "row_index": 0
+      },
+      "field": "total",
+      "value": 0,
+      "unit": null,
+      "as_of": "2026-11-06T00:00:00Z",
+      "as_of_source": "query_time",
+      "database": "erp_db",
+      "step_index": 0,
+      "row_index": 0,
+      "query_hash": "9ea7f030415d845de015cc84dd487666e659d77a94ad39da231653ec22d7abfd",
+      "source_records": [],
+      "issues": []
+    }
+  ],
+  "observed_at": "2026-11-06T00:00:00Z"
 }

@@ -9,6 +9,7 @@ import os
 
 import pytest
 from conftest import ScriptedModel, text_step, tool_step
+from evidence_fixtures import policy_hits, with_evidence
 
 from app.agents.agent_orchestrator import AgentOrchestrator, AgentType
 from app.agents.tool_loop import LoopConfig
@@ -40,8 +41,9 @@ OK_PAYLOAD = {
                                      "rows": [{"job_no": "J25-00003", "ship_date": "2026-09-15"}],
                                      "error": None}],
 }
+OK_PAYLOAD = with_evidence(OK_PAYLOAD)
 NO_DATA_PAYLOAD = {**OK_PAYLOAD, "execution_status": "no_data",
-                   "steps": [{"database": "erp_db", "success": True, "row_count": 0, "rows": [], "error": None}]}
+                   "steps": [{"database": "erp_db", "success": True, "row_count": 0, "rows": [], "error": None, "truncated": False}]}
 KNOWLEDGE = [{"title": "缺件漏发与补件流程", "content": "补件的到货日期以工厂排产确认为准。", "score": 0.6,
               "doc_id": "doc_1", "chunk_id": "c1", "chunk": 0, "retrieval": "hybrid"}]
 
@@ -59,10 +61,10 @@ class _Knowledge:
     """假的知识库 ToolManager：不管查什么都回同一段，不出网。"""
 
     async def call(self, name, params, context=None, **_):
-        return ToolResult(success=True, data=KNOWLEDGE, tool_name=name)
+        return ToolResult(success=True, data=policy_hits(KNOWLEDGE), tool_name=name)
 
     async def search_with_rewrite(self, name, query, top_k=5, context=None, **_):
-        return ToolResult(success=True, data=KNOWLEDGE, tool_name=name)
+        return ToolResult(success=True, data=policy_hits(KNOWLEDGE), tool_name=name)
 
 
 # ── 用例文件 ──────────────────────────────────────────────────────────────────
@@ -247,7 +249,7 @@ async def test_both_arms_answer_from_one_preparation():
     assert (rules.usage["model_calls"], loop.usage["model_calls"]) == (1, 2)
     assert "2026-09-15" in loop.answer
     # 评审对着各组自己拿到的资料判：循环组查回来的数据在它的资料里，规则组的没有
-    assert "没有查到匹配的记录" in rules.material and "2026-09-15" not in rules.material
+    assert "no_data" in rules.material and "2026-09-15" not in rules.material
     assert "2026-09-15" in loop.material and loop.material.startswith(rules.material)
 
 

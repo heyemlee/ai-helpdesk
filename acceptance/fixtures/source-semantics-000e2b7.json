@@ -1,0 +1,805 @@
+{
+  "columns": {
+    "erp_db.order_item.model": {
+      "metadata": {
+        "business_usage": "查询和展示型号。",
+        "description": "型号。",
+        "label_en": "Model",
+        "label_zh": "型号",
+        "semantic_role": "filter"
+      },
+      "visible_description": {
+        "en": "型号。",
+        "zh": "型号。"
+      }
+    },
+    "erp_db.order_item.order_no": {
+      "metadata": {
+        "business_usage": "四个数据库统一通过 order_no 关联订单，不使用工程号。",
+        "description": "订单号。四个数据库统一通过 order_no 关联订单，不使用工程号。",
+        "label_en": "Order number",
+        "label_zh": "订单号",
+        "semantic_role": "join_key"
+      },
+      "visible_description": {
+        "en": "订单号。四个数据库统一通过 order_no 关联订单，不使用工程号。",
+        "zh": "订单号。四个数据库统一通过 order_no 关联订单，不使用工程号。"
+      }
+    },
+    "erp_db.order_item.product_name": {
+      "metadata": {
+        "business_usage": "产品名称与规格，例如地柜、吊柜、台面或五金。",
+        "description": "产品名称。产品名称与规格，例如地柜、吊柜、台面或五金。",
+        "label_en": "Product name",
+        "label_zh": "产品名称",
+        "semantic_role": "filter"
+      },
+      "visible_description": {
+        "en": "产品名称。产品名称与规格，例如地柜、吊柜、台面或五金。",
+        "zh": "产品名称。产品名称与规格，例如地柜、吊柜、台面或五金。"
+      }
+    },
+    "erp_db.order_item.quantity": {
+      "metadata": {
+        "business_usage": "查询和展示数量。",
+        "description": "数量。",
+        "label_en": "Quantity",
+        "label_zh": "数量",
+        "semantic_role": "metric"
+      },
+      "visible_description": {
+        "en": "数量。",
+        "zh": "数量。"
+      }
+    },
+    "erp_db.order_item.subtotal": {
+      "metadata": {
+        "business_usage": "数量 × 单价，保留两位小数，数据库在插入或更新时自动计算。",
+        "description": "小计。数量 × 单价，保留两位小数，数据库在插入或更新时自动计算。",
+        "label_en": "Subtotal",
+        "label_zh": "小计",
+        "semantic_role": "metric"
+      },
+      "visible_description": {
+        "en": "小计。数量 × 单价，保留两位小数，数据库在插入或更新时自动计算。",
+        "zh": "小计。数量 × 单价，保留两位小数，数据库在插入或更新时自动计算。"
+      }
+    },
+    "erp_db.order_item.unit_price": {
+      "metadata": {
+        "business_usage": "查询和展示单价。",
+        "description": "单价。",
+        "label_en": "Unit price",
+        "label_zh": "单价",
+        "semantic_role": "metric"
+      },
+      "visible_description": {
+        "en": "单价。",
+        "zh": "单价。"
+      }
+    },
+    "erp_db.orders.address": {
+      "metadata": {
+        "business_usage": "完整交付地址，包含街道、城市和州。",
+        "description": "地址。完整交付地址，包含街道、城市和州。",
+        "label_en": "Delivery address",
+        "label_zh": "地址",
+        "semantic_role": "text"
+      },
+      "visible_description": {
+        "en": "地址。完整交付地址，包含街道、城市和州。",
+        "zh": "地址。完整交付地址，包含街道、城市和州。"
+      }
+    },
+    "erp_db.orders.contract_amount": {
+      "metadata": {
+        "business_usage": "美元、不含税的合同总额。明细小计之和不一定等于谈定的合同金额；没有回款记录，不能计算未付余额。",
+        "description": "合同金额。美元、不含税的合同总额。明细小计之和不一定等于谈定的合同金额；没有回款记录，不能计算未付余额。",
+        "label_en": "Contract amount",
+        "label_zh": "合同金额",
+        "semantic_role": "metric"
+      },
+      "visible_description": {
+        "en": "合同金额。美元、不含税的合同总额。明细小计之和不一定等于谈定的合同金额；没有回款记录，不能计算未付余额。",
+        "zh": "合同金额。美元、不含税的合同总额。明细小计之和不一定等于谈定的合同金额；没有回款记录，不能计算未付余额。"
+      }
+    },
+    "erp_db.orders.customer_name": {
+      "metadata": {
+        "business_usage": "查询和展示客户姓名。",
+        "description": "客户姓名。",
+        "label_en": "Customer name",
+        "label_zh": "客户姓名",
+        "semantic_role": "filter"
+      },
+      "visible_description": {
+        "en": "客户姓名。",
+        "zh": "客户姓名。"
+      }
+    },
+    "erp_db.orders.delivery_date": {
+      "metadata": {
+        "business_usage": "迁移自原配送记录的计划送货日期。没有送货计划时为空；不是安装日期。实际送达日期在 svc_db.delivery.delivered_date。 日期为 YYYY-MM-DD 文本；本地时间相关查询使用 DATE('now','localtime')。",
+        "description": "交付日期。迁移自原配送记录的计划送货日期。没有送货计划时为空；不是安装日期。实际送达日期在 svc_db.delivery.delivered_date。",
+        "label_en": "Delivery date",
+        "label_zh": "交付日期",
+        "semantic_role": "time"
+      },
+      "visible_description": {
+        "en": "交付日期。迁移自原配送记录的计划送货日期。没有送货计划时为空；不是安装日期。实际送达日期在 another source field。",
+        "zh": "交付日期。迁移自原配送记录的计划送货日期。没有送货计划时为空；不是安装日期。实际送达日期在 另一个来源字段。"
+      }
+    },
+    "erp_db.orders.order_no": {
+      "metadata": {
+        "business_usage": "四个数据库统一通过 order_no 关联订单，不使用工程号。",
+        "description": "订单号。四个数据库统一通过 order_no 关联订单，不使用工程号。",
+        "label_en": "Order number",
+        "label_zh": "订单号",
+        "semantic_role": "join_key"
+      },
+      "visible_description": {
+        "en": "订单号。四个数据库统一通过 order_no 关联订单，不使用工程号。",
+        "zh": "订单号。四个数据库统一通过 order_no 关联订单，不使用工程号。"
+      }
+    },
+    "erp_db.orders.order_notes": {
+      "metadata": {
+        "business_usage": "查询和展示订单备注。",
+        "description": "订单备注。",
+        "label_en": "Order notes",
+        "label_zh": "订单备注",
+        "semantic_role": "text"
+      },
+      "visible_description": {
+        "en": "订单备注。",
+        "zh": "订单备注。"
+      }
+    },
+    "erp_db.orders.order_status": {
+      "metadata": {
+        "business_usage": "查询和展示订单状态。",
+        "description": "订单状态；选项：已签单、生产中、待发货、配送中、已交付、已取消。",
+        "label_en": "Order status",
+        "label_zh": "订单状态",
+        "semantic_role": "filter"
+      },
+      "visible_description": {
+        "en": "订单状态；选项：已签单、生产中、待发货、配送中、已交付、已取消。",
+        "zh": "订单状态；选项：已签单、生产中、待发货、配送中、已交付、已取消。"
+      }
+    },
+    "erp_db.orders.phone": {
+      "metadata": {
+        "business_usage": "按文本保存，支持国家区号。原始模拟数据没有号码，迁移后为空。",
+        "description": "手机号。按文本保存，支持国家区号。原始模拟数据没有号码，迁移后为空。",
+        "label_en": "Customer phone",
+        "label_zh": "手机号",
+        "semantic_role": "text"
+      },
+      "visible_description": {
+        "en": "手机号。按文本保存，支持国家区号。原始模拟数据没有号码，迁移后为空。",
+        "zh": "手机号。按文本保存，支持国家区号。原始模拟数据没有号码，迁移后为空。"
+      }
+    },
+    "erp_db.orders.salesperson": {
+      "metadata": {
+        "business_usage": "负责该订单的销售；原模拟数据没有此信息，迁移后为空。",
+        "description": "销售人员。负责该订单的销售；原模拟数据没有此信息，迁移后为空。",
+        "label_en": "Salesperson",
+        "label_zh": "销售人员",
+        "semantic_role": "filter"
+      },
+      "visible_description": {
+        "en": "销售人员。负责该订单的销售；原模拟数据没有此信息，迁移后为空。",
+        "zh": "销售人员。负责该订单的销售；原模拟数据没有此信息，迁移后为空。"
+      }
+    },
+    "erp_db.orders.signed_date": {
+      "metadata": {
+        "business_usage": "查询和展示签单日期。 日期为 YYYY-MM-DD 文本；本地时间相关查询使用 DATE('now','localtime')。",
+        "description": "签单日期。",
+        "label_en": "Signed date",
+        "label_zh": "签单日期",
+        "semantic_role": "time"
+      },
+      "visible_description": {
+        "en": "签单日期。",
+        "zh": "签单日期。"
+      }
+    },
+    "prod_db.work_order.current_stage": {
+      "metadata": {
+        "business_usage": "查询和展示当前工序。",
+        "description": "当前工序；选项：裁切、封边、钻孔、组装、包装。",
+        "label_en": "Current stage",
+        "label_zh": "当前工序",
+        "semantic_role": "filter"
+      },
+      "visible_description": {
+        "en": "当前工序；选项：裁切、封边、钻孔、组装、包装。",
+        "zh": "当前工序；选项：裁切、封边、钻孔、组装、包装。"
+      }
+    },
+    "prod_db.work_order.is_rush": {
+      "metadata": {
+        "business_usage": "1 表示加急，0 表示普通订单。",
+        "description": "是否加急。1 表示加急，0 表示普通订单。",
+        "label_en": "Rush order",
+        "label_zh": "是否加急",
+        "semantic_role": "filter"
+      },
+      "visible_description": {
+        "en": "是否加急。1 表示加急，0 表示普通订单。",
+        "zh": "是否加急。1 表示加急，0 表示普通订单。"
+      }
+    },
+    "prod_db.work_order.order_no": {
+      "metadata": {
+        "business_usage": "四个数据库统一通过 order_no 关联订单，不使用工程号。",
+        "description": "订单号。四个数据库统一通过 order_no 关联订单，不使用工程号。",
+        "label_en": "Order number",
+        "label_zh": "订单号",
+        "semantic_role": "join_key"
+      },
+      "visible_description": {
+        "en": "订单号。四个数据库统一通过 order_no 关联订单，不使用工程号。",
+        "zh": "订单号。四个数据库统一通过 order_no 关联订单，不使用工程号。"
+      }
+    },
+    "prod_db.work_order.production_notes": {
+      "metadata": {
+        "business_usage": "特殊要求、生产问题、暂停原因；暂停订单的生产状态仍归为生产中。",
+        "description": "生产备注。特殊要求、生产问题、暂停原因；暂停订单的生产状态仍归为生产中。",
+        "label_en": "Production notes",
+        "label_zh": "生产备注",
+        "semantic_role": "text"
+      },
+      "visible_description": {
+        "en": "生产备注。特殊要求、生产问题、暂停原因；暂停订单的生产状态仍归为生产中。",
+        "zh": "生产备注。特殊要求、生产问题、暂停原因；暂停订单的生产状态仍归为生产中。"
+      }
+    },
+    "prod_db.work_order.production_status": {
+      "metadata": {
+        "business_usage": "查询和展示生产状态。",
+        "description": "生产状态；选项：待生产、生产中、已完工。",
+        "label_en": "Production status",
+        "label_zh": "生产状态",
+        "semantic_role": "filter"
+      },
+      "visible_description": {
+        "en": "生产状态；选项：待生产、生产中、已完工。",
+        "zh": "生产状态；选项：待生产、生产中、已完工。"
+      }
+    },
+    "svc_db.delivery.delivered_date": {
+      "metadata": {
+        "business_usage": "尚未送达时为空。 日期为 YYYY-MM-DD 文本；本地时间相关查询使用 DATE('now','localtime')。",
+        "description": "实际送达日期。尚未送达时为空。",
+        "label_en": "Actual delivery date",
+        "label_zh": "实际送达日期",
+        "semantic_role": "time"
+      },
+      "visible_description": {
+        "en": "实际送达日期。尚未送达时为空。",
+        "zh": "实际送达日期。尚未送达时为空。"
+      }
+    },
+    "svc_db.delivery.delivery_method": {
+      "metadata": {
+        "business_usage": "查询和展示配送方式。",
+        "description": "配送方式；选项：自送、物流、客户自提。",
+        "label_en": "Delivery method",
+        "label_zh": "配送方式",
+        "semantic_role": "filter"
+      },
+      "visible_description": {
+        "en": "配送方式；选项：自送、物流、客户自提。",
+        "zh": "配送方式；选项：自送、物流、客户自提。"
+      }
+    },
+    "svc_db.delivery.delivery_notes": {
+      "metadata": {
+        "business_usage": "查询和展示配送备注。",
+        "description": "配送备注。",
+        "label_en": "Delivery notes",
+        "label_zh": "配送备注",
+        "semantic_role": "text"
+      },
+      "visible_description": {
+        "en": "配送备注。",
+        "zh": "配送备注。"
+      }
+    },
+    "svc_db.delivery.delivery_person": {
+      "metadata": {
+        "business_usage": "查询和展示配送人员。",
+        "description": "配送人员。",
+        "label_en": "Delivery person",
+        "label_zh": "配送人员",
+        "semantic_role": "text"
+      },
+      "visible_description": {
+        "en": "配送人员。",
+        "zh": "配送人员。"
+      }
+    },
+    "svc_db.delivery.delivery_status": {
+      "metadata": {
+        "business_usage": "查询和展示配送状态。",
+        "description": "配送状态；选项：待配送、配送中、已送达。",
+        "label_en": "Delivery status",
+        "label_zh": "配送状态",
+        "semantic_role": "filter"
+      },
+      "visible_description": {
+        "en": "配送状态；选项：待配送、配送中、已送达。",
+        "zh": "配送状态；选项：待配送、配送中、已送达。"
+      }
+    },
+    "svc_db.delivery.order_no": {
+      "metadata": {
+        "business_usage": "四个数据库统一通过 order_no 关联订单，不使用工程号。",
+        "description": "订单号。四个数据库统一通过 order_no 关联订单，不使用工程号。",
+        "label_en": "Order number",
+        "label_zh": "订单号",
+        "semantic_role": "join_key"
+      },
+      "visible_description": {
+        "en": "订单号。四个数据库统一通过 order_no 关联订单，不使用工程号。",
+        "zh": "订单号。四个数据库统一通过 order_no 关联订单，不使用工程号。"
+      }
+    },
+    "svc_db.delivery.phone": {
+      "metadata": {
+        "business_usage": "查询和展示联系电话。",
+        "description": "联系电话。",
+        "label_en": "Delivery phone",
+        "label_zh": "联系电话",
+        "semantic_role": "text"
+      },
+      "visible_description": {
+        "en": "联系电话。",
+        "zh": "联系电话。"
+      }
+    },
+    "svc_db.replacement_part.order_no": {
+      "metadata": {
+        "business_usage": "四个数据库统一通过 order_no 关联订单，不使用工程号。",
+        "description": "订单号。四个数据库统一通过 order_no 关联订单，不使用工程号。",
+        "label_en": "Order number",
+        "label_zh": "订单号",
+        "semantic_role": "join_key"
+      },
+      "visible_description": {
+        "en": "订单号。四个数据库统一通过 order_no 关联订单，不使用工程号。",
+        "zh": "订单号。四个数据库统一通过 order_no 关联订单，不使用工程号。"
+      }
+    },
+    "svc_db.replacement_part.part_name": {
+      "metadata": {
+        "business_usage": "补件名称包含规格，通过名称对应仓储物料。",
+        "description": "补件名称。补件名称包含规格，通过名称对应仓储物料。",
+        "label_en": "Part name",
+        "label_zh": "补件名称",
+        "semantic_role": "join_key"
+      },
+      "visible_description": {
+        "en": "补件名称。补件名称包含规格，通过名称对应仓储物料。",
+        "zh": "补件名称。补件名称包含规格，通过名称对应仓储物料。"
+      }
+    },
+    "svc_db.replacement_part.part_notes": {
+      "metadata": {
+        "business_usage": "记录补件原因和配送说明。通过订单号只能关联订单，不能唯一定位同一订单的某张售后工单。",
+        "description": "补件备注。记录补件原因和配送说明。通过订单号只能关联订单，不能唯一定位同一订单的某张售后工单。",
+        "label_en": "Part notes",
+        "label_zh": "补件备注",
+        "semantic_role": "text"
+      },
+      "visible_description": {
+        "en": "补件备注。记录补件原因和配送说明。通过订单号只能关联订单，不能唯一定位同一订单的某张售后工单。",
+        "zh": "补件备注。记录补件原因和配送说明。通过订单号只能关联订单，不能唯一定位同一订单的某张售后工单。"
+      }
+    },
+    "svc_db.replacement_part.part_status": {
+      "metadata": {
+        "business_usage": "查询和展示补件状态。",
+        "description": "补件状态；选项：待处理、处理中、已解决。",
+        "label_en": "Part status",
+        "label_zh": "补件状态",
+        "semantic_role": "filter"
+      },
+      "visible_description": {
+        "en": "补件状态；选项：待处理、处理中、已解决。",
+        "zh": "补件状态；选项：待处理、处理中、已解决。"
+      }
+    },
+    "svc_db.replacement_part.quantity": {
+      "metadata": {
+        "business_usage": "查询和展示补件数量。",
+        "description": "补件数量。",
+        "label_en": "Part quantity",
+        "label_zh": "补件数量",
+        "semantic_role": "metric"
+      },
+      "visible_description": {
+        "en": "补件数量。",
+        "zh": "补件数量。"
+      }
+    },
+    "svc_db.replacement_part.requested_date": {
+      "metadata": {
+        "business_usage": "查询和展示申请日期。 日期为 YYYY-MM-DD 文本；本地时间相关查询使用 DATE('now','localtime')。",
+        "description": "申请日期。",
+        "label_en": "Requested date",
+        "label_zh": "申请日期",
+        "semantic_role": "time"
+      },
+      "visible_description": {
+        "en": "申请日期。",
+        "zh": "申请日期。"
+      }
+    },
+    "svc_db.replacement_part.shipped_date": {
+      "metadata": {
+        "business_usage": "已发出不代表已解决；原已发出但未收到的补件归为处理中。 日期为 YYYY-MM-DD 文本；本地时间相关查询使用 DATE('now','localtime')。",
+        "description": "发出日期。已发出不代表已解决；原已发出但未收到的补件归为处理中。",
+        "label_en": "Shipped date",
+        "label_zh": "发出日期",
+        "semantic_role": "time"
+      },
+      "visible_description": {
+        "en": "发出日期。已发出不代表已解决；原已发出但未收到的补件归为处理中。",
+        "zh": "发出日期。已发出不代表已解决；原已发出但未收到的补件归为处理中。"
+      }
+    },
+    "svc_db.service_ticket.description": {
+      "metadata": {
+        "business_usage": "查询和展示问题描述。",
+        "description": "问题描述。",
+        "label_en": "Issue description",
+        "label_zh": "问题描述",
+        "semantic_role": "text"
+      },
+      "visible_description": {
+        "en": "问题描述。",
+        "zh": "问题描述。"
+      }
+    },
+    "svc_db.service_ticket.issue_type": {
+      "metadata": {
+        "business_usage": "查询和展示问题类型。",
+        "description": "问题类型；选项：缺件、破损、质量问题、安装问题、发错货。",
+        "label_en": "Issue type",
+        "label_zh": "问题类型",
+        "semantic_role": "filter"
+      },
+      "visible_description": {
+        "en": "问题类型；选项：缺件、破损、质量问题、安装问题、发错货。",
+        "zh": "问题类型；选项：缺件、破损、质量问题、安装问题、发错货。"
+      }
+    },
+    "svc_db.service_ticket.order_no": {
+      "metadata": {
+        "business_usage": "四个数据库统一通过 order_no 关联订单，不使用工程号。",
+        "description": "订单号。四个数据库统一通过 order_no 关联订单，不使用工程号。",
+        "label_en": "Order number",
+        "label_zh": "订单号",
+        "semantic_role": "join_key"
+      },
+      "visible_description": {
+        "en": "订单号。四个数据库统一通过 order_no 关联订单，不使用工程号。",
+        "zh": "订单号。四个数据库统一通过 order_no 关联订单，不使用工程号。"
+      }
+    },
+    "svc_db.service_ticket.reported_date": {
+      "metadata": {
+        "business_usage": "查询和展示报修日期。 日期为 YYYY-MM-DD 文本；本地时间相关查询使用 DATE('now','localtime')。",
+        "description": "报修日期。",
+        "label_en": "Reported date",
+        "label_zh": "报修日期",
+        "semantic_role": "time"
+      },
+      "visible_description": {
+        "en": "报修日期。",
+        "zh": "报修日期。"
+      }
+    },
+    "svc_db.service_ticket.resolved_date": {
+      "metadata": {
+        "business_usage": "尚未解决时为空。 日期为 YYYY-MM-DD 文本；本地时间相关查询使用 DATE('now','localtime')。",
+        "description": "解决日期。尚未解决时为空。",
+        "label_en": "Resolved date",
+        "label_zh": "解决日期",
+        "semantic_role": "time"
+      },
+      "visible_description": {
+        "en": "解决日期。尚未解决时为空。",
+        "zh": "解决日期。尚未解决时为空。"
+      }
+    },
+    "svc_db.service_ticket.service_notes": {
+      "metadata": {
+        "business_usage": "查询和展示售后备注。",
+        "description": "售后备注。",
+        "label_en": "Service notes",
+        "label_zh": "售后备注",
+        "semantic_role": "text"
+      },
+      "visible_description": {
+        "en": "售后备注。",
+        "zh": "售后备注。"
+      }
+    },
+    "svc_db.service_ticket.service_status": {
+      "metadata": {
+        "business_usage": "查询和展示处理状态。",
+        "description": "处理状态；选项：待处理、处理中、已解决。",
+        "label_en": "Service status",
+        "label_zh": "处理状态",
+        "semantic_role": "filter"
+      },
+      "visible_description": {
+        "en": "处理状态；选项：待处理、处理中、已解决。",
+        "zh": "处理状态；选项：待处理、处理中、已解决。"
+      }
+    },
+    "wms_db.material.allocated_qty": {
+      "metadata": {
+        "business_usage": "查询和展示已占用库存。",
+        "description": "已占用库存。",
+        "label_en": "Allocated quantity",
+        "label_zh": "已占用库存",
+        "semantic_role": "metric"
+      },
+      "visible_description": {
+        "en": "已占用库存。",
+        "zh": "已占用库存。"
+      }
+    },
+    "wms_db.material.location": {
+      "metadata": {
+        "business_usage": "同名物料存放于多个库位时，列出所有库位。",
+        "description": "存放位置。同名物料存放于多个库位时，列出所有库位。",
+        "label_en": "Storage location",
+        "label_zh": "存放位置",
+        "semantic_role": "filter"
+      },
+      "visible_description": {
+        "en": "存放位置。同名物料存放于多个库位时，列出所有库位。",
+        "zh": "存放位置。同名物料存放于多个库位时，列出所有库位。"
+      }
+    },
+    "wms_db.material.material_name": {
+      "metadata": {
+        "business_usage": "名称包含规格。同名、同计量单位的原物料合并库存。",
+        "description": "物料名称。名称包含规格。同名、同计量单位的原物料合并库存。",
+        "label_en": "Material name",
+        "label_zh": "物料名称",
+        "semantic_role": "join_key"
+      },
+      "visible_description": {
+        "en": "物料名称。名称包含规格。同名、同计量单位的原物料合并库存。",
+        "zh": "物料名称。名称包含规格。同名、同计量单位的原物料合并库存。"
+      }
+    },
+    "wms_db.material.material_notes": {
+      "metadata": {
+        "business_usage": "查询和展示物料备注。",
+        "description": "物料备注。",
+        "label_en": "Material notes",
+        "label_zh": "物料备注",
+        "semantic_role": "text"
+      },
+      "visible_description": {
+        "en": "物料备注。",
+        "zh": "物料备注。"
+      }
+    },
+    "wms_db.material.on_hand_qty": {
+      "metadata": {
+        "business_usage": "查询和展示现有库存。",
+        "description": "现有库存。",
+        "label_en": "On-hand quantity",
+        "label_zh": "现有库存",
+        "semantic_role": "metric"
+      },
+      "visible_description": {
+        "en": "现有库存。",
+        "zh": "现有库存。"
+      }
+    },
+    "wms_db.material.safety_stock": {
+      "metadata": {
+        "business_usage": "查询和展示安全库存。",
+        "description": "安全库存。",
+        "label_en": "Safety stock",
+        "label_zh": "安全库存",
+        "semantic_role": "metric"
+      },
+      "visible_description": {
+        "en": "安全库存。",
+        "zh": "安全库存。"
+      }
+    },
+    "wms_db.material.uom": {
+      "metadata": {
+        "business_usage": "库存和到货数量按物料自己的单位计量，不同单位不可直接相加。",
+        "description": "计量单位。库存和到货数量按物料自己的单位计量，不同单位不可直接相加。",
+        "label_en": "Unit of measure",
+        "label_zh": "计量单位",
+        "semantic_role": "dimension"
+      },
+      "visible_description": {
+        "en": "计量单位。库存和到货数量按物料自己的单位计量，不同单位不可直接相加。",
+        "zh": "计量单位。库存和到货数量按物料自己的单位计量，不同单位不可直接相加。"
+      }
+    },
+    "wms_db.receipt.material_name": {
+      "metadata": {
+        "business_usage": "查询和展示物料名称。",
+        "description": "物料名称。",
+        "label_en": "Material name",
+        "label_zh": "物料名称",
+        "semantic_role": "join_key"
+      },
+      "visible_description": {
+        "en": "物料名称。",
+        "zh": "物料名称。"
+      }
+    },
+    "wms_db.receipt.purchased_qty": {
+      "metadata": {
+        "business_usage": "查询和展示采购数量。",
+        "description": "采购数量。",
+        "label_en": "Purchased quantity",
+        "label_zh": "采购数量",
+        "semantic_role": "metric"
+      },
+      "visible_description": {
+        "en": "采购数量。",
+        "zh": "采购数量。"
+      }
+    },
+    "wms_db.receipt.receipt_notes": {
+      "metadata": {
+        "business_usage": "查询和展示到货备注。",
+        "description": "到货备注。",
+        "label_en": "Receipt notes",
+        "label_zh": "到货备注",
+        "semantic_role": "text"
+      },
+      "visible_description": {
+        "en": "到货备注。",
+        "zh": "到货备注。"
+      }
+    },
+    "wms_db.receipt.received_date": {
+      "metadata": {
+        "business_usage": "未到货时为空。多次收货时代表最近一次收货日期。 日期为 YYYY-MM-DD 文本；本地时间相关查询使用 DATE('now','localtime')。",
+        "description": "实际到货日期。未到货时为空。多次收货时代表最近一次收货日期。",
+        "label_en": "Actual receipt date",
+        "label_zh": "实际到货日期",
+        "semantic_role": "time"
+      },
+      "visible_description": {
+        "en": "实际到货日期。未到货时为空。多次收货时代表最近一次收货日期。",
+        "zh": "实际到货日期。未到货时为空。多次收货时代表最近一次收货日期。"
+      }
+    },
+    "wms_db.receipt.received_qty": {
+      "metadata": {
+        "business_usage": "查询和展示已到货数量。",
+        "description": "已到货数量。",
+        "label_en": "Received quantity",
+        "label_zh": "已到货数量",
+        "semantic_role": "metric"
+      },
+      "visible_description": {
+        "en": "已到货数量。",
+        "zh": "已到货数量。"
+      }
+    },
+    "wms_db.receipt.supplier_name": {
+      "metadata": {
+        "business_usage": "查询和展示供应商名称。",
+        "description": "供应商名称。",
+        "label_en": "Supplier name",
+        "label_zh": "供应商名称",
+        "semantic_role": "join_key"
+      },
+      "visible_description": {
+        "en": "供应商名称。",
+        "zh": "供应商名称。"
+      }
+    },
+    "wms_db.supplier.address": {
+      "metadata": {
+        "business_usage": "查询和展示地址。",
+        "description": "地址。",
+        "label_en": "Supplier address",
+        "label_zh": "地址",
+        "semantic_role": "text"
+      },
+      "visible_description": {
+        "en": "地址。",
+        "zh": "地址。"
+      }
+    },
+    "wms_db.supplier.contact_name": {
+      "metadata": {
+        "business_usage": "查询和展示联系人。",
+        "description": "联系人。",
+        "label_en": "Contact name",
+        "label_zh": "联系人",
+        "semantic_role": "text"
+      },
+      "visible_description": {
+        "en": "联系人。",
+        "zh": "联系人。"
+      }
+    },
+    "wms_db.supplier.phone": {
+      "metadata": {
+        "business_usage": "按文本保存，支持国家区号。",
+        "description": "联系电话。按文本保存，支持国家区号。",
+        "label_en": "Contact phone",
+        "label_zh": "联系电话",
+        "semantic_role": "text"
+      },
+      "visible_description": {
+        "en": "联系电话。按文本保存，支持国家区号。",
+        "zh": "联系电话。按文本保存，支持国家区号。"
+      }
+    },
+    "wms_db.supplier.supplier_name": {
+      "metadata": {
+        "business_usage": "查询和展示供应商名称。",
+        "description": "供应商名称。",
+        "label_en": "Supplier name",
+        "label_zh": "供应商名称",
+        "semantic_role": "join_key"
+      },
+      "visible_description": {
+        "en": "供应商名称。",
+        "zh": "供应商名称。"
+      }
+    },
+    "wms_db.supplier.supplier_notes": {
+      "metadata": {
+        "business_usage": "查询和展示供应商备注。",
+        "description": "供应商备注。",
+        "label_en": "Supplier notes",
+        "label_zh": "供应商备注",
+        "semantic_role": "text"
+      },
+      "visible_description": {
+        "en": "供应商备注。",
+        "zh": "供应商备注。"
+      }
+    }
+  },
+  "purpose": "Independent static column catalog captured before the metadata feature. Contains no business rows, samples, credentials, or connection configuration. Visible descriptions preserve full definitions, with the single configured cross-field path explicitly replaced for display.",
+  "schema_version": 1,
+  "source_files": {
+    "/private/tmp/aihd-stage6-images-58keb13q/semantic/erp_db.yaml": {
+      "database": "erp_db",
+      "sha256": "9debdba3b8d015e65eebd216139b78d0b9d25c82cc7463f977782649a88233f8"
+    },
+    "/private/tmp/aihd-stage6-images-58keb13q/semantic/prod_db.yaml": {
+      "database": "prod_db",
+      "sha256": "3990e88cd9be6699f7550fafee7e73171dc40f32b61c5629535fbf7999a74ac9"
+    },
+    "/private/tmp/aihd-stage6-images-58keb13q/semantic/svc_db.yaml": {
+      "database": "svc_db",
+      "sha256": "2ff387d2fe0414405e50f22a5a069226648346a50f1f9cb8bf342238e9729d73"
+    },
+    "/private/tmp/aihd-stage6-images-58keb13q/semantic/wms_db.yaml": {
+      "database": "wms_db",
+      "sha256": "e8cda7973cd65aad0353aa3ebc7fadc32c419a1ffc50325128a6a7fa9923524f"
+    }
+  },
+  "source_revision": "000e2b73c15c19e0cdf56be29314132f51f274ca"
+}

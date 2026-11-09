@@ -1,0 +1,7 @@
+{
+  "candidate_contract_revision": "fb14f677aa24d0893a895facc10fe3e656b5940c",
+  "original_helper": "6584531bd1281e3b7e8df045262f1437b403f0ece3705b344bda73196495d674",
+  "purpose": "Unchanged development recording for explicitly synthetic metadata regression copies; not a new run or corrected score.",
+  "sha256": "6cecfb4c762e29ec29725a67e94e34ffb10aa38ad92f9971c9473bdf7cf9d3e4",
+  "source": ".stage6/evaluation/2026-11-06/development-v3-000e2b7-calibration-clients/development-images-001.json"
+}

@@ -6,6 +6,23 @@
 
 // ── SQL Agent（OpenAPI 1.0.0）────────────────────────────────────────
 
+/** BusinessEvidence */
+export interface BusinessEvidence {
+  as_of?: string | null
+  as_of_source?: string | null
+  database: string
+  entity: Record<string, unknown>
+  evidence_id: string
+  field: string
+  issues?: string[]
+  query_hash: string
+  row_index: number
+  source_records?: Array<Record<string, unknown>>
+  step_index: number
+  unit?: string | null
+  value: unknown
+}
+
 /** 用户对一次回答的判定。 */
 export interface FeedbackRequest {
   comment?: string
@@ -104,9 +121,11 @@ export interface QueryResponse {
   currency?: string | null
   degrade_reason?: string
   degraded?: boolean
+  evidence?: BusinessEvidence[]
   execution_status?: string
   failed_steps?: number
   has_risk?: boolean
+  observed_at?: string | null
   queried_database: boolean
   reason: string
   repaired_steps?: number
@@ -134,10 +153,12 @@ export interface SaveMemoryRequest {
 export interface StepLogResponse {
   as_of?: string | null
   as_of_source?: string | null
+  column_metadata?: Record<string, Record<string, string>>
   column_units?: Record<string, string>
   database: string
   error?: string | null
   final_sql: string
+  observed_at?: string | null
   repair_attempts?: Array<Record<string, unknown>>
   risk_findings?: Array<Record<string, unknown>>
   row_count: number
@@ -179,9 +200,31 @@ export interface ArtifactDataPart {
   repaired_steps?: number
   result_truncated?: ArtifactDataPartStrictBoolean
   as_of?: string | null
-  as_of_source?: "query_time" | "snapshot" | "unknown"
+  as_of_source?: "query_time" | "snapshot" | "unknown" | null
   currency?: string | null
   steps: ArtifactDataPartStep[]
+  observed_at: string | null
+  evidence: ArtifactDataPartBusinessEvidence[]
+}
+
+export interface ArtifactDataPartBusinessEvidence {
+  evidence_id: string
+  entity: {
+    kind: "query_row"
+    query_hash: string
+    row_index: number
+  }
+  field: string
+  value: string | number | boolean | null
+  unit: string | null
+  as_of: string | null
+  as_of_source: "query_time" | "snapshot" | "unknown" | null
+  database: DatabaseId
+  step_index: number
+  row_index: number
+  query_hash: string
+  source_records: Array<Record<string, unknown>>
+  issues: Array<"missing_unit" | "missing_time" | "missing_provenance" | "truncated">
 }
 
 export interface ArtifactDataPartStep {
@@ -193,14 +236,34 @@ export interface ArtifactDataPartStep {
   sql?: string
   final_sql?: string
   error?: string | null
-  rows?: unknown[]
+  rows: Array<Record<string, unknown>>
   repair_attempts?: unknown[]
   risk_findings?: unknown[]
-  column_units?: Record<string, unknown>
-  source_records?: unknown[]
+  column_units?: Record<string, string>
+  source_records?: Array<Record<string, unknown>>
+  as_of?: string | null
+  as_of_source?: "query_time" | "snapshot" | "unknown" | null
+  observed_at?: string | null
+  /** Optional current source field meaning, keyed by direct result column. Missing means unknown. */
+  column_metadata?: Record<string, ArtifactDataPartColumnMetadata>
 }
 
 export type ArtifactDataPartStrictBoolean = boolean
+
+export interface ArtifactDataPartColumnMetadata {
+  database: DatabaseId
+  table: string
+  column: string
+  description: string
+  label?: string
+  label_zh?: string
+  label_en?: string
+  business_usage?: string
+  semantic_role?: string
+  schema_revision: string
+  query_hash: string
+  output_field: string
+}
 
 /** 契约 §4.5（v1.6 起）。契约面是**形状**，不是闭集——具体有哪几个库随部署配置（AI_SQL_SEMANTIC_DIR）走，由服务端声明清单。新增标识符不算契约变更，删除/改名算。下面的 $defs 是断言用的具名集合，不是契约面本身。 */
 export type DatabaseId = string

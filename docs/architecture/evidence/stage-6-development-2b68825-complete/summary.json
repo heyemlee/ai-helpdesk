@@ -1,0 +1,258 @@
+{
+  "status": "full54_development_passed_not_final_release",
+  "candidate": "2b6882542f50ad7560eaf092d917ff3570f6cd7b",
+  "root_proof": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-c/2026-11-06/development-2b68825-full/root-development-audit-v6/proof.json",
+  "root_proof_sha256": "fafb7efcae7d0972cd7df6deb5352d4b406b6129075e18cfe61714c251567161",
+  "score": {
+    "accuracy": 1.0,
+    "business_resolved": 0,
+    "complete": true,
+    "correct": 54,
+    "error_counts": {},
+    "groups": {
+      "cross_message": {
+        "accuracy": 1.0,
+        "correct": 10,
+        "total": 10
+      },
+      "images": {
+        "accuracy": 1.0,
+        "correct": 15,
+        "total": 15
+      },
+      "orders": {
+        "accuracy": 1.0,
+        "correct": 14,
+        "total": 14
+      },
+      "policies": {
+        "accuracy": 1.0,
+        "correct": 15,
+        "total": 15
+      }
+    },
+    "image_extraction": {
+      "date/all": {
+        "correct": 15,
+        "total": 15
+      },
+      "date/clear": {
+        "correct": 14,
+        "total": 14
+      },
+      "date/missing": {
+        "correct": 1,
+        "total": 1
+      },
+      "model/all": {
+        "correct": 15,
+        "total": 15
+      },
+      "model/clear": {
+        "correct": 14,
+        "total": 14
+      },
+      "model/missing": {
+        "correct": 1,
+        "total": 1
+      },
+      "order_ref/all": {
+        "correct": 15,
+        "total": 15
+      },
+      "order_ref/clear": {
+        "correct": 14,
+        "total": 14
+      },
+      "order_ref/unclear": {
+        "correct": 1,
+        "total": 1
+      },
+      "quantity/all": {
+        "correct": 15,
+        "total": 15
+      },
+      "quantity/clear": {
+        "correct": 14,
+        "total": 14
+      },
+      "quantity/unclear": {
+        "correct": 1,
+        "total": 1
+      },
+      "status/all": {
+        "correct": 15,
+        "total": 15
+      },
+      "status/clear": {
+        "correct": 14,
+        "total": 14
+      },
+      "status/unclear": {
+        "correct": 1,
+        "total": 1
+      }
+    },
+    "image_fields": {
+      "date/all": {
+        "correct": 15,
+        "total": 15
+      },
+      "date/conflict": {
+        "correct": 2,
+        "total": 2
+      },
+      "date/matched": {
+        "correct": 8,
+        "total": 8
+      },
+      "date/missing": {
+        "correct": 1,
+        "total": 1
+      },
+      "date/unverified": {
+        "correct": 4,
+        "total": 4
+      },
+      "model/all": {
+        "correct": 15,
+        "total": 15
+      },
+      "model/conflict": {
+        "correct": 2,
+        "total": 2
+      },
+      "model/matched": {
+        "correct": 9,
+        "total": 9
+      },
+      "model/missing": {
+        "correct": 1,
+        "total": 1
+      },
+      "model/unverified": {
+        "correct": 3,
+        "total": 3
+      },
+      "order_ref/all": {
+        "correct": 15,
+        "total": 15
+      },
+      "order_ref/conflict": {
+        "correct": 1,
+        "total": 1
+      },
+      "order_ref/matched": {
+        "correct": 8,
+        "total": 8
+      },
+      "order_ref/unclear": {
+        "correct": 1,
+        "total": 1
+      },
+      "order_ref/unverified": {
+        "correct": 5,
+        "total": 5
+      },
+      "quantity/all": {
+        "correct": 15,
+        "total": 15
+      },
+      "quantity/conflict": {
+        "correct": 2,
+        "total": 2
+      },
+      "quantity/matched": {
+        "correct": 8,
+        "total": 8
+      },
+      "quantity/unclear": {
+        "correct": 1,
+        "total": 1
+      },
+      "quantity/unverified": {
+        "correct": 4,
+        "total": 4
+      },
+      "status/all": {
+        "correct": 15,
+        "total": 15
+      },
+      "status/conflict": {
+        "correct": 2,
+        "total": 2
+      },
+      "status/matched": {
+        "correct": 8,
+        "total": 8
+      },
+      "status/unclear": {
+        "correct": 1,
+        "total": 1
+      },
+      "status/unverified": {
+        "correct": 4,
+        "total": 4
+      }
+    },
+    "invariant_violations": 0,
+    "missing": [],
+    "run_terminal": 54,
+    "total": 54
+  },
+  "requests": {
+    "all_requests_have_successful_receipts": true,
+    "known_input_tokens": 2836011,
+    "known_output_tokens": 53299,
+    "ledger_end": 4541,
+    "ledger_start": 4027,
+    "new": 514,
+    "successful_real_receipts": 514,
+    "unknown_usage": 0
+  },
+  "stage6_cumulative": {
+    "known_input_subtotal": 65655352,
+    "known_output_subtotal": 1236278,
+    "reserved_requests": 11981,
+    "unknown_usage_requests": 9
+  },
+  "retained_failed_costs": {
+    "failed_proof_sha256": "2bd155c00bb6aeb191d9b400989aead2a020a4e427c5f56024f49e96c5c8e674",
+    "new_tail_increments": {
+      "known_input_tokens": 2836011,
+      "known_output_tokens": 53299,
+      "requests": 514,
+      "unknown": 0
+    },
+    "new_tail_start": 4027,
+    "previous_global_totals": {
+      "known_input_tokens": 62819341,
+      "known_output_tokens": 1182979,
+      "new_requests": 5094,
+      "requests": 11467,
+      "unknown": 9
+    },
+    "retained_failed_candidate": "8e15158eb96001b9c31f80f55b3f5d796af3a472",
+    "retained_failed_run_requests": 514,
+    "rule": "C wrapper counts four source identities once;4027 snapshot is an evidence alias, never another billing segment"
+  },
+  "archive_aliases": {
+    "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/stage6-v3-dev-continuation-20261106-a.sqlite": {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-c/2026-11-06/history/closed-development-2b68825-4541/stage6-v3-dev-continuation-20261106-a.sqlite",
+      "sha256": "91850a253cb90ff272d1319d9df0ff4ea06c62958140f7f45d93596270ab7c8a",
+      "bytes": 8314880,
+      "requests": 4541,
+      "billing_alias_only": true
+    },
+    "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/stage6-v3-formal-continuation-20261106-c.sqlite": {
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-c/2026-11-06/history/closed-development-2b68825-4541/stage6-v3-formal-continuation-20261106-c.sqlite",
+      "sha256": "c16466066d91564205a7d69331da79ce30b8ab6b89c3d22da9110774791a8ed2",
+      "bytes": 2650112,
+      "requests": 1379,
+      "billing_alias_only": true
+    }
+  },
+  "seven_components_complete": false,
+  "formal_rounds_started": 0,
+  "production_deployed": false
+}

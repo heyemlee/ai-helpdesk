@@ -1,0 +1,20 @@
+{
+  "backend_image": "sha256:95ab8a4f77dd754e3a4bb67147c407b3c49c43cf25c50f0624c08ce7a614e379",
+  "checks": {
+    "attempts": 0,
+    "health": {
+      "healthy": true,
+      "provider_enabled": true,
+      "remaining_requests": 1
+    },
+    "ledger_writable": true,
+    "parent_readonly": true,
+    "receipts": 0,
+    "settings_readonly": true
+  },
+  "harness_sha256": "a88b7e66cde037d8c68dc0f8f7cbd84a8eba6c5989791ee6188bc5aeff90cb1e",
+  "network_mode": "none",
+  "passed": true,
+  "product_revision": "fb14f677aa24d0893a895facc10fe3e656b5940c",
+  "real_credentials_mounted": false
+}

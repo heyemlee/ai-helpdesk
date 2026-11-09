@@ -37,6 +37,8 @@ export function RoutingInspector({ message, thresholds, base }: {
   }
 
   const { meta, routing, result } = message
+  const imageProjected = result?.answer_origin === 'verified_image_projection' && result.answer_model_invoked === false
+  const replaced = result?.handoff_review?.outcome === 'replaced_by_verified_draft'
   const scores = routing?.domain_scores ?? {}
   const sourceScores = meta?.intent_source_scores ?? {}
   const primary = routing?.primary_agent ?? result?.primary_agent
@@ -130,12 +132,12 @@ export function RoutingInspector({ message, thresholds, base }: {
       <section>
         <SectionLabel>{t('in.disp')}</SectionLabel>
         <div className="chip-row">
-          {routing?.confidence !== undefined && (
+          {!imageProjected && routing?.confidence !== undefined && (
             <Chip tone={confidenceTone(routing.confidence)}>{t('in.route')} {num(routing.confidence)}</Chip>
           )}
-          {result?.answer_confidence !== undefined && (
+          {!imageProjected && result?.answer_confidence !== undefined && (
             <Chip tone={confidenceTone(result.answer_confidence)}>
-              {t('in.combined')} {num(result.answer_confidence)}
+              {t(replaced ? 'in.originalConfidence' : 'in.combined')} {num(result.answer_confidence)}
             </Chip>
           )}
           {result?.service_unavailable && <Chip tone="danger">{t('cw.unavailable')}</Chip>}
@@ -151,6 +153,12 @@ export function RoutingInspector({ message, thresholds, base }: {
         </dl>
         {result?.handoff_reason && (
           <p className="note danger" style={{ marginTop: 10 }}>{result.handoff_reason}</p>
+        )}
+        {replaced && (
+          <p className="note" style={{ marginTop: 10 }}>
+            {t('lm.handoff.reconciled', { conf: num(result!.answer_confidence) })}
+            {' '}{result?.handoff_review?.original_handoff_reason}
+          </p>
         )}
         {result?.service_unavailable && (
           <p className="note danger" style={{ marginTop: 10 }}>
@@ -181,7 +189,7 @@ export function RoutingInspector({ message, thresholds, base }: {
 
       {result?.policy_violations && result.policy_violations.length > 0 && (
         <section>
-          <SectionLabel>{t('in.policy')} · {result.policy_violations.length}</SectionLabel>
+          <SectionLabel>{t(replaced ? 'in.originalPolicy' : 'in.policy')} · {result.policy_violations.length}</SectionLabel>
           <div className="dl">
             {result.policy_violations.map((v, i) => (
               <div className="violation" key={i}>

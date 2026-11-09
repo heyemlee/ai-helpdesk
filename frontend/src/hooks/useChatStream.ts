@@ -1,11 +1,13 @@
+import type { PolicyScope } from '@/api/types'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, ApiError, streamChat, streamRun, type Settings } from '@/api/client'
+import { api, ApiError, caseApi, streamChat, streamRun, type Settings } from '@/api/client'
 import type {
-  ChatResponse, ConversationEntry, DegradeInfo, RoutingConfig, StreamEvent, StreamMetaEvent,
+  Attachment, CaseInput, ChatRequest, ChatResponse, ConversationEntry, DegradeInfo, RoutingConfig, StreamEvent, StreamMetaEvent,
   StreamProgressEvent, StreamRoutingEvent, Ticket, TurnProjection,
 } from '@/api/types'
 
 export interface ChatMessage {
+  attachments?: { id: string; filename?: string }[]
   id: string
   role: 'user' | 'assistant'
   content: string
@@ -40,6 +42,7 @@ export interface ChatMessage {
   /** 连接断了，正在按 run 续流 */
   reconnecting?: boolean
 }
+export interface ChatMaterials { policyScope?: PolicyScope; attachments: Attachment[]; caseChoice: string; issueType: CaseInput['issue_type'] }
 
 const newId = () =>
   (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`)
@@ -54,7 +57,8 @@ export function applyStreamEvent(m: ChatMessage, evt: StreamEvent): ChatMessage 
     case 'meta':    return { ...m, meta: evt.data }
     case 'routing': return { ...m, routing: evt.data }
     case 'delta':   return { ...m, content: m.content + evt.data.text }
-    case 'result':  return { ...m, result: evt.data, content: evt.data.response || m.content }
+    case 'result':  return evt.data.case_id ? applyChatResponse(m, evt.data as ChatResponse)
+      : { ...m, result: evt.data, content: evt.data.response || m.content }
     case 'error':   return { ...m, error: evt.data.detail }
     case 'run':     return { ...m, runId: evt.data.run_id }
     // 换人重跑（后端 app/runs/worker.py）：上一遍已经发出来的半截作废，从头再收。
@@ -179,12 +183,15 @@ export function useChatStream(
   settings: Settings,
   onConversationId: (id: string) => void,
   onConversationLost?: () => void,
+  onCaseId?: (id: string) => void,
 ) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [busy, setBusy] = useState(false)
   const [restoring, setRestoring] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   const messagesRef = useRef(messages)
+  const pendingCase = useRef<{ fingerprint: string; originalFingerprint: string; body: ChatRequest;
+    assistantId: string; resumeRun?: string } | null>(null)
   messagesRef.current = messages
 
   const patch = useCallback((id: string, updater: (m: ChatMessage) => ChatMessage) => {
@@ -203,6 +210,34 @@ export function useChatStream(
   // 手里带着路由决策的那份。想回查另一个会话：先「新建对话」清空，再填 id。
   useEffect(() => {
     const id = settings.conversationId
+    if (settings.caseId) {
+      if (messagesRef.current.length) return
+      let cancelled = false
+      let timer: ReturnType<typeof setTimeout> | undefined
+      setRestoring(true)
+      const restoreCase = async () => {
+        try {
+          const c = await caseApi.get(settings.apiBaseUrl, settings.caseId!)
+          if (cancelled) return
+          setMessages(c.messages.filter(m => m.role === 'user' || m.role === 'assistant').map(m => ({
+            id: m.message_id, role: m.role as 'user' | 'assistant', content: m.content, restored: true,
+            ticketId: c.id, attachments: (m.attachment_ids || []).map(id => ({ id,
+              filename: c.materials.find(a => a.attachment_id === id)?.attachment?.filename })),
+          })))
+          const running = c.runs.some(r => r.status === 'queued' || r.status === 'running')
+          setRestoring(running)
+          if (running) timer = setTimeout(restoreCase, 800)
+          else onConversationId(c.conv_id)
+        } catch {
+          if (!cancelled) {
+            setRestoring(false)
+            setMessages([{ id: 'case-access', role: 'assistant', content: '', error: '无法读取工单，请检查员工登录后重试。' }])
+          }
+        }
+      }
+      void restoreCase()
+      return () => { cancelled = true; clearTimeout(timer); setRestoring(false) }
+    }
     if (!id || messagesRef.current.length > 0) return
     let cancelled = false
     setRestoring(true)
@@ -225,28 +260,47 @@ export function useChatStream(
       .finally(() => { if (!cancelled) setRestoring(false) })
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings.conversationId, settings.apiBaseUrl])
+  }, [settings.conversationId, settings.apiBaseUrl, settings.caseId])
 
   const send = useCallback(
-    async (text: string, streaming: boolean) => {
+    async (text: string, streaming: boolean, materials?: ChatMaterials) => {
       const content = text.trim()
-      if (!content || busy) return
+      if ((!content && !materials?.attachments.length) || busy) return false
 
-      const assistantId = newId()
-      setMessages((prev) => [
+      const choice = materials?.caseChoice || settings.caseId
+      const fingerprint = JSON.stringify({ content, ids: materials?.attachments.map(a => a.id), choice, issue: materials?.issueType, policyScope: materials?.policyScope })
+      const pending = pendingCase.current
+      const retrying = pending && [pending.fingerprint, pending.originalFingerprint].includes(fingerprint) ? pending : null
+      const assistantId = retrying?.assistantId || newId()
+      if (retrying) patch(assistantId, m => ({ ...m, error: undefined, errorStatus: undefined, streaming: true }))
+      else setMessages((prev) => [
         ...prev,
-        { id: newId(), role: 'user', content },
+        { id: newId(), role: 'user', content, attachments: materials?.attachments },
         { id: assistantId, role: 'assistant', content: '', streaming },
       ])
       setBusy(true)
 
-      const body = {
+      let body: ChatRequest = {
         message: content,
+        ...(materials?.policyScope ? { policy_scope: materials.policyScope } : {}),
         user_id: settings.userId || 'anonymous',
         ...(settings.conversationId ? { conv_id: settings.conversationId } : {}),
       }
 
       try {
+        if (materials?.attachments.length && !choice) throw new Error('请明确选择已有问题或新建问题。')
+        if (choice) {
+          if (retrying) body = retrying.body
+          else {
+            const current = choice === 'new' ? null : await caseApi.get(settings.apiBaseUrl, choice)
+            body = { ...body, message_id: newId(), conv_id: current?.conv_id || settings.conversationId || (await api.newConversation(settings.apiBaseUrl)).conv_id,
+              attachment_ids: materials?.attachments.map(a => a.id) || [],
+              ...(current ? { case_id: current.id, expected_version: current.version, expected_control_version: current.control_version }
+                : { new_case: true, issue_type: materials?.issueType || 'general' }) }
+            pendingCase.current = { fingerprint, originalFingerprint: fingerprint, body, assistantId }
+          }
+          streaming = true
+        }
         if (streaming) {
           const controller = new AbortController()
           abortRef.current = controller
@@ -254,22 +308,48 @@ export function useChatStream(
           // 排队模式下流断了（网络抖动、代理超时、API 实例在发版）这一轮并没有停：
           // 带着最后收到的那一帧的 id 去 /runs/{run_id}/events 接着读。inline 模式没有
           // run 帧，断了就是断了，和原来一样
-          let runId: string | undefined
+          let runId = retrying?.resumeRun
           let lastEventId: string | undefined
           let finished = false
-          let stream = streamChat(settings.apiBaseUrl, body, controller.signal, newId())
+          let nextRun: string | undefined
+          let continuations = 0
+          let stream = runId ? streamRun(settings.apiBaseUrl, runId, undefined, controller.signal)
+            : streamChat(settings.apiBaseUrl, body, controller.signal, body.message_id || newId())
           for (let retry = 0; ; retry += 1) {
             try {
               for await (const evt of stream) {
+                if (controller.signal.aborted) break
                 if (evt.id) lastEventId = evt.id
-                if (evt.event === 'run') runId = evt.data.run_id
+                if (evt.event === 'run') {
+                  runId = evt.data.run_id
+                  if (pendingCase.current) pendingCase.current.resumeRun = runId
+                  if (evt.data.case_id) {
+                    if (pendingCase.current) pendingCase.current.fingerprint = JSON.stringify({ content,
+                      ids: materials?.attachments.map(a => a.id), choice: evt.data.case_id, issue: materials?.issueType, policyScope: materials?.policyScope })
+                    onCaseId?.(evt.data.case_id); onConversationId(evt.data.conv_id)
+                  }
+                }
                 if (evt.event === 'meta') onConversationId(evt.data.conv_id)
                 if (evt.event === 'error') throw new StreamFailure(evt.data.detail)
                 patch(assistantId, (m) => ({ ...applyStreamEvent(m, evt), reconnecting: false }))
-                if (evt.event === 'result') finished = true
+                if (evt.event === 'result') {
+                  finished = true; nextRun = evt.data.next_run_id
+                  if (evt.data.case_id) {
+                    if (pendingCase.current) pendingCase.current.fingerprint = JSON.stringify({ content,
+                      ids: materials?.attachments.map(a => a.id), choice: evt.data.case_id, issue: materials?.issueType, policyScope: materials?.policyScope })
+                    onCaseId?.(evt.data.case_id); onConversationId(evt.data.conv_id)
+                  }
+                }
               }
             } catch (err) {
               if (!retryable(err) || controller.signal.aborted || !runId) throw err
+            }
+            if (finished && nextRun && !controller.signal.aborted) {
+              if (++continuations > 1) throw new Error('Unexpected material continuation')
+              runId = nextRun; nextRun = undefined; finished = false; lastEventId = undefined
+              if (pendingCase.current) pendingCase.current.resumeRun = runId
+              stream = streamRun(settings.apiBaseUrl, runId, undefined, controller.signal)
+              continue
             }
             if (finished || !runId || controller.signal.aborted) break
             const delay = RECONNECT_DELAYS_MS[retry]
@@ -278,28 +358,34 @@ export function useChatStream(
             await sleep(delay, controller.signal)
             stream = streamRun(settings.apiBaseUrl, runId, lastEventId, controller.signal)
           }
+          if (controller.signal.aborted) return false
+          if (!finished) throw new Error('未收到完成回执，输入已保留，请重试。')
         } else {
           const res = await api.chat(settings.apiBaseUrl, body)
           onConversationId(res.conv_id)
           patch(assistantId, (m) => applyChatResponse(m, res))
         }
+        pendingCase.current = null
+        return true
       } catch (err) {
+        if (err instanceof ApiError && err.status === 409) pendingCase.current = null
         const message = err instanceof Error ? err.message : String(err)
         // 状态码留着：401 要告诉员工去哪填钥匙，光一句"401 Unauthorized"不知道下一步做什么
         const errorStatus = err instanceof ApiError ? err.status
           : err instanceof TypeError ? 0 : undefined
         patch(assistantId, (m) => ({ ...m, error: message, errorStatus }))
+        return false
       } finally {
         abortRef.current = null
         patch(assistantId, (m) => ({ ...m, streaming: false, reconnecting: false }))
         setBusy(false)
       }
     },
-    [busy, settings, onConversationId, patch],
+    [busy, settings, onConversationId, onCaseId, patch],
   )
 
   const stop = useCallback(() => abortRef.current?.abort(), [])
-  const clear = useCallback(() => setMessages([]), [])
+  const clear = useCallback(() => { abortRef.current?.abort(); pendingCase.current = null; setMessages([]) }, [])
 
   return { messages, busy, restoring, send, stop, clear }
 }

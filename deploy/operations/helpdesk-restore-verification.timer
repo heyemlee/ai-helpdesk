@@ -1,0 +1,8 @@
+[Unit]
+Description=Daily isolated recovery verification
+[Timer]
+OnCalendar=*-*-* 03:05:00
+Persistent=true
+RandomizedDelaySec=300
+[Install]
+WantedBy=timers.target

@@ -202,7 +202,7 @@ async def test_a_blocked_call_is_recorded_without_going_out():
     assert inner.requests == []
 
 
-async def test_a_failed_call_records_the_error_type_and_keeps_the_message_in_the_body():
+async def test_a_failed_call_records_type_without_provider_error_body():
     turn, store = _turn()
     with bind(turn), model_call_tag(purpose="rerank", round=2):
         with pytest.raises(TimeoutError):
@@ -210,7 +210,7 @@ async def test_a_failed_call_records_the_error_type_and_keeps_the_message_in_the
 
     [call] = await _model_calls(store, turn)
     assert (call["data"]["status"], call["data"]["error_type"], call["data"]["round"]) == ("error", "TimeoutError", 2)
-    assert call["body"]["error"] == "上游超时"
+    assert call["body"]["error"] == "TimeoutError"
 
 
 async def test_nothing_is_recorded_with_the_log_off():
@@ -340,14 +340,14 @@ async def test_a_loop_turn_records_each_step_and_projects_to_the_response(monkey
                              "tool_call", "tool_call", "model_call", "loop_ended", "agent_answered", "turn_completed"]
     discarded = next(e for e in recorded if e["type"] == "preamble_discarded")
     assert (discarded["data"], discarded["body"], discarded["step"]) == ({"chars": 5}, {"text": "我先查一下"}, 1)
-    assert _decisions(recorded) == ["dedup", "execute"]
+    assert _decisions(recorded) == ["execute", "execute"]
     steps = [e["step"] for e in recorded if e["type"] == "model_call"]
     assert steps == [1, 2] and {e["data"]["purpose"] for e in recorded if e["type"] == "model_call"} == {"answer"}
     started = next(e for e in recorded if e["type"] == "agent_started")["data"]
     assert started["mode"] == "loop" and started["tools"] == ["knowledge_search", "order_data_query"]
     assert started["deadline_s"] > 0 and len(started["tools_sha256"]) == 64
     ended = next(e for e in recorded if e["type"] == "loop_ended")["data"]
-    assert ended == {"model_calls": 2, "tool_calls": 1, "stop_reason": "end_turn", "forced": ""}
+    assert ended == {"model_calls": 2, "tool_calls": 2, "stop_reason": "end_turn", "forced": ""}
     order_call = next(e for e in recorded if e["type"] == "tool_call" and e["call_id"] == "call_o")
     assert order_call["body"]["raw"]["answer"] == EVIDENCE["answer"]
     assert order_call["data"]["idem_key"] == f"{answer['turn_id']}:call_o"
@@ -521,3 +521,37 @@ async def test_every_model_call_in_a_chat_turn_says_what_it_was_for(monkeypatch)
     assert summary_at < kinds.index("turn_completed") < profile_at
     totals = recorded[kinds.index("turn_completed")]["data"]["totals"]
     assert totals["model_calls"] == len(purposes) - 1               # 画像那一次在结算之后
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_responses_failure_keeps_usage_and_records_error(streaming):
+    import httpx
+    from test_openai_responses import wire_response
+
+    from app.core.openai_compat import AsyncOpenAICompat
+    from app.core.openai_responses import ResponsesOutputError
+
+    final = wire_response(status="incomplete", incomplete_details={"reason": "max_output_tokens"})
+    def handle(_):
+        if streaming:
+            return httpx.Response(200, headers={"content-type": "text/event-stream"},
+                                  text="data: " + json.dumps({"type": "response.incomplete", "response": final}) + "\n\n")
+        return httpx.Response(200, json=final)
+
+    turn, store = _turn()
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as http:
+        sdk = AsyncOpenAICompat(api_key="test", api_mode="responses", http_client=http, max_retries=0)
+        client = GuardedLLMClient(sdk, LLMGuard("test", provider="openai"))
+        with bind(turn), pytest.raises(ResponsesOutputError):
+            if streaming:
+                async with client.messages.stream(model="gpt-6.1-sol", max_tokens=64, messages=[]) as stream:
+                    await stream.get_final_message()
+            else:
+                await client.messages.create(model="gpt-6.1-sol", max_tokens=64, messages=[])
+    [call] = await _model_calls(store, turn)
+    assert call["data"]["status"] == "error"
+    assert call["data"]["usage"]["input_tokens"] == 12
+    assert call["data"]["usage"]["cache_read_tokens"] == 3
+    assert call["data"]["stop_reason"] == "max_tokens"
+    assert call["data"]["reason"] == "incomplete:max_output_tokens"
+    assert "encrypted_content" not in json.dumps(call)

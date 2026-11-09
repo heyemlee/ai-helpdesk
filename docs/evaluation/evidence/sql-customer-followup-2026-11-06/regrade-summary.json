@@ -1,0 +1,16 @@
+{
+  "baseline_old_rules": 15,
+  "baseline_revised_rules": 16,
+  "total": 24,
+  "changed": [
+    {
+      "id": "c24",
+      "before": false,
+      "after": true
+    }
+  ],
+  "real_provider_calls": 0,
+  "baseline_evidence_sha256": "ad9451799ee15a5a8d9bc50c207e4424b030d63c01c21bc153ae4e52377d6e8d",
+  "revised_dataset_sha256": "93fba880f42881291e5490ade5ed275f87ff6e36fe76fba17f5bc6301961332c",
+  "rubric_sha256": "77fb4a0fbd142c8563349159864a870fb98bda9a56fb490ce0a193981058bd7c"
+}

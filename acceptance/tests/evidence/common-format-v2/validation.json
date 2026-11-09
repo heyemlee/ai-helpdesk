@@ -1,0 +1,512 @@
+{
+  "caller_changes_required": false,
+  "common_score_signature": "common_score(scenario, visible, corpus=None)",
+  "copied_fixture_sha256": "31030c435aff5e02c5391968e8f81cd090eb4215e22fa6b9b44b0574b3e4be5e",
+  "errors": 0,
+  "failed_tests": [],
+  "failures": 0,
+  "fictional_handoff_sha256": "465c91add21d63ad63ed9ac48faf6c88fd26a01779c4cac2473af62ba57b8e0e",
+  "fictional_results": {
+    "negative_controls": {
+      "cases": [
+        {
+          "errors": [
+            "incorrect_claim:contract_amount"
+          ],
+          "family": "v2_ordered_list",
+          "status": "incorrect",
+          "variant": "wrong_amount_under_ordinal"
+        },
+        {
+          "errors": [
+            "unbound_numeric_claim",
+            "unparsed_additional_prose"
+          ],
+          "family": "v2_ordered_list",
+          "status": "incorrect",
+          "variant": "extra_charge_under_ordinal"
+        },
+        {
+          "errors": [
+            "unparsed_query_time_provenance",
+            "unbound_numeric_claim",
+            "unparsed_additional_prose"
+          ],
+          "family": "v2_inline_query_metadata",
+          "status": "incorrect",
+          "variant": "metadata_followed_by_business_number"
+        },
+        {
+          "errors": [
+            "unparsed_query_time_provenance"
+          ],
+          "family": "v2_inline_query_metadata",
+          "status": "review_required",
+          "variant": "wrong_query_day"
+        },
+        {
+          "errors": [
+            "incorrect_query_time"
+          ],
+          "family": "v2_localized_query_time",
+          "status": "incorrect",
+          "variant": "invalid_calendar_date"
+        },
+        {
+          "errors": [
+            "unparsed_query_time_provenance"
+          ],
+          "family": "v2_localized_query_time",
+          "status": "review_required",
+          "variant": "wrong_timezone"
+        },
+        {
+          "errors": [
+            "unparsed_query_time_provenance",
+            "incorrect_claim:delivery_status"
+          ],
+          "family": "v2_parenthetical_status",
+          "status": "incorrect",
+          "variant": "wrong_status_before_parenthesis"
+        },
+        {
+          "errors": [
+            "incorrect_claim:delivered_date"
+          ],
+          "family": "v2_parenthetical_status",
+          "status": "incorrect",
+          "variant": "false_delivery_hidden_in_parenthesis"
+        },
+        {
+          "errors": [
+            "incorrect_claim:contract_amount",
+            "unparsed_additional_prose"
+          ],
+          "family": "v2_parenthetical_amount",
+          "status": "incorrect",
+          "variant": "wrong_amount_with_annotation"
+        },
+        {
+          "errors": [
+            "unparsed_claim:contract_amount",
+            "unbound_numeric_claim",
+            "unparsed_additional_prose"
+          ],
+          "family": "v2_parenthetical_amount",
+          "status": "incorrect",
+          "variant": "wrong_currency_with_annotation"
+        },
+        {
+          "errors": [
+            "unbound_numeric_claim",
+            "unparsed_additional_prose"
+          ],
+          "family": "v2_parenthetical_amount",
+          "status": "incorrect",
+          "variant": "extra_charge_in_parenthesis"
+        },
+        {
+          "errors": [
+            "incorrect_claim:delivery_date",
+            "unparsed_additional_prose"
+          ],
+          "family": "v2_parenthetical_date",
+          "status": "incorrect",
+          "variant": "wrong_day_with_annotation"
+        },
+        {
+          "errors": [
+            "unparsed_required_fact:delivery_date",
+            "incorrect_claim:delivered_date",
+            "unparsed_additional_prose"
+          ],
+          "family": "v2_parenthetical_date",
+          "status": "incorrect",
+          "variant": "plan_relabelled_actual"
+        },
+        {
+          "errors": [
+            "incorrect_claim:delivery_date",
+            "unparsed_date_reference"
+          ],
+          "family": "v2_parenthetical_date",
+          "status": "incorrect",
+          "variant": "contradictory_date_in_explanation"
+        },
+        {
+          "errors": [
+            "incorrect_claim:quantity"
+          ],
+          "family": "v2_contextual_parts_table",
+          "status": "incorrect",
+          "variant": "wrong_table_quantity"
+        },
+        {
+          "errors": [
+            "incorrect_claim:quantity"
+          ],
+          "family": "v2_contextual_parts_table",
+          "status": "incorrect",
+          "variant": "unit_missing_everywhere"
+        },
+        {
+          "errors": [
+            "unbound_numeric_claim",
+            "unparsed_additional_prose"
+          ],
+          "family": "v2_contextual_parts_table",
+          "status": "incorrect",
+          "variant": "unproved_extra_column"
+        },
+        {
+          "errors": [
+            "wrong_entity",
+            "unparsed_claim:part_name",
+            "unparsed_additional_prose"
+          ],
+          "family": "v2_source_linked_part",
+          "status": "incorrect",
+          "variant": "part_from_other_order"
+        },
+        {
+          "errors": [
+            "wrong_entity",
+            "unparsed_claim:part_name",
+            "unparsed_additional_prose"
+          ],
+          "family": "v2_source_linked_part",
+          "status": "incorrect",
+          "variant": "nonexistent_part"
+        },
+        {
+          "errors": [
+            "wrong_entity",
+            "unparsed_or_ambiguous_claim:part_name",
+            "unparsed_additional_prose"
+          ],
+          "family": "v2_source_linked_part",
+          "status": "incorrect",
+          "variant": "wrong_parent_order_asserted"
+        },
+        {
+          "errors": [
+            "incorrect_claim:delivery_date",
+            "incorrect_claim:delivered_date"
+          ],
+          "family": "v2_key_value_table",
+          "status": "incorrect",
+          "variant": "swapped_plan_and_actual"
+        },
+        {
+          "errors": [
+            "unbound_numeric_claim",
+            "unparsed_additional_prose"
+          ],
+          "family": "v2_key_value_table",
+          "status": "incorrect",
+          "variant": "extra_unsupported_row"
+        },
+        {
+          "errors": [
+            "incorrect_claim:delivered_date",
+            "unparsed_date_reference"
+          ],
+          "family": "v2_key_value_table",
+          "status": "incorrect",
+          "variant": "wrong_actual_in_restatement"
+        },
+        {
+          "errors": [
+            "incorrect_claim:record_count",
+            "unparsed_aggregate_provenance",
+            "unparsed_aggregate_provenance"
+          ],
+          "family": "v2_record_count_and_total",
+          "status": "incorrect",
+          "variant": "wrong_record_count"
+        },
+        {
+          "errors": [
+            "unparsed_aggregate_provenance",
+            "incorrect_claim:quantity_total",
+            "unparsed_aggregate_provenance"
+          ],
+          "family": "v2_record_count_and_total",
+          "status": "incorrect",
+          "variant": "wrong_total"
+        },
+        {
+          "errors": [
+            "incorrect_claim:aggregate_unit",
+            "unparsed_aggregate_provenance",
+            "incorrect_claim:quantity"
+          ],
+          "family": "v2_record_count_and_total",
+          "status": "incorrect",
+          "variant": "no_unit_in_row_or_total"
+        },
+        {
+          "errors": [
+            "unparsed_query_time_provenance",
+            "incorrect_claim:delivered_date",
+            "unparsed_additional_prose"
+          ],
+          "family": "v2_null_field_with_time",
+          "status": "incorrect",
+          "variant": "null_claim_against_nonnull_source"
+        },
+        {
+          "errors": [
+            "unparsed_query_time_provenance",
+            "incorrect_claim:delivered_date"
+          ],
+          "family": "v2_null_field_with_time",
+          "status": "incorrect",
+          "variant": "invented_actual_date"
+        },
+        {
+          "errors": [
+            "unparsed_query_time_provenance",
+            "wrong_entity",
+            "unparsed_entity",
+            "unparsed_additional_prose"
+          ],
+          "family": "v2_prose_entity_status_binding",
+          "status": "incorrect",
+          "variant": "wrong_entity_in_same_syntax"
+        },
+        {
+          "errors": [
+            "unparsed_query_time_provenance",
+            "incorrect_claim:order_status",
+            "unparsed_additional_prose"
+          ],
+          "family": "v2_prose_entity_status_binding",
+          "status": "incorrect",
+          "variant": "wrong_status_in_same_syntax"
+        },
+        {
+          "errors": [
+            "unparsed_required_fact:order_status",
+            "required_fact_explicitly_unanswered:order_status",
+            "unparsed_additional_prose"
+          ],
+          "family": "v2_prose_entity_status_binding",
+          "status": "incorrect",
+          "variant": "historical_only_and_current_withheld"
+        }
+      ],
+      "counts": {
+        "incorrect": 29,
+        "review_required": 2
+      }
+    },
+    "positive_variants": {
+      "cases": [
+        {
+          "errors": [],
+          "family": "v2_ordered_list",
+          "status": "correct",
+          "variant": "arabic_dot"
+        },
+        {
+          "errors": [],
+          "family": "v2_ordered_list",
+          "status": "correct",
+          "variant": "parenthesized_ordinal"
+        },
+        {
+          "errors": [
+            "unparsed_query_time_provenance",
+            "unparsed_additional_prose"
+          ],
+          "family": "v2_inline_query_metadata",
+          "status": "review_required",
+          "variant": "time_then_sentence"
+        },
+        {
+          "errors": [
+            "unparsed_query_time_provenance"
+          ],
+          "family": "v2_inline_query_metadata",
+          "status": "review_required",
+          "variant": "prefixed_time"
+        },
+        {
+          "errors": [
+            "unparsed_query_time_provenance"
+          ],
+          "family": "v2_inline_query_metadata",
+          "status": "review_required",
+          "variant": "time_inside_sentence"
+        },
+        {
+          "errors": [
+            "unparsed_query_time_provenance"
+          ],
+          "family": "v2_inline_query_metadata",
+          "status": "review_required",
+          "variant": "asof_day_in_prose"
+        },
+        {
+          "errors": [
+            "unparsed_query_time_provenance"
+          ],
+          "family": "v2_localized_query_time",
+          "status": "review_required",
+          "variant": "spaced_date_and_fullwidth_zone"
+        },
+        {
+          "errors": [
+            "unparsed_query_time_provenance"
+          ],
+          "family": "v2_localized_query_time",
+          "status": "review_required",
+          "variant": "copular_time_label"
+        },
+        {
+          "errors": [
+            "unparsed_query_time_provenance"
+          ],
+          "family": "v2_parenthetical_status",
+          "status": "review_required",
+          "variant": "status_with_query_date"
+        },
+        {
+          "errors": [
+            "unparsed_additional_prose"
+          ],
+          "family": "v2_parenthetical_status",
+          "status": "review_required",
+          "variant": "status_with_source_note"
+        },
+        {
+          "errors": [
+            "unparsed_additional_prose"
+          ],
+          "family": "v2_parenthetical_amount",
+          "status": "review_required",
+          "variant": "amount_source_annotation"
+        },
+        {
+          "errors": [
+            "unparsed_additional_prose"
+          ],
+          "family": "v2_parenthetical_date",
+          "status": "review_required",
+          "variant": "planned_date_annotation"
+        },
+        {
+          "errors": [
+            "unparsed_date_reference",
+            "unparsed_additional_prose"
+          ],
+          "family": "v2_parenthetical_date",
+          "status": "review_required",
+          "variant": "same_date_repeated_in_type_explanation"
+        },
+        {
+          "errors": [],
+          "family": "v2_contextual_parts_table",
+          "status": "correct",
+          "variant": "current_status_and_generic_quantity"
+        },
+        {
+          "errors": [],
+          "family": "v2_contextual_parts_table",
+          "status": "correct",
+          "variant": "natural_chinese_headers"
+        },
+        {
+          "errors": [],
+          "family": "v2_source_linked_part",
+          "status": "correct",
+          "variant": "part_name_label"
+        },
+        {
+          "errors": [
+            "unparsed_additional_prose"
+          ],
+          "family": "v2_source_linked_part",
+          "status": "review_required",
+          "variant": "part_noun_and_parenthesis"
+        },
+        {
+          "errors": [],
+          "family": "v2_key_value_table",
+          "status": "correct",
+          "variant": "vertical_business_fields"
+        },
+        {
+          "errors": [
+            "unparsed_date_reference",
+            "unparsed_date_reference"
+          ],
+          "family": "v2_key_value_table",
+          "status": "review_required",
+          "variant": "table_with_date_role_restatement"
+        },
+        {
+          "errors": [
+            "unparsed_aggregate_provenance",
+            "unparsed_aggregate_provenance"
+          ],
+          "family": "v2_record_count_and_total",
+          "status": "review_required",
+          "variant": "supported_row_count_and_total"
+        },
+        {
+          "errors": [
+            "unparsed_aggregate_provenance"
+          ],
+          "family": "v2_record_count_and_total",
+          "status": "review_required",
+          "variant": "unit_supplied_in_same_scoped_total"
+        },
+        {
+          "errors": [
+            "unparsed_query_time_provenance",
+            "unparsed_additional_prose"
+          ],
+          "family": "v2_null_field_with_time",
+          "status": "review_required",
+          "variant": "empty_field_paraphrase_with_metadata"
+        },
+        {
+          "errors": [
+            "unparsed_query_time_provenance",
+            "unparsed_additional_prose"
+          ],
+          "family": "v2_prose_entity_status_binding",
+          "status": "review_required",
+          "variant": "prefixed_sentence_with_entity"
+        }
+      ],
+      "counts": {
+        "correct": 6,
+        "review_required": 17
+      }
+    }
+  },
+  "fixed_release_corpus_used_only_by_automated_tests": false,
+  "forbidden_real_answer_or_io_attempts": [],
+  "kind": "offline_common_text_grammar_validation",
+  "mode": "targeted",
+  "new_harness_sha256": "68964a48f9d688038ab318471e4279a153655d42b0b53ddefa1d8e0113feb75e",
+  "new_helper_scope": "Subsequent separately attributed derived scoring or new runs only. Old execution and score identities stay fixed.",
+  "old_raw_answers_and_embedded_scores_modified": false,
+  "original_baseline_execution_helper_unchanged": "6584531bd1281e3b7e8df045262f1437b403f0ece3705b344bda73196495d674",
+  "prior_frozen_scoring_helper_unchanged": "a88b7e66cde037d8c68dc0f8f7cbd84a8eba6c5989791ee6188bc5aeff90cb1e",
+  "protected_code_sha256": {
+    "acceptance/oracle.py": "3999bd7e01c976ffd65b59999dd0d8fa53ff50b1fcb343f9f22f0bd006801ae1",
+    "acceptance/source_semantics.py": "d79a36c672a77d31f5787369fc7cf37bf1ce5c0155920c7df109db783d66a294"
+  },
+  "protected_code_unchanged_from_commit": "51e2e671f758d88c33b3ce7cf61ae4490f8a1bbe",
+  "real_baseline_or_release_model_answers_read": false,
+  "shared_rules_for_both_versions": true,
+  "skips": 0,
+  "subtests": 324,
+  "supplier_calls": 0,
+  "tests": 48,
+  "validation_scope": "Fictional grammar and fixed offline acceptance regression. No new supplier run, product quality or deployment claim."
+}

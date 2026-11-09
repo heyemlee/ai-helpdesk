@@ -60,6 +60,7 @@ from ai_sql_agent.core import (
     RetryPolicy,
     SqlAgentSettings,
     build_chat_payload,
+    extract_chat_content,
     get_http_client,
     get_logger,
     get_settings,
@@ -101,7 +102,7 @@ _logger = get_logger("api.model_admin")
 router = APIRouter(prefix="/admin/model")
 
 MAX_BODY_BYTES = 8 * 1024
-REQUEST_FIELDS = frozenset({"provider", "base_url", "api_key", "chat_model", "coder_model"})
+REQUEST_FIELDS = frozenset({"provider", "base_url", "api_key", "chat_model", "coder_model", "api_mode"})
 
 PROBE_COMPONENT = "connection_test"
 PROBE_TIMEOUT_SECONDS = 20.0
@@ -356,16 +357,18 @@ class Candidate:
     api_key: str
     chat_model: str
     coder_model: str
+    api_mode: str = "chat"
     key_changed: bool = False
     warnings: List[str] = field(default_factory=list)
 
     @property
     def chat_url(self) -> str:
-        return build_endpoint(self.base_url, CHAT_PATH[self.provider])
+        return build_endpoint(self.base_url, "responses" if self.provider == "openai" and self.api_mode == "responses" else CHAT_PATH[self.provider])
 
     def values(self) -> Dict[str, str]:
         return {
             "model_provider": self.provider,
+            "openai_api_mode": self.api_mode,
             key_field(self.provider): self.api_key,
             url_field(self.provider): self.base_url,
             "chat_model": self.chat_model,
@@ -387,6 +390,9 @@ def resolve_candidate(body: Dict[str, Any], settings: SqlAgentSettings) -> Candi
     if provider not in PROVIDERS:
         raise ModelSettingsError("invalid_provider", "协议只能是 anthropic 或 openai。")
 
+    api_mode = _text(body, "api_mode").strip() or settings.openai_api_mode
+    if api_mode not in ("chat", "responses"):
+        raise ModelSettingsError("invalid_api_mode", "OpenAI API mode must be chat or responses")
     base_url, warnings = validate_base_url(
         _text(body, "base_url").strip() or OFFICIAL_BASE_URL[provider]
     )
@@ -416,6 +422,7 @@ def resolve_candidate(body: Dict[str, Any], settings: SqlAgentSettings) -> Candi
         api_key=api_key,
         chat_model=chat_model,
         coder_model=coder_model,
+        api_mode=api_mode,
         key_changed=bool(typed_key) and typed_key != existing,
         warnings=warnings,
     )
@@ -575,6 +582,7 @@ def describe(
         "reason": access.reason,
         "source": "page" if page.get("values") else "server",
         "provider": provider,
+        "api_mode": settings.openai_api_mode,
         "chat_model": settings.chat_model,
         "coder_model": settings.coder_model,
         "key_configured": settings.has_model_credentials,
@@ -584,7 +592,7 @@ def describe(
         return status
 
     server = settings.server_side
-    standard_endpoint = build_endpoint(settings.base_url_of(provider), CHAT_PATH[provider])
+    standard_endpoint = build_endpoint(settings.base_url_of(provider), settings.chat_path)
     status.update(
         base_url=settings.base_url_of(provider),
         endpoint=settings.chat_url,
@@ -662,6 +670,7 @@ def probe(candidate: Candidate, *, client: Optional[httpx.Client] = None) -> Dic
         PROBE_COMPONENT,
         api_key=candidate.api_key,
         provider=candidate.provider,
+        api_mode=candidate.api_mode,
         timeout=PROBE_TIMEOUT_SECONDS,
         retry_policy=RetryPolicy(max_retries=0),
         access_registry=ModelAccessRegistry(),
@@ -682,6 +691,7 @@ def probe(candidate: Candidate, *, client: Optional[httpx.Client] = None) -> Dic
             temperature=0.0,
             stream=False,
             provider=candidate.provider,
+            api_mode=candidate.api_mode,
             max_tokens=PROBE_MAX_TOKENS,
             # 和正式调用带一样的参数：模型不认的话在这里就按正式调用的办法改掉再试
             reasoning_effort=get_settings().reasoning_effort,
@@ -690,17 +700,19 @@ def probe(candidate: Candidate, *, client: Optional[httpx.Client] = None) -> Dic
         started = time.perf_counter()
         try:
             reply = transport.post_chat(candidate.chat_url, payload, model=model)
+            extract_chat_content(reply, component=PROBE_COMPONENT, model=model, api_mode=candidate.api_mode if candidate.provider == "openai" else "chat")
         except ModelCallError as exc:
             entry.update(
                 ok=False,
                 outcome=_outcome_of(exc),
                 status_code=exc.status_code,
-                message=exc.upstream_message,
+                message=exc.upstream_message or (str(exc) if candidate.api_mode == "responses" and isinstance(exc, ModelResponseError) else ""),
             )
         else:
             # 回了 200 的 JSON，但长得不像对话接口的响应：多半是地址填到了别的服务上
             looks_like_chat = isinstance(reply, dict) and (
                 isinstance(reply.get("choices"), list) or isinstance(reply.get("content"), list)
+                or (candidate.api_mode == "responses" and isinstance(reply.get("output"), list))
             )
             entry.update(
                 ok=looks_like_chat,
@@ -717,6 +729,7 @@ def probe(candidate: Candidate, *, client: Optional[httpx.Client] = None) -> Dic
         "ok": len(results) == len(targets) and all(item["ok"] for item in results),
         "provider": candidate.provider,
         "endpoint": candidate.chat_url,
+        "api_mode": candidate.api_mode,
         "results": results,
         "warnings": candidate.warnings,
     }

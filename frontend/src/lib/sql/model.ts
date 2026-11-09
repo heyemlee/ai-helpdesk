@@ -3,7 +3,7 @@
  * （移植自旧控制台的 model.js，判定口径一字不改）。
  *
  * 判定完全按契约 §4.6 来，页面不自己发明口径：
- * - 业务终态读 execution_status；服务端没给才从 steps[] 推（并记下来源）；
+ * - 业务终态必须与 steps[] 一致；旧响应可以展示推导状态，但始终标为需核实；
  * - 三个信任布尔必须是真正的 JSON 布尔，缺失或类型不对一律按**降低信任**的方向取值——
  *   has_risk 缺失当作有风险，queried_database 缺失当作没查库。
  *   一个"降信任的信号"缺席时若按"没有这个信号"处理，等于默认信任。
@@ -14,6 +14,12 @@ import type { StreamStage } from '@/api/sql/client'
 const DATABASE_QUERY = 'database_query'
 
 const strictBool = (value: unknown, missing: boolean): boolean => (typeof value === 'boolean' ? value : missing)
+const isRecord = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value)
+const validStepShape = (step: unknown) => isRecord(step)
+  && typeof step.success === 'boolean' && typeof step.truncated === 'boolean'
+  && Number.isInteger(step.row_count) && Number(step.row_count) >= 0
+  && Array.isArray(step.rows) && step.rows.every(isRecord) && step.rows.length === step.row_count
+  && (!step.truncated || (Number.isInteger(step.row_limit) && Number(step.row_limit) > 0))
 
 export type ExecutionStatus = 'success' | 'partial_success' | 'no_data' | 'failed' | 'not_applicable' | string
 
@@ -78,7 +84,7 @@ function deriveStatus(route: string, steps: ResultStep[]): ExecutionStatus {
 
 function normalizeStep(raw: Record<string, unknown>, index: number): ResultStep {
   const rows = Array.isArray(raw.rows)
-    ? (raw.rows as unknown[]).filter((row): row is Record<string, unknown> => !!row && typeof row === 'object')
+    ? (raw.rows as unknown[]).filter((row): row is Record<string, unknown> => !!row && typeof row === 'object' && !Array.isArray(row))
     : []
   const columns: string[] = []
   for (const row of rows) {
@@ -95,7 +101,7 @@ function normalizeStep(raw: Record<string, unknown>, index: number): ResultStep 
     finalSql: String(raw.final_sql || raw.sql || ''),
     success: strictBool(raw.success, false),
     rowCount: Number.isInteger(raw.row_count) ? (raw.row_count as number) : rows.length,
-    truncated: strictBool(raw.truncated, false),
+    truncated: strictBool(raw.truncated, true),
     rowLimit: Number.isInteger(raw.row_limit) ? (raw.row_limit as number) : null,
     error: raw.error ? String(raw.error) : '',
     repairs: Array.isArray(raw.repair_attempts) ? raw.repair_attempts : [],
@@ -134,12 +140,12 @@ export function normalizeResult(payload: Record<string, unknown>, { transport = 
     candidateDatabases: Array.isArray(payload.selected_databases) ? (payload.selected_databases as string[]) : [],
     executionStatus: declared || (rawSteps ? deriveStatus(route, steps) : 'failed'),
     statusSource: declared ? 'contract' : rawSteps ? 'derived' : 'missing',
-    hasRisk: strictBool(payload.has_risk, true),
+    hasRisk: strictBool(payload.has_risk, true) || !declared || declared !== deriveStatus(route, steps)
+      || rawSteps === null || !rawSteps.every(validStepShape)
+      || steps.some(step => step.rowCount !== step.rows.length || (step.success && (!!step.error || step.findings.length > 0))),
     degraded: strictBool(payload.degraded, true),
     degradeReason: String(payload.degrade_reason ?? ''),
-    truncated: typeof payload.result_truncated === 'boolean'
-      ? payload.result_truncated
-      : steps.some((step) => step.truncated),
+    truncated: payload.result_truncated === true || rawSteps === null || steps.some((step) => step.truncated),
     asOf: typeof payload.as_of === 'string' ? payload.as_of : null,
     asOfSource: typeof payload.as_of_source === 'string' ? payload.as_of_source : null,
     currency: typeof payload.currency === 'string' && /^[A-Z]{3}$/.test(payload.currency) ? payload.currency : null,

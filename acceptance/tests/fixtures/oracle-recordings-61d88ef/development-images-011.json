@@ -1,0 +1,415 @@
+{
+  "observed": {
+    "case": {
+      "case_id": "tk_a3802f752811",
+      "control_mode": "assistant",
+      "control_version": 1,
+      "conv_id": "920138fd-4d15-4356-8300-cfcdf2e06f68",
+      "created_at": 1793990784.263629,
+      "created_by": "emp_7ee668b99729454fb0310493bbbb4f85",
+      "customer_ref": "",
+      "drafts": [
+        {
+          "approved_by": null,
+          "body": "材料已保存，请补充：图片核实：日期、图片核实：缺件型号、图片核实：订单号、图片核实：缺件数量、图片核实：业务状态。",
+          "body_hash": "44db082f4a57b19149c2c0156b3016db2f788296f8e1c152a6e1578cd17bf312",
+          "case_id": "tk_a3802f752811",
+          "control_version": 1,
+          "created_at": 1793990799.093736,
+          "evidence": [],
+          "evidence_version": 1,
+          "id": "dr_01a1b22f0c86750d295784258de4db72",
+          "invalid_reason": "",
+          "run_id": "01a1b22f0c86750d295784258de4db72",
+          "status": "pending",
+          "valid": true,
+          "version": 3
+        }
+      ],
+      "events": [
+        {
+          "actor_id": "emp_7ee668b99729454fb0310493bbbb4f85",
+          "case_id": "tk_a3802f752811",
+          "control_version": 1,
+          "created_at": 1793990784.266429,
+          "data": {
+            "changed": true,
+            "message_id": "acc_ba5f9273d6614bed9c70ffd2fdc220c0",
+            "run_id": "01a1b22ef5096a11e949c23286e388cb"
+          },
+          "id": 22,
+          "kind": "input_accepted",
+          "version": 1
+        },
+        {
+          "actor_id": null,
+          "case_id": "tk_a3802f752811",
+          "control_version": 1,
+          "created_at": 1793990790.279744,
+          "data": {
+            "next_run_id": "01a1b22f0c86750d295784258de4db72",
+            "run_id": "01a1b22ef5096a11e949c23286e388cb"
+          },
+          "id": 23,
+          "kind": "images_reviewed",
+          "version": 2
+        },
+        {
+          "actor_id": null,
+          "case_id": "tk_a3802f752811",
+          "control_version": 1,
+          "created_at": 1793990799.09389,
+          "data": {
+            "draft_id": "dr_01a1b22f0c86750d295784258de4db72",
+            "run_id": "01a1b22f0c86750d295784258de4db72"
+          },
+          "id": 24,
+          "kind": "result_applied",
+          "version": 3
+        }
+      ],
+      "facts": {},
+      "id": "tk_a3802f752811",
+      "image_reviews": [
+        {
+          "attachment_id": "at_8a6f306fd86641fcb0b8ca0eaad917ee",
+          "case_id": "tk_a3802f752811",
+          "control_version": 1,
+          "created_at": 1793990790.278619,
+          "result": {
+            "attachment_id": "at_8a6f306fd86641fcb0b8ca0eaad917ee",
+            "document_type": "order",
+            "extractor_version": "order-image-v1:gpt-6.1-sol",
+            "fields": [
+              {
+                "db_value": null,
+                "field": "order_ref",
+                "kind": "order",
+                "location": "Upper left, below Order number",
+                "outcome": "conflict",
+                "readability": "clear",
+                "source": null,
+                "unit": null,
+                "value": "SO-2026-110499"
+              },
+              {
+                "db_value": null,
+                "field": "model",
+                "kind": "order",
+                "location": "Left, below Cabinet model",
+                "outcome": "conflict",
+                "readability": "clear",
+                "source": null,
+                "unit": null,
+                "value": "BX-11049-24"
+              },
+              {
+                "db_value": null,
+                "field": "quantity",
+                "kind": "ordered",
+                "location": "Middle left, below Ordered quantity (pcs)",
+                "outcome": "conflict",
+                "readability": "clear",
+                "source": null,
+                "unit": "pcs",
+                "value": "3"
+              },
+              {
+                "db_value": null,
+                "field": "date",
+                "kind": "delivery",
+                "location": "Lower left, below Planned delivery date",
+                "outcome": "conflict",
+                "readability": "clear",
+                "source": null,
+                "unit": null,
+                "value": "2026-11-10"
+              },
+              {
+                "db_value": null,
+                "field": "status",
+                "kind": "order",
+                "location": "Lower left, below Order status",
+                "outcome": "conflict",
+                "readability": "clear",
+                "source": null,
+                "unit": null,
+                "value": "配送中"
+              }
+            ],
+            "query_outcome": "order_conflict",
+            "sha256": "d8438c8b643c71e9c5c619e189cc89d39dab242322845428f7679cf01a425ce7"
+          },
+          "run_id": "01a1b22ef5096a11e949c23286e388cb",
+          "sha256": "d8438c8b643c71e9c5c619e189cc89d39dab242322845428f7679cf01a425ce7",
+          "version": 2
+        }
+      ],
+      "instance": "staff",
+      "issue_type": "general",
+      "last_message": "请在员工工单入口查看材料",
+      "managed": true,
+      "materials": [
+        {
+          "attachment": {
+            "byte_size": 37440,
+            "error_code": "",
+            "filename": "employee-upload.png",
+            "height": 920,
+            "id": "at_8a6f306fd86641fcb0b8ca0eaad917ee",
+            "media_type": "image/png",
+            "sha256": "d8438c8b643c71e9c5c619e189cc89d39dab242322845428f7679cf01a425ce7",
+            "state": "ready",
+            "width": 1200
+          },
+          "attachment_id": "at_8a6f306fd86641fcb0b8ca0eaad917ee",
+          "message_id": "acc_ba5f9273d6614bed9c70ffd2fdc220c0",
+          "sha256": "d8438c8b643c71e9c5c619e189cc89d39dab242322845428f7679cf01a425ce7",
+          "version": 1
+        }
+      ],
+      "messages": [
+        {
+          "attachment_ids": [
+            "at_8a6f306fd86641fcb0b8ca0eaad917ee"
+          ],
+          "content": "逐项检查附件的单号、型号、数量、日期和状态，跟系统记录比对后标记不能核实的项目。",
+          "created_at": 1793990784.265291,
+          "message_id": "acc_ba5f9273d6614bed9c70ffd2fdc220c0",
+          "role": "user",
+          "run_id": "01a1b22ef5096a11e949c23286e388cb",
+          "seq": 24,
+          "turn_id": "",
+          "version": 1
+        },
+        {
+          "attachment_ids": [],
+          "content": "图片核对已完成；请按已确认事实和待补字段继续处理。",
+          "created_at": 1793990790.278961,
+          "message_id": "verified_01a1b22ef5096a11e949c23286e388cb",
+          "role": "system",
+          "run_id": "01a1b22f0c86750d295784258de4db72",
+          "seq": 25,
+          "turn_id": "",
+          "version": 2
+        },
+        {
+          "attachment_ids": [],
+          "content": "图片核对结果已保存，正在继续处理。",
+          "created_at": 1793990790.280163,
+          "message_id": "reply_01a1b22ef5096a11e949c23286e388cb",
+          "role": "assistant",
+          "run_id": "01a1b22ef5096a11e949c23286e388cb",
+          "seq": 26,
+          "turn_id": "01a1b22ef50bf6ca4d06059266",
+          "version": 2
+        },
+        {
+          "attachment_ids": [],
+          "content": "材料已保存，请补充：图片核实：日期、图片核实：缺件型号、图片核实：订单号、图片核实：缺件数量、图片核实：业务状态。",
+          "created_at": 1793990799.094174,
+          "message_id": "reply_01a1b22f0c86750d295784258de4db72",
+          "role": "assistant",
+          "run_id": "01a1b22f0c86750d295784258de4db72",
+          "seq": 27,
+          "turn_id": "01a1b22f2ef220a6d30a1ce2c6",
+          "version": 3
+        }
+      ],
+      "order_refs": [
+        "SO-2026-11049"
+      ],
+      "owner_actor_id": null,
+      "pending_fields": [
+        "image:date",
+        "image:model",
+        "image:order_ref",
+        "image:quantity",
+        "image:status"
+      ],
+      "policy_scope": {},
+      "reason": "员工创建的业务问题",
+      "runs": [
+        {
+          "applied": true,
+          "attempt": 1,
+          "error": "",
+          "reason": "",
+          "run_id": "01a1b22ef5096a11e949c23286e388cb",
+          "status": "succeeded"
+        },
+        {
+          "applied": true,
+          "attempt": 1,
+          "error": "",
+          "reason": "",
+          "run_id": "01a1b22f0c86750d295784258de4db72",
+          "status": "succeeded"
+        }
+      ],
+      "status": "waiting_for_info",
+      "updated_at": 1793990799.092788,
+      "user_id": "case",
+      "version": 3
+    },
+    "case_ids": {
+      "primary": "tk_a3802f752811"
+    },
+    "completed": true,
+    "elapsed_seconds": 14.991119083948433,
+    "id": "development-images-011",
+    "invariant_violations": [],
+    "runs": [
+      {
+        "attempt": 1,
+        "attempts": [
+          {
+            "attempt": 1,
+            "committed": true,
+            "ended_at": 1793990790.280642,
+            "outcome": "succeeded",
+            "reclaimed": false,
+            "started_at": 1793990784.267051,
+            "turn_id": "01a1b22ef50bf6ca4d06059266"
+          }
+        ],
+        "conv_id": "920138fd-4d15-4356-8300-cfcdf2e06f68",
+        "created_at": 1793990784.266302,
+        "degrade_level": 0,
+        "error": "",
+        "finished_at": 1793990790.280649,
+        "result": {
+          "agent_type": "system",
+          "case_applied": true,
+          "case_id": "tk_a3802f752811",
+          "case_status": "waiting_for_info",
+          "case_version": 2,
+          "control_version": 1,
+          "conv_id": "920138fd-4d15-4356-8300-cfcdf2e06f68",
+          "draft_id": null,
+          "escalated": false,
+          "handoff": false,
+          "intent": "other",
+          "latency_ms": 0.0,
+          "next_run_id": "01a1b22f0c86750d295784258de4db72",
+          "request_id": "",
+          "response": "图片核对结果已保存，正在继续处理。",
+          "run": {
+            "attempt": 1,
+            "run_id": "01a1b22ef5096a11e949c23286e388cb"
+          },
+          "ticket_id": "tk_a3802f752811",
+          "turn_id": "01a1b22ef50bf6ca4d06059266"
+        },
+        "run_id": "01a1b22ef5096a11e949c23286e388cb",
+        "started_at": 1793990784.267057,
+        "status": "succeeded",
+        "turn_id": "01a1b22ef50bf6ca4d06059266"
+      },
+      {
+        "attempt": 1,
+        "attempts": [
+          {
+            "attempt": 1,
+            "committed": true,
+            "ended_at": 1793990799.094894,
+            "outcome": "succeeded",
+            "reclaimed": false,
+            "started_at": 1793990799.089266,
+            "turn_id": "01a1b22f2ef220a6d30a1ce2c6"
+          }
+        ],
+        "conv_id": "920138fd-4d15-4356-8300-cfcdf2e06f68",
+        "created_at": 1793990790.279562,
+        "degrade_level": 0,
+        "error": "",
+        "finished_at": 1793990799.0949,
+        "result": {
+          "agent_type": "system",
+          "case_applied": true,
+          "case_id": "tk_a3802f752811",
+          "case_status": "waiting_for_info",
+          "case_version": 3,
+          "control_version": 1,
+          "conv_id": "920138fd-4d15-4356-8300-cfcdf2e06f68",
+          "draft_id": "dr_01a1b22f0c86750d295784258de4db72",
+          "escalated": false,
+          "handoff": false,
+          "intent": "other",
+          "latency_ms": 0.0,
+          "needs_clarification": true,
+          "request_id": "",
+          "response": "材料已保存，请补充：图片核实：日期、图片核实：缺件型号、图片核实：订单号、图片核实：缺件数量、图片核实：业务状态。",
+          "run": {
+            "attempt": 1,
+            "run_id": "01a1b22f0c86750d295784258de4db72"
+          },
+          "ticket_id": "tk_a3802f752811",
+          "turn_id": "01a1b22f2ef220a6d30a1ce2c6"
+        },
+        "run_id": "01a1b22f0c86750d295784258de4db72",
+        "started_at": 1793990799.08928,
+        "status": "succeeded",
+        "turn_id": "01a1b22f2ef220a6d30a1ce2c6"
+      }
+    ],
+    "side_effects": {
+      "actions": [],
+      "handoff": 0,
+      "notification": 0,
+      "notifications": []
+    },
+    "step_checks": []
+  },
+  "score": {
+    "business_resolved": false,
+    "elapsed_seconds": 14.991119083948433,
+    "errors": [
+      "unproven_visible_prose:材料已保存，请补充：图片核实：日期、图片核实：缺件型号、图片核实：订单号、图片核实：缺件数量、图片核实：业务状态。"
+    ],
+    "fact_correct": false,
+    "group": "images",
+    "id": "development-images-011",
+    "image_fields": [
+      {
+        "expected_outcome": "conflict",
+        "extraction_passed": true,
+        "field": "date",
+        "passed": true,
+        "verification_passed": true
+      },
+      {
+        "expected_outcome": "conflict",
+        "extraction_passed": true,
+        "field": "model",
+        "passed": true,
+        "verification_passed": true
+      },
+      {
+        "expected_outcome": "conflict",
+        "extraction_passed": true,
+        "field": "order_ref",
+        "passed": true,
+        "verification_passed": true
+      },
+      {
+        "expected_outcome": "conflict",
+        "extraction_passed": true,
+        "field": "quantity",
+        "passed": true,
+        "verification_passed": true
+      },
+      {
+        "expected_outcome": "conflict",
+        "extraction_passed": true,
+        "field": "status",
+        "passed": true,
+        "verification_passed": true
+      }
+    ],
+    "invariant_violations": [],
+    "run_count": 2,
+    "run_terminal": true,
+    "subtype": "conflict"
+  }
+}

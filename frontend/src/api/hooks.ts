@@ -1,3 +1,4 @@
+import type { PolicyMetadata, PolicyScope } from './types'
 import { useCallback } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
@@ -39,8 +40,8 @@ export function useModelStatus(base: string) {
 
 export function useSearch(base: string) {
   return useMutation({
-    mutationFn: ({ query, topK }: { query: string; topK?: number }) =>
-      api.search(base, query, topK),
+    mutationFn: ({ query, topK, scope }: { query: string; topK?: number; scope?: PolicyScope }) =>
+      api.search(base, query, topK, scope),
   })
 }
 
@@ -134,7 +135,7 @@ function useInvalidateKnowledge(base: string) {
 export function useAddKnowledge(base: string) {
   const invalidate = useInvalidateKnowledge(base)
   return useMutation({
-    mutationFn: (docs: Array<{ title: string; content: string; category?: string }>) =>
+    mutationFn: (docs: Array<{ title: string; content: string; category?: string; policy?: PolicyMetadata }>) =>
       api.addKnowledge(base, docs),
     onSuccess: invalidate,
   })
@@ -143,8 +144,8 @@ export function useAddKnowledge(base: string) {
 export function useUploadKnowledge(base: string) {
   const invalidate = useInvalidateKnowledge(base)
   return useMutation({
-    mutationFn: ({ file, category }: { file: File; category?: string }) =>
-      api.uploadKnowledge(base, file, category),
+    mutationFn: ({ file, category, policy }: { file: File; category?: string; policy?: PolicyMetadata }) =>
+      api.uploadKnowledge(base, file, category, policy),
     onSuccess: invalidate,
   })
 }

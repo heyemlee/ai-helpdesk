@@ -48,11 +48,23 @@
       "sha256": "0e57361b717f1328",
       "len": 386
      }
+    },
+    {
+     "__type__": "FewShotExample",
+     "user_query": "项目 P-042 的预算是多少？",
+     "schema_context": {
+      "sha256": "d1d905ff90a89edc",
+      "len": 355
+     },
+     "output": {
+      "sha256": "852e0f7bca32e5bb",
+      "len": 191
+     }
     }
    ],
    "schema_graph": {
-    "sha256": "4913bea043ba704b",
-    "len": 6742
+    "sha256": "11a9921d997edf79",
+    "len": 5346
    },
    "user_query": "以下是与当前问题相关的会话记忆：\n[近期对话]\n用户：查询准时率低于0.9的供应商名称\n\n当前用户问题：查询准时率低于0.9的供应商名称"
   }
@@ -61,8 +73,8 @@
   "call": "ThinkingModelClient.generate",
   "args": [
    {
-    "sha256": "55d3bff3abe2b8ec",
-    "len": 9746
+    "sha256": "1d520a7741f55f36",
+    "len": 11422
    }
   ],
   "kwargs": {}
@@ -89,8 +101,8 @@
   "call": "CoderModelClient.generate_sql",
   "args": [
    {
-    "sha256": "a9ef8584fe15c507",
-    "len": 1588
+    "sha256": "6cd6c9a4e06da909",
+    "len": 1826
    }
   ],
   "kwargs": {}
@@ -183,6 +195,18 @@
       "sha256": "0e57361b717f1328",
       "len": 386
      }
+    },
+    {
+     "__type__": "FewShotExample",
+     "user_query": "项目 P-042 的预算是多少？",
+     "schema_context": {
+      "sha256": "d1d905ff90a89edc",
+      "len": 355
+     },
+     "output": {
+      "sha256": "852e0f7bca32e5bb",
+      "len": 191
+     }
     }
    ],
    "schema_graph": {
@@ -199,8 +223,8 @@
   "call": "ThinkingModelClient.generate",
   "args": [
    {
-    "sha256": "ce06838c87acdd13",
-    "len": 8728
+    "sha256": "2a510a439d6421de",
+    "len": 10404
    }
   ],
   "kwargs": {}
@@ -230,8 +254,8 @@
   "call": "CoderModelClient.generate_sql",
   "args": [
    {
-    "sha256": "b7d2d5c9e7ec1cf9",
-    "len": 1886
+    "sha256": "7e21a2d8454d2a2a",
+    "len": 2124
    }
   ],
   "kwargs": {}
@@ -287,8 +311,8 @@
    {
     "__type__": "ConversationMemoryContext",
     "prompt": {
-     "sha256": "4b00d1d94f700730",
-     "len": 4596
+     "sha256": "47e697ce69c2023d",
+     "len": 993
     }
    }
   ],
@@ -312,8 +336,8 @@
     "采购"
    ],
    "query": {
-    "sha256": "07b8a1bec4315bbe",
-    "len": 4643
+    "sha256": "0f17b190efd1a43e",
+    "len": 1040
    }
   }
  },
@@ -333,15 +357,27 @@
       "sha256": "0e57361b717f1328",
       "len": 386
      }
+    },
+    {
+     "__type__": "FewShotExample",
+     "user_query": "项目 P-042 的预算是多少？",
+     "schema_context": {
+      "sha256": "d1d905ff90a89edc",
+      "len": 355
+     },
+     "output": {
+      "sha256": "852e0f7bca32e5bb",
+      "len": 191
+     }
     }
    ],
    "schema_graph": {
-    "sha256": "dcb92552d8eecb41",
-    "len": 5581
+    "sha256": "a23be16de1792cb5",
+    "len": 5801
    },
    "user_query": {
-    "sha256": "07b8a1bec4315bbe",
-    "len": 4643
+    "sha256": "0f17b190efd1a43e",
+    "len": 1040
    }
   }
  },
@@ -349,8 +385,8 @@
   "call": "ThinkingModelClient.generate",
   "args": [
    {
-    "sha256": "7378b9987534bc44",
-    "len": 13160
+    "sha256": "0949386bb62e9b27",
+    "len": 14836
    }
   ],
   "kwargs": {}
@@ -377,8 +413,8 @@
   "call": "CoderModelClient.generate_sql",
   "args": [
    {
-    "sha256": "c6e2419cdde6f6f2",
-    "len": 1666
+    "sha256": "216dbae978f08096",
+    "len": 1904
    }
   ],
   "kwargs": {}
@@ -435,8 +471,8 @@
   "call": "CoderModelClient.generate_sql",
   "args": [
    {
-    "sha256": "dc4a3c27b1e5bc63",
-    "len": 2062
+    "sha256": "568771b59fa86eea",
+    "len": 2300
    }
   ],
   "kwargs": {}
@@ -497,7 +533,7 @@
    {
     "__type__": "ConversationMemoryContext",
     "prompt": {
-     "sha256": "660d225bf993af5a",
+     "sha256": "b645a9beedba770d",
      "len": 4962
     }
    }
@@ -521,7 +557,7 @@
     "采购"
    ],
    "query": {
-    "sha256": "a302b3ec5c2e5960",
+    "sha256": "760f0dc6faafd4ad",
     "len": 5007
    }
   }
@@ -532,11 +568,11 @@
   "kwargs": {
    "few_shots": [],
    "schema_graph": {
-    "sha256": "feabc7280ba03e5a",
-    "len": 2762
+    "sha256": "0d17261b16ea6bb1",
+    "len": 3605
    },
    "user_query": {
-    "sha256": "a302b3ec5c2e5960",
+    "sha256": "760f0dc6faafd4ad",
     "len": 5007
    }
   }
@@ -545,8 +581,8 @@
   "call": "ThinkingModelClient.generate",
   "args": [
    {
-    "sha256": "ea93c18d90e3b25e",
-    "len": 9892
+    "sha256": "7b1d3363b3744b22",
+    "len": 10968
    }
   ],
   "kwargs": {}
@@ -573,8 +609,8 @@
   "call": "CoderModelClient.generate_sql",
   "args": [
    {
-    "sha256": "e9207f98cd3c28df",
-    "len": 1534
+    "sha256": "cb8f84a2bf381ce8",
+    "len": 1772
    }
   ],
   "kwargs": {}
@@ -631,8 +667,8 @@
   "call": "CoderModelClient.generate_sql",
   "args": [
    {
-    "sha256": "dc4a3c27b1e5bc63",
-    "len": 2062
+    "sha256": "568771b59fa86eea",
+    "len": 2300
    }
   ],
   "kwargs": {}
@@ -693,8 +729,8 @@
    {
     "__type__": "ConversationMemoryContext",
     "prompt": {
-     "sha256": "849193077ce78c1c",
-     "len": 5875
+     "sha256": "e99b1f8c7ca30075",
+     "len": 4952
     }
    }
   ],
@@ -707,8 +743,8 @@
    {
     "__type__": "ConversationMemoryContext",
     "prompt": {
-     "sha256": "849193077ce78c1c",
-     "len": 5875
+     "sha256": "e99b1f8c7ca30075",
+     "len": 4952
     }
    }
   ],

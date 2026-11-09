@@ -95,8 +95,8 @@ def _derive_status(payload: Dict[str, Any], steps: List[Any]) -> str:
 
 def result_truncated_of(payload: Dict[str, Any]) -> bool:
     """§4.6.3。顶层字段优先；没有就看 `any(steps[].truncated)`。缺失按 True。"""
-    if isinstance(payload.get("result_truncated"), bool):
-        return payload["result_truncated"]
+    if payload.get("result_truncated") is True:
+        return True
     steps = payload.get("steps")
     if not isinstance(steps, list):
         return True
@@ -140,6 +140,16 @@ def trust_verdict(payload: Optional[Dict[str, Any]]) -> str:
         return NOT_USABLE
 
     status, _source = execution_status_of(payload)
+    steps = payload.get("steps")
+    if _source != SOURCE_CONTRACT or not isinstance(steps, list) or status != _derive_status(payload, steps):
+        return NOT_USABLE
+    if any(not isinstance(s, dict) or type(s.get("success")) is not bool
+           or type(s.get("row_count")) is not int or s["row_count"] < 0
+           or not isinstance(s.get("rows"), list) or s["row_count"] != len(s["rows"])
+           or any(not isinstance(row, dict) for row in s["rows"])
+           or (s["success"] and (s.get("error") or s.get("risk_findings")))
+           for s in steps):
+        return NOT_USABLE
     if status == "no_data":
         # 「查到了，答案是没有」≠「没查成」。对客户是两句完全不同的话（§4.6.1）
         return NO_DATA

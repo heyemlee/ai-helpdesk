@@ -12,9 +12,10 @@ import json
 from typing import Any
 
 # 工具调用的经过（trace）里属于外来文字的字段：下游给的失败原因、可信校验的理由
-TRACE_TEXT_KEYS = ("reason", "reasons")
+TRACE_TEXT_KEYS = ("reason", "reasons", "evidence_payload", "lookup_scope", "lookup_goal",
+                   "lookup_coverage", "lookup_evidence", "limited_lookups")
 # 知识片段里属于外来文字的字段：标题和摘录。doc_id、chunk_id、分数这些留在结构里
-SOURCE_TEXT_KEYS = ("title", "doc_title", "excerpt")
+SOURCE_TEXT_KEYS = ("title", "doc_title", "excerpt", "content", "policy", "policy_scope")
 
 
 def sha256(value: Any) -> str:
@@ -32,8 +33,10 @@ def agent_type_of(key: str) -> str:
 
 def split_trace(trace: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     """工具调用的经过 → (结构, 原文)。merge_trace 是它的逆。"""
-    structure = {k: v for k, v in trace.items() if k not in TRACE_TEXT_KEYS and k != "sources"}
+    structure = {k: v for k, v in trace.items() if k not in TRACE_TEXT_KEYS and k not in {"sources", "evidence"}}
     text = {k: trace[k] for k in TRACE_TEXT_KEYS if k in trace}
+    if "evidence" in trace:
+        text["fact_evidence"] = trace["evidence"]
     if "sources" in trace:
         sources = [s for s in trace.get("sources") or [] if isinstance(s, dict)]
         structure["sources"] = [{k: v for k, v in s.items() if k not in SOURCE_TEXT_KEYS} for s in sources]
@@ -48,6 +51,8 @@ def merge_trace(structure: dict[str, Any], text: dict[str, Any] | None) -> dict[
     for key in TRACE_TEXT_KEYS:
         if key in text:
             trace[key] = text[key]
+    if "fact_evidence" in text:
+        trace["evidence"] = text["fact_evidence"]
     if "sources" in structure:
         excerpts = text.get("excerpts") or []
         trace["sources"] = [

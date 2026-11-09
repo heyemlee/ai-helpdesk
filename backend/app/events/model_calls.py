@@ -17,6 +17,7 @@ import logging
 import time
 from typing import Any
 
+from app.core.redaction import data as redact
 from app.events.recorder import current_call_tag, events
 
 logger = logging.getLogger(__name__)
@@ -31,12 +32,15 @@ def usage_of(message: Any) -> dict[str, int] | None:
     usage = _get(message, "usage") if message is not None else None
     if usage is None:
         return None
-    return {
+    result = {
         "input_tokens": int(_get(usage, "input_tokens") or 0),
         "output_tokens": int(_get(usage, "output_tokens") or 0),
         "cache_read_tokens": int(_get(usage, "cache_read_input_tokens") or 0),
         "cache_write_tokens": int(_get(usage, "cache_creation_input_tokens") or 0),
     }
+    if _get(usage, "reasoning_tokens") is not None:
+        result["reasoning_tokens"] = int(_get(usage, "reasoning_tokens"))
+    return result
 
 
 def output_of(message: Any) -> Any:
@@ -105,9 +109,11 @@ class ModelCall:
                 data["round"] = self.tag["round"]
             body: dict[str, Any] = {}
             if output is not None:
-                body["output"] = output
+                body["output"] = redact(output)
             if error is not None:
-                body["error"] = str(error)[:2000]
+                # Provider error bodies can echo credentials and image payloads.
+                # Keep the failure class/status; never retain the body or prompt.
+                body["error"] = type(error).__name__
             self.recorder.emit("model_call", data, body or None,
                                agent=self.tag.get("agent", ""), step=self.tag.get("step"))
         except Exception:

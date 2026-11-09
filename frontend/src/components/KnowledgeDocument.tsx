@@ -1,3 +1,8 @@
+import { usePermissions } from '@/auth/session'
+import { useState } from 'react'
+import { api } from '@/api/client'
+import { PolicyFields } from './PolicyFields'
+import type { KnowledgeDocumentDetail } from '@/api/types'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useCategories, useDocument, useSetDocumentCategory } from '@/api/hooks'
@@ -21,6 +26,7 @@ import type { KnowledgeCategory } from '@/api/types'
  * 改的只是分类——正文、片段和检索都不动。后端还没有分类时只留"全部文档"。
  */
 export function KnowledgeDocumentView({ base, docId }: { base: string; docId: string }) {
+  const { admin } = usePermissions()
   const { t, lang } = useT()
   const { data: doc, error, isError, refetch } = useDocument(base, docId)
   const categories = useCategories(base).data?.categories
@@ -82,13 +88,14 @@ export function KnowledgeDocumentView({ base, docId }: { base: string; docId: st
               <div><dt>{t('kb.meta.titleLabel')}</dt><dd>{doc.title}</dd></div>
             )}
             <div><dt>{t('kb.meta.size')}</dt><dd>{t('kb.count.passages', { n: doc.chunks })}</dd></div>
-            {filed !== null && categories && (
+            {admin && filed !== null && categories && (
               <CategoryField base={base} docId={doc.id} value={filed} categories={categories} />
             )}
           </dl>
           {origin && <Chip tone="caution">{t(origin)}</Chip>}
         </header>
 
+        {admin && doc.policy && <PolicyEditor key={doc.policy_revision} base={base} doc={doc} saved={() => { void refetch() }} />}
         {doc.origin === 'legacy' && (
           <p className="note caution">
             {doc.chunk_count > 1
@@ -162,4 +169,21 @@ function CategoryField({ base, docId, value, categories }: {
       </dd>
     </div>
   )
+}
+
+function PolicyEditor({ base, doc, saved }: { base: string; doc: KnowledgeDocumentDetail; saved: () => void }) {
+  const { lang } = useT()
+  const [value, setValue] = useState(doc.policy!)
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  return <form onSubmit={async e => {
+    e.preventDefault(); setBusy(true); setError('')
+    try { await api.setDocumentPolicy(base, doc.id, value, doc.policy_revision!); saved() }
+    catch { setError(lang === 'en' ? 'Not saved. Check dates, version and admin access. If the document changed, refresh and review it again.' : '未保存。请检查时间、版本和管理员权限；若文档已变化，请刷新后重新核对。') }
+    finally { setBusy(false) }
+  }}>
+    <PolicyFields value={value} onChange={setValue} />
+    {error && <p role="alert">{error}</p>}
+    <button className="btn btn-primary" disabled={busy}>{lang === 'en' ? 'Save policy' : '保存政策'}</button>
+  </form>
 }

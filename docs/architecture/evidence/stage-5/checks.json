@@ -1,0 +1,60 @@
+{
+  "backend_full": {
+    "passed": 1928,
+    "skipped": 0,
+    "log": "stage5-backend-final-all.log"
+  },
+  "sql_agent_full": {
+    "unittest": 1241,
+    "pytest": 6,
+    "skipped": 0,
+    "duplicate_contract_recheck_not_added": 41,
+    "log": "stage5-sql-full.log"
+  },
+  "frontend": {
+    "passed": 429,
+    "typecheck": true,
+    "build": true,
+    "log": "stage5-frontend-handoff.log"
+  },
+  "chromium": {
+    "passed": 8,
+    "log": "stage5-browser-handoff.log"
+  },
+  "operations": {
+    "passed": 13,
+    "log": "stage5-operations-final.log"
+  },
+  "prometheus": {
+    "config_valid": true,
+    "rules_valid": 18,
+    "log": "stage5-monitor-check.log"
+  },
+  "linux_report_permissions": {
+    "root_report_unreadable_before_handoff": true,
+    "runner_can_read_after_chown": true,
+    "report_mode": "0600",
+    "private_credentials_remain_unreadable": true,
+    "private_directory_mode": "0700"
+  },
+  "environment": {
+    "host": "macOS arm64",
+    "docker_architecture": "aarch64",
+    "docker_cpus": 12,
+    "docker_memory_bytes": 8319238144,
+    "production_data_used": false,
+    "real_model_calls": 0
+  },
+  "application_revision": "bca85be1845d13499c80e10ba96e8b39b734bd21",
+  "evidence_logs_sha256": {
+    "stage5-backend-final-all.log": "95a97707f24588574ad5e9c68383fbb136aa45549f2177d5b8440ece511a9296",
+    "stage5-sql-full.log": "f512dd0c0833c91e59397ed635e1d26596fee6e3e0768450482b5eb7c6f031c8",
+    "stage5-frontend-handoff.log": "f6555b7e209cd72a724a74a251e96fd9bdce20210fe7f679bae1b51ad3f20150",
+    "stage5-browser-handoff.log": "5ac15b5d240eebc03228b6cd2d1822ac0641be2681b7fb901f7d62bf269174c1",
+    "stage5-operations-final.log": "c9fb53754d848b1387ded251fcf786f27f92daccd13825f42434dd6a111f927a",
+    "stage5-monitor-check.log": "a5ee0907e2b81135aef8e621da3f22f39b5267626ea5df85e99bb072066b518f"
+  },
+  "operations_revision": "bca85be1845d13499c80e10ba96e8b39b734bd21",
+  "drill_containers_and_volumes_removed": true,
+  "production_backend_image_unchanged": "sha256:e3bd5c98419a4936937157ad70bcf59597126e48a6f0d1827f46d3eca947d404"
+}

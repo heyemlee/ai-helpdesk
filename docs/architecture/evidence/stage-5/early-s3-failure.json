@@ -1,0 +1,8 @@
+{
+  "started_at": 1793961029.739943,
+  "project": "aihd-stage5-f078588196",
+  "object_backend": "s3-compatible-local-fixture",
+  "resource_isolation_verified": true,
+  "failed_with": "EndpointConnectionError",
+  "original_report_sha256": "10d179b330fa87a34045384c3bbd7f9f92aec138907bc98886c530c0062a4083"
+}

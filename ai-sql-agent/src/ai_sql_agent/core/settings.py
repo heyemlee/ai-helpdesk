@@ -87,6 +87,10 @@ class SqlAgentSettings(BaseSettings):
         validation_alias=AliasChoices("AI_SQL_OPENAI_BASE_URL", "OPENAI_BASE_URL"),
     )
 
+    openai_api_mode: Literal["chat", "responses"] = Field(
+        default="chat", validation_alias=AliasChoices("AI_SQL_OPENAI_API_MODE", "OPENAI_API_MODE"),
+    )
+
     # ---- Anthropic 通道凭证 ----
     anthropic_api_key: str = Field(
         default="",
@@ -527,7 +531,7 @@ class SqlAgentSettings(BaseSettings):
         """按选中的厂商补齐端点与模型名，显式配置永远优先。"""
         if not self.chat_url:
             self.chat_url = build_endpoint(
-                self.base_url_of(self.model_provider), CHAT_PATH[self.model_provider]
+                self.base_url_of(self.model_provider), self.chat_path
             )
         if not self.embedding_url:
             self.embedding_url = build_endpoint(self.openai_base_url, "embeddings")
@@ -536,6 +540,10 @@ class SqlAgentSettings(BaseSettings):
         if not self.coder_model:
             self.coder_model = DEFAULT_CODER_MODEL[self.model_provider]
         return self
+
+    @property
+    def chat_path(self) -> str:
+        return "responses" if self.model_provider == "openai" and self.openai_api_mode == "responses" else CHAT_PATH[self.model_provider]
 
     def api_key_of(self, provider: str) -> str:
         """某一家协议当前配的 Key（没配是空串）。"""
@@ -615,7 +623,8 @@ def apply_model_overrides(base: SqlAgentSettings, store: Dict[str, Any]) -> SqlA
     merged = base.model_copy(
         update={name: values[name] for name in OVERRIDABLE if values.get(name)}
     )
-    merged.chat_url = build_endpoint(merged.base_url_of(provider), CHAT_PATH[provider])
+    merged.openai_api_mode = values.get("openai_api_mode", "chat")
+    merged.chat_url = build_endpoint(merged.base_url_of(provider), merged.chat_path)
     merged.chat_model = values.get("chat_model") or DEFAULT_CHAT_MODEL[provider]
     merged.coder_model = values.get("coder_model") or DEFAULT_CODER_MODEL[provider]
     merged._server_side = base

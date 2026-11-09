@@ -23,6 +23,7 @@ from typing import Any
 
 import pytest
 from conftest import ScriptedModel, text_step
+from evidence_fixtures import policy_hits, with_evidence
 from prometheus_client import REGISTRY
 
 from app.agents.agent_orchestrator import AgentOrchestrator, AgentType
@@ -55,6 +56,9 @@ ORDER_DATA = {
     "steps": [{"database": "wms_db", "success": True}],
 }
 
+
+KNOWLEDGE = policy_hits(KNOWLEDGE)
+ORDER_DATA = with_evidence(ORDER_DATA)
 
 class _Intent:
     def __init__(self, intent: IntentCategory, confidence: float = 0.9, urgency=UrgencyLevel.LOW,
@@ -350,16 +354,17 @@ async def test_the_stream_breaks_half_way_through(monkeypatch):
 
     frames, recorded = await _stream(main, log)
     assert frames["result"]["service_unavailable"]
-    assert frames["shown"].startswith("第一句已经发出去了。")
+    assert "第一句已经发出去了。" not in frames["shown"]
     assert _kinds(recorded)[-5:] == ["routed", "agent_started:order", "model_call:order", "agent_answered:order",
                                      "turn_completed"]
     failed_call = next(e for e in recorded if e["type"] == "model_call")["data"]
     assert (failed_call["status"], failed_call["error_type"], failed_call["usage"]) == ("error", "RuntimeError", None)
     answered = next(e for e in recorded if e["type"] == "agent_answered")["data"]
-    assert not answered["success"] and answered["sent_chars"] == len("第一句已经发出去了。")
+    assert not answered["success"] and answered["sent_chars"] == 0
     completed = recorded[-1]
-    assert completed["data"]["partial"] is True and completed["data"]["outcome"] == "unavailable"
-    assert completed["body"] == {"response": frames["result"]["response"], "shown": frames["shown"]}
+    assert completed["data"]["partial"] is False and completed["data"]["outcome"] == "unavailable"
+    assert set(completed["body"]) == {"response", "selected_evidence"}
+    assert completed["body"]["response"] == frames["result"]["response"]
     _assert_projects_to(recorded, meta=frames["meta"], result=frames["result"], routing=frames["routing"])
 
 
@@ -424,7 +429,7 @@ async def test_purged_text_still_projects_the_structure(monkeypatch):
     assert projected["complete"] and projected["redacted"]
     meta, result = projected["meta"], projected["result"]
     assert (meta["intent"], meta["knowledge_used"], meta["entities"]) == ("missing_part", True, {})
-    assert meta["knowledge_sources"] == [{k: v for k, v in s.items() if k not in ("title", "doc_title", "excerpt")}
+    assert meta["knowledge_sources"] == [{k: v for k, v in s.items() if k not in ("title", "doc_title", "excerpt", "content", "policy", "policy_scope")}
                                          for s in answer["knowledge_sources"]]
     assert meta["business_data"]["outcome"] == answer["business_data"]["outcome"] == "evidence"
     assert result["response"] == "" and result["agent_type"] == answer["agent_type"]
@@ -686,8 +691,11 @@ def _stable_turns(files: dict[str, str]) -> dict[str, str]:
     """每次运行都不一样的值换成固定的：耗时、时间戳、工单号、turn_id。turn_id 在几个文件里对得上。"""
     turns: dict[str, str] = {}
     tickets: dict[str, str] = {}
+    evidence_ids: dict[str, str] = {}
     out = {}
     for name, text in files.items():
+        text = re.sub(r"ev_[0-9a-f]{64}", lambda m: evidence_ids.setdefault(m.group(), "ev_" + f"{len(evidence_ids)+1:064x}"), text)
+        text = re.sub(r"20[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9:.]+(?:Z|[+]00:00)", "2026-11-06T00:00:00+00:00", text)
         text = re.sub(r'("(?:intent_)?latency_ms": )[\d.]+', r"\g<1>0.0", text)
         text = re.sub(r'("(?:created_at|updated_at)": )[\d.]+', r"\g<1>1760600000.0", text)
         text = re.sub(r"tk_[0-9a-f]{12}", lambda m: tickets.setdefault(m.group(), f"tk_{len(tickets) + 1:012d}"), text)

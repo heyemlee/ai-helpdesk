@@ -10,10 +10,12 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel
 
+from ai_sql_agent.api.business_evidence import BusinessEvidence, cells
 from ai_sql_agent.audit import AuditRecord
 from ai_sql_agent.core import log_event, usage_summary
 from ai_sql_agent.core.logging_setup import get_logger
@@ -61,6 +63,7 @@ class StepLogResponse(BaseModel):
     否则调用方分不清「服务配置的上限封顶」还是「被临时调小的上限截了」。
     """
 
+    observed_at: Optional[str] = None
     as_of: Optional[str] = None
     """数据时点，RFC 3339（契约 §4.6.4）。"""
 
@@ -69,6 +72,9 @@ class StepLogResponse(BaseModel):
 
     column_units: Dict[str, str] = {}
     """结果列 → 单位标识（契约 §4.6.5）。判不出来的列不出现。"""
+
+    column_metadata: Dict[str, Dict[str, str]] = {}
+    """Optional configured field meaning, bound to the executed SQL and source."""
 
     source_records: List[Dict[str, Any]] = []
     """来源记录标识（契约 §4.6.6）。给不出来时为空，溯源退回 trace_id + final_sql。"""
@@ -116,6 +122,9 @@ class ResultSummary:
     currency: Optional[str] = None
     """§4.6.5。多币种时为 None，调用方逐列读 steps[].column_units。"""
 
+    evidence: List[BusinessEvidence] = field(default_factory=list)
+    observed_at: Optional[str] = None
+
     def data_part(self) -> Dict[str, Any]:
         """
         artifact 的 data part（契约 §4.4 / §4.6）。
@@ -148,6 +157,8 @@ class ResultSummary:
             "as_of": self.as_of,
             "as_of_source": self.as_of_source,
             "currency": self.currency,
+            "observed_at": self.observed_at,
+            "evidence": [item.model_dump() for item in self.evidence],
             "steps": [step.model_dump() for step in self.step_logs],
         }
 
@@ -207,9 +218,11 @@ def summarize_result(result) -> ResultSummary:
                 # §4.6.3：truncated 为真时 row_limit 必须有值。执行器一定会给，
                 # 这里兜的是「历史记录回放 / 旧格式」这类拿不到的情况。
                 row_limit=(int(row_limit) if row_limit is not None else None),
+                observed_at=(execution.get("observed_at") or None),
                 as_of=(execution.get("as_of") or None),
                 as_of_source=(execution.get("as_of_source") or None),
                 column_units=dict(getattr(log, "column_units", {}) or {}),
+                column_metadata=dict(getattr(log, "column_metadata", {}) or {}),
                 source_records=list(getattr(log, "source_records", []) or []),
             ))
         tables = sorted({t for ts in result.pipeline_result.selected_tables.values() for t in ts})
@@ -233,6 +246,7 @@ def summarize_result(result) -> ResultSummary:
         route=route, confidence=result.decision.confidence,
         reason=result.decision.reason, answer=result.answer,
         queried_database=result.queried_database,
+        evidence=cells(step_logs), observed_at=_observed_at(step_logs),
         step_logs=step_logs, selected_databases=selected, tables=tables,
         sqls=[{"database": s.database, "sql": s.final_sql} for s in step_logs if s.final_sql],
         audit_sqls=audit_sqls,
@@ -251,6 +265,16 @@ def summarize_result(result) -> ResultSummary:
     )
 
 
+def _observed_at(steps):
+    # Only original successful execution timestamps count. Re-summarizing an old
+    # result/checkpoint must never turn it into a newly checked fact.
+    try:
+        times = [datetime.fromisoformat(s.observed_at.replace("Z", "+00:00")) for s in steps if s.success]
+    except (ValueError, AttributeError):
+        return None
+    return min(times).isoformat() if times and all(t.tzinfo for t in times) else None
+
+
 def _resolve_as_of(step_logs: List[StepLogResponse]):
     """
     顶层数据时点（契约 §4.6.4）。
@@ -262,12 +286,21 @@ def _resolve_as_of(step_logs: List[StepLogResponse]):
     来源不一致（一步读主库、一步读快照）时降级为 `unknown`，
     契约要求这种情况下调用方不得表述时点。
     """
-    stamps = [s.as_of for s in step_logs if s.success and s.as_of]
+    from datetime import datetime
+    successful = [s for s in step_logs if s.success]
+    if any(not s.as_of or s.as_of_source not in {"query_time", "snapshot"} for s in successful):
+        return None, "unknown"
+    try:
+        stamps = [datetime.fromisoformat(s.as_of.replace("Z", "+00:00")) for s in successful]
+        if any(not t.tzinfo for t in stamps):
+            return None, "unknown"
+    except ValueError:
+        return None, "unknown"
     if not stamps:
         return None, None
     sources = {s.as_of_source for s in step_logs if s.success and s.as_of}
     source = sources.pop() if len(sources) == 1 else "unknown"
-    return min(stamps), (source or "unknown")
+    return min(stamps).isoformat(), (source or "unknown")
 
 
 def apply_summary_to_audit(summary: ResultSummary, audit: AuditRecord) -> None:

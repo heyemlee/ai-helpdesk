@@ -64,6 +64,7 @@ from ai_sql_agent.generation import (
     SqlGenerator,
 )
 from ai_sql_agent.normalization import FiscalConfig, QueryNormalizer
+from ai_sql_agent.generation.projection import RawProjectionError
 from ai_sql_agent.validation import ResultValidator, SemanticSelfChecker
 from ai_sql_agent.repair import SqlRepairService
 
@@ -733,6 +734,18 @@ class Text2SQLPipeline:
             },
         )
 
+    @staticmethod
+    def _raw_projection_failure(cot_step, local_schema, error):
+        return StepExecutionLog(
+            database=cot_step.database, cot_step=cot_step,
+            local_schema=local_schema.to_prompt_context(), sql=error.sql,
+            execution_request={}, execution_result={
+                "database": cot_step.database, "sql": error.sql,
+                "success": False, "columns": [], "rows": [], "row_count": 0,
+                "truncated": False, "error": str(error), "error_category": "raw_projection_incomplete",
+            },
+        ), None
+
     def _run_step(
         self,
         query: str,
@@ -811,7 +824,10 @@ class Text2SQLPipeline:
                     sql_dialect=step_dialect,
                     previous_results=previous_results,
                     certified_examples=certified_examples,
+                    user_query=effective_query,
                 )
+            except RawProjectionError as exc:
+                return self._raw_projection_failure(sql_cot_step, local_schema, exc)
             except ModelCallError as exc:
                 generation_error = exc
                 sql_result = None
@@ -826,15 +842,19 @@ class Text2SQLPipeline:
         # 「no such table」。这类错误静态就能判出来，不必等数据库报错——
         # 而且带着「哪张表不在这个库」的提示重生成，比让修复回路去猜有效。
         if sql_result is not None and self.config.enable_cross_db_guard:
-            sql_result = self._enforce_step_database(
-                sql_result=sql_result,
-                cot_step=sql_cot_step,
-                generator=sql_generator,
-                dialect=step_dialect,
-                previous_results=previous_results,
-                step_index=step_index,
-                certified_examples=certified_examples,
-            )
+            try:
+                sql_result = self._enforce_step_database(
+                    sql_result=sql_result,
+                    cot_step=sql_cot_step,
+                    generator=sql_generator,
+                    dialect=step_dialect,
+                    previous_results=previous_results,
+                    step_index=step_index,
+                    certified_examples=certified_examples,
+                    user_query=effective_query,
+                )
+            except RawProjectionError as exc:
+                return self._raw_projection_failure(sql_cot_step, local_schema, exc)
 
         if generation_error is not None:
             raise _ModelUnavailable("sql_generation", generation_error)
@@ -931,7 +951,7 @@ class Text2SQLPipeline:
                 final_sql = outcome.final_sql
 
         # 单位先算出来：语义自检要拿它当已知事实（见 self_check._UNIT_FACTS）
-        units, records = self._provenance(
+        units, records, metadata = self._provenance(
             database=sql_cot_step.database,
             sql=final_sql,
             execution_result=execution_result,
@@ -964,6 +984,9 @@ class Text2SQLPipeline:
                         else ""
                     ),
                     column_units=units,
+                    key_facts=provenance.record_key_facts(
+                        self.semantic, database=sql_cot_step.database, sql=final_sql,
+                        dialect=step_dialect, columns=list(execution_result.columns or [])),
                 )
                 validation_payload = outcome.to_dict()
                 for finding in outcome.findings:
@@ -988,6 +1011,7 @@ class Text2SQLPipeline:
             validation=validation_payload,
             column_units=units,
             source_records=records,
+            column_metadata=metadata,
         )
         return step_log, execution_result
 
@@ -1050,6 +1074,7 @@ class Text2SQLPipeline:
         previous_results: str,
         step_index: int,
         certified_examples: str = "",
+        user_query: str = "",
     ):
         """
         校验 SQL 只引用当前步骤目标库的表；越界则带提示重生成一次。
@@ -1100,6 +1125,7 @@ class Text2SQLPipeline:
                 sql_dialect=dialect,
                 previous_results=previous_results,
                 certified_examples=certified_examples,
+                **({"user_query": user_query} if user_query else {}),
             )
         except ModelCallError:
             return sql_result
@@ -1427,7 +1453,7 @@ class Text2SQLPipeline:
             if not execution_result.success:
                 return []
 
-            units, records = self._provenance(
+            units, records, metadata = self._provenance(
                 database=database, sql=sql, execution_result=execution_result
             )
             step_logs.append(
@@ -1441,6 +1467,7 @@ class Text2SQLPipeline:
                     final_sql=sql,
                     column_units=units,
                     source_records=records,
+                    column_metadata=metadata,
                 )
             )
             log_event(
@@ -1602,7 +1629,7 @@ class Text2SQLPipeline:
         契约把「缺失」定义成「未知」，而不是「没有」。
         """
         if not execution_result.success:
-            return {}, []
+            return {}, [], {}
 
         dialect = self._dialect_name(database)
         columns = list(execution_result.columns or [])
@@ -1621,7 +1648,9 @@ class Text2SQLPipeline:
             columns=columns,
             rows=list(execution_result.rows or []),
         )
-        return units, records
+        metadata = provenance.column_metadata(self.semantic, database=database, sql=sql,
+                                               dialect=dialect, columns=columns)
+        return units, records, metadata
 
     def _dialect_name(self, database: str) -> str:
         """这个库的执行器方言，解析 SQL 时要用。"""

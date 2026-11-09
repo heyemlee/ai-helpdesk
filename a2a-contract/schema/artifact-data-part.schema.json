@@ -3,13 +3,20 @@
   "$id": "https://github.com/heyemlee/a2a-contract/schema/artifact-data-part.schema.json",
   "title": "artifact 的 data part",
   "description": "契约 §4.4 / §4.6。message/send 与 message/stream **完全同构**，两条 transport 用同一份 schema——这正是 §4.4「调用方走 send 还是走 stream，能做的信任判断必须一模一样」的机器可校验版本。校验的对象是 parts[] 里 kind==\"data\" 那一项的 data 对象本身。",
-
   "type": "object",
-  "required": ["queried_database", "has_risk", "degraded", "execution_status", "trace_id", "route", "steps"],
-
+  "required": [
+    "queried_database",
+    "has_risk",
+    "degraded",
+    "execution_status",
+    "trace_id",
+    "route",
+    "steps",
+    "evidence",
+    "observed_at"
+  ],
   "$comment": "additionalProperties 策略（§4.6 要求的前向兼容）：**允许新增字段**。理由——§4.6 明确列了一批待实现字段（execution_status / failed_steps / result_truncated / as_of / currency / source_records），服务端把它们加上来时不得让调用方的校验挂掉。反过来，**删除、改名、改类型都会被 required 与 type 挡住**，那才是本 schema 要防的方向。调用方必须容忍未知字段（与 §4.3「必须容忍缺失」同源）。",
   "additionalProperties": true,
-
   "properties": {
     "queried_database": {
       "$ref": "#/$defs/strictBoolean",
@@ -23,34 +30,101 @@
       "$ref": "#/$defs/strictBoolean",
       "description": "§4.6.7：**缺失按 true 处置**。degraded=true 仍是 state:\"completed\"，理由见 §4.6.8。"
     },
-    "degrade_reason": { "type": "string" },
-    "trace_id": { "type": "string", "minLength": 1 },
-    "route": { "type": "string" },
-    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "degrade_reason": {
+      "type": "string"
+    },
+    "trace_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "route": {
+      "type": "string"
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
     "selected_databases": {
       "type": "array",
-      "items": { "$ref": "database-id.schema.json" }
+      "items": {
+        "$ref": "database-id.schema.json"
+      }
     },
-
     "execution_status": {
       "$comment": "§4.6.1。✅ v1.12 提级为必填（§6 契约变更）——两侧服务端都已下发，判据不再靠调用方 reduce。**提级的后果：缺这个字段的载荷不再是「按过渡判据推导」，而是校验不通过**，反例见 dp-trust-01。调用方仍应保留从 steps[] 推导的能力，但那已是对非合规载荷的防御，不是契约路径（§4.6.7）。",
-      "enum": ["success", "partial_success", "no_data", "failed", "not_applicable"]
+      "enum": [
+        "success",
+        "partial_success",
+        "no_data",
+        "failed",
+        "not_applicable"
+      ]
     },
-    "succeeded_steps": { "type": "integer", "minimum": 0, "$comment": "§4.6.2 ✅ 已下发（data_part）" },
-    "failed_steps":    { "type": "integer", "minimum": 0, "$comment": "§4.6.2 ✅ 已下发（data_part）" },
-    "repaired_steps":  { "type": "integer", "minimum": 0, "$comment": "§4.6.2 ✅ 已下发（data_part）" },
-    "result_truncated": { "$ref": "#/$defs/strictBoolean", "$comment": "§4.6.3 ✅ = any(steps[].truncated)。缺失按 true 处置。" },
-
-    "as_of":        { "type": ["string", "null"], "format": "date-time", "$comment": "§4.6.4 ✅ 顶层取成功步骤里最早的时点" },
-    "as_of_source": { "enum": ["query_time", "snapshot", "unknown"], "$comment": "§4.6.4 ✅ 各步来源不一致时顶层为 unknown" },
-    "currency":     { "type": ["string", "null"], "pattern": "^[A-Z]{3}$", "$comment": "§4.6.5 🔨 ISO 4217" },
-
+    "succeeded_steps": {
+      "type": "integer",
+      "minimum": 0,
+      "$comment": "§4.6.2 ✅ 已下发（data_part）"
+    },
+    "failed_steps": {
+      "type": "integer",
+      "minimum": 0,
+      "$comment": "§4.6.2 ✅ 已下发（data_part）"
+    },
+    "repaired_steps": {
+      "type": "integer",
+      "minimum": 0,
+      "$comment": "§4.6.2 ✅ 已下发（data_part）"
+    },
+    "result_truncated": {
+      "$ref": "#/$defs/strictBoolean",
+      "$comment": "§4.6.3 ✅ = any(steps[].truncated)。缺失按 true 处置。"
+    },
+    "as_of": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "$comment": "§4.6.4 ✅ 顶层取成功步骤里最早的时点"
+    },
+    "as_of_source": {
+      "enum": [
+        "query_time",
+        "snapshot",
+        "unknown",
+        null
+      ],
+      "$comment": "§4.6.4 ✅ 各步来源不一致时顶层为 unknown"
+    },
+    "currency": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[A-Z]{3}$",
+      "$comment": "§4.6.5 🔨 ISO 4217"
+    },
     "steps": {
       "type": "array",
-      "items": { "$ref": "#/$defs/step" }
+      "items": {
+        "$ref": "#/$defs/step"
+      }
+    },
+    "observed_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/businessEvidence"
+      }
     }
   },
-
   "$defs": {
     "strictBoolean": {
       "$comment": "**严格布尔。** 不接受 \"true\" / \"false\" / 0 / 1 —— §9.1 的缺口就是 bool(\"false\") 为真造成的。类型不对时按 §4.6.7 的表处置，不做宽容转换。",
@@ -58,35 +132,339 @@
     },
     "step": {
       "type": "object",
-      "required": ["database", "success", "row_count", "truncated"],
+      "required": [
+        "database",
+        "success",
+        "row_count",
+        "truncated",
+        "rows"
+      ],
       "additionalProperties": true,
       "properties": {
-        "database":   { "$ref": "database-id.schema.json" },
-        "success":    { "$ref": "#/$defs/strictBoolean", "$comment": "§4.6.2。缺失按 false 处置。" },
-        "row_count":  { "type": "integer", "minimum": 0 },
-        "truncated":  { "$ref": "#/$defs/strictBoolean", "$comment": "§4.6.3。缺失按 true 处置。" },
-        "row_limit":  { "type": ["integer", "null"], "minimum": 1, "$comment": "§4.6.3 ✅ truncated=true 时必须有值" },
-        "sql":        { "type": "string" },
-        "final_sql":  { "type": "string", "$comment": "实际执行的那条（修复后的）" },
-        "error":      { "type": ["string", "null"], "$comment": "§4.6.2：null ⟺ success == true" },
-        "rows":       { "type": "array" },
-        "repair_attempts": { "type": "array", "$comment": "长度 ≤ max_repair_attempts（默认 2，§4.5）" },
-        "risk_findings":   { "type": "array", "$comment": "非空 ⟺ 该步对 has_risk 有贡献" },
-        "column_units":    { "type": "object", "$comment": "§4.6.5 🔨 列名 → 单位标识" },
-        "source_records":  { "type": "array", "$comment": "§4.6.6 🔨" }
+        "database": {
+          "$ref": "database-id.schema.json"
+        },
+        "success": {
+          "$ref": "#/$defs/strictBoolean",
+          "$comment": "§4.6.2。缺失按 false 处置。"
+        },
+        "row_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "truncated": {
+          "$ref": "#/$defs/strictBoolean",
+          "$comment": "§4.6.3。缺失按 true 处置。"
+        },
+        "row_limit": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "$comment": "§4.6.3 ✅ truncated=true 时必须有值"
+        },
+        "sql": {
+          "type": "string"
+        },
+        "final_sql": {
+          "type": "string",
+          "$comment": "实际执行的那条（修复后的）"
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "$comment": "§4.6.2：null ⟺ success == true"
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "repair_attempts": {
+          "type": "array",
+          "$comment": "长度 ≤ max_repair_attempts（默认 2，§4.5）"
+        },
+        "risk_findings": {
+          "type": "array",
+          "$comment": "非空 ⟺ 该步对 has_risk 有贡献"
+        },
+        "column_units": {
+          "type": "object",
+          "$comment": "§4.6.5 🔨 列名 → 单位标识",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "source_records": {
+          "type": "array",
+          "$comment": "§4.6.6 🔨",
+          "items": {
+            "type": "object"
+          }
+        },
+        "as_of": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "as_of_source": {
+          "enum": [
+            "query_time",
+            "snapshot",
+            "unknown",
+            null
+          ]
+        },
+        "observed_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "column_metadata": {
+          "type": "object",
+          "description": "Optional current source field meaning, keyed by direct result column. Missing means unknown.",
+          "additionalProperties": {
+            "$ref": "#/$defs/columnMetadata"
+          }
+        }
       },
       "allOf": [
         {
           "$comment": "§4.6.2：error 与 success 必须自洽——成功的步骤不得带 error 字符串。",
-          "if": { "properties": { "success": { "const": true } }, "required": ["success"] },
-          "then": { "properties": { "error": { "type": "null" } } }
+          "if": {
+            "properties": {
+              "success": {
+                "const": true
+              }
+            },
+            "required": [
+              "success"
+            ]
+          },
+          "then": {
+            "properties": {
+              "error": {
+                "type": "null"
+              }
+            }
+          }
         },
         {
           "$comment": "§4.6.3：truncated=true 时 row_limit 必须有值，否则调用方无法判断是被哪个上限截的。服务端已输出 row_limit（执行器回填生效的上限），这条约束对线上载荷生效（fixtures 里有对应用例）。",
-          "if": { "properties": { "truncated": { "const": true } }, "required": ["truncated", "row_limit"] },
-          "then": { "properties": { "row_limit": { "type": "integer" } } }
+          "if": {
+            "properties": {
+              "truncated": {
+                "const": true
+              }
+            },
+            "required": [
+              "truncated"
+            ]
+          },
+          "then": {
+            "properties": {
+              "row_limit": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "row_limit"
+            ]
+          }
         }
       ]
+    },
+    "businessEvidence": {
+      "type": "object",
+      "required": [
+        "evidence_id",
+        "entity",
+        "field",
+        "value",
+        "unit",
+        "as_of",
+        "as_of_source",
+        "database",
+        "step_index",
+        "row_index",
+        "query_hash",
+        "source_records",
+        "issues"
+      ],
+      "properties": {
+        "evidence_id": {
+          "type": "string",
+          "pattern": "^ev_[a-f0-9]{64}$"
+        },
+        "entity": {
+          "type": "object",
+          "required": [
+            "kind",
+            "query_hash",
+            "row_index"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "query_row"
+            },
+            "query_hash": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "row_index": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "field": {
+          "type": "string",
+          "minLength": 1
+        },
+        "value": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ]
+        },
+        "unit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "as_of": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "as_of_source": {
+          "enum": [
+            "query_time",
+            "snapshot",
+            "unknown",
+            null
+          ]
+        },
+        "database": {
+          "$ref": "database-id.schema.json"
+        },
+        "step_index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "row_index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "query_hash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "source_records": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "issues": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "missing_unit",
+              "missing_time",
+              "missing_provenance",
+              "truncated"
+            ]
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "columnMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "database",
+        "table",
+        "column",
+        "description",
+        "schema_revision",
+        "query_hash",
+        "output_field"
+      ],
+      "properties": {
+        "database": {
+          "$ref": "database-id.schema.json"
+        },
+        "table": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "column": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "label_zh": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "label_en": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "business_usage": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "semantic_role": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "schema_revision": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "query_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "output_field": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        }
+      }
     }
   }
 }

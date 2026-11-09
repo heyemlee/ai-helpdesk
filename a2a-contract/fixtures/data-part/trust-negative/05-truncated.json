@@ -16,7 +16,7 @@
       "sql": "SELECT sku, qty FROM stock",
       "final_sql": "SELECT sku, qty FROM stock LIMIT 10000",
       "success": true,
-      "row_count": 10000,
+      "row_count": 1,
       "truncated": true,
       "row_limit": 10000,
       "rows": [
@@ -27,7 +27,52 @@
       ],
       "error": null,
       "repair_attempts": [],
-      "risk_findings": []
+      "risk_findings": [],
+      "as_of": "2026-11-06T00:00:00Z",
+      "as_of_source": "query_time",
+      "column_units": {},
+      "source_records": []
     }
-  ]
+  ],
+  "evidence": [
+    {
+      "evidence_id": "ev_d17f288d35dd78490a9781084633473832d090f8195ec80473c0acbf97ebe9ef",
+      "entity": {
+        "kind": "query_row",
+        "query_hash": "20cdaec10e0670f0970c2de4d5201285a52e8542684edf38f3c75de7ed82ae46",
+        "row_index": 0
+      },
+      "field": "sku",
+      "value": "SKU-0001",
+      "unit": null,
+      "as_of": "2026-11-06T00:00:00Z",
+      "as_of_source": "query_time",
+      "database": "wms_db",
+      "step_index": 0,
+      "row_index": 0,
+      "query_hash": "20cdaec10e0670f0970c2de4d5201285a52e8542684edf38f3c75de7ed82ae46",
+      "source_records": [],
+      "issues": []
+    },
+    {
+      "evidence_id": "ev_2ad8217c0d6c66cb89c982900005104c26ac77cdf5469fef701d1bf29062ec0b",
+      "entity": {
+        "kind": "query_row",
+        "query_hash": "20cdaec10e0670f0970c2de4d5201285a52e8542684edf38f3c75de7ed82ae46",
+        "row_index": 0
+      },
+      "field": "qty",
+      "value": 3,
+      "unit": null,
+      "as_of": "2026-11-06T00:00:00Z",
+      "as_of_source": "query_time",
+      "database": "wms_db",
+      "step_index": 0,
+      "row_index": 0,
+      "query_hash": "20cdaec10e0670f0970c2de4d5201285a52e8542684edf38f3c75de7ed82ae46",
+      "source_records": [],
+      "issues": []
+    }
+  ],
+  "observed_at": "2026-11-06T00:00:00Z"
 }

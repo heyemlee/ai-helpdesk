@@ -1,0 +1,890 @@
+{
+  "observed": {
+    "case": {
+      "case_id": "tk_72c1e630ac93",
+      "control_mode": "assistant",
+      "control_version": 1,
+      "conv_id": "df103e44-7cc2-4992-a6bb-fdbde315eab2",
+      "created_at": 1793990801.333083,
+      "created_by": "emp_7ee668b99729454fb0310493bbbb4f85",
+      "customer_ref": "",
+      "drafts": [
+        {
+          "approved_by": null,
+          "body": "订单 SO-2026-11002 [1]\n数据时点 2026-11-06T18:46:59.911Z\n- 配送日期: 2026-11-12\n订单 SO-2026-11002 [2]\n数据时点 2026-11-06T18:47:07.834Z\n- delivery status: 已送达\n\n以上为可核对的资料。涉及补件、责任、金额或交期承诺，请由员工按适用政策审核后处理。",
+          "body_hash": "444106d7d9de8c7707eb15d82253b33fc375e3efdbcb881b1a73f55d4b8a236e",
+          "case_id": "tk_72c1e630ac93",
+          "control_version": 1,
+          "created_at": 1793990839.650412,
+          "evidence": [
+            {
+              "attempted": true,
+              "databases": [
+                "erp_db",
+                "svc_db",
+                "prod_db"
+              ],
+              "degraded": false,
+              "enabled": true,
+              "evidence": [
+                {
+                  "as_of": "2026-11-06T18:46:59.911Z",
+                  "as_of_source": "query_time",
+                  "database": "erp_db",
+                  "entity": {
+                    "kind": "query_row",
+                    "query_hash": "78441fab3d6861641b3a82816413a81fe0bff9c5d3930a25be7d9522bc0f7798",
+                    "row_index": 0
+                  },
+                  "entity_keys": {
+                    "order_no": "SO-2026-11002"
+                  },
+                  "evidence_id": "ev_59cdefd17d1f24e96346bee40692168ed57e70610977889cb173021b49896519",
+                  "field": "order_no",
+                  "issues": [],
+                  "observed_at": "2026-11-06T18:46:59.912000+00:00",
+                  "query_hash": "78441fab3d6861641b3a82816413a81fe0bff9c5d3930a25be7d9522bc0f7798",
+                  "row_index": 0,
+                  "run_id": "dd43971ba24f4073901dc5665fcd28c0",
+                  "source_records": [
+                    {
+                      "database": "erp_db",
+                      "key_columns": [
+                        "order_no"
+                      ],
+                      "keys": [
+                        "SO-2026-11002"
+                      ],
+                      "table": "orders",
+                      "truncated": false
+                    }
+                  ],
+                  "step_index": 0,
+                  "trace_id": "a653296d1dc5415c",
+                  "unit": null,
+                  "value": "SO-2026-11002"
+                },
+                {
+                  "as_of": "2026-11-06T18:46:59.911Z",
+                  "as_of_source": "query_time",
+                  "database": "erp_db",
+                  "entity": {
+                    "kind": "query_row",
+                    "query_hash": "78441fab3d6861641b3a82816413a81fe0bff9c5d3930a25be7d9522bc0f7798",
+                    "row_index": 0
+                  },
+                  "entity_keys": {
+                    "order_no": "SO-2026-11002"
+                  },
+                  "evidence_id": "ev_636f2c80d3fb4dbf74798e120eaf5bd35d094795e49d1683f3dfad0d3f825d67",
+                  "field": "delivery_date",
+                  "issues": [],
+                  "observed_at": "2026-11-06T18:46:59.912000+00:00",
+                  "query_hash": "78441fab3d6861641b3a82816413a81fe0bff9c5d3930a25be7d9522bc0f7798",
+                  "row_index": 0,
+                  "run_id": "dd43971ba24f4073901dc5665fcd28c0",
+                  "source_records": [
+                    {
+                      "database": "erp_db",
+                      "key_columns": [
+                        "order_no"
+                      ],
+                      "keys": [
+                        "SO-2026-11002"
+                      ],
+                      "table": "orders",
+                      "truncated": false
+                    }
+                  ],
+                  "step_index": 0,
+                  "trace_id": "a653296d1dc5415c",
+                  "unit": null,
+                  "value": "2026-11-12"
+                },
+                {
+                  "as_of": "2026-11-06T18:47:07.834Z",
+                  "as_of_source": "query_time",
+                  "database": "svc_db",
+                  "entity": {
+                    "kind": "query_row",
+                    "query_hash": "061677a41e3ba3a3016e8362ecaae0d0735486cf387a310fe047ef2cc77f1e5a",
+                    "row_index": 0
+                  },
+                  "entity_keys": {
+                    "order_no": "SO-2026-11002"
+                  },
+                  "evidence_id": "ev_d77dc24a60d8c579e8aaf0737c4238bfab758b814a108220a538f1913a99fca0",
+                  "field": "order_no",
+                  "issues": [],
+                  "observed_at": "2026-11-06T18:46:59.912000+00:00",
+                  "query_hash": "061677a41e3ba3a3016e8362ecaae0d0735486cf387a310fe047ef2cc77f1e5a",
+                  "row_index": 0,
+                  "run_id": "dd43971ba24f4073901dc5665fcd28c0",
+                  "source_records": [],
+                  "step_index": 1,
+                  "trace_id": "a653296d1dc5415c",
+                  "unit": null,
+                  "value": "SO-2026-11002"
+                },
+                {
+                  "as_of": "2026-11-06T18:47:07.834Z",
+                  "as_of_source": "query_time",
+                  "database": "svc_db",
+                  "entity": {
+                    "kind": "query_row",
+                    "query_hash": "061677a41e3ba3a3016e8362ecaae0d0735486cf387a310fe047ef2cc77f1e5a",
+                    "row_index": 0
+                  },
+                  "entity_keys": {
+                    "order_no": "SO-2026-11002"
+                  },
+                  "evidence_id": "ev_218323daf6aff4de8da398fb8458f0d36c6ece919a454842f5b439a8fc791328",
+                  "field": "delivery_status",
+                  "issues": [],
+                  "observed_at": "2026-11-06T18:46:59.912000+00:00",
+                  "query_hash": "061677a41e3ba3a3016e8362ecaae0d0735486cf387a310fe047ef2cc77f1e5a",
+                  "row_index": 0,
+                  "run_id": "dd43971ba24f4073901dc5665fcd28c0",
+                  "source_records": [],
+                  "step_index": 1,
+                  "trace_id": "a653296d1dc5415c",
+                  "unit": null,
+                  "value": "已送达"
+                }
+              ],
+              "evidence_issues": [],
+              "evidence_payload": {
+                "answer": "已完成数据库查询。查询结果：[{\"database\": \"erp_db\", \"sql\": \"SELECT order_no, delivery_date\\nFROM orders\\nWHERE order_no = 'SO-2026-11002';\", \"success\": true, \"columns\": [\"order_no\", \"delivery_date\"], \"rows\": [{\"order_no\": \"SO-2026-11002\", \"delivery_date\": \"2026-11-12\"}], \"row_count\": 1, \"error\": null, \"truncated\": false, \"row_limit\": 1000, \"as_of\": \"2026-11-06T18:46:59.911Z\", \"as_of_source\": \"query_time\"}, {\"database\": \"svc_db\", \"sql\": \"SELECT DISTINCT order_no, delivery_status\\nFROM delivery\\nWHERE order_no = 'SO-2026-11002';\", \"success\": true, \"columns\": [\"order_no\", \"delivery_status\"], \"rows\": [{\"order_no\": \"SO-2026-11002\", \"delivery_status\": \"已送达\"}], \"row_count\": 1, \"error\": null, \"truncated\": false, \"row_limit\": 1000, \"as_of\": \"2026-11-06T18:47:07.834Z\", \"as_of_source\": \"query_time\"}]",
+                "as_of": "2026-11-06T18:46:59.911000+00:00",
+                "as_of_source": "query_time",
+                "currency": null,
+                "degrade_reason": "",
+                "degraded": false,
+                "evidence": [
+                  {
+                    "as_of": "2026-11-06T18:46:59.911Z",
+                    "as_of_source": "query_time",
+                    "database": "erp_db",
+                    "entity": {
+                      "kind": "query_row",
+                      "query_hash": "78441fab3d6861641b3a82816413a81fe0bff9c5d3930a25be7d9522bc0f7798",
+                      "row_index": 0
+                    },
+                    "evidence_id": "ev_59cdefd17d1f24e96346bee40692168ed57e70610977889cb173021b49896519",
+                    "field": "order_no",
+                    "issues": [],
+                    "query_hash": "78441fab3d6861641b3a82816413a81fe0bff9c5d3930a25be7d9522bc0f7798",
+                    "row_index": 0,
+                    "source_records": [
+                      {
+                        "database": "erp_db",
+                        "key_columns": [
+                          "order_no"
+                        ],
+                        "keys": [
+                          "SO-2026-11002"
+                        ],
+                        "table": "orders",
+                        "truncated": false
+                      }
+                    ],
+                    "step_index": 0,
+                    "unit": null,
+                    "value": "SO-2026-11002"
+                  },
+                  {
+                    "as_of": "2026-11-06T18:46:59.911Z",
+                    "as_of_source": "query_time",
+                    "database": "erp_db",
+                    "entity": {
+                      "kind": "query_row",
+                      "query_hash": "78441fab3d6861641b3a82816413a81fe0bff9c5d3930a25be7d9522bc0f7798",
+                      "row_index": 0
+                    },
+                    "evidence_id": "ev_636f2c80d3fb4dbf74798e120eaf5bd35d094795e49d1683f3dfad0d3f825d67",
+                    "field": "delivery_date",
+                    "issues": [],
+                    "query_hash": "78441fab3d6861641b3a82816413a81fe0bff9c5d3930a25be7d9522bc0f7798",
+                    "row_index": 0,
+                    "source_records": [
+                      {
+                        "database": "erp_db",
+                        "key_columns": [
+                          "order_no"
+                        ],
+                        "keys": [
+                          "SO-2026-11002"
+                        ],
+                        "table": "orders",
+                        "truncated": false
+                      }
+                    ],
+                    "step_index": 0,
+                    "unit": null,
+                    "value": "2026-11-12"
+                  },
+                  {
+                    "as_of": "2026-11-06T18:47:07.834Z",
+                    "as_of_source": "query_time",
+                    "database": "svc_db",
+                    "entity": {
+                      "kind": "query_row",
+                      "query_hash": "061677a41e3ba3a3016e8362ecaae0d0735486cf387a310fe047ef2cc77f1e5a",
+                      "row_index": 0
+                    },
+                    "evidence_id": "ev_d77dc24a60d8c579e8aaf0737c4238bfab758b814a108220a538f1913a99fca0",
+                    "field": "order_no",
+                    "issues": [],
+                    "query_hash": "061677a41e3ba3a3016e8362ecaae0d0735486cf387a310fe047ef2cc77f1e5a",
+                    "row_index": 0,
+                    "source_records": [],
+                    "step_index": 1,
+                    "unit": null,
+                    "value": "SO-2026-11002"
+                  },
+                  {
+                    "as_of": "2026-11-06T18:47:07.834Z",
+                    "as_of_source": "query_time",
+                    "database": "svc_db",
+                    "entity": {
+                      "kind": "query_row",
+                      "query_hash": "061677a41e3ba3a3016e8362ecaae0d0735486cf387a310fe047ef2cc77f1e5a",
+                      "row_index": 0
+                    },
+                    "evidence_id": "ev_218323daf6aff4de8da398fb8458f0d36c6ece919a454842f5b439a8fc791328",
+                    "field": "delivery_status",
+                    "issues": [],
+                    "query_hash": "061677a41e3ba3a3016e8362ecaae0d0735486cf387a310fe047ef2cc77f1e5a",
+                    "row_index": 0,
+                    "source_records": [],
+                    "step_index": 1,
+                    "unit": null,
+                    "value": "已送达"
+                  }
+                ],
+                "execution_status": "success",
+                "has_risk": false,
+                "observed_at": "2026-11-06T18:46:59.912000+00:00",
+                "queried_database": true,
+                "result_truncated": false,
+                "route": "database_query",
+                "run_id": "dd43971ba24f4073901dc5665fcd28c0",
+                "selected_databases": [
+                  "erp_db",
+                  "svc_db",
+                  "prod_db"
+                ],
+                "steps": [
+                  {
+                    "as_of": "2026-11-06T18:46:59.911Z",
+                    "as_of_source": "query_time",
+                    "column_units": {},
+                    "database": "erp_db",
+                    "error": null,
+                    "final_sql": "SELECT order_no, delivery_date\nFROM orders\nWHERE order_no = 'SO-2026-11002';",
+                    "observed_at": "2026-11-06T18:46:59.912Z",
+                    "repair_attempts": [],
+                    "risk_findings": [],
+                    "row_count": 1,
+                    "row_limit": 1000,
+                    "rows": [
+                      {
+                        "delivery_date": "2026-11-12",
+                        "order_no": "SO-2026-11002"
+                      }
+                    ],
+                    "source_records": [
+                      {
+                        "database": "erp_db",
+                        "key_columns": [
+                          "order_no"
+                        ],
+                        "keys": [
+                          "SO-2026-11002"
+                        ],
+                        "table": "orders",
+                        "truncated": false
+                      }
+                    ],
+                    "sql": "SELECT order_no, delivery_date\nFROM orders\nWHERE order_no = 'SO-2026-11002';",
+                    "success": true,
+                    "truncated": false
+                  },
+                  {
+                    "as_of": "2026-11-06T18:47:07.834Z",
+                    "as_of_source": "query_time",
+                    "column_units": {},
+                    "database": "svc_db",
+                    "error": null,
+                    "final_sql": "SELECT DISTINCT order_no, delivery_status\nFROM delivery\nWHERE order_no = 'SO-2026-11002';",
+                    "observed_at": "2026-11-06T18:47:07.834Z",
+                    "repair_attempts": [],
+                    "risk_findings": [],
+                    "row_count": 1,
+                    "row_limit": 1000,
+                    "rows": [
+                      {
+                        "delivery_status": "已送达",
+                        "order_no": "SO-2026-11002"
+                      }
+                    ],
+                    "source_records": [],
+                    "sql": "SELECT DISTINCT order_no, delivery_status\nFROM delivery\nWHERE order_no = 'SO-2026-11002';",
+                    "success": true,
+                    "truncated": false
+                  }
+                ],
+                "trace_id": "a653296d1dc5415c"
+              },
+              "execution_status": "success",
+              "has_risk": false,
+              "outcome": "evidence",
+              "reasons": [],
+              "run_id": "dd43971ba24f4073901dc5665fcd28c0",
+              "source": "business_query",
+              "trace_id": "a653296d1dc5415c"
+            }
+          ],
+          "evidence_version": 1,
+          "id": "dr_01a1b22f37b616701cc7116bfdaa05db",
+          "invalid_reason": "",
+          "run_id": "01a1b22f37b616701cc7116bfdaa05db",
+          "status": "pending",
+          "valid": true,
+          "version": 2
+        }
+      ],
+      "events": [
+        {
+          "actor_id": "emp_7ee668b99729454fb0310493bbbb4f85",
+          "case_id": "tk_72c1e630ac93",
+          "control_version": 1,
+          "created_at": 1793990801.335663,
+          "data": {
+            "changed": true,
+            "message_id": "acc_45c1af1af14a406c8ed9a66e2cf922b8",
+            "run_id": "01a1b22f37b616701cc7116bfdaa05db"
+          },
+          "id": 26,
+          "kind": "input_accepted",
+          "version": 1
+        },
+        {
+          "actor_id": null,
+          "case_id": "tk_72c1e630ac93",
+          "control_version": 1,
+          "created_at": 1793990839.65095,
+          "data": {
+            "draft_id": "dr_01a1b22f37b616701cc7116bfdaa05db",
+            "run_id": "01a1b22f37b616701cc7116bfdaa05db"
+          },
+          "id": 36,
+          "kind": "result_applied",
+          "version": 2
+        }
+      ],
+      "facts": {},
+      "id": "tk_72c1e630ac93",
+      "image_reviews": [],
+      "instance": "staff",
+      "issue_type": "order",
+      "last_message": "请在员工工单入口查看材料",
+      "managed": true,
+      "materials": [],
+      "messages": [
+        {
+          "attachment_ids": [],
+          "content": "查询 SO-2026-11002 交付日期和配送状态。",
+          "created_at": 1793990801.334887,
+          "message_id": "acc_45c1af1af14a406c8ed9a66e2cf922b8",
+          "role": "user",
+          "run_id": "01a1b22f37b616701cc7116bfdaa05db",
+          "seq": 29,
+          "turn_id": "",
+          "version": 1
+        },
+        {
+          "attachment_ids": [],
+          "content": "订单 SO-2026-11002 [1]\n数据时点 2026-11-06T18:46:59.911Z\n- 配送日期: 2026-11-12\n订单 SO-2026-11002 [2]\n数据时点 2026-11-06T18:47:07.834Z\n- delivery status: 已送达\n\n以上为可核对的资料。涉及补件、责任、金额或交期承诺，请由员工按适用政策审核后处理。",
+          "created_at": 1793990839.651511,
+          "message_id": "reply_01a1b22f37b616701cc7116bfdaa05db",
+          "role": "assistant",
+          "run_id": "01a1b22f37b616701cc7116bfdaa05db",
+          "seq": 39,
+          "turn_id": "01a1b22f37b9a69f4835aedfe1",
+          "version": 2
+        }
+      ],
+      "order_refs": [
+        "SO-2026-11002"
+      ],
+      "owner_actor_id": null,
+      "pending_fields": [],
+      "policy_scope": {},
+      "reason": "员工创建的业务问题",
+      "runs": [
+        {
+          "applied": true,
+          "attempt": 1,
+          "error": "",
+          "reason": "",
+          "run_id": "01a1b22f37b616701cc7116bfdaa05db",
+          "status": "succeeded"
+        }
+      ],
+      "status": "in_progress",
+      "updated_at": 1793990839.649398,
+      "user_id": "case",
+      "version": 2
+    },
+    "case_ids": {
+      "primary": "tk_72c1e630ac93"
+    },
+    "completed": true,
+    "elapsed_seconds": 38.40623904205859,
+    "id": "development-orders-003",
+    "invariant_violations": [],
+    "runs": [
+      {
+        "attempt": 1,
+        "attempts": [
+          {
+            "attempt": 1,
+            "committed": true,
+            "ended_at": 1793990839.652014,
+            "outcome": "succeeded",
+            "reclaimed": false,
+            "started_at": 1793990801.33645,
+            "turn_id": "01a1b22f37b9a69f4835aedfe1"
+          }
+        ],
+        "conv_id": "df103e44-7cc2-4992-a6bb-fdbde315eab2",
+        "created_at": 1793990801.335537,
+        "degrade_level": 0,
+        "error": "",
+        "finished_at": 1793990839.65202,
+        "result": {
+          "agent_type": "order",
+          "agent_types": [
+            "order"
+          ],
+          "answer_confidence": 0.65,
+          "answer_usage": {},
+          "business_data": {
+            "attempted": true,
+            "databases": [
+              "erp_db",
+              "svc_db",
+              "prod_db"
+            ],
+            "degraded": false,
+            "enabled": true,
+            "evidence": [
+              {
+                "as_of": "2026-11-06T18:46:59.911Z",
+                "as_of_source": "query_time",
+                "database": "erp_db",
+                "entity": {
+                  "kind": "query_row",
+                  "query_hash": "78441fab3d6861641b3a82816413a81fe0bff9c5d3930a25be7d9522bc0f7798",
+                  "row_index": 0
+                },
+                "entity_keys": {
+                  "order_no": "SO-2026-11002"
+                },
+                "evidence_id": "ev_59cdefd17d1f24e96346bee40692168ed57e70610977889cb173021b49896519",
+                "field": "order_no",
+                "issues": [],
+                "observed_at": "2026-11-06T18:46:59.912000+00:00",
+                "query_hash": "78441fab3d6861641b3a82816413a81fe0bff9c5d3930a25be7d9522bc0f7798",
+                "row_index": 0,
+                "run_id": "dd43971ba24f4073901dc5665fcd28c0",
+                "source_records": [
+                  {
+                    "database": "erp_db",
+                    "key_columns": [
+                      "order_no"
+                    ],
+                    "keys": [
+                      "SO-2026-11002"
+                    ],
+                    "table": "orders",
+                    "truncated": false
+                  }
+                ],
+                "step_index": 0,
+                "trace_id": "a653296d1dc5415c",
+                "unit": null,
+                "value": "SO-2026-11002"
+              },
+              {
+                "as_of": "2026-11-06T18:46:59.911Z",
+                "as_of_source": "query_time",
+                "database": "erp_db",
+                "entity": {
+                  "kind": "query_row",
+                  "query_hash": "78441fab3d6861641b3a82816413a81fe0bff9c5d3930a25be7d9522bc0f7798",
+                  "row_index": 0
+                },
+                "entity_keys": {
+                  "order_no": "SO-2026-11002"
+                },
+                "evidence_id": "ev_636f2c80d3fb4dbf74798e120eaf5bd35d094795e49d1683f3dfad0d3f825d67",
+                "field": "delivery_date",
+                "issues": [],
+                "observed_at": "2026-11-06T18:46:59.912000+00:00",
+                "query_hash": "78441fab3d6861641b3a82816413a81fe0bff9c5d3930a25be7d9522bc0f7798",
+                "row_index": 0,
+                "run_id": "dd43971ba24f4073901dc5665fcd28c0",
+                "source_records": [
+                  {
+                    "database": "erp_db",
+                    "key_columns": [
+                      "order_no"
+                    ],
+                    "keys": [
+                      "SO-2026-11002"
+                    ],
+                    "table": "orders",
+                    "truncated": false
+                  }
+                ],
+                "step_index": 0,
+                "trace_id": "a653296d1dc5415c",
+                "unit": null,
+                "value": "2026-11-12"
+              },
+              {
+                "as_of": "2026-11-06T18:47:07.834Z",
+                "as_of_source": "query_time",
+                "database": "svc_db",
+                "entity": {
+                  "kind": "query_row",
+                  "query_hash": "061677a41e3ba3a3016e8362ecaae0d0735486cf387a310fe047ef2cc77f1e5a",
+                  "row_index": 0
+                },
+                "entity_keys": {
+                  "order_no": "SO-2026-11002"
+                },
+                "evidence_id": "ev_d77dc24a60d8c579e8aaf0737c4238bfab758b814a108220a538f1913a99fca0",
+                "field": "order_no",
+                "issues": [],
+                "observed_at": "2026-11-06T18:46:59.912000+00:00",
+                "query_hash": "061677a41e3ba3a3016e8362ecaae0d0735486cf387a310fe047ef2cc77f1e5a",
+                "row_index": 0,
+                "run_id": "dd43971ba24f4073901dc5665fcd28c0",
+                "source_records": [],
+                "step_index": 1,
+                "trace_id": "a653296d1dc5415c",
+                "unit": null,
+                "value": "SO-2026-11002"
+              },
+              {
+                "as_of": "2026-11-06T18:47:07.834Z",
+                "as_of_source": "query_time",
+                "database": "svc_db",
+                "entity": {
+                  "kind": "query_row",
+                  "query_hash": "061677a41e3ba3a3016e8362ecaae0d0735486cf387a310fe047ef2cc77f1e5a",
+                  "row_index": 0
+                },
+                "entity_keys": {
+                  "order_no": "SO-2026-11002"
+                },
+                "evidence_id": "ev_218323daf6aff4de8da398fb8458f0d36c6ece919a454842f5b439a8fc791328",
+                "field": "delivery_status",
+                "issues": [],
+                "observed_at": "2026-11-06T18:46:59.912000+00:00",
+                "query_hash": "061677a41e3ba3a3016e8362ecaae0d0735486cf387a310fe047ef2cc77f1e5a",
+                "row_index": 0,
+                "run_id": "dd43971ba24f4073901dc5665fcd28c0",
+                "source_records": [],
+                "step_index": 1,
+                "trace_id": "a653296d1dc5415c",
+                "unit": null,
+                "value": "已送达"
+              }
+            ],
+            "evidence_issues": [],
+            "evidence_payload": {
+              "answer": "已完成数据库查询。查询结果：[{\"database\": \"erp_db\", \"sql\": \"SELECT order_no, delivery_date\\nFROM orders\\nWHERE order_no = 'SO-2026-11002';\", \"success\": true, \"columns\": [\"order_no\", \"delivery_date\"], \"rows\": [{\"order_no\": \"SO-2026-11002\", \"delivery_date\": \"2026-11-12\"}], \"row_count\": 1, \"error\": null, \"truncated\": false, \"row_limit\": 1000, \"as_of\": \"2026-11-06T18:46:59.911Z\", \"as_of_source\": \"query_time\"}, {\"database\": \"svc_db\", \"sql\": \"SELECT DISTINCT order_no, delivery_status\\nFROM delivery\\nWHERE order_no = 'SO-2026-11002';\", \"success\": true, \"columns\": [\"order_no\", \"delivery_status\"], \"rows\": [{\"order_no\": \"SO-2026-11002\", \"delivery_status\": \"已送达\"}], \"row_count\": 1, \"error\": null, \"truncated\": false, \"row_limit\": 1000, \"as_of\": \"2026-11-06T18:47:07.834Z\", \"as_of_source\": \"query_time\"}]",
+              "as_of": "2026-11-06T18:46:59.911000+00:00",
+              "as_of_source": "query_time",
+              "currency": null,
+              "degrade_reason": "",
+              "degraded": false,
+              "evidence": [
+                {
+                  "as_of": "2026-11-06T18:46:59.911Z",
+                  "as_of_source": "query_time",
+                  "database": "erp_db",
+                  "entity": {
+                    "kind": "query_row",
+                    "query_hash": "78441fab3d6861641b3a82816413a81fe0bff9c5d3930a25be7d9522bc0f7798",
+                    "row_index": 0
+                  },
+                  "evidence_id": "ev_59cdefd17d1f24e96346bee40692168ed57e70610977889cb173021b49896519",
+                  "field": "order_no",
+                  "issues": [],
+                  "query_hash": "78441fab3d6861641b3a82816413a81fe0bff9c5d3930a25be7d9522bc0f7798",
+                  "row_index": 0,
+                  "source_records": [
+                    {
+                      "database": "erp_db",
+                      "key_columns": [
+                        "order_no"
+                      ],
+                      "keys": [
+                        "SO-2026-11002"
+                      ],
+                      "table": "orders",
+                      "truncated": false
+                    }
+                  ],
+                  "step_index": 0,
+                  "unit": null,
+                  "value": "SO-2026-11002"
+                },
+                {
+                  "as_of": "2026-11-06T18:46:59.911Z",
+                  "as_of_source": "query_time",
+                  "database": "erp_db",
+                  "entity": {
+                    "kind": "query_row",
+                    "query_hash": "78441fab3d6861641b3a82816413a81fe0bff9c5d3930a25be7d9522bc0f7798",
+                    "row_index": 0
+                  },
+                  "evidence_id": "ev_636f2c80d3fb4dbf74798e120eaf5bd35d094795e49d1683f3dfad0d3f825d67",
+                  "field": "delivery_date",
+                  "issues": [],
+                  "query_hash": "78441fab3d6861641b3a82816413a81fe0bff9c5d3930a25be7d9522bc0f7798",
+                  "row_index": 0,
+                  "source_records": [
+                    {
+                      "database": "erp_db",
+                      "key_columns": [
+                        "order_no"
+                      ],
+                      "keys": [
+                        "SO-2026-11002"
+                      ],
+                      "table": "orders",
+                      "truncated": false
+                    }
+                  ],
+                  "step_index": 0,
+                  "unit": null,
+                  "value": "2026-11-12"
+                },
+                {
+                  "as_of": "2026-11-06T18:47:07.834Z",
+                  "as_of_source": "query_time",
+                  "database": "svc_db",
+                  "entity": {
+                    "kind": "query_row",
+                    "query_hash": "061677a41e3ba3a3016e8362ecaae0d0735486cf387a310fe047ef2cc77f1e5a",
+                    "row_index": 0
+                  },
+                  "evidence_id": "ev_d77dc24a60d8c579e8aaf0737c4238bfab758b814a108220a538f1913a99fca0",
+                  "field": "order_no",
+                  "issues": [],
+                  "query_hash": "061677a41e3ba3a3016e8362ecaae0d0735486cf387a310fe047ef2cc77f1e5a",
+                  "row_index": 0,
+                  "source_records": [],
+                  "step_index": 1,
+                  "unit": null,
+                  "value": "SO-2026-11002"
+                },
+                {
+                  "as_of": "2026-11-06T18:47:07.834Z",
+                  "as_of_source": "query_time",
+                  "database": "svc_db",
+                  "entity": {
+                    "kind": "query_row",
+                    "query_hash": "061677a41e3ba3a3016e8362ecaae0d0735486cf387a310fe047ef2cc77f1e5a",
+                    "row_index": 0
+                  },
+                  "evidence_id": "ev_218323daf6aff4de8da398fb8458f0d36c6ece919a454842f5b439a8fc791328",
+                  "field": "delivery_status",
+                  "issues": [],
+                  "query_hash": "061677a41e3ba3a3016e8362ecaae0d0735486cf387a310fe047ef2cc77f1e5a",
+                  "row_index": 0,
+                  "source_records": [],
+                  "step_index": 1,
+                  "unit": null,
+                  "value": "已送达"
+                }
+              ],
+              "execution_status": "success",
+              "has_risk": false,
+              "observed_at": "2026-11-06T18:46:59.912000+00:00",
+              "queried_database": true,
+              "result_truncated": false,
+              "route": "database_query",
+              "run_id": "dd43971ba24f4073901dc5665fcd28c0",
+              "selected_databases": [
+                "erp_db",
+                "svc_db",
+                "prod_db"
+              ],
+              "steps": [
+                {
+                  "as_of": "2026-11-06T18:46:59.911Z",
+                  "as_of_source": "query_time",
+                  "column_units": {},
+                  "database": "erp_db",
+                  "error": null,
+                  "final_sql": "SELECT order_no, delivery_date\nFROM orders\nWHERE order_no = 'SO-2026-11002';",
+                  "observed_at": "2026-11-06T18:46:59.912Z",
+                  "repair_attempts": [],
+                  "risk_findings": [],
+                  "row_count": 1,
+                  "row_limit": 1000,
+                  "rows": [
+                    {
+                      "delivery_date": "2026-11-12",
+                      "order_no": "SO-2026-11002"
+                    }
+                  ],
+                  "source_records": [
+                    {
+                      "database": "erp_db",
+                      "key_columns": [
+                        "order_no"
+                      ],
+                      "keys": [
+                        "SO-2026-11002"
+                      ],
+                      "table": "orders",
+                      "truncated": false
+                    }
+                  ],
+                  "sql": "SELECT order_no, delivery_date\nFROM orders\nWHERE order_no = 'SO-2026-11002';",
+                  "success": true,
+                  "truncated": false
+                },
+                {
+                  "as_of": "2026-11-06T18:47:07.834Z",
+                  "as_of_source": "query_time",
+                  "column_units": {},
+                  "database": "svc_db",
+                  "error": null,
+                  "final_sql": "SELECT DISTINCT order_no, delivery_status\nFROM delivery\nWHERE order_no = 'SO-2026-11002';",
+                  "observed_at": "2026-11-06T18:47:07.834Z",
+                  "repair_attempts": [],
+                  "risk_findings": [],
+                  "row_count": 1,
+                  "row_limit": 1000,
+                  "rows": [
+                    {
+                      "delivery_status": "已送达",
+                      "order_no": "SO-2026-11002"
+                    }
+                  ],
+                  "source_records": [],
+                  "sql": "SELECT DISTINCT order_no, delivery_status\nFROM delivery\nWHERE order_no = 'SO-2026-11002';",
+                  "success": true,
+                  "truncated": false
+                }
+              ],
+              "trace_id": "a653296d1dc5415c"
+            },
+            "execution_status": "success",
+            "has_risk": false,
+            "outcome": "evidence",
+            "reasons": [],
+            "run_id": "dd43971ba24f4073901dc5665fcd28c0",
+            "trace_id": "a653296d1dc5415c"
+          },
+          "case_applied": true,
+          "case_id": "tk_72c1e630ac93",
+          "case_status": "in_progress",
+          "case_version": 2,
+          "control_version": 1,
+          "conv_id": "df103e44-7cc2-4992-a6bb-fdbde315eab2",
+          "draft_id": "dr_01a1b22f37b616701cc7116bfdaa05db",
+          "escalated": true,
+          "handoff": true,
+          "handoff_reason": "Agent 自评置信度 0.65 低于 0.7",
+          "handoff_review": {
+            "basis": "unresolved_answer",
+            "draft_sha256": "444106d7d9de8c7707eb15d82253b33fc375e3efdbcb881b1a73f55d4b8a236e",
+            "model_answer_sha256": "a48650c48330ae9272c3dce73969951b4cfb4d4cc64814bdfda72d56a74fc652",
+            "original_answer_confidence": 0.65,
+            "original_handoff_reason": "Agent 自评置信度 0.65 低于 0.7",
+            "outcome": "retained"
+          },
+          "intent": "delivery",
+          "intent_group": "query",
+          "knowledge": {
+            "attempted": true,
+            "corrected": false,
+            "degraded": false,
+            "evidence_ok": null,
+            "mode": "rewrite_rerank",
+            "reranked": false
+          },
+          "knowledge_sources": [],
+          "knowledge_used": false,
+          "latency_ms": 5897.5520031526685,
+          "needs_clarification": false,
+          "policy_violations": [],
+          "primary_agent": "order",
+          "request_id": "d6243bb09368",
+          "response": "订单 SO-2026-11002 [1]\n数据时点 2026-11-06T18:46:59.911Z\n- 配送日期: 2026-11-12\n订单 SO-2026-11002 [2]\n数据时点 2026-11-06T18:47:07.834Z\n- delivery status: 已送达\n\n以上为可核对的资料。涉及补件、责任、金额或交期承诺，请由员工按适用政策审核后处理。",
+          "routing_confidence": 1.0,
+          "routing_reason": "intent=delivery, group=query, primary=order, supporting=none, scores=[order=1.00, general=0.10, technical=0.00, billing=0.00]",
+          "run": {
+            "attempt": 1,
+            "run_id": "01a1b22f37b616701cc7116bfdaa05db"
+          },
+          "service_unavailable": false,
+          "supporting_agents": [],
+          "ticket_id": "tk_72c1e630ac93",
+          "ticket_notification": "not_configured",
+          "trajectory": [],
+          "turn_id": "01a1b22f37b9a69f4835aedfe1",
+          "unavailable_reason": ""
+        },
+        "run_id": "01a1b22f37b616701cc7116bfdaa05db",
+        "started_at": 1793990801.336456,
+        "status": "succeeded",
+        "turn_id": "01a1b22f37b9a69f4835aedfe1"
+      }
+    ],
+    "side_effects": {
+      "actions": [
+        {
+          "action_key": "handoff:tk_72c1e630ac93",
+          "case_id": "tk_72c1e630ac93",
+          "kind": "handoff"
+        }
+      ],
+      "handoff": 1,
+      "notification": 0,
+      "notifications": []
+    },
+    "step_checks": []
+  },
+  "score": {
+    "business_resolved": false,
+    "elapsed_seconds": 38.40623904205859,
+    "errors": [
+      "incorrect_data_time",
+      "required_fact_missing:delivery_status",
+      "unsupported_visible_claim:delivery status",
+      "visible_data_time_mismatch",
+      "wrong_entity_or_citation_header"
+    ],
+    "fact_correct": false,
+    "group": "orders",
+    "id": "development-orders-003",
+    "image_fields": [],
+    "invariant_violations": [
+      "unauthorized_or_duplicate_handoff"
+    ],
+    "run_count": 1,
+    "run_terminal": true,
+    "subtype": "delivery"
+  }
+}

@@ -1,0 +1,94 @@
+{
+  "actual_cost": null,
+  "baseline_artifacts": {
+    "images": {
+      "backend": "sha256:35da44ad4d2b39e6543acc64cc77e804df338ca0c6c232fbd3e1b25fb45db456",
+      "frontend": "sha256:06cba2cd13bdf0fd181a71a5fec7db51ff8060e51a514d61d0b7bda66c5fe517",
+      "sql": "sha256:6c216cfa74df4a002042ed0591d53b663feacbc7cb3bef98c8024b511829f02d"
+    },
+    "revision": "5310da9e6ed6dcc2d5a8ee3ec92ea2c0a729ba3d"
+  },
+  "common_fact_accuracy": null,
+  "corpus_manifest_sha256": "403fd101f834ee384b46c07570e1efefd3ac5275353d991f872f98b88b206b2e",
+  "duration_seconds": 1469.3904340267181,
+  "execution_harness_sha256": "6584531bd1281e3b7e8df045262f1437b403f0ece3705b344bda73196495d674",
+  "exposure_note": "After fb14f67 product commit was frozen and tested, one policy response appeared incidentally in an overbroad metadata log search. It was not sent to the product author or used for corpus, product or threshold changes. Independent reviewers assess baseline answers separately.",
+  "independent_reviews_pending": 67,
+  "kind": "root_verified_complete_v3_baseline_execution",
+  "known_usage": {
+    "complete_input_tokens": null,
+    "complete_output_tokens": null,
+    "known_input_tokens_subtotal": 6927174,
+    "known_output_tokens_subtotal": 154041,
+    "reservations_without_finished_timestamp": 1,
+    "reserved_requests": 1379,
+    "unknown_background_requests": 12,
+    "unknown_usage_requests": 4
+  },
+  "original_coverage": {
+    "execution_failures": 0,
+    "measured": 130,
+    "review_required": 67,
+    "unmeasured": 0,
+    "unsupported": 70
+  },
+  "original_scores_preserved": true,
+  "release_eligible": false,
+  "root_checks": {
+    "archive_file_hashes": 15,
+    "immutable_images": true,
+    "ledger_validated": true,
+    "run_attribution_validated": true,
+    "scenario_hashes": 200
+  },
+  "stage6_cumulative_known_usage": {
+    "complete_input_tokens": null,
+    "complete_output_tokens": null,
+    "known_input_tokens_subtotal": 10959453,
+    "known_output_tokens_subtotal": 224225,
+    "other_chat_usage_excluded": true,
+    "reserved_requests": 2161,
+    "unknown_usage_requests": 4
+  },
+  "supplier_rates": null,
+  "temporary_stack_closed": true,
+  "unknown_requests": [
+    {
+      "error": "ConnectError",
+      "finished": 1793994972.3965049,
+      "id": 912,
+      "scenario": "baseline:release-cross_message-002",
+      "service": "helpdesk",
+      "started": 1793994965.1432269,
+      "status": null
+    },
+    {
+      "error": "ConnectError",
+      "finished": 1793994970.5873244,
+      "id": 913,
+      "scenario": "baseline:release-cross_message-001",
+      "service": "helpdesk",
+      "started": 1793994965.2786522,
+      "status": null
+    },
+    {
+      "error": "ConnectError",
+      "finished": 1793994975.6127052,
+      "id": 914,
+      "scenario": "baseline:release-cross_message-001",
+      "service": "sql",
+      "started": 1793994965.3005488,
+      "status": null
+    },
+    {
+      "error": null,
+      "finished": null,
+      "id": 1111,
+      "scenario": "baseline:release-cross_message-021",
+      "service": "sql",
+      "started": 1793995144.6181028,
+      "status": null
+    }
+  ],
+  "usage_note": "Three ConnectError receipts and one SQL reservation without a finished record; no usage invented and no reservation refunded. All stack containers are closed, so missing finished is not evidence of a currently running request. Provider logs also record a ledger.reserve disk I/O error; exact causal attribution is under independent review."
+}

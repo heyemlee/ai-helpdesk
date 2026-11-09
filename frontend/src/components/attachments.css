@@ -1,0 +1,12 @@
+.attachment-picker { margin: 10px 0; display: grid; gap: 8px; }
+.attachment-picker label { display: grid; gap: 6px; }
+.attachment-grid { display: flex; flex-wrap: wrap; gap: 12px; }
+.attachment-card { margin: 8px 0; padding: 10px; border: 1px solid var(--border, #cbd5e1); border-radius: 8px; max-width: 320px; }
+.attachment-card img { display: block; max-width: 100%; max-height: 200px; object-fit: contain; }
+.attachment-card figcaption { overflow-wrap: anywhere; margin: 6px 0; }
+.attachment-card button { margin: 4px; }
+.image-review { overflow-x: auto; margin: 12px 0; }
+.image-review table { border-collapse: collapse; width: 100%; font-size: 13px; }
+.image-review th, .image-review td { text-align: left; padding: 8px; border-bottom: 1px solid var(--border, #cbd5e1); }
+.composer select { margin: 6px 10px; max-width: 80%; }
+.composer .attachment-grid { max-height: 240px; overflow-y: auto; }

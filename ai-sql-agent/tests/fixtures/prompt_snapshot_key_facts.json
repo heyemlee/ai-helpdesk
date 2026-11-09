@@ -1,0 +1,86 @@
+{
+  "9": {
+    "database": "erp_db",
+    "query_hash": "8a04141349ae6436fb1fbe8d395197403696db8a1ae5bb89ba6f357aa2be81c2",
+    "result_grain": "rows",
+    "tables": [
+      {
+        "key_columns": [],
+        "key_status": "not_declared",
+        "projected_keys": {},
+        "table": "supplier"
+      }
+    ]
+  },
+  "20": {
+    "database": "wms_db",
+    "query_hash": "75560ec1a504dadd52fa5febca4a3efd7c2bd6606e36cd54718fa11a61642d53",
+    "result_grain": "rows",
+    "tables": [
+      {
+        "key_columns": [],
+        "key_status": "not_declared",
+        "projected_keys": {},
+        "table": "material"
+      },
+      {
+        "key_columns": [],
+        "key_status": "not_declared",
+        "projected_keys": {},
+        "table": "stock_snapshot"
+      }
+    ]
+  },
+  "31": {
+    "database": "pm_db",
+    "query_hash": "649d1f3c83148d0ddd426d7f70b2686fb7b7b69ed5b3d05eb19cd784c789d560",
+    "result_grain": "rows",
+    "tables": [
+      {
+        "key_columns": [],
+        "key_status": "not_declared",
+        "projected_keys": {},
+        "table": "project"
+      }
+    ]
+  },
+  "35": {
+    "database": "erp_db",
+    "query_hash": "85498042740e54467fe830d698d6abb29eda50d4d0e648625f8283a0ec08b3ad",
+    "result_grain": "grouped",
+    "tables": [
+      {
+        "key_columns": [],
+        "key_status": "not_declared",
+        "projected_keys": {},
+        "table": "purchase_order"
+      }
+    ]
+  },
+  "46": {
+    "database": "pm_db",
+    "query_hash": "649d1f3c83148d0ddd426d7f70b2686fb7b7b69ed5b3d05eb19cd784c789d560",
+    "result_grain": "rows",
+    "tables": [
+      {
+        "key_columns": [],
+        "key_status": "not_declared",
+        "projected_keys": {},
+        "table": "project"
+      }
+    ]
+  },
+  "50": {
+    "database": "erp_db",
+    "query_hash": "85498042740e54467fe830d698d6abb29eda50d4d0e648625f8283a0ec08b3ad",
+    "result_grain": "grouped",
+    "tables": [
+      {
+        "key_columns": [],
+        "key_status": "not_declared",
+        "projected_keys": {},
+        "table": "purchase_order"
+      }
+    ]
+  }
+}

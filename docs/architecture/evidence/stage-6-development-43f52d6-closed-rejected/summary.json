@@ -1,0 +1,478 @@
+{
+  "kind": "rejected_43f52d6_development_full54_closeout_v1",
+  "status": "REJECTED_BY_ORIGINAL_DEVELOPMENT_SCORE_AND_INVARIANTS",
+  "candidate_revision": "43f52d6131e01188f01d68afcebe51ae4d783903",
+  "source_files": 1460,
+  "archive_index": {
+    "path": "/Users/l/Desktop/Projects/ai-helpdesk/docs/architecture/evidence/stage-6-development-43f52d6-closed-rejected/archive-index.json",
+    "sha256": "c877686f35aab6a394e69e7e80ad6a1e3a77267ceb45c459e4638a4630dde349",
+    "bytes": 69486
+  },
+  "original_summary": {
+    "accuracy": 0.7962962962962963,
+    "business_resolved": 0,
+    "complete": true,
+    "correct": 43,
+    "error_counts": {
+      "missing_field_not_distinguished": 1,
+      "null_field_query_not_proven": 1,
+      "required_fact_missing:allocated_qty": 2,
+      "required_fact_missing:contract_amount": 1,
+      "required_fact_missing:current_stage": 1,
+      "required_fact_missing:delivery_date": 2,
+      "required_fact_missing:on_hand_qty": 2,
+      "required_fact_missing:order_status": 1,
+      "required_fact_missing:part_status": 2,
+      "required_fact_missing:production_status": 1,
+      "required_fact_missing:quantity": 2,
+      "required_sources_missing": 6,
+      "unproven_visible_prose:当前问题的查询范围尚未核实；有限范围的其他查询结果不能代替本问题的答案。": 2
+    },
+    "groups": {
+      "cross_message": {
+        "accuracy": 1.0,
+        "correct": 10,
+        "total": 10
+      },
+      "images": {
+        "accuracy": 0.8666666666666667,
+        "correct": 13,
+        "total": 15
+      },
+      "orders": {
+        "accuracy": 0.35714285714285715,
+        "correct": 5,
+        "total": 14
+      },
+      "policies": {
+        "accuracy": 1.0,
+        "correct": 15,
+        "total": 15
+      }
+    },
+    "image_extraction": {
+      "date/all": {
+        "correct": 15,
+        "total": 15
+      },
+      "date/clear": {
+        "correct": 14,
+        "total": 14
+      },
+      "date/missing": {
+        "correct": 1,
+        "total": 1
+      },
+      "model/all": {
+        "correct": 15,
+        "total": 15
+      },
+      "model/clear": {
+        "correct": 14,
+        "total": 14
+      },
+      "model/missing": {
+        "correct": 1,
+        "total": 1
+      },
+      "order_ref/all": {
+        "correct": 15,
+        "total": 15
+      },
+      "order_ref/clear": {
+        "correct": 14,
+        "total": 14
+      },
+      "order_ref/unclear": {
+        "correct": 1,
+        "total": 1
+      },
+      "quantity/all": {
+        "correct": 15,
+        "total": 15
+      },
+      "quantity/clear": {
+        "correct": 14,
+        "total": 14
+      },
+      "quantity/unclear": {
+        "correct": 1,
+        "total": 1
+      },
+      "status/all": {
+        "correct": 15,
+        "total": 15
+      },
+      "status/clear": {
+        "correct": 14,
+        "total": 14
+      },
+      "status/unclear": {
+        "correct": 1,
+        "total": 1
+      }
+    },
+    "image_fields": {
+      "date/all": {
+        "correct": 15,
+        "total": 15
+      },
+      "date/conflict": {
+        "correct": 2,
+        "total": 2
+      },
+      "date/matched": {
+        "correct": 8,
+        "total": 8
+      },
+      "date/missing": {
+        "correct": 1,
+        "total": 1
+      },
+      "date/unverified": {
+        "correct": 4,
+        "total": 4
+      },
+      "model/all": {
+        "correct": 15,
+        "total": 15
+      },
+      "model/conflict": {
+        "correct": 2,
+        "total": 2
+      },
+      "model/matched": {
+        "correct": 9,
+        "total": 9
+      },
+      "model/missing": {
+        "correct": 1,
+        "total": 1
+      },
+      "model/unverified": {
+        "correct": 3,
+        "total": 3
+      },
+      "order_ref/all": {
+        "correct": 15,
+        "total": 15
+      },
+      "order_ref/conflict": {
+        "correct": 1,
+        "total": 1
+      },
+      "order_ref/matched": {
+        "correct": 8,
+        "total": 8
+      },
+      "order_ref/unclear": {
+        "correct": 1,
+        "total": 1
+      },
+      "order_ref/unverified": {
+        "correct": 5,
+        "total": 5
+      },
+      "quantity/all": {
+        "correct": 15,
+        "total": 15
+      },
+      "quantity/conflict": {
+        "correct": 2,
+        "total": 2
+      },
+      "quantity/matched": {
+        "correct": 8,
+        "total": 8
+      },
+      "quantity/unclear": {
+        "correct": 1,
+        "total": 1
+      },
+      "quantity/unverified": {
+        "correct": 4,
+        "total": 4
+      },
+      "status/all": {
+        "correct": 15,
+        "total": 15
+      },
+      "status/conflict": {
+        "correct": 2,
+        "total": 2
+      },
+      "status/matched": {
+        "correct": 8,
+        "total": 8
+      },
+      "status/unclear": {
+        "correct": 1,
+        "total": 1
+      },
+      "status/unverified": {
+        "correct": 4,
+        "total": 4
+      }
+    },
+    "invariant_violations": 11,
+    "missing": [],
+    "run_terminal": 54,
+    "total": 54
+  },
+  "backend": {
+    "passed": 3132,
+    "skipped": 0,
+    "canonical_full_gate": true
+  },
+  "frontend": {
+    "passed": 440,
+    "typecheck_build_passed": true,
+    "qualified_exact_frontend_subtree_only": true,
+    "later_two_backend_timestamp_changes_covered_by_backend_full02": true
+  },
+  "source_and_three_images_verified": {
+    "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/root-build-verification-43f52d6.json",
+    "sha256": "5f43e96b1a76c58fcabad0c8e6f49ac61af50ff395b2f2ce79154741ebf4f16f",
+    "bytes": 18899
+  },
+  "exported_images": {
+    "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/release-43f52d6-images-v1/export-verification.json",
+    "sha256": "827c0aa3e8565093cc1ff34033bc470a7a53dc3e3e505d4116508c6773d71189",
+    "bytes": 13666
+  },
+  "closed_execution": {
+    "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/execution.json",
+    "sha256": "fc3b872926eef192eb02900a446e7bdb9accf42a66aa73240c264a45dc38cb5a",
+    "bytes": 6866
+  },
+  "all_new_candidate_components_CI_formal_reviews_final_gate_pack_receive_not_started": true,
+  "formal_H_not_initialized": true,
+  "all_actual_supplier_writers_stopped": true,
+  "DevD420_permanently_retired": true,
+  "finance": {
+    "H_initialized": false,
+    "actual_bank_mode_not_changed": true,
+    "all_prior33498_costs_retained": true,
+    "closed_DevD": {
+      "cold_record": {
+        "bytes": 284,
+        "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/root-43f52d6-DevD420-closed-finance-v2/DevD420-cold-record.json",
+        "sha256": "c0d15f7eab67787abe6c71d36c7004808447526a23a3730ed539e78480225986"
+      },
+      "descriptor": {
+        "encoding": "UTF-8",
+        "hidden_rowids": {
+          "correlations": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30,
+            31,
+            32,
+            33,
+            34,
+            35,
+            36,
+            37,
+            38,
+            39,
+            40,
+            41,
+            42,
+            43,
+            44,
+            45,
+            46,
+            47,
+            48,
+            49,
+            50,
+            51,
+            52,
+            53,
+            54,
+            55,
+            56,
+            57,
+            58,
+            59,
+            60,
+            61,
+            62,
+            63,
+            64,
+            65,
+            66,
+            67,
+            68,
+            69,
+            70,
+            71,
+            72,
+            73,
+            74,
+            75,
+            76,
+            77,
+            78,
+            79,
+            80,
+            81,
+            82,
+            83,
+            84,
+            85,
+            86,
+            87,
+            88,
+            89,
+            90,
+            91
+          ],
+          "scenarios": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30,
+            31,
+            32,
+            33,
+            34,
+            35,
+            36,
+            37,
+            38,
+            39,
+            40,
+            41,
+            42,
+            43,
+            44,
+            45,
+            46,
+            47,
+            48,
+            49,
+            50,
+            51,
+            52,
+            53,
+            54
+          ]
+        },
+        "requests": 420,
+        "row_counts": {
+          "attempts": 420,
+          "correlations": 91,
+          "receipts": 420,
+          "request_runs": 420,
+          "scenarios": 54
+        },
+        "schema_sha256": "a73ddc6ad4556fb5c7d91e4250fbda141a0890d19e54d9857f5175fffe8aa406",
+        "table_sha256": {
+          "attempts": "8d8619e0bce38c8ddc9b643aa5e5bd4f9ade9486c51c955494fffdac00e02666",
+          "correlations": "1160423dbae302b1ac4545bdf03c47ef7d3c9e8fe1af44ec30c4252d718b5454",
+          "receipts": "ac1552484e737e6dbbae794b3451d53662c779c43d75a1dc756d2f0c3eba90d2",
+          "request_runs": "2c5b47d9e6c6e8eba528fbdc448394d39315cfa405114776a454b6d387dc6f14",
+          "scenarios": "340d7b21397530d8d6116526014811d8fab8970db4dcf66a006f3aebfc478f71"
+        }
+      },
+      "full54_admission": null,
+      "requests": 420,
+      "root_stop_record": {
+        "bytes": 2286,
+        "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/root-43f52d6-DevD420-closed-finance-v2/all-actual-writers-stopped-DevD420-retired.json",
+        "sha256": "07cd7f48790b669c99486c8972f171656dc3a63420bd1d8d11a52fff58c64bac"
+      },
+      "totals": {
+        "known_input_tokens": 2239205,
+        "known_output_tokens": 43535,
+        "requests": 420,
+        "unknown": 11
+      }
+    },
+    "cold_totals_plan": {
+      "bytes": 11964,
+      "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/formal-h-and-new-dev-continuity-preparation-v3/root-cold-totals-DevD420-failed-43f52d6-v2.json",
+      "sha256": "bd838c8a9c2f32caa400f8e052836d6c73244f665e24ce238b814d34429d91ac"
+    },
+    "global_totals": {
+      "known_input_tokens": 190417801,
+      "known_output_tokens": 3550344,
+      "new_requests": 27545,
+      "requests": 33918,
+      "unknown": 25
+    },
+    "no_refunds_or_resets": true,
+    "raw_actual_bank_unchanged": true,
+    "release_eligible": false,
+    "status": "FAILED_FULL54_CLOSED_DEVD420_PERMANENTLY_RETIRED_ALL_COSTS_RETAINED",
+    "supplier_calls": 0
+  },
+  "failed_finance_attempt_preserved": {
+    "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/root-DevD420-finance-v1-before-snapshot-failure.json",
+    "sha256": "7bef04d7d8442c86a5c931baac3ef1dccdd623d08cbebadf8add3df0998a5ac7",
+    "bytes": 437
+  },
+  "image_authority_collection": {
+    "path": "/Users/l/Desktop/Projects/ai-helpdesk/.stage6/release-readiness-e/2026-11-06/development-43f52d6-full/image-projection-authority-v4/receipt.json",
+    "sha256": "3f504d45469340c573d0447cb52ee089695b4831f46bcc88271c940ec997d9ee",
+    "bytes": 3620
+  },
+  "diagnostic_status": "Read-only analysis in progress. Some SQL model calls returned502 after20seconds; remaining query/field failures are distinct. Two complete image review joins excluded by strict inner/header-column scope, no blanket handoff suppression. Original43/54 and11 invariant violations remain unchanged.",
+  "production_deployed": false,
+  "release_eligible": false,
+  "next": "Source peer and minimal private repair, fresh candidate checks/full54/all7/originalCI/newthree200/new390/originalfinalgate-pack-receive. All prior costs and failed attempts retained."
+}

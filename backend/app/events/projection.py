@@ -122,11 +122,20 @@ def _meta(evs: list[dict[str, Any]], turn_id: str, conv_id: str) -> dict[str, An
     else:
         planned = _first(evs, "prefetch_planned")
         meta["business_data"] = dict((planned or {}).get("data", {}).get("not_queried") or {})
+    completed = _first(evs, "turn_completed")
+    selected = (completed or {}).get("data", {}).get("selected_evidence")
+    if selected is not None:
+        from app.events.shapes import merge_trace
+        text = ((completed or {}).get("body") or {}).get("selected_evidence") or {}
+        knowledge = merge_trace(selected.get("knowledge", {}), text.get("knowledge"))
+        meta["knowledge_sources"] = knowledge.pop("sources", [])
+        meta["knowledge"] = knowledge
+        meta["business_data"] = merge_trace(selected.get("business_data", {}), text.get("business_data"))
     return meta
 
 
 def _routing(evs: list[dict[str, Any]]) -> dict[str, Any]:
-    routed = _first(evs, "routed")
+    routed = _first(evs, "routed") or _first(evs, "fact_proposed")
     if routed is None:
         return {}
     data = routed["data"]
@@ -242,6 +251,20 @@ def _result(evs, turn_id, conv_id, routing, started) -> dict[str, Any]:
         trajectory=_trajectory(evs) if loop else [],
         answer_usage=_answer_usage(evs) if loop else {},
     )
+    if "case_applied" in data:
+        # A Case transaction may replace the intermediate answer and its handoff
+        # decision. Restoring the turn must use the committed result too.
+        result.update(handoff_reason=body.get("handoff_reason", ""),
+                      policy_violations=body.get("policy_violations", []))
+        if data.get("handoff_review"):
+            result["handoff_review"] = {**data["handoff_review"],
+                                        "original_handoff_reason": body.get("original_handoff_reason", "")}
+    if data.get("answer_model_invoked") is False:
+        result["answer_model_invoked"] = False
+        from app.core.fact_completion import ORIGINS
+        if data.get("answer_origin") in ORIGINS:
+            result["answer_origin"] = data["answer_origin"]
+        result.pop("answer_confidence", None)
     return result
 
 

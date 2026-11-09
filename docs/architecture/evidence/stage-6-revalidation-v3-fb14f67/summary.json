@@ -1,0 +1,189 @@
+{
+  "archive_verified": true,
+  "artifacts": {
+    "images": {
+      "backend": "sha256:95ab8a4f77dd754e3a4bb67147c407b3c49c43cf25c50f0624c08ce7a614e379",
+      "frontend": "sha256:10e29047dbc870b21c5836c7b541fd6d2541fadcd0390f1031961a9dcf254977",
+      "sql": "sha256:8076a3d645907b738564a2b77b6063c19f907a1f451bfd7dc515802b7fc1737f"
+    },
+    "revision": "fb14f677aa24d0893a895facc10fe3e656b5940c"
+  },
+  "candidate_revision": "fb14f677aa24d0893a895facc10fe3e656b5940c",
+  "corpus_manifest_sha256": "403fd101f834ee384b46c07570e1efefd3ac5275353d991f872f98b88b206b2e",
+  "harness_sha256": "a88b7e66cde037d8c68dc0f8f7cbd84a8eba6c5989791ee6188bc5aeff90cb1e",
+  "kind": "development_candidate_revalidation",
+  "release_eligible": false,
+  "remaining": "Fix the five development failures before further candidate acceptance; no formal candidate rounds have run.",
+  "requests": {
+    "input_tokens": 625455,
+    "ledger_end": 275,
+    "ledger_start": 155,
+    "new": 120,
+    "output_tokens": 11961,
+    "real_receipts_and_run_bindings_verified": true,
+    "unattributed": 0,
+    "unfinished": 0,
+    "unknown_usage": 0
+  },
+  "root_recomputed_all_scenarios": true,
+  "score": {
+    "accuracy": 0.5833333333333334,
+    "business_resolved": 0,
+    "complete": true,
+    "correct": 7,
+    "error_counts": {
+      "required_fact_missing:delivery_date": 1,
+      "required_fact_missing:delivery_status": 1,
+      "required_sources_missing": 1
+    },
+    "groups": {
+      "cross_message": {
+        "accuracy": 1.0,
+        "correct": 3,
+        "total": 3
+      },
+      "images": {
+        "accuracy": 0.6666666666666666,
+        "correct": 2,
+        "total": 3
+      },
+      "orders": {
+        "accuracy": 0.6666666666666666,
+        "correct": 2,
+        "total": 3
+      },
+      "policies": {
+        "accuracy": 0.0,
+        "correct": 0,
+        "total": 3
+      }
+    },
+    "image_extraction": {
+      "date/all": {
+        "correct": 3,
+        "total": 3
+      },
+      "date/clear": {
+        "correct": 3,
+        "total": 3
+      },
+      "model/all": {
+        "correct": 3,
+        "total": 3
+      },
+      "model/clear": {
+        "correct": 3,
+        "total": 3
+      },
+      "order_ref/all": {
+        "correct": 3,
+        "total": 3
+      },
+      "order_ref/clear": {
+        "correct": 2,
+        "total": 2
+      },
+      "order_ref/unclear": {
+        "correct": 1,
+        "total": 1
+      },
+      "quantity/all": {
+        "correct": 3,
+        "total": 3
+      },
+      "quantity/clear": {
+        "correct": 3,
+        "total": 3
+      },
+      "status/all": {
+        "correct": 3,
+        "total": 3
+      },
+      "status/clear": {
+        "correct": 3,
+        "total": 3
+      }
+    },
+    "image_fields": {
+      "date/all": {
+        "correct": 3,
+        "total": 3
+      },
+      "date/conflict": {
+        "correct": 1,
+        "total": 1
+      },
+      "date/matched": {
+        "correct": 2,
+        "total": 2
+      },
+      "model/all": {
+        "correct": 3,
+        "total": 3
+      },
+      "model/conflict": {
+        "correct": 1,
+        "total": 1
+      },
+      "model/matched": {
+        "correct": 2,
+        "total": 2
+      },
+      "order_ref/all": {
+        "correct": 3,
+        "total": 3
+      },
+      "order_ref/conflict": {
+        "correct": 1,
+        "total": 1
+      },
+      "order_ref/matched": {
+        "correct": 1,
+        "total": 1
+      },
+      "order_ref/unclear": {
+        "correct": 1,
+        "total": 1
+      },
+      "quantity/all": {
+        "correct": 3,
+        "total": 3
+      },
+      "quantity/conflict": {
+        "correct": 1,
+        "total": 1
+      },
+      "quantity/matched": {
+        "correct": 2,
+        "total": 2
+      },
+      "status/all": {
+        "correct": 3,
+        "total": 3
+      },
+      "status/conflict": {
+        "correct": 1,
+        "total": 1
+      },
+      "status/matched": {
+        "correct": 2,
+        "total": 2
+      }
+    },
+    "invariant_violations": 5,
+    "missing": [],
+    "run_terminal": 12,
+    "total": 12
+  },
+  "source_commit": "51e2e671f758d88c33b3ce7cf61ae4490f8a1bbe",
+  "stage6_cumulative": {
+    "dollar_cost": null,
+    "full_token_totals": null,
+    "known_input_subtotal": 11584908,
+    "known_output_subtotal": 236186,
+    "other_chats_excluded": true,
+    "reserved_requests": 2281,
+    "unknown_usage_requests": 4
+  },
+  "temporary_stack_closed": true
+}

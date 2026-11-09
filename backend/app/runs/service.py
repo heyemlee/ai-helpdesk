@@ -93,6 +93,8 @@ class RunService:
         request_id: str = "",
         idempotency_key: str = "",
         transport: str = "stream",
+        policy_scope: dict | None = None,
+        actor_context: dict | None = None,
     ) -> tuple[RunRecord, bool]:
         """
         提交一轮。返回 (run, 是不是新建的)。
@@ -105,7 +107,7 @@ class RunService:
             existing = await self.store.get_by_key(idempotency_key)
             if existing is not None:
                 probe = RunRecord(run_id=existing.run_id, instance=self.instance, conv_id=conv_id,
-                                  user_id=user_id, message=message)
+                                  user_id=user_id, message=message, policy_scope=policy_scope or {}, actor_context=actor_context or {})
                 if not same_request(existing, probe):
                     raise IdempotencyConflict(existing)
                 RUNS_SUBMITTED.labels(outcome="deduplicated").inc()
@@ -119,7 +121,7 @@ class RunService:
         run = RunRecord(
             run_id=new_run_id(), instance=self.instance, conv_id=conv_id, user_id=user_id,
             message=message, request_id=request_id, idempotency_key=idempotency_key,
-            transport=transport,
+            transport=transport, policy_scope=policy_scope or {}, actor_context=actor_context or {},
         )
         stored, created = await self.store.create(run)
         if not created:
@@ -141,6 +143,7 @@ class RunService:
         """一个 run 的 SSE 帧：after 为空时从头读（先发一帧 run），否则从 after 后面接着读。"""
         if not after:
             yield sse("run", {"run_id": run.run_id, "conv_id": run.conv_id, "status": run.status,
+                              **({"case_id": run.case_context["case_id"]} if run.case_context else {}),
                               "attempt": run.attempt})
         cursor = after or "0-0"
         attempt = 0

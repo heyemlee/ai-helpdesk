@@ -1,4 +1,5 @@
 import type {
+  PolicyMetadata, PolicyScope, Attachment, CaseAction, CaseDetail, CaseInput, CaseReceipt, CaseSummary,
   ChatConnectionBody, ChatModelBody, ChatRequest, ChatResponse, ConversationResponse,
   EmbeddingConnectionBody, EmbeddingModelBody, EvalReport, HealthResponse, ImportResult,
   KnowledgeCategoryOverview, KnowledgeDocument, KnowledgeDocumentDetail, KnowledgeDocumentList,
@@ -8,9 +9,10 @@ import type {
 
 const DEFAULT_API_BASE = import.meta.env.VITE_API_BASE_URL || '/api'
 const STORAGE_KEY = 'ai-helpdesk.console.settings.v2'
-const STAFF_KEY_STORAGE = 'ai-helpdesk.console.staff-key'
+
 
 export interface Settings {
+  caseId?: string
   userId: string
   conversationId: string
   apiBaseUrl: string
@@ -22,7 +24,8 @@ export function loadSettings(): Settings {
     return {
       userId: saved.userId || 'u1001',
       conversationId: saved.conversationId || '',
-      apiBaseUrl: saved.apiBaseUrl || DEFAULT_API_BASE,
+      apiBaseUrl: DEFAULT_API_BASE,
+      ...(saved.caseId ? { caseId: saved.caseId } : {}),
     }
   } catch {
     return { userId: 'u1001', conversationId: '', apiBaseUrl: DEFAULT_API_BASE }
@@ -33,28 +36,17 @@ export function saveSettings(settings: Settings): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
 }
 
-/**
- * 员工钥匙（X-API-Key）。只有配了 AI_HELPDESK_API_KEY 的后端才需要它；
- * 本机联调的后端不校验，留空即可。
- *
- * 放 sessionStorage 而不是 localStorage：这是一把所有员工共用的钥匙，
- * 关掉标签页就该失效，不该在一台共用电脑上留到下一个人来。权限是后端
- * 判的——这里只负责把钥匙带上，界面上没有任何东西靠"前端认为你是谁"放行。
- */
-let staffKey = ''
-try { staffKey = globalThis.sessionStorage?.getItem(STAFF_KEY_STORAGE) ?? '' } catch { /* 存储不可用就当没配 */ }
-
-export const getStaffKey = (): string => staffKey
-
-export function setStaffKey(value: string): void {
-  staffKey = value.trim()
-  try {
-    if (staffKey) globalThis.sessionStorage?.setItem(STAFF_KEY_STORAGE, staffKey)
-    else globalThis.sessionStorage?.removeItem(STAFF_KEY_STORAGE)
-  } catch { /* 存不下就只在这一页有效 */ }
+// Session secret remains in an HttpOnly cookie. Only the CSRF value is in memory.
+let csrfToken = ''
+let sessionIdentity = ''
+let identityGeneration = 0
+export const sessionStamp = () => identityGeneration
+export const setSessionIdentity = (value: string) => { if (sessionIdentity !== value) identityGeneration++; sessionIdentity = value }
+export const setCsrfToken = (value: string) => { csrfToken = value }
+export const authHeaders = (): Record<string, string> => ({ ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}), ...(sessionIdentity ? { 'X-Employee-Session': sessionIdentity } : {}) })
+export function sessionExpired(status: number, stamp: number) {
+  if (status === 401 && stamp === identityGeneration) window.dispatchEvent(new Event('employee-session-expired'))
 }
-
-const authHeaders = (): Record<string, string> => (staffKey ? { 'X-API-Key': staffKey } : {})
 
 const trimSlash = (v: string) => v.replace(/\/+$/, '')
 
@@ -85,8 +77,10 @@ function errorMessage(status: number, statusText: string, detail: unknown): stri
 }
 
 async function request<T>(base: string, path: string, init?: RequestInit): Promise<T> {
+  const stamp = sessionStamp()
   const response = await fetch(`${trimSlash(base)}${path}`, {
     ...init,
+    credentials: 'same-origin',
     headers: { ...authHeaders(), ...(init?.headers as Record<string, string> | undefined) },
   })
   const text = await response.text()
@@ -97,6 +91,7 @@ async function request<T>(base: string, path: string, init?: RequestInit): Promi
     data = text
   }
   if (!response.ok) {
+    sessionExpired(response.status, stamp)
     const detail = data && typeof data === 'object' && 'detail' in data
       ? (data as { detail: unknown }).detail
       : undefined
@@ -112,11 +107,12 @@ const json = (body: unknown, method = 'POST'): RequestInit => ({
 })
 
 export const api = {
+  newConversation: (base: string) => request<{ conv_id: string }>(base, '/auth/conversations', json({})),
   health: (base: string) => request<HealthResponse>(base, '/health'),
   monitor: (base: string) => request<MonitorSummary>(base, '/monitor'),
 
-  search: (base: string, query: string, topK = 5) =>
-    request<SearchResponse>(base, '/search', json({ query, top_k: topK })),
+  search: (base: string, query: string, topK = 5, scope?: PolicyScope) =>
+    request<SearchResponse>(base, '/search', json({ query, top_k: topK, policy_scope: scope ?? {} })),
 
   chat: (base: string, body: ChatRequest) =>
     request<ChatResponse>(base, '/chat', json(body)),
@@ -142,18 +138,22 @@ export const api = {
   categories: (base: string) => request<KnowledgeCategoryOverview>(base, '/knowledge/categories'),
 
   /** 只改分类：正文、片段和检索都不受影响。空串是未分类。 */
+  setDocumentPolicy: (base: string, docId: string, policy: PolicyMetadata, expected_revision: string) =>
+    request<KnowledgeDocumentDetail>(base, `/knowledge/documents/${encodeURIComponent(docId)}`, json({ policy, expected_revision }, 'PATCH')),
+
   setDocumentCategory: (base: string, docId: string, category: string) =>
     request<KnowledgeDocument>(
       base, `/knowledge/documents/${encodeURIComponent(docId)}`, json({ category }, 'PATCH'),
     ),
 
-  addKnowledge: (base: string, documents: Array<{ title: string; content: string; category?: string }>) =>
+  addKnowledge: (base: string, documents: Array<{ title: string; content: string; category?: string; policy?: PolicyMetadata }>) =>
     request<ImportResult>(base, '/knowledge/add', json({ documents })),
 
   /** category 是这次导入的分类；JSON 文件里每篇自己写了 category 的以它为准。 */
-  uploadKnowledge: (base: string, file: File, category = '') => {
+  uploadKnowledge: (base: string, file: File, category = '', policy?: PolicyMetadata) => {
     const form = new FormData()
     form.append('file', file)
+    if (policy) form.append('policy', JSON.stringify(policy))
     if (category) form.append('category', category)
     return request<ImportResult>(base, '/knowledge/upload', { method: 'POST', body: form })
   },
@@ -223,8 +223,10 @@ export async function* streamChat(
   idempotencyKey?: string,
   idleMs: number = STREAM_IDLE_MS,
 ): AsyncGenerator<StreamEvent> {
+  const stamp = sessionStamp()
   const response = await fetch(`${trimSlash(base)}/chat/stream`, {
     method: 'POST',
+    credentials: 'same-origin',
     headers: {
       'Content-Type': 'application/json',
       ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
@@ -233,6 +235,7 @@ export async function* streamChat(
     body: JSON.stringify(body),
     signal: signal ?? null,
   })
+  sessionExpired(response.status, stamp)
   yield* readSse(response, idleMs)
 }
 
@@ -249,10 +252,12 @@ export async function* streamRun(
   signal?: AbortSignal,
   idleMs: number = STREAM_IDLE_MS,
 ): AsyncGenerator<StreamEvent> {
+  const stamp = sessionStamp()
   const response = await fetch(`${trimSlash(base)}/runs/${encodeURIComponent(runId)}/events`, {
     headers: { ...(lastEventId ? { 'Last-Event-ID': lastEventId } : {}), ...authHeaders() },
     signal: signal ?? null,
   })
+  sessionExpired(response.status, stamp)
   yield* readSse(response, idleMs)
 }
 
@@ -319,4 +324,33 @@ export function parseSseBlock(block: string): StreamEvent | null {
   } catch {
     return null
   }
+}
+
+export const caseApi = {
+  list: (base: string) => request<{ tickets: CaseSummary[] }>(base, '/tickets/cases'),
+  get: (base: string, id: string) => request<CaseDetail>(base, `/tickets/${encodeURIComponent(id)}/case`),
+  input: (base: string, body: CaseInput) => request<CaseReceipt>(base, '/tickets/cases/inputs', json(body)),
+  act: (base: string, id: string, body: CaseAction) =>
+    request<CaseDetail>(base, `/tickets/${encodeURIComponent(id)}/case/actions`, json(body)),
+  approve: (base: string, c: CaseDetail, draft: CaseDetail['drafts'][number]) =>
+    request<CaseDetail>(base, `/tickets/${encodeURIComponent(c.id)}/case/drafts/${encodeURIComponent(draft.id)}/approve`,
+      json({ expected_version: c.version, expected_control_version: c.control_version, body_hash: draft.body_hash })),
+  adopt: (base: string, id: string, updated: number, reason: string) =>
+    request<CaseDetail>(base, `/tickets/${encodeURIComponent(id)}/case/adopt`,
+      json({ expected_ticket_updated_at: updated, reason })),
+}
+
+export const attachmentApi = {
+  upload: (base: string, file: File, key: string) => {
+    const body = new FormData(); body.append('file', file)
+    return request<Attachment>(base, '/attachments', { method: 'POST', body, headers: { 'Idempotency-Key': key } })
+  },
+  remove: (base: string, id: string) => request<void>(base, `/attachments/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  content: async (base: string, id: string, preview = false): Promise<Blob> => {
+    const stamp = sessionStamp()
+    const res = await fetch(`${trimSlash(base)}/attachments/${encodeURIComponent(id)}/content?preview=${preview}`, { headers: authHeaders() })
+    if (!res.ok) sessionExpired(res.status, stamp)
+    if (!res.ok) throw new ApiError(res.status, 'Attachment access failed')
+    return res.blob()
+  },
 }

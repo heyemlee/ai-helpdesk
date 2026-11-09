@@ -68,7 +68,12 @@ class QueryRequest(BaseModel):
 # StepLogResponse 挪到了 result_summary：/query、A2A send、A2A stream 三处共用同一份（契约 §4.4）
 
 
+from ai_sql_agent.api.business_evidence import BusinessEvidence
+
+
 class QueryResponse(BaseModel):
+    evidence: List[BusinessEvidence] = []
+    observed_at: Optional[str] = None
     trace_id: str = ""
     """本次查询的链路 ID，与服务端日志一一对应，排查时直接拿它检索。"""
 
@@ -1100,6 +1105,8 @@ def _answer_query(request: QueryRequest, principal, run) -> QueryResponse:
         as_of=summary.as_of,
         as_of_source=summary.as_of_source,
         currency=summary.currency,
+        evidence=summary.evidence,
+        observed_at=summary.observed_at,
     )
 
 

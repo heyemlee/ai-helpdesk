@@ -1,22 +1,92 @@
 {
-  "route": "database_query", "confidence": 0.88,
+  "route": "database_query",
+  "confidence": 0.88,
   "queried_database": true,
   "execution_status": "partial_success",
   "has_risk": false,
   "degraded": false,
   "degrade_reason": "",
-  "selected_databases": ["erp_db", "wms_db"],
+  "selected_databases": [
+    "erp_db",
+    "wms_db"
+  ],
   "trace_id": "2b3c4d5e6f708192",
   "steps": [
-    {"database": "erp_db", "sql": "SELECT job_no FROM job WHERE customer_id = 'C0007'",
-     "final_sql": "SELECT job_no FROM job WHERE customer_id = 'C0007'",
-     "success": true, "row_count": 2, "truncated": false,
-     "rows": [{"job_no": "J25-00003"}, {"job_no": "J25-00007"}],
-     "error": null, "repair_attempts": [], "risk_findings": []},
-    {"database": "wms_db", "sql": "SELECT qty FROM stock WHERE job_no IN ('J25-00003','J25-00007')",
-     "final_sql": "SELECT qty FROM stock WHERE job_no IN ('J25-00003','J25-00007')",
-     "success": false, "row_count": 0, "truncated": false, "rows": [],
-     "error": "查询执行超时（30s）",
-     "repair_attempts": [], "risk_findings": []}
-  ]
+    {
+      "database": "erp_db",
+      "sql": "SELECT job_no FROM job WHERE customer_id = 'C0007'",
+      "final_sql": "SELECT job_no FROM job WHERE customer_id = 'C0007'",
+      "success": true,
+      "row_count": 2,
+      "truncated": false,
+      "rows": [
+        {
+          "job_no": "J25-00003"
+        },
+        {
+          "job_no": "J25-00007"
+        }
+      ],
+      "error": null,
+      "repair_attempts": [],
+      "risk_findings": [],
+      "as_of": "2026-11-06T00:00:00Z",
+      "as_of_source": "query_time",
+      "column_units": {},
+      "source_records": []
+    },
+    {
+      "database": "wms_db",
+      "sql": "SELECT qty FROM stock WHERE job_no IN ('J25-00003','J25-00007')",
+      "final_sql": "SELECT qty FROM stock WHERE job_no IN ('J25-00003','J25-00007')",
+      "success": false,
+      "row_count": 0,
+      "truncated": false,
+      "rows": [],
+      "error": "查询执行超时（30s）",
+      "repair_attempts": [],
+      "risk_findings": []
+    }
+  ],
+  "evidence": [
+    {
+      "evidence_id": "ev_a4e9fa7914000aac1224ac635fb67b4aec4c92c2d193f83fce8eff11e90c9892",
+      "entity": {
+        "kind": "query_row",
+        "query_hash": "c8f74f7ef7f0a4e2bd549535a47e1afe428e85a6cf17445ace6d2dc7aacba2f4",
+        "row_index": 0
+      },
+      "field": "job_no",
+      "value": "J25-00003",
+      "unit": null,
+      "as_of": "2026-11-06T00:00:00Z",
+      "as_of_source": "query_time",
+      "database": "erp_db",
+      "step_index": 0,
+      "row_index": 0,
+      "query_hash": "c8f74f7ef7f0a4e2bd549535a47e1afe428e85a6cf17445ace6d2dc7aacba2f4",
+      "source_records": [],
+      "issues": []
+    },
+    {
+      "evidence_id": "ev_f6db447f57109d3854df51f4dee5741e6a0633d8c1a1ecdccac5b3e7e878c30a",
+      "entity": {
+        "kind": "query_row",
+        "query_hash": "c8f74f7ef7f0a4e2bd549535a47e1afe428e85a6cf17445ace6d2dc7aacba2f4",
+        "row_index": 1
+      },
+      "field": "job_no",
+      "value": "J25-00007",
+      "unit": null,
+      "as_of": "2026-11-06T00:00:00Z",
+      "as_of_source": "query_time",
+      "database": "erp_db",
+      "step_index": 0,
+      "row_index": 1,
+      "query_hash": "c8f74f7ef7f0a4e2bd549535a47e1afe428e85a6cf17445ace6d2dc7aacba2f4",
+      "source_records": [],
+      "issues": []
+    }
+  ],
+  "observed_at": "2026-11-06T00:00:00Z"
 }

@@ -1,0 +1,210 @@
+{
+  "started_at": 1793960544.918046,
+  "project": "aihd-stage5-990946976b",
+  "resource_isolation_verified": true,
+  "initial_release": {
+    "outcome": "validated",
+    "revision": "0514b49994d3d6aa0dbfafe872969eaab65ac450",
+    "checks": {
+      "passed": true,
+      "attachment_downloads_verified": 2,
+      "checks": [
+        "employee_login",
+        "admin_denied",
+        "sql_admin_denied",
+        "legacy_bypass_denied",
+        "history_owner",
+        "case_facts",
+        "private_attachment_hashes"
+      ]
+    }
+  },
+  "backup": {
+    "artifact": "20261106T102242Z-57b4e1cb.aihdbak",
+    "snapshot_at": 1793960562.1378949,
+    "completed_at": 1793960563.5578182,
+    "bytes": 440356,
+    "files": 28,
+    "objects": 6,
+    "offsite": false,
+    "sha256": "0918222fbb790a83d5307b55fddae5ef84da4b05390103bd3c8223df810f4461"
+  },
+  "scheduled_verification": {
+    "verified_at": 1793960574.5020852,
+    "elapsed_seconds": 4.698493242263794,
+    "snapshot_at": 1793960562.1378949,
+    "artifact_sha256": "0918222fbb790a83d5307b55fddae5ef84da4b05390103bd3c8223df810f4461",
+    "business": {
+      "tickets": {
+        "count": 12,
+        "digest": "cfeb8369a3b4fcc34964ff36adeb304b"
+      },
+      "ticket_turns": {
+        "count": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "ticket_notifications": {
+        "count": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "ticket_case_state": {
+        "count": 12,
+        "digest": "e6ca2ba177ad18c2cbb55e515327bfcc"
+      },
+      "case_messages": {
+        "count": 24,
+        "digest": "98cc53efa3c547870b6a85691792519c"
+      },
+      "case_materials": {
+        "count": 6,
+        "digest": "1448e711eb6a539c0eaf2a73d62d4c39"
+      },
+      "case_drafts": {
+        "count": 12,
+        "digest": "f87466f7b6e83470b9aab3bae546e7f9"
+      },
+      "case_actions": {
+        "count": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "case_run_receipts": {
+        "count": 12,
+        "digest": "1770b53b1fd75ae0935fb253e4e21c77"
+      },
+      "case_events": {
+        "count": 24,
+        "digest": "0e70f595b5db23d63891f69e2b05668a"
+      },
+      "ticket_notification_claims": {
+        "count": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "attachments": {
+        "count": 6,
+        "digest": "099f1dc3b455f814e139eaad3114d070"
+      },
+      "attachment_extractions": {
+        "count": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "case_image_reviews": {
+        "count": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "policy_documents": {
+        "count": 1,
+        "digest": "30c1284d51f70bda4cba10e325290385"
+      },
+      "policy_chunks": {
+        "count": 1,
+        "digest": "f6fe0fca0f7cd7c7a548351bcbc0deeb"
+      }
+    },
+    "closed_accounts": true,
+    "applications_started": false
+  },
+  "corrupt_snapshot_fail_closed": true,
+  "partial_restore_fail_closed_after_pg_commit": true,
+  "recovery": {
+    "business": {
+      "tickets": {
+        "count": 12,
+        "digest": "cfeb8369a3b4fcc34964ff36adeb304b"
+      },
+      "ticket_turns": {
+        "count": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "ticket_notifications": {
+        "count": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "ticket_case_state": {
+        "count": 12,
+        "digest": "e6ca2ba177ad18c2cbb55e515327bfcc"
+      },
+      "case_messages": {
+        "count": 24,
+        "digest": "98cc53efa3c547870b6a85691792519c"
+      },
+      "case_materials": {
+        "count": 6,
+        "digest": "1448e711eb6a539c0eaf2a73d62d4c39"
+      },
+      "case_drafts": {
+        "count": 12,
+        "digest": "f87466f7b6e83470b9aab3bae546e7f9"
+      },
+      "case_actions": {
+        "count": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "case_run_receipts": {
+        "count": 12,
+        "digest": "1770b53b1fd75ae0935fb253e4e21c77"
+      },
+      "case_events": {
+        "count": 24,
+        "digest": "0e70f595b5db23d63891f69e2b05668a"
+      },
+      "ticket_notification_claims": {
+        "count": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "attachments": {
+        "count": 6,
+        "digest": "099f1dc3b455f814e139eaad3114d070"
+      },
+      "attachment_extractions": {
+        "count": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "case_image_reviews": {
+        "count": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "policy_documents": {
+        "count": 1,
+        "digest": "30c1284d51f70bda4cba10e325290385"
+      },
+      "policy_chunks": {
+        "count": 1,
+        "digest": "f6fe0fca0f7cd7c7a548351bcbc0deeb"
+      }
+    },
+    "restored_at": 1793960584.550123,
+    "snapshot_at": 1793960562.1378949,
+    "restore_seconds": 1.494230031967163,
+    "artifact": "20261106T102242Z-57b4e1cb.aihdbak",
+    "phase": "awaiting_access_review_and_business_smoke",
+    "writers_started": false
+  },
+  "sessions_revoked_and_accounts_closed": true,
+  "reopened_release": {
+    "outcome": "validated",
+    "revision": "0514b49994d3d6aa0dbfafe872969eaab65ac450",
+    "checks": {
+      "passed": true,
+      "attachment_downloads_verified": 2,
+      "checks": [
+        "employee_login",
+        "admin_denied",
+        "sql_admin_denied",
+        "legacy_bypass_denied",
+        "history_owner",
+        "case_facts",
+        "private_attachment_hashes"
+      ]
+    }
+  },
+  "rto_seconds_including_review_and_http_smoke": 10.50713324546814,
+  "observed_snapshot_age_seconds": 31.251007080078125,
+  "legacy_binary": {
+    "image": "sha256:e3bd5c98419a4936937157ad70bcf59597126e48a6f0d1827f46d3eca947d404",
+    "exit_code": 1,
+    "startup_ok": false,
+    "reopen_allowed": false
+  },
+  "failed_with": "CalledProcessError",
+  "original_report_sha256": "f658a85343512ca9c300bf43416df6691944b9b3a77304453fe77ccfd9b39a8e"
+}
