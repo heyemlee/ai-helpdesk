@@ -65,7 +65,10 @@ test('chat image-only submission, continuation, reload, private preview and down
   const state = await (await page.request.get('/api/test/state')).json()
   const c = state.cases[0]
   expect(c.facts.quantity.value).toBe('2')
-  await expect(page.getByText('999', { exact: false })).toHaveCount(0)
+  // The fixture's untrusted SQL answer says "quantity 999"; it must never be shown.
+  // Match the answer itself, not any "999" inside a random identifier or timestamp.
+  await expect(page.getByText('UNTRUSTED ANSWER', { exact: false })).toHaveCount(0)
+  await expect(page.getByText(/(?:quantity|数量)\s*[:：]?\s*999\b/)).toHaveCount(0)
   expect(state.queries[0].user_id).toBe('ai-helpdesk')
   expect(state.queries[0].session_id).toMatch(/^hd-/) // SQL client scopes and hashes the Case session
   await page.reload()
