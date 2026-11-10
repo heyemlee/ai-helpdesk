@@ -34,7 +34,7 @@ export function EmployeesPanel({ base }: { base: string }) {
     </tbody></table>
     <form onSubmit={e => { e.preventDefault(); void change('', 'POST', { login, password, role }) }}>
       <label>新员工账号<input className="field" value={login} onChange={e => setLogin(e.target.value)} minLength={3} required /></label>
-      <label>初始密码<input className="field" type="password" autoComplete="new-password" value={password} minLength={14} maxLength={128} required onChange={e => setPassword(e.target.value)} /></label>
+      <label>初始密码<input className="field" type="password" autoComplete="new-password" value={password} maxLength={128} required onChange={e => setPassword(e.target.value)} /></label>
       <label>角色<select value={role} onChange={e => setRole(e.target.value)}><option value="employee">员工</option><option value="operations">运营</option><option value="admin">管理员</option></select></label>
       <button className="btn btn-primary" disabled={busy}>创建员工账号</button>
     </form>

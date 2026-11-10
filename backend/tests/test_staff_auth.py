@@ -383,3 +383,178 @@ async def test_legacy_status_write_rechecks_revoked_operations_at_commit(staff):
     finally:
         current_actor.reset(actor_token)
         current_auth.reset(auth_token)
+
+
+# ── 本机演示管理员（.env 里配账号密码）─────────────────────────────────────────
+
+DEMO = {"AI_HELPDESK_DEMO_ADMIN_LOGIN": "admin", "AI_HELPDESK_DEMO_ADMIN_PASSWORD": "demo88"}
+
+
+def test_demo_admin_is_off_unless_both_settings_are_present():
+    from app.core.staff_auth import STRONG_MIN, demo_admin, min_password_length
+    assert demo_admin({}) is None and min_password_length({}) == STRONG_MIN == 14
+    for partial in ({"AI_HELPDESK_DEMO_ADMIN_LOGIN": "admin"}, {"AI_HELPDESK_DEMO_ADMIN_PASSWORD": "demo88"},
+                    {"AI_HELPDESK_DEMO_ADMIN_LOGIN": " ", "AI_HELPDESK_DEMO_ADMIN_PASSWORD": "demo88"}):
+        assert demo_admin(partial) is None and min_password_length(partial) == 14
+    assert demo_admin(DEMO) == ("admin", "demo88") and min_password_length(DEMO) == 6
+
+
+@pytest.mark.parametrize("env,problem", [
+    ({"AI_HELPDESK_DEMO_ADMIN_LOGIN": "admin"}, "both"),
+    ({"AI_HELPDESK_DEMO_ADMIN_PASSWORD": "demo88"}, "both"),
+    ({**DEMO, "AI_HELPDESK_DEMO_ADMIN_LOGIN": "Admin!"}, "lowercase"),
+    ({**DEMO, "AI_HELPDESK_DEMO_ADMIN_LOGIN": "ab"}, "lowercase"),
+    ({**DEMO, "AI_HELPDESK_DEMO_ADMIN_PASSWORD": "12345"}, "6-128"),
+    ({**DEMO, "AI_HELPDESK_DEMO_ADMIN_PASSWORD": "x" * 129}, "6-128"),
+    ({**DEMO, "APP_ENV": "production"}, "production"),
+    ({"AI_HELPDESK_DEMO_ADMIN_LOGIN": "admin", "APP_ENV": "production"}, "production"),
+])
+def test_demo_admin_settings_that_are_incomplete_invalid_or_in_production_stop_the_start(env, problem):
+    from app.core.staff_auth import check_demo_admin
+    with pytest.raises(ValueError, match=problem):
+        check_demo_admin(env)
+    with pytest.raises(ValueError):
+        from app.core.staff_auth import check_config
+        check_config({"AI_HELPDESK_INSTANCE": "staff", "POSTGRES_DSN": "postgresql://x/y", **env})
+
+
+def test_a_valid_demo_admin_config_and_no_config_both_pass():
+    from app.core.staff_auth import check_demo_admin
+    check_demo_admin({})
+    check_demo_admin(DEMO)
+
+
+def test_the_password_minimum_is_14_by_default_and_6_only_in_demo_mode(monkeypatch):
+    for name in DEMO:
+        monkeypatch.delenv(name, raising=False)
+    with pytest.raises(HTTPException) as strict:
+        hash_password("demo88")
+    assert strict.value.status_code == 422 and "14" in strict.value.detail
+    for name, value in DEMO.items():
+        monkeypatch.setenv(name, value)
+    assert verify_password("demo88", hash_password("demo88"))
+    with pytest.raises(HTTPException) as short:
+        hash_password("demo8")
+    assert short.value.status_code == 422 and "6" in short.value.detail
+
+
+async def test_demo_admin_is_created_once_can_log_in_and_never_overwritten(staff, monkeypatch):
+    auth, _, client, _ = staff
+    for name, value in DEMO.items():
+        monkeypatch.setenv(name, value)
+    created = await auth.seed_demo_admin()
+    assert created["login"] == "admin" and created["role"] == "admin"
+    assert await auth.seed_demo_admin() is None  # a second start leaves it alone
+    row = await auth.db.fetchrow("SELECT password_hash, role, instance FROM staff_accounts WHERE login='admin'")
+    assert row["role"] == "admin" and row["instance"] == "staff" and "demo88" not in row["password_hash"]
+    ok = await client.post("/auth/login", json={"login": "admin", "password": "demo88"}, headers={"Origin": auth.origin})
+    assert ok.status_code == 200
+    bad = await client.post("/auth/login", json={"login": "admin", "password": "demo89"}, headers={"Origin": auth.origin})
+    assert bad.status_code == 401
+    # the same login configured with another password does not replace the stored one
+    monkeypatch.setenv("AI_HELPDESK_DEMO_ADMIN_PASSWORD", "other-password")
+    assert await auth.seed_demo_admin() is None
+    again = await client.post("/auth/login", json={"login": "admin", "password": "demo88"}, headers={"Origin": auth.origin})
+    assert again.status_code == 200
+
+
+async def test_a_short_password_stored_in_demo_mode_cannot_log_in_once_the_instance_is_production(staff, monkeypatch):
+    auth, _, client, _ = staff
+    for name, value in DEMO.items():
+        monkeypatch.setenv(name, value)
+    await auth.seed_demo_admin()
+    for name in DEMO:
+        monkeypatch.delenv(name)
+    body, headers = {"login": "admin", "password": "demo88"}, {"Origin": auth.origin}
+    assert (await client.post("/auth/login", json=body, headers=headers)).status_code == 200  # outside production
+    for name, value in (("APP_ENV", "production"), ("AI_HELPDESK_INSTANCE", "staff"), ("AI_HELPDESK_STAFF_AUTH", "local")):
+        monkeypatch.setenv(name, value)
+    refused = await client.post("/auth/login", json=body, headers=headers)
+    assert refused.status_code == 403 and "14" in refused.text
+    assert "set-cookie" not in refused.headers
+    assert await auth.db.fetchval("SELECT count(*) FROM staff_audit WHERE action='login_refused_weak_password'") == 1
+    # a wrong password is still an ordinary denial and reveals nothing about strength
+    wrong = await client.post("/auth/login", json={"login": "admin", "password": "wrong"}, headers=headers)
+    assert wrong.status_code == 401
+    # a strong password is unaffected
+    strong = await client.post("/auth/login", json={"login": "alice", "password": PASSWORD}, headers=headers)
+    assert strong.status_code == 200
+
+
+async def test_the_seeded_demo_admin_can_create_a_short_password_employee_only_in_demo_mode(staff, monkeypatch):
+    auth, _, client, _ = staff
+    for name, value in DEMO.items():
+        monkeypatch.setenv(name, value)
+    await auth.seed_demo_admin()
+    login_response = await client.post("/auth/login", json={"login": "admin", "password": "demo88"}, headers={"Origin": auth.origin})
+    headers = {"Origin": auth.origin, "X-CSRF-Token": login_response.json()["csrf_token"]}
+    created = await client.post("/admin/employees", headers=headers, json={"login": "zhang", "password": "zhang1", "role": "employee"})
+    assert created.status_code == 201, created.text
+    too_short = await client.post("/admin/employees", headers=headers, json={"login": "li", "password": "li123", "role": "employee"})
+    assert too_short.status_code == 422
+    for name in DEMO:
+        monkeypatch.delenv(name)
+    strict = await client.post("/admin/employees", headers=headers, json={"login": "wang", "password": "wang123", "role": "employee"})
+    assert strict.status_code == 422 and "14" in strict.text
+
+
+async def test_an_existing_account_that_is_not_a_working_admin_stops_the_demo_admin_seed(staff, monkeypatch):
+    auth, actors, _, _ = staff
+    for name, value in DEMO.items():
+        monkeypatch.setenv(name, value)
+    for login, role, active in (("employee-login", "employee", True), ("off-login", "admin", False)):
+        await auth.db.execute("INSERT INTO staff_accounts(actor_id,instance,login,password_hash,role,active) VALUES($1,'staff',$1,'x',$2,$3)",
+                              login, role, active)
+        monkeypatch.setenv("AI_HELPDESK_DEMO_ADMIN_LOGIN", login)
+        with pytest.raises(ValueError, match="不是启用的管理员"):
+            await auth.seed_demo_admin()
+    # an active admin that already exists is fine, even if the .env password differs
+    monkeypatch.setenv("AI_HELPDESK_DEMO_ADMIN_LOGIN", "root")
+    assert await auth.seed_demo_admin() is None
+
+
+async def test_sessions_of_accounts_with_a_weak_password_end_when_the_instance_starts_in_production(staff, monkeypatch):
+    auth, actors, client, _ = staff
+    for name, value in DEMO.items():
+        monkeypatch.setenv(name, value)
+    await auth.seed_demo_admin()
+    headers = {"Origin": auth.origin}
+    weak = await client.post("/auth/login", json={"login": "admin", "password": "demo88"}, headers=headers)
+    assert weak.status_code == 200
+    weak_cookie = client.cookies.get(auth.cookie)
+    client.cookies.clear()
+    assert (await client.post("/auth/login", json={"login": "alice", "password": PASSWORD}, headers=headers)).status_code == 200
+    strong_cookie = client.cookies.get(auth.cookie)
+    before = await auth.db.fetchval("SELECT auth_version FROM staff_accounts WHERE login='admin'")
+    # outside production nothing is revoked
+    assert await auth.revoke_weak_password_sessions() == 0
+    for name in DEMO:
+        monkeypatch.delenv(name)
+    for name, value in (("APP_ENV", "production"), ("AI_HELPDESK_INSTANCE", "staff"), ("AI_HELPDESK_STAFF_AUTH", "local")):
+        monkeypatch.setenv(name, value)
+    assert await auth.revoke_weak_password_sessions() == 1
+    assert await auth.revoke_weak_password_sessions() == 0  # nothing left to revoke on the next start
+    assert await auth.db.fetchval("SELECT auth_version FROM staff_accounts WHERE login='admin'") == before + 1
+    client.cookies.clear()
+    client.cookies.set(auth.cookie, weak_cookie)
+    assert (await client.get("/private")).status_code == 401
+    client.cookies.clear()
+    client.cookies.set(auth.cookie, strong_cookie)
+    assert (await client.get("/private")).status_code == 200  # a strong-password session stays
+    assert await auth.db.fetchval("SELECT count(*) FROM staff_audit WHERE action='weak_password_sessions_revoked'") == 1
+
+
+async def test_setting_a_strong_password_clears_the_weak_marker(staff, monkeypatch):
+    auth, actors, _, _ = staff
+    for name, value in DEMO.items():
+        monkeypatch.setenv(name, value)
+    created = await auth.seed_demo_admin()
+    admin = await auth.provider(created["actor_id"], "staff")
+    await auth.db.execute("INSERT INTO staff_sessions(token_hash,actor_id,auth_version,expires_at) VALUES('t',$1,$2,now()+interval '1 hour')",
+                          admin.actor_id, admin.auth_version)
+    await auth.change_account(created["actor_id"], by=actors["root"], password="a-long-and-strong-password")
+    for name in DEMO:
+        monkeypatch.delenv(name)
+    for name, value in (("APP_ENV", "production"), ("AI_HELPDESK_INSTANCE", "staff"), ("AI_HELPDESK_STAFF_AUTH", "local")):
+        monkeypatch.setenv(name, value)
+    assert await auth.revoke_weak_password_sessions() == 0

@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
+import logging
 import os
 import re
 import secrets
@@ -25,6 +26,7 @@ from app.core.actor import ActorContext
 from app.events.log import instance_from_env
 
 current_actor: ContextVar[ActorContext | None] = ContextVar("staff_actor", default=None)
+logger = logging.getLogger(__name__)
 current_auth: ContextVar[StaffAuth | None] = ContextVar("staff_auth_service", default=None)
 ROLES = {"employee", "operations", "admin"}
 # How often an open response stream rechecks its staff session (seconds).
@@ -36,7 +38,45 @@ def mode(env=None):
     return env.get("AI_HELPDESK_STAFF_AUTH", "local" if instance_from_env(env) == "staff" else "disabled").strip().lower()
 
 
+DEMO_ADMIN_LOGIN, DEMO_ADMIN_PASSWORD = "AI_HELPDESK_DEMO_ADMIN_LOGIN", "AI_HELPDESK_DEMO_ADMIN_PASSWORD"
+LOGIN_PATTERN = r"[a-z0-9][a-z0-9_.@-]{2,79}"
+STRONG_MIN, DEMO_MIN = 14, 6
+WEAK_SET, STRONG_SET = "weak_password_set", "strong_password_set"
+
+
+def demo_admin(env=None):
+    """(login, password) of the local-demo administrator, or None when not configured.
+
+    Opt-in convenience for a demo on one machine: both variables set in the gitignored
+    root .env. It is refused in production (check_config) and it relaxes the password
+    minimum from 14 to 6, so it must never be set on a shared deployment.
+    """
+    env = os.environ if env is None else env
+    login, password = env.get(DEMO_ADMIN_LOGIN, "").strip(), env.get(DEMO_ADMIN_PASSWORD, "")
+    return (login, password) if login and password else None
+
+
+def min_password_length(env=None):
+    return DEMO_MIN if demo_admin(env) else STRONG_MIN
+
+
+def check_demo_admin(env):
+    login, password = env.get(DEMO_ADMIN_LOGIN, "").strip(), env.get(DEMO_ADMIN_PASSWORD, "")
+    if not (login or password):
+        return
+    from app.core.preflight import is_production
+    if is_production(env):
+        raise ValueError("The demo administrator settings are not allowed in production")
+    if bool(login) != bool(password):
+        raise ValueError(f"Set both {DEMO_ADMIN_LOGIN} and {DEMO_ADMIN_PASSWORD}, or neither")
+    if not re.fullmatch(LOGIN_PATTERN, login):
+        raise ValueError(f"{DEMO_ADMIN_LOGIN} must be 3-80 characters: lowercase letters, digits and _ . @ -")
+    if not DEMO_MIN <= len(password) <= 128:
+        raise ValueError(f"{DEMO_ADMIN_PASSWORD} must be {DEMO_MIN}-128 characters")
+
+
 def check_config(env):
+    check_demo_admin(env)
     selected = mode(env)
     if selected not in {"local", "disabled"}:
         raise ValueError("Unsupported staff identity provider; SSO requires a configured, verified adapter")
@@ -62,8 +102,9 @@ def check_config(env):
 
 
 def hash_password(password: str) -> str:
-    if not 14 <= len(password) <= 128 or len(password.encode()) > 512:
-        raise HTTPException(422, "密码长度须为 14–128 个字符")
+    minimum = min_password_length()
+    if not minimum <= len(password) <= 128 or len(password.encode()) > 512:
+        raise HTTPException(422, f"密码长度须为 {minimum}–128 个字符")
     salt = secrets.token_bytes(16)
     digest = hashlib.scrypt(password.encode(), salt=salt, n=2**17, r=8, p=1, maxmem=256*1024*1024)
     return "scrypt:131072:8:1:" + salt.hex() + ":" + digest.hex()
@@ -146,7 +187,7 @@ class StaffAuth:
         await (conn or self.db).execute("INSERT INTO staff_audit(action,actor_id,target) VALUES($1,$2,$3)", action, actor_id, target)
 
     async def create_account(self, login, password, role, *, by=None, bootstrap=False):
-        if not re.fullmatch(r"[a-z0-9][a-z0-9_.@-]{2,79}", login) or role not in ROLES:
+        if not re.fullmatch(LOGIN_PATTERN, login) or role not in ROLES:
             raise HTTPException(422, "账号或角色格式无效")
         encoded = await self.password_work(hash_password, password)
         actor_id = "emp_" + uuid.uuid4().hex
@@ -160,7 +201,33 @@ class StaffAuth:
             await conn.execute("INSERT INTO staff_accounts(actor_id,instance,login,password_hash,role) VALUES($1,$2,$3,$4,$5)",
                                actor_id, self.instance, login, encoded, role)
             await self.audit("account_created", by.actor_id if by else "deployment_bootstrap", actor_id, conn=conn)
+            if len(password) < STRONG_MIN:
+                await self.audit(WEAK_SET, by.actor_id if by else "deployment_bootstrap", actor_id, conn=conn)
         return {"actor_id": actor_id, "login": login, "role": role, "active": True}
+
+    async def seed_demo_admin(self):
+        """Create the configured demo administrator once; never touch an existing account."""
+        configured = demo_admin()
+        if configured is None:
+            return None
+        login, password = configured
+        try:
+            account = await self.create_account(login, password, "admin", bootstrap=True)
+        except HTTPException as exc:
+            if exc.status_code != 409:
+                raise
+            row = await self.db.fetchrow("SELECT active, role, password_hash FROM staff_accounts WHERE instance=$1 AND login=$2",
+                                         self.instance, login)
+            if not row or not row["active"] or row["role"] != "admin":
+                raise ValueError(f"{DEMO_ADMIN_LOGIN}={login} 对应的账号已存在，但不是启用的管理员："
+                                 "换一个登录名，或先在控制台里把它改成启用的管理员") from None
+            matches = await self.password_work(verify_password, password, row["password_hash"])
+            logger.warning("演示管理员 %s 已存在，不改它的密码%s", login,
+                           "" if matches else f"；注意 .env 里的 {DEMO_ADMIN_PASSWORD} 与它现在的密码不一致")
+            return None
+        logger.warning("已按 %s 创建演示管理员 %s（仅限本机演示，密码长度下限已放宽到 %d）",
+                       DEMO_ADMIN_LOGIN, login, DEMO_MIN)
+        return account
 
     async def change_account(self, target, *, by, active=None, role=None, password=None):
         if role is not None and role not in ROLES:
@@ -181,6 +248,35 @@ class StaffAuth:
                                target, active, role, encoded)
             await conn.execute("DELETE FROM staff_sessions WHERE actor_id=$1", target)
             await self.audit("account_changed_sessions_revoked", by.actor_id, target, conn=conn)
+            if password is not None:
+                await self.audit(WEAK_SET if len(password) < STRONG_MIN else STRONG_SET, by.actor_id, target, conn=conn)
+
+    async def revoke_weak_password_sessions(self):
+        """On a production start, end the sessions of accounts whose password was set under the
+        demo minimum, so a weak-password session cannot outlive the switch from demo mode.
+
+        The marker is the latest WEAK_SET / STRONG_SET audit row of the account, so it needs no
+        schema change. The login check refuses the same accounts afterwards.
+        """
+        from app.core.preflight import is_production
+        if not is_production():
+            return 0
+        async with self.db.transaction() as conn:
+            weak = [r["target"] for r in await conn.fetch(
+                "SELECT target FROM (SELECT DISTINCT ON (target) target, action FROM staff_audit"
+                " WHERE action IN ($1,$2) ORDER BY target, seq DESC) latest"
+                " WHERE action=$1 AND target IN (SELECT actor_id FROM staff_accounts WHERE instance=$3)",
+                WEAK_SET, STRONG_SET, self.instance)]
+            if not weak:
+                return 0
+            revoked = await conn.fetchval("WITH gone AS (DELETE FROM staff_sessions WHERE actor_id = ANY($1::text[]) RETURNING 1)"
+                                          " SELECT count(*) FROM gone", weak)
+            if revoked:
+                await conn.execute("UPDATE staff_accounts SET auth_version=auth_version+1 WHERE actor_id = ANY($1::text[])", weak)
+                for actor_id in weak:
+                    await self.audit("weak_password_sessions_revoked", "production_start", actor_id, conn=conn)
+                logger.warning("生产模式启动：已结束 %d 个由演示最短密码账号建立的会话", revoked)
+        return revoked
 
     async def login(self, login, password, peer):
         # Shared fixed-window_start counters BEFORE expensive password work. The peer
@@ -206,6 +302,13 @@ class StaffAuth:
         if not valid or not row or not row["active"]:
             await self.audit("login_denied")
             raise HTTPException(401, "账号或密码无效")
+        from app.core.preflight import is_production
+        if is_production() and len(password) < STRONG_MIN:
+            # A password set while the demo minimum applied is not accepted in production,
+            # whichever way it stayed in the database. Another administrator (or a new one
+            # from scripts/staff_accounts.py) must set a strong one first.
+            await self.audit("login_refused_weak_password", row["actor_id"])
+            raise HTTPException(403, f"密码短于生产环境要求的 {STRONG_MIN} 位，请让管理员重置密码")
         token = secrets.token_urlsafe(32)
         async with self.db.transaction() as conn:
             fresh = await conn.fetchrow("SELECT * FROM staff_accounts WHERE actor_id=$1 AND active FOR SHARE", row["actor_id"])
