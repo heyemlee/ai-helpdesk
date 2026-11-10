@@ -291,6 +291,7 @@ async def lifespan(app: FastAPI):
             origin=os.getenv("AI_HELPDESK_PUBLIC_ORIGIN", "http://localhost:5174"))
         app.state.actor_directory = ActorDirectory(app.state.staff_auth.provider)
         await app.state.staff_auth.seed_demo_admin()  # no-op unless the demo settings are present
+        await app.state.staff_auth.revoke_weak_password_sessions()  # no-op outside production
     else:
         app.state.staff_auth = None
 

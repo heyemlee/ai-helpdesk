@@ -496,3 +496,65 @@ async def test_the_seeded_demo_admin_can_create_a_short_password_employee_only_i
         monkeypatch.delenv(name)
     strict = await client.post("/admin/employees", headers=headers, json={"login": "wang", "password": "wang123", "role": "employee"})
     assert strict.status_code == 422 and "14" in strict.text
+
+
+async def test_an_existing_account_that_is_not_a_working_admin_stops_the_demo_admin_seed(staff, monkeypatch):
+    auth, actors, _, _ = staff
+    for name, value in DEMO.items():
+        monkeypatch.setenv(name, value)
+    for login, role, active in (("employee-login", "employee", True), ("off-login", "admin", False)):
+        await auth.db.execute("INSERT INTO staff_accounts(actor_id,instance,login,password_hash,role,active) VALUES($1,'staff',$1,'x',$2,$3)",
+                              login, role, active)
+        monkeypatch.setenv("AI_HELPDESK_DEMO_ADMIN_LOGIN", login)
+        with pytest.raises(ValueError, match="不是启用的管理员"):
+            await auth.seed_demo_admin()
+    # an active admin that already exists is fine, even if the .env password differs
+    monkeypatch.setenv("AI_HELPDESK_DEMO_ADMIN_LOGIN", "root")
+    assert await auth.seed_demo_admin() is None
+
+
+async def test_sessions_of_accounts_with_a_weak_password_end_when_the_instance_starts_in_production(staff, monkeypatch):
+    auth, actors, client, _ = staff
+    for name, value in DEMO.items():
+        monkeypatch.setenv(name, value)
+    await auth.seed_demo_admin()
+    headers = {"Origin": auth.origin}
+    weak = await client.post("/auth/login", json={"login": "admin", "password": "demo88"}, headers=headers)
+    assert weak.status_code == 200
+    weak_cookie = client.cookies.get(auth.cookie)
+    client.cookies.clear()
+    assert (await client.post("/auth/login", json={"login": "alice", "password": PASSWORD}, headers=headers)).status_code == 200
+    strong_cookie = client.cookies.get(auth.cookie)
+    before = await auth.db.fetchval("SELECT auth_version FROM staff_accounts WHERE login='admin'")
+    # outside production nothing is revoked
+    assert await auth.revoke_weak_password_sessions() == 0
+    for name in DEMO:
+        monkeypatch.delenv(name)
+    for name, value in (("APP_ENV", "production"), ("AI_HELPDESK_INSTANCE", "staff"), ("AI_HELPDESK_STAFF_AUTH", "local")):
+        monkeypatch.setenv(name, value)
+    assert await auth.revoke_weak_password_sessions() == 1
+    assert await auth.revoke_weak_password_sessions() == 0  # nothing left to revoke on the next start
+    assert await auth.db.fetchval("SELECT auth_version FROM staff_accounts WHERE login='admin'") == before + 1
+    client.cookies.clear()
+    client.cookies.set(auth.cookie, weak_cookie)
+    assert (await client.get("/private")).status_code == 401
+    client.cookies.clear()
+    client.cookies.set(auth.cookie, strong_cookie)
+    assert (await client.get("/private")).status_code == 200  # a strong-password session stays
+    assert await auth.db.fetchval("SELECT count(*) FROM staff_audit WHERE action='weak_password_sessions_revoked'") == 1
+
+
+async def test_setting_a_strong_password_clears_the_weak_marker(staff, monkeypatch):
+    auth, actors, _, _ = staff
+    for name, value in DEMO.items():
+        monkeypatch.setenv(name, value)
+    created = await auth.seed_demo_admin()
+    admin = await auth.provider(created["actor_id"], "staff")
+    await auth.db.execute("INSERT INTO staff_sessions(token_hash,actor_id,auth_version,expires_at) VALUES('t',$1,$2,now()+interval '1 hour')",
+                          admin.actor_id, admin.auth_version)
+    await auth.change_account(created["actor_id"], by=actors["root"], password="a-long-and-strong-password")
+    for name in DEMO:
+        monkeypatch.delenv(name)
+    for name, value in (("APP_ENV", "production"), ("AI_HELPDESK_INSTANCE", "staff"), ("AI_HELPDESK_STAFF_AUTH", "local")):
+        monkeypatch.setenv(name, value)
+    assert await auth.revoke_weak_password_sessions() == 0
