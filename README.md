@@ -4,262 +4,92 @@
 
 **Two cooperating agent services and the contract between them: a multi-agent support service, a Text2SQL agent it delegates to over A2A, and a versioned, machine-checked A2A contract, in one repository.**
 
-The support agent votes on each question's intent, runs tools concurrently, lets specialist agents answer (in parallel when a question spans domains) and look up what is still missing in a bounded tool loop, and checks every sentence before it is sent. The SQL agent plans, runs and repairs its own read-only SQL behind a permission gate and streams each stage back. A React console shows each agent decision as it happens.
-
 [![Python](https://img.shields.io/badge/Python-3.12_%C2%B7_3.11-3776AB?style=flat-square&logo=python&logoColor=white)](backend/Dockerfile)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.119_%C2%B7_0.141-009688?style=flat-square&logo=fastapi&logoColor=white)](backend/requirements.txt)
 [![React](https://img.shields.io/badge/React-18-149ECA?style=flat-square&logo=react&logoColor=white)](frontend/package.json)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16_%2B_pgvector-4169E1?style=flat-square&logo=postgresql&logoColor=white)](docker-compose.yml)
-[![A2A](https://img.shields.io/badge/A2A_0.2-contract_v1.13-6E56CF?style=flat-square)](a2a-contract/README.md)
+[![A2A](https://img.shields.io/badge/A2A_0.2-contract_v1.15-6E56CF?style=flat-square)](a2a-contract/README.md)
 [![CI](https://img.shields.io/badge/CI-GitHub_Actions-2088FF?style=flat-square&logo=githubactions&logoColor=white)](https://github.com/heyemlee/ai-helpdesk/actions/workflows/ci.yml)
 
 **English** · [简体中文](README.zh-CN.md)
 
-[Highlights](#highlights) · [Architecture](#architecture) · [Tech stack](#tech-stack) · [Features](#features) · [Develop](#develop) · [AI-assisted development](#ai-assisted-development)
+[Highlights](#highlights) · [Architecture](#architecture) · [Tech stack](#tech-stack) · [Run it](#run-it) · [Docs](#docs)
 
 </div>
 
 <p align="center">
-  <img src="docs/screenshots/chat.webp" width="960" alt="Three questions in the AI Helpdesk console with Learning mode on: a cracked-countertop question is answered by two specialist agents in parallel after a corrective search, with an unsupported date promise replaced; an order-status question is delegated to the SQL agent over A2A, whose table search, planning, queries and repair stream into the console; and for a split cabinet door, where the rules fetch no order data, the specialist calls tools itself in the bounded loop, querying the business systems for the delivery date and searching the knowledge base again, and Learning mode lists both lookups" />
+  <img src="docs/screenshots/chat.webp" width="960" alt="Two questions in the AI Helpdesk console. An order-status question is delegated to the SQL agent over A2A and its stages stream into the console: working out the kind of question, finding the tables, planning, writing and running the queries on two databases, and repairing one that failed. The reply is rendered from the verified rows: the order's status and ship date, the time of the data, a note that an employee must review it, and the evidence to review. Learning mode then explains the turn: the weighted intent vote, the specialist that was chosen, the delegation and its verification, the answer check and the handoff decision. A warranty question is then answered from the knowledge base with the published policy excerpt, its version, scope and effective date" />
 </p>
 
-<p align="center"><sub>A made-up company with made-up orders and documents, served by a mocked API.</sub></p>
+<p align="center"><sub>A made-up company with made-up orders and documents, served by a mocked API and sped up.</sub></p>
 
 ## Highlights
 
-- **A router and specialist agents.** An LLM, embeddings and rules vote (0.7 / 0.2 / 0.1) on 19 intents, 77 of 90 labelled messages right with gpt-6-luna. Domain scores pick one of three specialists, run as replicas a monitor re-weights; a second joins in parallel when it clears 0.45 and 55% of the first.
-- **A bounded tool loop, switched on by an A/B.** When the prefetched material falls short, a specialist calls the same search and data lookup itself through function calling, at most three model calls and one delegation a turn. In 72 paired runs, questions whose data the rules miss got it in 26 of 30 runs instead of none, with no forbidden calls or invented figures, so the staff instance runs it.
-- **A Text2SQL agent with its own loop.** Data questions go to the SQL agent in `ai-sql-agent/`, a separate service that routes, plans one step per data source, writes SQL that an SQLGlot gate checks against the caller's table and column permissions, runs it read-only, repairs failures at most twice and checks its result. Over its latest three release-gate rounds: 94.7% cross-database accuracy, and 0.9% of answers wrong without a warning.
-- **Agent-to-agent delegation under one contract.** Over A2A the SQL agent streams each stage back, with Agent Card discovery, fallbacks and timeouts. The contract in `a2a-contract/`, 5 JSON Schemas and 30 golden fixtures, is tested by both agents from the same commit, so a protocol change and both of its sides land in one pull request.
-- **Trust between agents fails closed.** A delegated result is evidence only with a success or partial-success status and no risk or degraded flag; a missing field counts against it. Only evidence, retrieved passages and SOPs can ground a price or a date.
-- **Retrieval with a corrective loop.** Three sub-queries over pgvector and a keyword index, a cross-encoder or LLM rerank with a check on whether the evidence is enough, and one more round for what is missing. The fused search alone finds the right document in the top three for 101 of 108 test questions.
-- **Guardrails and a human in the loop.** Every sentence is checked before it is sent, and unsupported price or date promises are replaced. Specialists declare when a person is needed, low confidence opens a ticket, and a model outage pauses calls instead of opening tickets.
-- **Turns that outlive their worker.** In queued mode a turn is a run in Postgres, executed by workers that hold a fenced lease and record the answer before any side effect; tickets, audit and memory are keyed by the run, and clients resume the stream with `Last-Event-ID`. In five chaos drills, 340 runs went through worker kills, Redis restarts and a Redis flush with no second ticket, audit line or answer; put to the same dropped connections and API restart, the old inline mode lost 53% of turns and queued mode none.
-- **An event log on Kafka, if you want one.** Turn events can go through Kafka to a projector and an evaluation sampler, each with its own offsets. The projection rebuilds from the topic, deletion requests hold through replays, and drills that kill both consumers and restart the broker match every event in Kafka to a row in Postgres. One projector writes about 21,000 events a second, and the detour adds about 24 ms to an event.
+- **Two agents, one contract.** The support agent delegates data questions to a separate Text2SQL agent over A2A (JSON-RPC 2.0, with each stage streamed back over SSE). The contract between them, JSON Schemas and golden fixtures, sits in the same repository, and both agents' tests read it from the same commit.
+- **A pipeline with a bounded loop inside it.** An LLM, embeddings and rules vote on the intent, rules pick the tools and `asyncio.gather` runs them together, and domain scores route the turn to specialist agents. A specialist that still lacks something calls the same tools itself through function calling, within a fixed budget.
+- **Replies rendered from verified evidence.** The model decides what to look up and whether a person is needed; the text a user reads is rendered by the program from row-bound SQL evidence and published policy excerpts. Without evidence there is no business claim, and a missing or malformed field counts against a result.
+- **Text2SQL behind a permission gate.** The SQL agent plans a step per data source, has a model write the SQL, checks every table and column at an SQLGlot AST gate, runs it read-only, repairs a failure at most twice and checks its own result. Its release gate measures 94.7% cross-database accuracy, with 0.9% of answers wrong without a warning.
+- **Hybrid retrieval with a corrective round.** pgvector and a `tsvector` keyword index fused by rank, a cross-encoder or LLM rerank that also judges whether the evidence is enough, and one more round aimed at what is missing.
+- **A person in the loop.** Low confidence, or a specialist's own request, hands the turn to staff with a ticket. A Case carries one problem across messages, and an employee approves each draft after its evidence is checked again. Staff sign in with local accounts and roles.
+- **Turns that outlive their worker.** In queued mode a turn is a run in Postgres, dispatched on Redis Streams to workers that hold a fenced lease, and the console resumes the stream with `Last-Event-ID`. In chaos drills that killed workers and restarted Redis, all 340 runs finished with no second ticket or answer.
+- **Observable and gated.** Every step of a turn is an ordered event in Postgres, optionally through Kafka, next to OpenTelemetry traces and Grafana dashboards. Five required CI checks run more than 3,000 tests on every pull request.
 
 ## Architecture
 
 <p align="center">
-  <img src="docs/system.svg" width="844" alt="System overview: one repository holds two agent services and the contract between them. The staff console and, through Nginx on port 80, customers call the support agent in backend/, a FastAPI service on Python 3.12 that runs five stages (understand, gather, route, answer, check) with its state in PostgreSQL 16, Redis 7 and optionally Kafka. Its staff instance delegates data questions to the SQL agent in ai-sql-agent/, a FastAPI service on Python 3.11, over A2A after reading the Agent Card, with message/stream as JSON-RPC 2.0 and stage events, the artifact and a final event back over SSE, or over HTTP /query, the default. The SQL agent routes, retrieves tables, plans a step per data source, writes SQL, runs it read-only through an SQLGlot gate, repairs it at most twice and checks the result against the business databases. Both agents call model APIs through their own connections. The a2a-contract directory, version 1.13, holds the protocol document, five JSON Schemas, 30 golden fixtures and a self-check, which both agents' tests read from the same commit; one CI runs five required checks on every pull request" />
+  <img src="docs/architecture.svg" width="844" alt="System architecture: one repository holds two agent services and the contract between them. The staff console (React 18, Vite) posts a question to the support agent in backend/, a FastAPI service on Python 3.12 with asyncio, and customers reach it through Nginx; the answer streams back over SSE. The support agent runs five stages: 1 Understand, an intent vote with working memory; 2 Gather, a hybrid search and a delegation over A2A; 3 Route, to specialist agents; 4 Answer, in a bounded tool loop; 5 Verify, which renders the reply from verified evidence, or hands off to staff review as a Case or ticket. Gather delegates data questions over A2A, JSON-RPC, to the SQL agent in ai-sql-agent/, a FastAPI service on Python 3.11 that retrieves tables with BM25 and vectors, plans a step per source, has a model write SQL, checks it at an SQLGlot AST gate and runs it read-only with repair; evidence returns over SSE. Contract v1.15, JSON Schemas and golden fixtures, is tested on both sides. Below them: PostgreSQL 16 with pgvector and tsvector, Redis 7 for memory and the run queue, Kafka as an optional turn event log, the Anthropic and OpenAI model APIs, and the business data the SQL agent reads. Platform: Docker Compose, Kubernetes, KEDA, Nginx, OpenTelemetry, Grafana and GitHub Actions. A pulse follows one data question through all of it in that order" />
 </p>
 
-Two services and one contract. The staff console, and customers through Nginx on port 80, talk to the support agent; its staff instance delegates data questions to the SQL agent over A2A (`message/stream`, stage events over SSE) or its HTTP `/query`, the default. They stay separate services: only the SQL agent holds business-database access and runs model-written SQL, each pins its own Python and framework versions, and a heavy query can't take the chat down with it. The contract between them is a directory in the same repository, and both sides' tests read it from the same commit.
+A question from the staff console, or from a customer through Nginx, runs through five stages in the support agent. **Understand** loads memory and votes on the intent. **Gather** runs a hybrid search in PostgreSQL and, for data questions, a delegation to the SQL agent over A2A, at the same time. **Route** picks the specialist agents, **Answer** runs them with a bounded tool loop, and **Verify** renders the reply from the evidence that passed its checks, or hands the turn to a person. The SQL agent runs its own loop (retrieve, plan, write SQL, gate, run, repair) and streams each stage back. Blue marks requests and data, teal the A2A exchange, orange model calls and violet the contract.
 
-| Directory | What it is | Stack | Docs |
-| --- | --- | --- | --- |
-| `backend/` · `frontend/` | The support agent and its staff console | Python 3.12 · FastAPI · React 18 | below · [setup](docs/setup.md) |
-| `ai-sql-agent/` | The Text2SQL agent, with A2A, MCP and HTTP interfaces and a console of its own | Python 3.11 · FastAPI · SQLGlot | [README](ai-sql-agent/README.md) |
-| `a2a-contract/` | The A2A contract: protocol document, JSON Schemas, golden fixtures, self-check | JSON Schema 2020-12 · Python | [README](a2a-contract/README.md) |
-| `deploy/` · `scripts/` | Compose, Kubernetes and monitoring config; local CI, development and deployment scripts | Docker Compose · Kubernetes · KEDA | [setup](docs/setup.md) |
+The two agents stay separate services: only the SQL agent can reach business data and run model-written SQL, each pins its own Python and framework versions, and a heavy query can't take the chat down with it.
 
-### Inside the support agent
-
-<p align="center">
-  <img src="docs/architecture.svg" width="844" alt="Agent architecture: one question runs through five stages in the agent runtime, posted by the React 18 console with the answer streamed back over SSE. 1 Understand: an intent vote typed with Pydantic 2, with working memory in Redis 7. 2 Gather: tools picked by rules and run together with asyncio.gather, a search in PostgreSQL 16 with pgvector and tsvector and a delegation over A2A to the peer agent ai-sql-agent, which runs its own loop; thin evidence loops back for one corrective round. 3 Route: domain scores pick the specialists, and a monitor re-weights their replicas every 10 seconds. 4 Answer: three specialists on the Anthropic or OpenAI chat models, falling back to a generalist; in a bounded tool loop a specialist can search or query again through function calling. 5 Check: a guard and three confidence gates; a failed gate hands off to a person with a ticket. In queued mode, opt-in on Docker Compose and on by default in the Kubernetes manifests, the run waits on Redis Streams for workers that hold a fenced lease on it; when worker w1 is lost after the delegation, w2 takes over as attempt 2 and the console resumes the SSE stream with Last-Event-ID. Every step is also appended, in order, to a turn event log (intent, prefetch, routing, model calls, tool calls, guard, answer and handoff), written to PostgreSQL in batches off the answer path, or, with the same defaults, through Kafka to a projector and a sampler. Vectors and reranking come from an embedding API, and the platform is FastAPI, Python 3.12, httpx, Docker Compose, Kubernetes, KEDA, Nginx, OpenTelemetry and Grafana; pulses travel each connection in that order" />
-</p>
-
-A question reaches the staff instance from the console, or the customer instance through Nginx on port 80, and runs through five stages. **Understand** loads memory and votes on the intent. **Gather** runs the tools the rules pick for it, at the same time: a hybrid search in PostgreSQL and, on the staff instance, a lookup delegated to [the SQL agent](ai-sql-agent/README.md) over A2A or its HTTP `/query`. **Route** scores the specialists and picks a replica, **Answer** runs them with their own SOPs and, on the staff instance, lets them look up what is still missing, and **Check** tests each sentence on the way out, or opens a ticket and queues its webhook in an outbox. In queued mode the same five stages run on a worker that holds a fenced lease on the run: if it dies, another worker takes over as attempt 2 and the console resumes the stream with `Last-Event-ID`; the event log can also go through Kafka ([Durable runs](#durable-runs)).
-
-- **Rules fetch first; specialists fill the gaps.** Search and data lookups are chosen from the voted intent and its entities before any agent runs, and both run at once. With the tool loop switched on, a specialist that finds the material lacking calls the same tools itself, within a budget; with it off, a turn costs a predictable number of model calls. The open-ended loop, planning and repairing SQL, lives in the SQL agent behind a versioned contract.
-- **Two entrances, one image.** The customer instance never delegates, never runs the tool loop and keeps no cross-session memory, since its user IDs come from the request body; only Nginx on port 80 accepts outside connections.
+| Directory | What it is | Docs |
+| --- | --- | --- |
+| `backend/` · `frontend/` | The support agent and its staff console | [setup](docs/setup.md) |
+| `ai-sql-agent/` | The Text2SQL agent, with A2A, MCP and HTTP interfaces | [README](ai-sql-agent/README.md) |
+| `a2a-contract/` | The contract: protocol document, JSON Schemas, golden fixtures, self-check | [README](a2a-contract/README.md) |
+| `deploy/` · `scripts/` | Compose, Kubernetes and monitoring config; CI, backup and release scripts | [setup](docs/setup.md) |
 
 ## Tech stack
 
-| Layer                | Technology                                                                       | Role                                                                                                                                                                                                                                           |
-| -------------------- | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Agent runtime        | Python 3.12 · FastAPI · asyncio                                                  | FastAPI serves chat over SSE; asyncio runs the prefetch, parallel specialists and each tool-loop step's calls with `gather`, keeps blocking store calls off the event loop, and pumps progress into the stream                                 |
-| Model calls          | Anthropic SDK · OpenAI SDK · Pydantic 2                                          | One interface over both providers, switchable at runtime, with function calling translated both ways; every model decision (intent vote, query rewrite, rerank verdict, user profile, judge scores) is a Pydantic schema, validated before use |
-| Agent protocol       | A2A JSON-RPC (`message/stream`, `message/send`) · Agent Card · httpx             | Delegation to the SQL agent with streamed stages, fallbacks and timeouts; plain HTTP `/query` as the default transport                                                                                                                         |
-| Text2SQL agent       | Python 3.11 · FastAPI · SQLGlot · psycopg 3 · MCP                                | A separate service: a router with JSON-schema output, BM25 and vector retrieval over a YAML semantic layer, an AST gate on every table and column, read-only SQL on SQLite or PostgreSQL, A2A, MCP and HTTP interfaces ([details](ai-sql-agent/README.md#tech-stack)) |
-| Agent contract       | JSON Schema 2020-12 · golden fixtures · Python self-check                        | 5 schemas and 30 fixtures that both agents' tests read; the self-check proves each negative fixture is rejected and that every statement of the version agrees |
-| Embeddings, rerank   | OpenAI-compatible `/embeddings` · local n-gram vectors · cross-encoder `/rerank` | One embedder for knowledge, episodic memory and the intent vote, with local vectors when no API is set; a cross-encoder rerank with the LLM as fallback                                                                                        |
-| Retrieval store      | PostgreSQL 16 · pgvector · `tsvector` · asyncpg · SQLite                         | Dense and lexical legs fused by rank; SQLite with BM25 as a local fallback                                                                                                                                                                     |
-| Memory, shared state | Redis 7                                                                          | 24-hour working memory and its summarisation lock, per-user rate limits, and circuit breakers and routing penalties shared across instances; in queued mode, run dispatch and resumable frames (Streams) and the model token bucket (Lua)     |
-| Event streaming      | Apache Kafka 4.3 (KRaft) · aiokafka                                              | Optional transport for the turn event log: a topic per instance keyed by conversation, a projector and an evaluation sampler as separate consumer groups, a dead-letter topic, a 7-day replay window |
-| Guardrails, identity | Rule-based answer policy · confidence gates · HMAC user tokens                   | Sentence-level checks, handoff decisions and signed user identities                                                                                                                                                                            |
-| Console              | React 18 · TypeScript · Vite 6 · TanStack Query 5 · Tailwind CSS 4               | SSE read from a `fetch` stream (EventSource can't POST), streamed Markdown and Learning mode, in English and Chinese                                                                                                                           |
-| Observability        | OpenTelemetry · Prometheus · Grafana · Tempo · Loki                              | Traces per request, metrics, logs and alert rules, next to the monitor's Z-score anomaly checks                                                                                                                                                |
-| Delivery, quality    | Docker Compose · Nginx · Kubernetes · KEDA · GitHub Actions · pytest · unittest · Ruff · Vitest · k6 | 13 services in one deploy, or Kustomize manifests with KEDA-scaled workers; one CI runs both agents' tests against pgvector (the support agent's also against Redis and Kafka), the contract self-check and three image builds; k6 and a chaos drill for queued mode |
+| Layer | Technology | Role |
+| --- | --- | --- |
+| Agent runtime | Python 3.12 · FastAPI · asyncio · Pydantic 2 | Chat over SSE, concurrent tools and specialists, every model decision a validated schema |
+| Model calls | Anthropic SDK · OpenAI SDK (Chat Completions, Responses) | One interface over both providers, switchable at runtime, with function calling |
+| Agent protocol | A2A 0.2 · JSON-RPC 2.0 · SSE · Agent Card · JSON Schema 2020-12 | Delegation, discovery, and a contract both agents test |
+| Text2SQL agent | Python 3.11 · FastAPI · SQLGlot · psycopg 3 · MCP | An AST permission gate in front of read-only SQL on PostgreSQL or SQLite |
+| Retrieval | PostgreSQL 16 · pgvector · `tsvector` · cross-encoder rerank | Dense and keyword search fused by rank |
+| State and events | Redis 7 (Streams, Lua) · Apache Kafka 4.3 (optional) | Working memory, the run queue and shared rate limits; the turn event log |
+| Console | React 18 · TypeScript · Vite 6 · TanStack Query 5 · Tailwind CSS 4 | Streaming chat, Cases, tickets, knowledge, data and admin pages |
+| Observability | OpenTelemetry · Prometheus · Grafana · Tempo · Loki | Traces, metrics, logs and alert rules |
+| Delivery | Docker Compose · Nginx · Kubernetes · KEDA · GitHub Actions | 13 services in one Compose deploy, or manifests with KEDA-scaled workers |
+| Testing | pytest · Ruff · Vitest · k6 | Unit and contract tests, load tests and chaos drills |
 
-## Features
-
-### Agent orchestration
-
-A streamed turn arrives as `progress → meta → routing → delta → result`; the console shows each stage live, and Learning mode explains every decision.
-
-- **Routing.** A rule anchor fixes the intent without a model call and skips rewriting and reranking; conflicting anchors fall back to the full vote, and unclear questions get a clarifying reply.
-- **Replicas and feedback.** Each specialist type runs two replicas. A monitor tracks success rate and latency, flags Z-score anomalies, and penalises a replica by up to 0.9 when success drops below 90% or it slows, steering traffic to the healthier one.
-- **Collaboration and fallback.** One specialist's answer streams sentence by sentence; parallel answers are merged, each marked with its role. A failing specialist is replaced by the generalist, except mid-stream, where the turn is reported as not answered.
-- **Tool loop.** With `AI_HELPDESK_TOOL_LOOP=on`, as on the staff instance here, a specialist calls `knowledge_search` and `order_data_query` through function calling: at most three model calls and one delegation per specialist and turn, identity injected by the server, no data lookups for quotes, repeats of the prefetch served from the turn's cache, a wall clock sized to the slowest tool, and no second delegation once one has timed out. Failures go back to the model as tool results; calls stream as progress, and Learning mode lists each one with its outcome and time.
-- **Turn event log.** With `AI_HELPDESK_EVENT_LOG=full`, each turn is appended to Postgres as ordered events: intent, prefetch, routing, every model call by purpose with its tokens, every tool call, guard replacements, handoff and the answer. Writes are batched off the answer path, text expires before structure, and the two instances stay apart. After a refresh the console rebuilds a turn's inspector and Learning mode from it, and offline scripts replay routing and the answer guard on recorded traffic.
-- **Self-declared handoff.** Each specialist ends with a marker saying whether a person is needed, stripped from the stream; declaring one drops its confidence below the 0.70 gate.
-- **Memory and skills.** Working memory lives in Redis for 24 hours and is summarised at 15 messages; past sessions and a user profile return to the context. Each specialist loads its own SOPs from reloadable `SKILL.md` files.
-
-| One run with gpt-6-luna             | Result                                                                            |
-| ----------------------------------- | --------------------------------------------------------------------------------- |
-| Intent vote on 90 labelled messages | 77 correct (85.6%), macro-F1 0.798                                                |
-| LLM-judged dialog turns             | 14 of the 15 that completed pass; 1 of 16 was cut by an upstream connection error |
-
-The judge is the model under test and the cases are in Chinese ([evaluation record](docs/evaluation/end-to-end.md)). The bundled intents, specialists, SOPs and knowledge describe a manufacturer's support desk; another domain needs its own intents and specialists in code.
-
-| Tool-loop A/B with gpt-6-luna, 72 paired runs              | Rules |  Loop |
-| ---------------------------------------------------------- | ----: | ----: |
-| Data the rules miss reached the specialist (B, 30 runs)    |     0 |    26 |
-| Unneeded calls where the rules sufficed (A and D, 18 runs) |     — |     1 |
-| Invented figures or followed injections (E and F)          |     0 |     0 |
-| Handoffs (72 turns)                                        |    46 |    39 |
-| Mean input tokens per turn                                 | 2,692 | 4,915 |
-| LLM-judge score (A to C)                                   | 0.899 | 0.896 |
-
-The second of two runs: the first missed two of the ten conditions for switching it on, and what changed in between is in the [evaluation record](docs/evaluation/tool-loop-ab.md). Order data came from contract fixtures, so the latency leaves out a live delegation's 17–40 s.
-
-### Agent-to-agent delegation
-
-Data questions on the staff instance go to the SQL agent in [ai-sql-agent/](ai-sql-agent/README.md), which measures itself with a release gate. `SQL_AGENT_TRANSPORT=a2a` streams its stages over `message/stream`; the default, `query`, calls its synchronous HTTP `/query`.
-
-- **Streaming with fallbacks.** The Agent Card is cached for 30 s, and each stage (table search, planning, SQL, queries, repair) reaches the console in the interface language. A `-32004` before the stream opens switches to `message/send`; silence or a hard deadline ends the call.
-- **Evidence rules on every carrier.** One check covers A2A and `/query` results; a partial result also limits what may be said about failed steps, and a truncated one rules out totals.
-- **One contract, one commit.** Both agents' tests run the golden fixtures in [a2a-contract/](a2a-contract/README.md) from the same commit and fail rather than skip when they are missing. Each side declares the contract version it implements, `v1.13`, and CI fails when either disagrees with the contract.
-
-### Text2SQL agent
-
-The SQL agent is its own service, with its own release gate and deployment ([README](ai-sql-agent/README.md)); its pages are the Data section of the same console, which reaches it through `/sql-api/` with the console's key added on the server.
-
-- **Routes and plans.** A model router with JSON-schema output decides between the tool and memory; a planner splits the rest into steps and hands each step's results to the next.
-- **One tool, behind one gate.** It acts only through read-only SQL. An SQLGlot AST gate checks every table and column against the caller's permissions and refuses what it can't parse, within 1,000 rows, 10 s and 8 MiB per call.
-- **Repairs and checks its own work.** A log-driven loop repairs failed calls at most twice, and results pass rule checks and a model self-check before they are returned.
-- **Context that keeps itself current.** Database, table and column retrieval fuses BM25 with embeddings through RRF and re-ranks; a schema watcher rebuilds the index when a database changes. On remote embeddings, 99.2% recall on 40 held-out phrasings with 36.8% of the schema sent.
-- **Runs you can follow and stop.** A2A and HTTP share keys, limits and audit, and an MCP server offers the same gate as tools. Every request is a run with a numbered event log of its stages, model calls and SQL, and can be cancelled while it runs.
-
-| Release gate, latest three rounds | Result          |
-| --------------------------------- | --------------- |
-| Cross-database accuracy           | 94.7% (≥ 90%)   |
-| Wrong answers without a warning   | 0.9% (≤ 3%)     |
-
-### Durable runs
-
-`AI_HELPDESK_RUN_MODE=queued` takes a turn off the connection that asked for it ([design](docs/design/durable-agent-runs.md)). The API writes the run to Postgres and dispatches its id on a per-instance Redis stream; workers, the same image with `AI_HELPDESK_ROLE=worker`, claim it and run the unchanged pipeline, and every SSE frame goes to a per-run stream the client can resume. Inline mode, the default, is untouched.
-
-- **One source of truth.** Run state, leases and results live in `agent_runs`; Redis streams carry dispatch and frames and can be rebuilt, because a sweep re-dispatches whatever Postgres says nobody is running.
-- **Leases with a fence.** Workers renew a lease every third of its length; another worker takes over an idle message with `XAUTOCLAIM` and `attempt + 1`. A worker that lost its lease can no longer write, and its late frames are dropped.
-- **Decided once, applied once.** The answer is recorded before any side effect, so a takeover after that point resends it without calling the model. Ticket ids derive from the run, audit and working memory are written once per run, and tool results are memoized so a retry does not repeat a 40 s delegation. Infrastructure errors are retried; runs that keep failing go to a dead letter and a person.
-- **Load is admitted, not absorbed.** A token bucket in Redis, shared by every replica, admits model calls by provider RPM and TPM; a backlog-driven ladder turns off the tool loop, then rewrite and rerank, then delegation, then model calls; above the cap the API answers 429 with `Retry-After`.
-- **Ready for Kubernetes.** Liveness, readiness and drain on SIGTERM; [manifests](deploy/k8s) with KEDA scaling workers on the stream backlog, verified on kind.
-- **The event log on Kafka (optional).** With `AI_HELPDESK_EVENT_SINK=kafka`, turn events go to a topic per instance keyed by conversation. A projector writes `turn_events` and commits only after writing; a sampler records turns worth evaluating (handoffs, takeovers, degraded or low-confidence answers, a stable 5% sample), holding its offsets at its oldest open turn. The topic keeps 7 days, less than any text retention, and replays skip conversations removed by deletion requests. Dispatch stays on Redis: one 40 s turn would hold up a Kafka partition.
-
-In five chaos drills on Compose and kind (worker kills, Redis restarts and a flush, a storm of 429s, deploys), all 340 runs finished and every check against a second ticket, audit line or answer passed. A killed worker's runs were taken over and finished at most 42 s after submission; deploys took none over. Put to the same dropped connections and API restart, inline mode lost 64 of 120 turns, every one whose stream was cut, and queued mode none. Two more drills with the event log on Kafka (both consumers SIGKILLed, the broker restarted) matched every event in Kafka to a row in `turn_events`, closed every turn, sampled exactly what the rules recompute to, and rebuilt the projection from the topic with forgotten conversations staying gone. One projector writes about 21,000 events a second into Postgres (three, about 53,000), and the detour through Kafka adds about 24 ms to an event.
-
-Against a mock model with a quota of 300 requests a minute, two workers already reach what the quota allows (97 turns a minute; four finished 103.5). Without the token bucket the same overload looked faster only because 27% of turns were answered "can't answer right now" after 718 upstream 429s; with the bucket at 85% of the quota the model returned none. At low load the queue adds nothing measurable: first sentence p50 1.006 s inline, 1.005 s queued. All of it ran on one laptop with fixed model latencies, so the shape carries over and the absolute numbers do not. Records: [chaos drill](docs/evaluation/chaos-drill.md), [load test](docs/evaluation/load-test.md).
-
-### Retrieval
-
-- **Two legs, fused by rank.** Dense (pgvector) and lexical (`ts_rank_cd`, or BM25 on SQLite) legs, ten candidates each, fused by rank rather than by incompatible scores; with local n-gram vectors, keyword matches lead.
-- **Rewrite, rerank, retry.** Complex questions become three sub-queries. A cross-encoder `/rerank` API orders the candidates when one is set, with a score threshold for sufficiency; otherwise an LLM reranks and judges sufficiency in the same call. Too little evidence triggers one more round aimed at the gap.
-- **One embedder.** Knowledge, episodic memory and the intent vote share an OpenAI-compatible `/embeddings` API, or local n-gram vectors when none is set. A failing API is never swapped for vectors from another space, and switching models re-embeds everything while the service keeps answering.
-- **A cache with a version.** Each instance caches search results for five minutes, tagged with a revision that the database changes on every chunk write. The two instances share one database but not one process, so an import or a vector swap on either one retires the cached results on both.
-
-Top-three hits on PostgreSQL by question type, for the fused search alone (no rewriting, reranking or answer generation):
-
-| Question type                  |   Cases | Local n-gram vectors | Qwen3-Embedding-0.6B |
-| ------------------------------ | ------: | -------------------: | -------------------: |
-| Wording close to the document  |      35 |                   31 |                   33 |
-| Colloquial paraphrase          |      30 |                   22 |                   28 |
-| Model codes and proper names   |      11 |                   11 |                   11 |
-| English over Chinese documents |      22 |                    7 |                   21 |
-| Two documents needed           |       6 |                    3 |                    4 |
-| Current vs. superseded version |       4 |                    3 |                    4 |
-| **All**                        | **108** |               **77** |              **101** |
-
-The 52 documents and 122 questions (14 with no answer) are simulated test data, and even with the remote model a superseded document outranks the current one in 4 of 6 cases. Through the full chat path the current figures still won: no reply quoted the superseded one, and 59 of the 64 questions with a figure got it. Records: [local vectors](docs/evaluation/retrieval-ca-factory.md), [remote embedding](docs/evaluation/retrieval-remote-embedding.md), [full chain](docs/evaluation/kb-full-chain.md).
-
-### Guardrails and handoff
-
-- **Answer guard.** A sentence with an amount or a time, a commitment verb, no hedge and no source is replaced with one deferring to the quote or schedule; a date counts as sourced when a source has the same calendar day in any format. Staff see the original and the rule.
-- **Gates and tickets.** Intent < 0.45, routing < 0.35 or agent < 0.70 hands off; these are heuristic signals, not calibrated probabilities. Tickets have four states, and notifications go through an outbox with retries.
-- **Failing closed.** A rejected key stops calls for that configuration until reset; a 429 backs off 5–60 s and an unexplained 403 30–600 s, honouring `retry-after` up to 900 s.
-
-### Knowledge base, tickets and admin
-
-<p align="center">
-  <img src="docs/screenshots/workspace.webp" width="960" alt="Browsing a knowledge category and asking the knowledge base a question that returns three ranked passages, opening a ticket and marking it assigned, then switching the embedding model, which rebuilds 312 vectors with a progress bar before it cuts over" />
-</p>
-
-<p align="center"><sub>The same made-up company and mocked API.</sub></p>
-
-**Knowledge base**
-
-- Browse by category; recategorising never touches retrieval.
-- **Ask a question** shows the passages and scores the chat path would retrieve.
-- Import `.txt`, `.md` or JSON; identical text is not imported twice.
-
-**Tickets**
-
-- Filter by status; only transitions the backend allows are offered.
-- Each shows the handoff reason, the conversation and the notification record.
-- The ticket card in chat links to the ticket and follows its status.
-
-**Admin & diagnostics**
-
-- Model connections are tested before they are saved; keys are write-only.
-- An LLM-as-judge evaluation whose baseline changes only on an explicit promote.
-- Monitoring, SOPs, and an inspector for any reply's routing scores and policy findings.
-
-## Develop
+## Run it
 
 ```bash
-cp .env.example .env                  # Compose variables: database, Redis and Grafana passwords
-cp backend/.env.example backend/.env  # set APP_ENV=development, a model key and SQL_AGENT_TRANSPORT=a2a
-docker compose up -d --build          # the support agent's stack; console at http://localhost:5174
-scripts/dev.sh                        # or backend and console from source, at http://localhost:5173
-scripts/dev-all.sh                    # the same, plus the SQL agent from ai-sql-agent/ and its own venv
+cp .env.example .env                  # Compose variables; fill in the demo admin to sign in to the console
+cp backend/.env.example backend/.env  # set APP_ENV=development and a model key
+docker compose up -d --build          # the whole stack; console at http://localhost:5174
+scripts/dev.sh                        # or the backend and console from source, at http://localhost:5173
+scripts/ci-local.sh                   # every CI job, in throwaway copies
 ```
 
-Configuration, model providers, knowledge import, setup without Docker and the API: [docs/setup.md](docs/setup.md). The SQL agent keeps its own Python 3.11 environment and `.env` in `ai-sql-agent/` ([develop](ai-sql-agent/README.md#develop)).
+Model providers, queued mode, the event log and running from source are in [docs/setup.md](docs/setup.md). The SQL agent keeps its own Python 3.11 environment ([develop](ai-sql-agent/README.md#develop)).
 
-Queued mode needs Postgres, Redis and `AI_HELPDESK_INSTANCE`; the drill stack has all three and a mock model:
+## Docs
 
-```bash
-docker compose -f deploy/drill/docker-compose.yml up -d --build --wait   # API :28080, three workers, mock model
-```
-
-## Test
-
-```bash
-scripts/ci-local.sh                         # every CI job in throwaway copies; --full adds Postgres, Redis and Kafka; --with-images adds the three image builds
-.claude/skills/test-backend/scripts/run-sql-agent.sh  # the SQL agent's tests in a throwaway copy
-cd backend && .venv/bin/python -m pytest    # backend tests; TEST_POSTGRES_DSN adds the pgvector ones
-.venv/bin/python scripts/eval_retrieval.py  # retrieval hit@3 and MRR, no model calls
-.venv/bin/python scripts/eval_retrieval.py --full-chain --embedding env  # figures in final knowledge answers; calls the model
-.venv/bin/python scripts/run_eval.py        # end-to-end evaluation; calls the model
-.venv/bin/python scripts/run_trajectory_eval.py  # tool loop vs rules on 40 trajectory cases; calls the model with --yes
-cd ../frontend && npm test                  # console tests
-backend/.venv/bin/python backend/scripts/chaos_drill.py --kills 3 --restart-redis --storm 20 --slow  # queued mode under failure
-backend/.venv/bin/python backend/scripts/chaos_drill.py --kafka --kill-projector 2 --kill-sampler 2 --restart-kafka --replay --slow  # the Kafka side
-loadtest/run.sh <name>                      # k6 against the drill stack; WORKERS, LLM_RPM, DEGRADE, MOCK_RPM
-```
-
-One CI runs five required jobs on every pull request: Ruff and 1,630 support-agent tests against pgvector, Redis and Kafka; 255 console tests and the production build; the contract self-check and the support agent's contract fixtures; the SQL agent's 1,266 tests against pgvector, its demos and its release-gate smoke; and three Docker images, with an API-key smoke test of the SQL agent's. The end-to-end and trajectory evaluations spend model calls, so they run only on request.
-
-## Deploy
-
-```bash
-docker compose up -d --build                    # 13 services; only Nginx :80 listens beyond localhost
-scripts/docker-deploy.sh backup                 # Postgres, Redis, the SQL agent's SQLite state, env files and deploy/
-scripts/docker-deploy.sh restore backups/<dir>  # restore and restart; a drill took 17 s
-docker compose -f docker-compose.yml -f docker-compose.queued.yml up -d --build   # queued mode: api + worker per instance
-docker compose -f docker-compose.yml -f docker-compose.kafka.yml up -d --build    # event log on Kafka (queued too: see docker-compose.queued-kafka.yml)
-scripts/k8s-up.sh                               # kind cluster: manifests, KEDA, Kafka, mock model
-```
-
-The SQL agent is the `sql-agent` service in the same compose file, started in production mode with API keys. It sits only on its own network, `sql-net`, with no host port, together with the staff instance, the console, Prometheus and the OTel Collector; the customer instance, Nginx and Postgres can't reach it. Its model settings go in `deploy/sql-agent/sql-agent.env`, its keys in `deploy/secrets/sql_agent_keys.json` (templates next to them), and its semantic layer and business databases in `deploy/sql-agent/data/`.
-
-In production mode the service refuses to start without the admin key, the user-signing secret, chat protection and a declared deployment scope. It is single-tenant by design; [deployment boundaries](docs/deployment-boundaries.md) explains what that covers.
+- **Components:** [SQL agent](ai-sql-agent/README.md) · [A2A contract](a2a-contract/README.md) · [setup and API](docs/setup.md)
+- **Design:** [durable runs](docs/design/durable-agent-runs.md) · [deployment boundaries](docs/deployment-boundaries.md)
+- **Measurements:** [retrieval](docs/evaluation/retrieval-remote-embedding.md) · [tool-loop A/B](docs/evaluation/tool-loop-ab.md) · [chaos drill](docs/evaluation/chaos-drill.md) · [load test](docs/evaluation/load-test.md) · [SQL agent release gate](ai-sql-agent/README.md)
+- **Acceptance:** [the harness](acceptance/README.md) that gates a release on a frozen question set
 
 ## AI-assisted development
 
-This repository is developed with Claude Code, with these controls and tools around it:
+This repository is developed with Claude Code, inside these controls:
 
-- **Branch protection on `main`.** Changes arrive only through pull requests, and the five jobs in [ci.yml](.github/workflows/ci.yml) (backend, frontend, A2A contract, SQL agent, Docker images) must pass. Admins can't bypass it.
-- **Project skills.** [`test-backend`](.claude/skills/test-backend/SKILL.md) runs Ruff, pytest and the contract self-check, and the SQL agent's tests, in throwaway copies, so the real `.env` files and production databases can't reach the tests. [`deploy`](.claude/skills/deploy/SKILL.md) runs only when a person invokes it; it hasn't done a real deployment, and its build, recreate and rollback steps haven't been exercised.
-- **A read-only development MCP server.** `helpdesk-dev` ([.mcp.json](.mcp.json), [dev_mcp_server.py](backend/scripts/dev_mcp_server.py)) lets an agent read recorded turns and the knowledge base from a development database, and it refuses the production one. See [Inspect turns from Claude Code](docs/setup.md#inspect-turns-from-claude-code).
-- **An advisory Claude review.** [claude-review.yml](.github/workflows/claude-review.yml) comments on pull requests but can't approve or block them; the CI checks are what block a merge. In its one trial so far, a throwaway PR, it caught two seeded bugs that passed every test and left a harmless refactor alone. That is a single sample, not a hit rate. A `skip-ai-review` label opts a pull request out, as for the history import that brought the SQL agent and the contract into this repository. See [Review pull requests with Claude](docs/setup.md#review-pull-requests-with-claude).
+- **Branch protection on `main`.** Changes arrive only through pull requests, five CI checks must pass, and admins can't bypass them.
+- **Project skills.** [`test-backend`](.claude/skills/test-backend/SKILL.md) runs the tests in throwaway copies, so the real `.env` files and databases can't reach them.
+- **A read-only MCP server.** [`helpdesk-dev`](backend/scripts/dev_mcp_server.py) lets an agent read recorded turns from a development database, and refuses the production one.
+- **An advisory Claude review.** [claude-review.yml](.github/workflows/claude-review.yml) comments on pull requests but can't approve or block them.
