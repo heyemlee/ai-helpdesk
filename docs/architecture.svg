@@ -1,398 +1,253 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 844 586" width="844" height="586" role="img" aria-labelledby="title desc">
-  <title id="title">AI Helpdesk agent architecture</title>
-  <desc id="desc">Agent architecture: one question runs through five stages in the agent runtime. The React 18 console posts it, and the answer streams back over SSE. 1 Understand, an intent vote typed with Pydantic 2, reading working memory from Redis 7. 2 Gather, tools picked by rules and run together with asyncio.gather: a search in PostgreSQL 16 with pgvector and tsvector, and a delegation over A2A to the peer agent ai-sql-agent, which runs its own loop; one corrective round when the evidence is thin. 3 Route, domain scores pick the specialists, and a monitor re-weights their replicas every 10 seconds. 4 Answer, three specialists through the Anthropic or OpenAI chat models, falling back to a generalist; in a bounded tool loop a specialist can search or query again through function calling, up to three model calls a turn. 5 Check, a guard and three confidence gates; a failed gate hands off to a person with a ticket. In queued mode, opt-in on Docker Compose and on by default in the Kubernetes manifests, the run waits on Redis Streams for workers that hold a fenced lease on it: worker w1 claims it as attempt 1, loses its lease after the delegation returns, and w2 takes it over as attempt 2, while the console can resume the SSE stream with Last-Event-ID. Every step is also appended, in order, to a turn event log: intent, prefetch, routing, model calls, tool calls, guard, answer and handoff, written to PostgreSQL in batches off the answer path, or, with the same defaults, through Kafka, where a projector and a sampler each read it. The platform is FastAPI, Python 3.12, httpx, Docker Compose, Kubernetes, KEDA, Nginx, OpenTelemetry and Grafana. Pulses travel each connection in that order, the stage badges light up in turn, and each event lights up as it is recorded until the batch is flushed to PostgreSQL and Kafka.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 844 464" width="844" height="464" role="img" aria-labelledby="title desc">
+  <title id="title">AI Helpdesk system architecture</title>
+  <desc id="desc">System architecture: one repository holds two agent services and the contract between them. The staff console (React 18, Vite) posts a question to the support agent in backend/, a FastAPI service on Python 3.12 with asyncio, and customers reach it through Nginx; the answer streams back over SSE. The support agent runs five stages: 1 Understand, an intent vote with working memory; 2 Gather, a hybrid search and a delegation over A2A; 3 Route, to specialist agents; 4 Answer, in a bounded tool loop; 5 Verify, which renders the reply from verified evidence, or hands off to staff review as a Case or ticket. Gather delegates data questions over A2A, JSON-RPC, to the SQL agent in ai-sql-agent/, a FastAPI service on Python 3.11 that retrieves tables with BM25 and vectors, plans a step per source, has a model write SQL, checks it at an SQLGlot AST gate and runs it read-only with repair; evidence returns over SSE. Contract v1.15, JSON Schemas and golden fixtures, is tested on both sides. Below them: PostgreSQL 16 with pgvector and tsvector, Redis 7 for memory and the run queue, Kafka as an optional turn event log, the Anthropic and OpenAI model APIs, and the business data the SQL agent reads. Platform: Docker Compose, Kubernetes, KEDA, Nginx, OpenTelemetry, Grafana and GitHub Actions. A pulse follows one data question through all of it in that order.</desc>
   <style>
     text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif; }
     .eyebrow { font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; fill: #8e8e93; }
-    .stage { font-size: 15px; font-weight: 650; fill: #1d1d1f; }
-    .name { font-size: 14.5px; font-weight: 600; fill: #1d1d1f; }
+    .title { font-size: 16px; font-weight: 650; fill: #1d1d1f; }
+    .name { font-size: 14px; font-weight: 600; fill: #1d1d1f; }
     .sub { font-size: 12.5px; fill: #6e6e73; }
     .edge { font-size: 11.5px; fill: #8e8e93; }
-    .chiptext { font-size: 12px; font-weight: 600; fill: #0a5bc4; }
+    .tealtext { fill: #0b7d73; font-weight: 600; }
+    .viotext { font-size: 11.5px; font-weight: 600; fill: #5b3fd6; }
     .pilltext { font-size: 12px; font-weight: 600; fill: #6e6e73; }
     .badgenum { font-size: 11.5px; font-weight: 700; fill: #ffffff; }
-    .looplabel { font-size: 11.5px; font-weight: 600; }
-    .loopblue { fill: #0a7cff; }
-    .loopteal { fill: #0d9488; }
+    .opttext { font-size: 8.5px; font-weight: 700; letter-spacing: 0.06em; fill: #8e8e93; }
 
+    .bg { fill: #fbfbfd; stroke: #e5e5ea; }
     .card { fill: #ffffff; stroke: #e5e5ea; stroke-width: 1; }
+    .agent { stroke: #d9d9de; }
+    .opt { stroke: #b8c4d6; stroke-dasharray: 4 3; }
+    .opttag { fill: #f5f5f7; stroke: #d9d9de; }
+    .row { fill: #f5f5f7; }
+    .rowon { opacity: 0; stroke-width: 1.5; animation: 12s linear infinite; }
+    .rowon.b { fill: #e8f0ff; stroke: #0a7cff; }
+    .rowon.t { fill: #e3f5f2; stroke: #0d9488; }
+    .badge { fill: #c7c7cc; }
+    .lit { opacity: 0; animation: 12s linear infinite; }
+    .ring { fill: none; stroke-width: 2; opacity: 0; animation: 12s linear infinite; }
+    .strip { fill: #f5f5f7; }
+    .pill { fill: #ffffff; stroke: #e5e5ea; }
+    .vpill { fill: #f1edff; stroke: #c9bcff; }
+    .vdash { fill: none; stroke: #7c5cff; stroke-width: 1.5; stroke-dasharray: 3 3; }
     .wire { fill: none; stroke: #d1d1d6; stroke-width: 1.5; }
-    .icon { fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
-    .loopline { fill: none; stroke-width: 1.6; stroke-linecap: round; }
-    .ring { fill: none; stroke-width: 2; stroke-opacity: 0; }
-    .chip { fill: #eef4ff; }
-    .evpill { fill: #ffffff; stroke: #e5e5ea; }
-    .evlit { opacity: 0; }
-    .evon { fill: #e8f0ff; stroke: #0a7cff; }
-    .evtext { font-size: 12px; font-weight: 600; fill: #0a5bc4; }
-    .platpill { fill: #f5f5f7; stroke: #e5e5ea; }
-
-    .b { stroke: #0a7cff; }
-    .o { stroke: #e5733f; }
-    .t { stroke: #0d9488; }
-    .v { stroke: #7c5cff; }
-    .ft { fill: #0d9488; }
-
-    /* Dashed parts are opt-in on Docker Compose and on by default in the
-       Kubernetes manifests: queued mode and the event log on Kafka. */
-    .opt { fill: #ffffff; stroke: #b8c4d6; stroke-width: 1; stroke-dasharray: 4 3; }
-    .optstrip { fill: #f6f8fc; stroke: #b8c4d6; stroke-width: 1; stroke-dasharray: 4 3; }
-    .optwire { fill: none; stroke: #c7c7cc; stroke-width: 1.5; stroke-dasharray: 4 3; }
-    .opttag { fill: #ffffff; stroke: #b8c4d6; }
-    .opttext { font-size: 9.5px; font-weight: 700; letter-spacing: 0.08em; fill: #8e8e93; }
-    .tagon { fill: #e8f0ff; stroke: #8ab8ff; }
-    .tagontext { font-size: 9.5px; font-weight: 700; letter-spacing: 0.08em; fill: #0a5bc4; }
-    .evdead { fill: #fdeceb; stroke: #e5484d; }
-    .xmark { fill: none; stroke: #e5484d; stroke-width: 1.6; stroke-linecap: round; }
-    .caption { font-size: 12px; font-weight: 600; }
-    .capb { fill: #0a5bc4; }
-    .capr { fill: #c62a2f; }
-    .r { stroke: #e5484d; }
 
     /* A comet: a soft tail with a bright head */
-    .tail, .head { fill: none; stroke-linecap: round; opacity: 0; animation: 10s linear infinite; }
-    .tail { stroke-width: 3; stroke-dasharray: 0.3 1.5; stroke-dashoffset: 0.3; animation-name: tail; }
-    .head { stroke-width: 4.5; stroke-dasharray: 0.02 1.5; stroke-dashoffset: 0.02; animation-name: head; }
-    .tail.long { animation-name: tailL; }
-    .head.long { animation-name: headL; }
-    .march { stroke-dasharray: 3 3; animation: march 1.2s linear infinite; }
-    .badge { fill: #c7c7cc; transform-box: fill-box; transform-origin: center; }
-    @keyframes tail { 0% { stroke-dashoffset: 0.3; opacity: 0.35; } 6% { stroke-dashoffset: -1; opacity: 0.35; } 6.5%, 100% { stroke-dashoffset: -1; opacity: 0; } }
-    @keyframes head { 0% { stroke-dashoffset: 0.02; opacity: 1; } 6% { stroke-dashoffset: -1.28; opacity: 1; } 6.5%, 100% { stroke-dashoffset: -1.28; opacity: 0; } }
-    @keyframes tailL { 0% { stroke-dashoffset: 0.3; opacity: 0.35; } 9% { stroke-dashoffset: -1; opacity: 0.35; } 9.5%, 100% { stroke-dashoffset: -1; opacity: 0; } }
-    @keyframes headL { 0% { stroke-dashoffset: 0.02; opacity: 1; } 9% { stroke-dashoffset: -1.28; opacity: 1; } 9.5%, 100% { stroke-dashoffset: -1.28; opacity: 0; } }
-    @keyframes march { to { stroke-dashoffset: -12; } }
-    @keyframes rcon { 0%, 78.70% { stroke-opacity: 0; } 79.70%, 83.70% { stroke-opacity: 0.85; } 87.20%, 100% { stroke-opacity: 0; } }
-    @keyframes rhum { 0%, 79.50% { stroke-opacity: 0; } 80.50%, 84.50% { stroke-opacity: 0.85; } 88.00%, 100% { stroke-opacity: 0; } }
-    @keyframes st1 { 0%, 4.50% { stroke-opacity: 0; } 5.50%, 19.50% { stroke-opacity: 0.9; } 22.50%, 100% { stroke-opacity: 0; } }
-    @keyframes bd1 { 0%, 4.50% { fill: #c7c7cc; transform: scale(1); } 6.00% { fill: #0a7cff; transform: scale(1.3); } 8.50%, 91.50% { fill: #0a7cff; transform: scale(1); } 94.50%, 100% { fill: #c7c7cc; transform: scale(1); } }
-    @keyframes cp1 { 0%, 4.50% { fill: #eef4ff; } 5.70%, 19.50% { fill: #cfe0ff; } 23.00%, 100% { fill: #eef4ff; } }
-    @keyframes st2 { 0%, 19.50% { stroke-opacity: 0; } 20.50%, 44.50% { stroke-opacity: 0.9; } 47.50%, 100% { stroke-opacity: 0; } }
-    @keyframes bd2 { 0%, 19.50% { fill: #c7c7cc; transform: scale(1); } 21.00% { fill: #0a7cff; transform: scale(1.3); } 23.50%, 91.50% { fill: #0a7cff; transform: scale(1); } 94.50%, 100% { fill: #c7c7cc; transform: scale(1); } }
-    @keyframes cp2 { 0%, 19.50% { fill: #eef4ff; } 20.70%, 44.50% { fill: #cfe0ff; } 48.00%, 100% { fill: #eef4ff; } }
-    @keyframes st3 { 0%, 44.50% { stroke-opacity: 0; } 45.50%, 50.50% { stroke-opacity: 0.9; } 53.50%, 100% { stroke-opacity: 0; } }
-    @keyframes bd3 { 0%, 44.50% { fill: #c7c7cc; transform: scale(1); } 46.00% { fill: #0a7cff; transform: scale(1.3); } 48.50%, 91.50% { fill: #0a7cff; transform: scale(1); } 94.50%, 100% { fill: #c7c7cc; transform: scale(1); } }
-    @keyframes cp3 { 0%, 44.50% { fill: #eef4ff; } 45.70%, 50.50% { fill: #cfe0ff; } 54.00%, 100% { fill: #eef4ff; } }
-    @keyframes st4 { 0%, 50.50% { stroke-opacity: 0; } 51.50%, 67.00% { stroke-opacity: 0.9; } 70.00%, 100% { stroke-opacity: 0; } }
-    @keyframes bd4 { 0%, 50.50% { fill: #c7c7cc; transform: scale(1); } 52.00% { fill: #0a7cff; transform: scale(1.3); } 54.50%, 91.50% { fill: #0a7cff; transform: scale(1); } 94.50%, 100% { fill: #c7c7cc; transform: scale(1); } }
-    @keyframes st5 { 0%, 67.00% { stroke-opacity: 0; } 68.00%, 76.50% { stroke-opacity: 0.9; } 79.50%, 100% { stroke-opacity: 0; } }
-    @keyframes bd5 { 0%, 67.00% { fill: #c7c7cc; transform: scale(1); } 68.50% { fill: #0a7cff; transform: scale(1.3); } 71.00%, 91.50% { fill: #0a7cff; transform: scale(1); } 94.50%, 100% { fill: #c7c7cc; transform: scale(1); } }
-    @keyframes cp5 { 0%, 67.00% { fill: #eef4ff; } 68.20%, 76.50% { fill: #cfe0ff; } 80.00%, 100% { fill: #eef4ff; } }
-    @keyframes av0 { 0%, 50.50% { fill: #f5f5f7; } 51.70%, 91.50% { fill: #cfe0ff; } 95.00%, 100% { fill: #f5f5f7; } }
-    @keyframes av1 { 0%, 50.50% { fill: #f5f5f7; } 51.70%, 91.50% { fill: #cfe0ff; } 95.00%, 100% { fill: #f5f5f7; } }
-    @keyframes ch0 { 0%, 18.50% { fill: #c7c7cc; } 19.30%, 23.00% { fill: #0a7cff; } 26.00%, 100% { fill: #c7c7cc; } }
-    @keyframes ch1 { 0%, 43.50% { fill: #c7c7cc; } 44.30%, 48.00% { fill: #0a7cff; } 51.00%, 100% { fill: #c7c7cc; } }
-    @keyframes ch2 { 0%, 49.50% { fill: #c7c7cc; } 50.30%, 54.00% { fill: #0a7cff; } 57.00%, 100% { fill: #c7c7cc; } }
-    @keyframes ch3 { 0%, 66.00% { fill: #c7c7cc; } 66.80%, 70.50% { fill: #0a7cff; } 73.50%, 100% { fill: #c7c7cc; } }
-    @keyframes spin { 0%, 27.00% { transform: rotate(0deg); opacity: 0; } 27.20% { transform: rotate(0deg); opacity: 1; } 36.00% { transform: rotate(720deg); opacity: 1; } 36.50%, 100% { transform: rotate(720deg); opacity: 0; } }
-    @keyframes rredis1 { 0%, 4.50% { stroke-opacity: 0; } 5.50%, 9.50% { stroke-opacity: 0.85; } 13.00%, 100% { stroke-opacity: 0; } }
-    @keyframes rredis2 { 0%, 81.70% { stroke-opacity: 0; } 82.70%, 86.70% { stroke-opacity: 0.85; } 90.20%, 100% { stroke-opacity: 0; } }
-    @keyframes rpg1 { 0%, 23.70% { stroke-opacity: 0; } 24.70%, 28.70% { stroke-opacity: 0.85; } 32.20%, 100% { stroke-opacity: 0; } }
-    @keyframes rpg2 { 0%, 42.20% { stroke-opacity: 0; } 43.20%, 47.20% { stroke-opacity: 0.85; } 50.70%, 100% { stroke-opacity: 0; } }
-    @keyframes rpg3 { 0%, 60.50% { stroke-opacity: 0; } 61.50%, 65.50% { stroke-opacity: 0.85; } 69.00%, 100% { stroke-opacity: 0; } }
-    @keyframes remb1 { 0%, 16.00% { stroke-opacity: 0; } 17.00%, 21.00% { stroke-opacity: 0.85; } 24.50%, 100% { stroke-opacity: 0; } }
-    @keyframes remb2 { 0%, 32.00% { stroke-opacity: 0; } 33.00%, 37.00% { stroke-opacity: 0.85; } 40.50%, 100% { stroke-opacity: 0; } }
-    @keyframes rllm1 { 0%, 16.00% { stroke-opacity: 0; } 17.00%, 21.00% { stroke-opacity: 0.85; } 24.50%, 100% { stroke-opacity: 0; } }
-    @keyframes rllm2 { 0%, 55.20% { stroke-opacity: 0; } 56.20%, 60.20% { stroke-opacity: 0.85; } 63.70%, 100% { stroke-opacity: 0; } }
-    @keyframes rllm3 { 0%, 66.20% { stroke-opacity: 0; } 67.20%, 71.20% { stroke-opacity: 0.85; } 74.70%, 100% { stroke-opacity: 0; } }
-    @keyframes rsql { 0%, 26.00% { stroke-opacity: 0; } 27.00%, 38.00% { stroke-opacity: 0.85; } 41.50%, 100% { stroke-opacity: 0; } }
-    @keyframes rpg4 { 0%, 89.60% { stroke-opacity: 0; } 90.60%, 93.60% { stroke-opacity: 0.85; } 97.10%, 100% { stroke-opacity: 0; } }
-    @keyframes rq1 { 0%, 2.00% { stroke-opacity: 0; } 3.00%, 6.50% { stroke-opacity: 0.85; } 10.00%, 100% { stroke-opacity: 0; } }
-    @keyframes rqx { 0%, 45.50% { stroke-opacity: 0; } 46.50%, 49.00% { stroke-opacity: 0.85; } 51.00%, 100% { stroke-opacity: 0; } }
-    @keyframes rq2 { 0%, 49.00% { stroke-opacity: 0; } 50.00%, 53.00% { stroke-opacity: 0.85; } 56.50%, 100% { stroke-opacity: 0; } }
-    @keyframes w1on { 0%, 2.50% { opacity: 0; } 3.50%, 45.50% { opacity: 1; } 46.50%, 100% { opacity: 0; } }
-    @keyframes w1dead { 0%, 45.50% { opacity: 0; } 46.50%, 50.00% { opacity: 1; } 53.00%, 100% { opacity: 0; } }
-    @keyframes w2on { 0%, 49.00% { opacity: 0; } 50.00%, 91.50% { opacity: 1; } 94.50%, 100% { opacity: 0; } }
-    @keyframes cap1 { 0%, 2.50% { opacity: 0; } 3.50%, 45.50% { opacity: 1; } 46.50%, 100% { opacity: 0; } }
-    @keyframes capx { 0%, 45.50% { opacity: 0; } 46.50%, 49.00% { opacity: 1; } 50.00%, 100% { opacity: 0; } }
-    @keyframes cap2 { 0%, 49.00% { opacity: 0; } 50.00%, 91.50% { opacity: 1; } 94.50%, 100% { opacity: 0; } }
-    @keyframes rkafka { 0%, 87.50% { stroke-opacity: 0; } 88.50%, 92.00% { stroke-opacity: 0.85; } 95.50%, 100% { stroke-opacity: 0; } }
-    @keyframes kc1 { 0%, 88.50% { opacity: 0; } 89.50%, 94.50% { opacity: 1; } 96.00%, 100% { opacity: 0; } }
-    @keyframes kc2 { 0%, 89.50% { opacity: 0; } 90.50%, 94.50% { opacity: 1; } 96.00%, 100% { opacity: 0; } }
-    @keyframes ev1 { 0%, 19.50% { opacity: 0; } 20.50%, 87.44% { opacity: 1; } 88.94%, 100% { opacity: 0; } }
-    @keyframes ev2 { 0%, 44.50% { opacity: 0; } 45.50%, 89.49% { opacity: 1; } 90.99%, 100% { opacity: 0; } }
-    @keyframes ev3 { 0%, 50.50% { opacity: 0; } 51.50%, 89.01% { opacity: 1; } 90.51%, 100% { opacity: 0; } }
-    @keyframes ev4 { 0%, 60.20% { opacity: 0; } 61.20%, 87.99% { opacity: 1; } 89.49%, 100% { opacity: 0; } }
-    @keyframes ev5 { 0%, 65.50% { opacity: 0; } 66.50%, 86.90% { opacity: 1; } 88.40%, 100% { opacity: 0; } }
-    @keyframes ev6 { 0%, 70.50% { opacity: 0; } 71.50%, 86.01% { opacity: 1; } 87.51%, 100% { opacity: 0; } }
-    @keyframes ev7 { 0%, 73.00% { opacity: 0; } 74.00%, 85.18% { opacity: 1; } 86.68%, 100% { opacity: 0; } }
-    @keyframes ev8 { 0%, 76.00% { opacity: 0; } 77.00%, 84.27% { opacity: 1; } 85.77%, 100% { opacity: 0; } }
-    @media (prefers-reduced-motion: reduce) {
-      * { animation: none !important; }
-    }
+    .tail, .head { fill: none; stroke-linecap: round; opacity: 0; animation: 12s linear infinite; }
+    .tail { stroke-width: 3; stroke-opacity: 0.35; stroke-dasharray: 0.3 3; stroke-dashoffset: 0.3; }
+    .head { stroke-width: 5; stroke-dasharray: 0.02 3; stroke-dashoffset: 0.02; }
+    @keyframes con { 0%, 0% { opacity: 0; } 0.8%, 3.5% { opacity: 1; } 4.3%, 100% { opacity: 0; } }
+    @keyframes con2 { 0%, 93% { opacity: 0; } 94%, 98% { opacity: 1; } 99.5%, 100% { opacity: 0; } }
+    @keyframes s0 { 0%, 7% { opacity: 0; } 7.8%, 15% { opacity: 1; } 15.8%, 100% { opacity: 0; } }
+    @keyframes b0 { 0%, 7% { opacity: 0; } 7.8%, 96.5% { opacity: 1; } 97.3%, 100% { opacity: 0; } }
+    @keyframes s1 { 0%, 15% { opacity: 0; } 15.8%, 56% { opacity: 1; } 56.8%, 100% { opacity: 0; } }
+    @keyframes b1 { 0%, 15% { opacity: 0; } 15.8%, 96.5% { opacity: 1; } 97.3%, 100% { opacity: 0; } }
+    @keyframes s2 { 0%, 56% { opacity: 0; } 56.8%, 63% { opacity: 1; } 63.8%, 100% { opacity: 0; } }
+    @keyframes b2 { 0%, 56% { opacity: 0; } 56.8%, 96.5% { opacity: 1; } 97.3%, 100% { opacity: 0; } }
+    @keyframes s3 { 0%, 63% { opacity: 0; } 63.8%, 77% { opacity: 1; } 77.8%, 100% { opacity: 0; } }
+    @keyframes b3 { 0%, 63% { opacity: 0; } 63.8%, 96.5% { opacity: 1; } 97.3%, 100% { opacity: 0; } }
+    @keyframes s4 { 0%, 77% { opacity: 0; } 77.8%, 89% { opacity: 1; } 89.8%, 100% { opacity: 0; } }
+    @keyframes b4 { 0%, 77% { opacity: 0; } 77.8%, 96.5% { opacity: 1; } 97.3%, 100% { opacity: 0; } }
+    @keyframes q0 { 0%, 22% { opacity: 0; } 22.8%, 28% { opacity: 1; } 28.8%, 100% { opacity: 0; } }
+    @keyframes q1 { 0%, 28% { opacity: 0; } 28.8%, 33% { opacity: 1; } 33.8%, 100% { opacity: 0; } }
+    @keyframes q2 { 0%, 33% { opacity: 0; } 33.8%, 40% { opacity: 1; } 40.8%, 100% { opacity: 0; } }
+    @keyframes q3 { 0%, 40% { opacity: 0; } 40.8%, 45% { opacity: 1; } 45.8%, 100% { opacity: 0; } }
+    @keyframes q4 { 0%, 45% { opacity: 0; } 45.8%, 52% { opacity: 1; } 52.8%, 100% { opacity: 0; } }
+    @keyframes ri1 { 0%, 11% { opacity: 0; } 11.8%, 16% { opacity: 1; } 16.8%, 100% { opacity: 0; } }
+    @keyframes ri0 { 0%, 19% { opacity: 0; } 19.8%, 24% { opacity: 1; } 24.8%, 100% { opacity: 0; } }
+    @keyframes ri3a { 0%, 37% { opacity: 0; } 37.8%, 42% { opacity: 1; } 42.8%, 100% { opacity: 0; } }
+    @keyframes ri4 { 0%, 49% { opacity: 0; } 49.8%, 54% { opacity: 1; } 54.8%, 100% { opacity: 0; } }
+    @keyframes ri3b { 0%, 66% { opacity: 0; } 66.8%, 72% { opacity: 1; } 72.8%, 100% { opacity: 0; } }
+    @keyframes ri2 { 0%, 82% { opacity: 0; } 82.8%, 87% { opacity: 1; } 87.8%, 100% { opacity: 0; } }
+    @keyframes p1t { 0%, 2% { stroke-dashoffset: 0.3; opacity: 0; } 2.01% { stroke-dashoffset: 0.3; opacity: 1; } 7% { stroke-dashoffset: -1.0; opacity: 1; } 7.01%, 100% { stroke-dashoffset: -1.0; opacity: 0; } }
+    @keyframes p1h { 0%, 2% { stroke-dashoffset: 0.02; opacity: 0; } 2.01% { stroke-dashoffset: 0.02; opacity: 1; } 7% { stroke-dashoffset: -1.28; opacity: 1; } 7.01%, 100% { stroke-dashoffset: -1.28; opacity: 0; } }
+    @keyframes p2t { 0%, 8% { stroke-dashoffset: 0.3; opacity: 0; } 8.01% { stroke-dashoffset: 0.3; opacity: 1; } 14% { stroke-dashoffset: -1.0; opacity: 1; } 14.01%, 100% { stroke-dashoffset: -1.0; opacity: 0; } }
+    @keyframes p2h { 0%, 8% { stroke-dashoffset: 0.02; opacity: 0; } 8.01% { stroke-dashoffset: 0.02; opacity: 1; } 14% { stroke-dashoffset: -1.28; opacity: 1; } 14.01%, 100% { stroke-dashoffset: -1.28; opacity: 0; } }
+    @keyframes p3t { 0%, 16% { stroke-dashoffset: 0.3; opacity: 0; } 16.01% { stroke-dashoffset: 0.3; opacity: 1; } 22% { stroke-dashoffset: -1.0; opacity: 1; } 22.01%, 100% { stroke-dashoffset: -1.0; opacity: 0; } }
+    @keyframes p3h { 0%, 16% { stroke-dashoffset: 0.02; opacity: 0; } 16.01% { stroke-dashoffset: 0.02; opacity: 1; } 22% { stroke-dashoffset: -1.28; opacity: 1; } 22.01%, 100% { stroke-dashoffset: -1.28; opacity: 0; } }
+    @keyframes p4t { 0%, 17% { stroke-dashoffset: 0.3; opacity: 0; } 17.01% { stroke-dashoffset: 0.3; opacity: 1; } 22% { stroke-dashoffset: -1.0; opacity: 1; } 22.01%, 100% { stroke-dashoffset: -1.0; opacity: 0; } }
+    @keyframes p4h { 0%, 17% { stroke-dashoffset: 0.02; opacity: 0; } 17.01% { stroke-dashoffset: 0.02; opacity: 1; } 22% { stroke-dashoffset: -1.28; opacity: 1; } 22.01%, 100% { stroke-dashoffset: -1.28; opacity: 0; } }
+    @keyframes p5t { 0%, 34% { stroke-dashoffset: 0.3; opacity: 0; } 34.01% { stroke-dashoffset: 0.3; opacity: 1; } 40% { stroke-dashoffset: -1.0; opacity: 1; } 40.01%, 100% { stroke-dashoffset: -1.0; opacity: 0; } }
+    @keyframes p5h { 0%, 34% { stroke-dashoffset: 0.02; opacity: 0; } 34.01% { stroke-dashoffset: 0.02; opacity: 1; } 40% { stroke-dashoffset: -1.28; opacity: 1; } 40.01%, 100% { stroke-dashoffset: -1.28; opacity: 0; } }
+    @keyframes p6t { 0%, 46% { stroke-dashoffset: 0.3; opacity: 0; } 46.01% { stroke-dashoffset: 0.3; opacity: 1; } 50% { stroke-dashoffset: -1.0; opacity: 1; } 50.01%, 100% { stroke-dashoffset: -1.0; opacity: 0; } }
+    @keyframes p6h { 0%, 46% { stroke-dashoffset: 0.02; opacity: 0; } 46.01% { stroke-dashoffset: 0.02; opacity: 1; } 50% { stroke-dashoffset: -1.28; opacity: 1; } 50.01%, 100% { stroke-dashoffset: -1.28; opacity: 0; } }
+    @keyframes p7t { 0%, 52% { stroke-dashoffset: 0.3; opacity: 0; } 52.01% { stroke-dashoffset: 0.3; opacity: 1; } 57% { stroke-dashoffset: -1.0; opacity: 1; } 57.01%, 100% { stroke-dashoffset: -1.0; opacity: 0; } }
+    @keyframes p7h { 0%, 52% { stroke-dashoffset: 0.02; opacity: 0; } 52.01% { stroke-dashoffset: 0.02; opacity: 1; } 57% { stroke-dashoffset: -1.28; opacity: 1; } 57.01%, 100% { stroke-dashoffset: -1.28; opacity: 0; } }
+    @keyframes p8t { 0%, 63% { stroke-dashoffset: 0.3; opacity: 0; } 63.01% { stroke-dashoffset: 0.3; opacity: 1; } 70% { stroke-dashoffset: -1.0; opacity: 1; } 70.01%, 100% { stroke-dashoffset: -1.0; opacity: 0; } }
+    @keyframes p8h { 0%, 63% { stroke-dashoffset: 0.02; opacity: 0; } 63.01% { stroke-dashoffset: 0.02; opacity: 1; } 70% { stroke-dashoffset: -1.28; opacity: 1; } 70.01%, 100% { stroke-dashoffset: -1.28; opacity: 0; } }
+    @keyframes p9t { 0%, 79% { stroke-dashoffset: 0.3; opacity: 0; } 79.01% { stroke-dashoffset: 0.3; opacity: 1; } 85% { stroke-dashoffset: -1.0; opacity: 1; } 85.01%, 100% { stroke-dashoffset: -1.0; opacity: 0; } }
+    @keyframes p9h { 0%, 79% { stroke-dashoffset: 0.02; opacity: 0; } 79.01% { stroke-dashoffset: 0.02; opacity: 1; } 85% { stroke-dashoffset: -1.28; opacity: 1; } 85.01%, 100% { stroke-dashoffset: -1.28; opacity: 0; } }
+    @keyframes p10t { 0%, 89% { stroke-dashoffset: 0.3; opacity: 0; } 89.01% { stroke-dashoffset: 0.3; opacity: 1; } 94% { stroke-dashoffset: -1.0; opacity: 1; } 94.01%, 100% { stroke-dashoffset: -1.0; opacity: 0; } }
+    @keyframes p10h { 0%, 89% { stroke-dashoffset: 0.02; opacity: 0; } 89.01% { stroke-dashoffset: 0.02; opacity: 1; } 94% { stroke-dashoffset: -1.28; opacity: 1; } 94.01%, 100% { stroke-dashoffset: -1.28; opacity: 0; } }
+    @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
   </style>
   <defs>
-    <pattern id="dots" width="18" height="18" patternUnits="userSpaceOnUse">
-      <circle cx="1.5" cy="1.5" r="1" fill="#e6e6eb" />
-    </pattern>
-    <filter id="lift" x="-10%" y="-10%" width="120%" height="140%">
-      <feDropShadow dx="0" dy="1" stdDeviation="1.5" flood-color="#000000" flood-opacity="0.05" />
-      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000000" flood-opacity="0.04" />
-    </filter>
-    <filter id="glow" filterUnits="userSpaceOnUse" x="0" y="0" width="844" height="586">
-      <feGaussianBlur stdDeviation="2.2" result="blur" />
-      <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
-    </filter>
-    <marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
-      <path d="M0,0.5 L7,4 L0,7.5 Z" fill="#c7c7cc" />
-    </marker>
-    <marker id="mb" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="6" markerHeight="6" orient="auto">
-      <path d="M0,0.5 L7,4 L0,7.5 Z" fill="#0a7cff" />
-    </marker>
-    <marker id="mt" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="6" markerHeight="6" orient="auto">
-      <path d="M0,0.5 L7,4 L0,7.5 Z" fill="#0d9488" />
-    </marker>
+    <marker id="ab" viewBox="0 0 6 6" markerWidth="6" markerHeight="6" refX="0.5" refY="3" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 L6 3 L0 6 z" fill="#0a7cff"/></marker>
+    <marker id="abr" viewBox="0 0 6 6" markerWidth="6" markerHeight="6" refX="0" refY="3" orient="auto" markerUnits="userSpaceOnUse"><path d="M6 0 L0 3 L6 6 z" fill="#0a7cff"/></marker>
+    <marker id="at" viewBox="0 0 6 6" markerWidth="6" markerHeight="6" refX="0.5" refY="3" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 L6 3 L0 6 z" fill="#0d9488"/></marker>
+    <marker id="ag" viewBox="0 0 6 6" markerWidth="6" markerHeight="6" refX="0.5" refY="3" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 L6 3 L0 6 z" fill="#8e8e93"/></marker>
   </defs>
-
-  <rect x="0.5" y="0.5" width="843" height="585" rx="16" fill="#ffffff" stroke="#ececf0" />
-  <rect x="1" y="1" width="842" height="584" rx="16" fill="url(#dots)" />
-  <g filter="url(#lift)">
-  <rect class="card" x="16" y="16" width="232" height="64" rx="14" />
-  <rect class="card" x="620" y="16" width="208" height="64" rx="14" />
-  </g>
-  <rect class="ring b" x="13" y="13" width="238" height="70" rx="17" style="animation: rcon 10s linear infinite" />
-  <rect class="ring v" x="617" y="13" width="214" height="70" rx="17" style="animation: rhum 10s linear infinite" />
-  <g class="icon b" transform="translate(32 32)"><rect x="0" y="2" width="16" height="12" rx="2.5" /><path d="M0 6 H16" /></g>
-  <text class="name" x="56" y="46">React 18 + TS</text>
-  <text class="sub" x="32" y="68">console · Vite · TanStack Query</text>
-  <g class="icon v" transform="translate(636 32)"><circle cx="8" cy="4.5" r="3.5" /><path d="M1.5 15.5 C1.5 11 4.5 9.5 8 9.5 C11.5 9.5 14.5 11 14.5 15.5" /></g>
-  <text class="name" x="660" y="46">Human handoff</text>
-  <text class="sub" x="636" y="68">tickets · webhook outbox</text>
-  <path class="optwire" d="M248,48 H269" marker-end="url(#arrow)" />
-  <rect class="opt" x="272" y="16" width="324" height="64" rx="14" />
-  <rect class="ring b" x="269" y="13" width="330" height="70" rx="17" style="animation: rq1 10s linear infinite" />
-  <rect class="ring r" x="269" y="13" width="330" height="70" rx="17" style="animation: rqx 10s linear infinite" />
-  <rect class="ring b" x="269" y="13" width="330" height="70" rx="17" style="animation: rq2 10s linear infinite" />
-  <rect class="opttag" x="288" y="9" width="116" height="14" rx="7" />
-  <text class="opttext" x="346" y="19.5" text-anchor="middle">COMPOSE OPT-IN</text>
-  <rect class="tagon" x="408" y="9" width="60" height="14" rx="7" />
-  <text class="tagontext" x="438" y="19.5" text-anchor="middle">K8S ON</text>
-  <g class="icon b" transform="translate(288 32)"><path d="M1 3.5 H10" /><path d="M1 8 H15" /><path d="M1 12.5 H10" /><path d="M11.5 4.5 L15 8 L11.5 11.5" /></g>
-  <text class="name" x="312" y="46">Redis Streams</text>
-  <text class="sub" x="288" y="68">queued mode · workers ×N</text>
-  <rect class="evpill" x="474" y="31" width="32" height="20" rx="10" />
-  <text class="pilltext" x="490" y="45.3" text-anchor="middle">w1</text>
-  <rect class="evpill" x="511" y="31" width="32" height="20" rx="10" />
-  <text class="pilltext" x="527" y="45.3" text-anchor="middle">w2</text>
-  <rect class="evpill" x="548" y="31" width="32" height="20" rx="10" />
-  <text class="pilltext" x="564" y="45.3" text-anchor="middle">w3</text>
-  <g class="evlit" style="animation: w1on 10s linear infinite"><rect class="evon" x="474" y="31" width="32" height="20" rx="10" /><text class="evtext" x="490" y="45.3" text-anchor="middle">w1</text></g>
-  <g class="evlit" style="animation: w1dead 10s linear infinite"><rect class="evdead" x="474" y="31" width="32" height="20" rx="10" /><path class="xmark" d="M486.5,37.5 L493.5,44.5 M493.5,37.5 L486.5,44.5" /></g>
-  <g class="evlit" style="animation: w2on 10s linear infinite"><rect class="evon" x="511" y="31" width="32" height="20" rx="10" /><text class="evtext" x="527" y="45.3" text-anchor="middle">w2</text></g>
-  <text class="caption capb evlit" x="580" y="68" text-anchor="end" style="animation: cap1 10s linear infinite">attempt 1</text>
-  <text class="caption capr evlit" x="580" y="68" text-anchor="end" style="animation: capx 10s linear infinite">lease lost</text>
-  <text class="caption capb evlit" x="580" y="68" text-anchor="end" style="animation: cap2 10s linear infinite">attempt 2</text>
-  <path class="optwire" d="M300,80 V125" marker-end="url(#arrow)" />
-  <path class="wire" d="M40,80 V174" marker-end="url(#arrow)" />
-  <text class="edge" x="48" y="112">POST /chat</text>
-  <path class="wire" d="M712,176 V108 H200 V83" marker-end="url(#arrow)" />
-  <text class="edge" x="456" y="100" text-anchor="middle">SSE stream · resumable (Last-Event-ID)</text>
-  <path class="wire" d="M792,176 V83" marker-end="url(#arrow)" />
-  <text class="edge" x="784" y="112" text-anchor="end">ticket</text>
-  <rect x="16" y="128" width="812" height="190" rx="20" fill="#f6f8fc" stroke="#e1e7f0" />
-  <text class="eyebrow" x="56" y="148">AGENT RUNTIME</text>
-  <path class="loopline b" d="M314,176 C314,152 206,152 206,174" marker-end="url(#mb)" />
-  <text class="looplabel loopblue" x="260" y="148" text-anchor="middle">1 corrective round</text>
-  <path class="loopline t march" d="M476,176 C476,152 368,152 368,174" marker-end="url(#mt)" />
-  <text class="looplabel loopteal" x="422" y="148" text-anchor="middle">replicas re-weighted every 10 s</text>
-  <path class="loopline b" d="M638,176 C638,152 530,152 530,174" marker-end="url(#mb)" />
-  <text class="looplabel loopblue" x="584" y="148" text-anchor="middle">tool loop · ≤ 3 calls</text>
-  <path class="tail b" pathLength="1" d="M314,176 C314,152 206,152 206,174" style="animation-delay: 3.3s" />
-  <path class="head b" pathLength="1" filter="url(#glow)" d="M314,176 C314,152 206,152 206,174" style="animation-delay: 3.3s" />
-  <path class="tail b" pathLength="1" d="M638,176 C638,152 530,152 530,174" style="animation-delay: 5.5s" />
-  <path class="head b" pathLength="1" filter="url(#glow)" d="M638,176 C638,152 530,152 530,174" style="animation-delay: 5.5s" />
-  <g filter="url(#lift)">
-  <rect class="card" x="24" y="176" width="148" height="126" rx="14" />
-  <rect class="card" x="186" y="176" width="148" height="126" rx="14" />
-  <rect class="card" x="348" y="176" width="148" height="126" rx="14" />
-  <rect class="card" x="510" y="176" width="148" height="126" rx="14" />
-  <rect class="card" x="672" y="176" width="148" height="126" rx="14" />
-  </g>
-  <rect class="ring b" x="21" y="173" width="154" height="132" rx="17" style="animation: st1 10s linear infinite" />
-  <circle class="badge" cx="53.1" cy="202" r="10" style="animation: bd1 10s ease-out infinite" />
-  <text class="badgenum" x="53.1" y="206" text-anchor="middle">1</text>
-  <text class="eyebrow" x="70.1" y="206">UNDERSTAND</text>
-  <text class="stage" x="98" y="238" text-anchor="middle">Intent vote</text>
-  <rect class="chip" x="56" y="258" width="84" height="24" rx="12" style="animation: cp1 10s linear infinite" />
-  <text class="chiptext" x="98" y="274.3" text-anchor="middle">Pydantic 2</text>
-  <rect class="ring b" x="183" y="173" width="154" height="132" rx="17" style="animation: st2 10s linear infinite" />
-  <circle class="badge" cx="232.2" cy="202" r="10" style="animation: bd2 10s ease-out infinite" />
-  <text class="badgenum" x="232.2" y="206" text-anchor="middle">2</text>
-  <text class="eyebrow" x="249.2" y="206">GATHER</text>
-  <text class="stage" x="260" y="238" text-anchor="middle">Rule-gated tools</text>
-  <rect class="chip" x="206" y="258" width="108" height="24" rx="12" style="animation: cp2 10s linear infinite" />
-  <text class="chiptext" x="260" y="274.3" text-anchor="middle">asyncio.gather</text>
-  <rect class="ring b" x="345" y="173" width="154" height="132" rx="17" style="animation: st3 10s linear infinite" />
-  <circle class="badge" cx="397.9" cy="202" r="10" style="animation: bd3 10s ease-out infinite" />
-  <text class="badgenum" x="397.9" y="206" text-anchor="middle">3</text>
-  <text class="eyebrow" x="414.9" y="206">ROUTE</text>
-  <text class="stage" x="422" y="238" text-anchor="middle">Domain router</text>
-  <rect class="chip" x="368" y="258" width="108" height="24" rx="12" style="animation: cp3 10s linear infinite" />
-  <text class="chiptext" x="422" y="274.3" text-anchor="middle">domain scores</text>
-  <rect class="ring b" x="507" y="173" width="154" height="132" rx="17" style="animation: st4 10s linear infinite" />
-  <circle class="badge" cx="554.5" cy="202" r="10" style="animation: bd4 10s ease-out infinite" />
-  <text class="badgenum" x="554.5" y="206" text-anchor="middle">4</text>
-  <text class="eyebrow" x="571.5" y="206">ANSWER</text>
-  <text class="stage" x="584" y="238" text-anchor="middle">Specialists ×3</text>
-  <circle cx="548" cy="270" r="10" stroke="#c7c7cc" style="fill: #f5f5f7; animation: av0 10s linear infinite" />
-  <circle cx="545" cy="269.5" r="1.4" fill="#6e6e73" /><circle cx="551" cy="269.5" r="1.4" fill="#6e6e73" />
-  <circle cx="572" cy="270" r="10" stroke="#c7c7cc" style="fill: #f5f5f7; animation: av1 10s linear infinite" />
-  <circle cx="569" cy="269.5" r="1.4" fill="#6e6e73" /><circle cx="575" cy="269.5" r="1.4" fill="#6e6e73" />
-  <circle cx="596" cy="270" r="10" stroke="#c7c7cc" style="fill: #f5f5f7; " />
-  <circle cx="593" cy="269.5" r="1.4" fill="#6e6e73" /><circle cx="599" cy="269.5" r="1.4" fill="#6e6e73" />
-  <circle cx="620" cy="270" r="10" fill="#ffffff" stroke="#c7c7cc" stroke-dasharray="2 2" />
-  <circle cx="617" cy="269.5" r="1.4" fill="#6e6e73" /><circle cx="623" cy="269.5" r="1.4" fill="#6e6e73" />
-  <rect class="ring b" x="669" y="173" width="154" height="132" rx="17" style="animation: st5 10s linear infinite" />
-  <circle class="badge" cx="721.6" cy="202" r="10" style="animation: bd5 10s ease-out infinite" />
-  <text class="badgenum" x="721.6" y="206" text-anchor="middle">5</text>
-  <text class="eyebrow" x="738.6" y="206">CHECK</text>
-  <text class="stage" x="746" y="238" text-anchor="middle">Guard + gates</text>
-  <rect class="chip" x="679" y="258" width="134" height="24" rx="12" style="animation: cp5 10s linear infinite" />
-  <text class="chiptext" x="746" y="274.3" text-anchor="middle">3 confidence gates</text>
-  <path d="M175.5 233 L182.5 239 L175.5 245 Z" style="fill: #c7c7cc; animation: ch0 10s linear infinite" />
-  <path d="M337.5 233 L344.5 239 L337.5 245 Z" style="fill: #c7c7cc; animation: ch1 10s linear infinite" />
-  <path d="M499.5 233 L506.5 239 L499.5 245 Z" style="fill: #c7c7cc; animation: ch2 10s linear infinite" />
-  <path d="M661.5 233 L668.5 239 L661.5 245 Z" style="fill: #c7c7cc; animation: ch3 10s linear infinite" />
-  <path class="wire" d="M98,302 V362" />
-  <path class="wire" d="M260,302 V362" />
-  <path class="wire" d="M584,302 V362" />
-  <path class="wire" d="M98,340 H746" />
-  <path class="wire" d="M422,340 V362" />
-  <path class="wire" d="M746,340 V362" />
-  <g filter="url(#lift)">
-  <rect class="card" x="24" y="362" width="148" height="70" rx="14" />
-  <rect class="card" x="186" y="362" width="148" height="70" rx="14" />
-  <rect class="card" x="348" y="362" width="148" height="70" rx="14" />
-  <rect class="card" x="510" y="362" width="148" height="70" rx="14" />
-  <rect class="card" x="672" y="362" width="148" height="70" rx="14" />
-  </g>
-  <g class="icon b" transform="translate(61.2 377)"><path d="M8 1 L15 4.5 L8 8 L1 4.5 Z" /><path d="M1 8 L8 11.5 L15 8" /><path d="M1 11.5 L8 15 L15 11.5" /></g>
-  <text class="name" x="84.2" y="390">Redis 7</text>
-  <text class="sub" x="98" y="412" text-anchor="middle">working memory</text>
-  <g class="icon b" transform="translate(196.9 377)"><ellipse cx="8" cy="3.5" rx="6.5" ry="2.5" /><path d="M1.5 3.5 V12.5 C1.5 15.8 14.5 15.8 14.5 12.5 V3.5" /><path d="M1.5 8 C1.5 11.3 14.5 11.3 14.5 8" /></g>
-  <text class="name" x="219.9" y="390">PostgreSQL 16</text>
-  <text class="sub" x="260" y="412" text-anchor="middle">pgvector · tsvector</text>
-  <g class="icon o" transform="translate(357.4 377)"><path d="M2 13 L13 2" /><path d="M2 13 L14 9" /><path d="M2 13 L6 1.5" /></g>
-  <text class="name" x="380.4" y="390">Embedding API</text>
-  <text class="sub" x="422" y="412" text-anchor="middle">/embeddings · /rerank</text>
-  <g class="icon o" transform="translate(528.8 377)"><path d="M8 0.5 C8.6 5 10.9 7.3 15.5 8 C10.9 8.7 8.6 11 8 15.5 C7.4 11 5.1 8.7 0.5 8 C5.1 7.3 7.4 5 8 0.5 Z" /></g>
-  <text class="name" x="551.8" y="390">Chat models</text>
-  <text class="sub" x="584" y="412" text-anchor="middle">Anthropic · OpenAI</text>
-  <g class="icon t" transform="translate(681.5 377)"><rect x="1" y="4" width="14" height="10" rx="3" /><path d="M8 4 V1" /><circle cx="5.5" cy="9" r="0.9" class="ft" /><circle cx="10.5" cy="9" r="0.9" class="ft" /></g>
-  <text class="name" x="704.5" y="390">ai-sql-agent</text>
-  <text class="sub" x="746" y="412" text-anchor="middle">peer agent · A2A</text>
-  <path class="loopline t" d="M809.5 388 A7 7 0 1 1 808.5 380.5" marker-end="url(#mt)" />
-  <circle cx="803.5" cy="378" r="2.4" fill="#0d9488" style="transform-box: view-box; transform-origin: 803.5px 385px; animation: spin 10s linear infinite" />
-  <rect class="ring b" x="21" y="359" width="154" height="76" rx="17" style="animation: rredis1 10s linear infinite" />
-  <rect class="ring b" x="21" y="359" width="154" height="76" rx="17" style="animation: rredis2 10s linear infinite" />
-  <rect class="ring b" x="183" y="359" width="154" height="76" rx="17" style="animation: rpg1 10s linear infinite" />
-  <rect class="ring b" x="183" y="359" width="154" height="76" rx="17" style="animation: rpg2 10s linear infinite" />
-  <rect class="ring b" x="183" y="359" width="154" height="76" rx="17" style="animation: rpg3 10s linear infinite" />
-  <rect class="ring b" x="183" y="359" width="154" height="76" rx="17" style="animation: rpg4 10s linear infinite" />
-  <rect class="ring o" x="345" y="359" width="154" height="76" rx="17" style="animation: remb1 10s linear infinite" />
-  <rect class="ring o" x="345" y="359" width="154" height="76" rx="17" style="animation: remb2 10s linear infinite" />
-  <rect class="ring o" x="507" y="359" width="154" height="76" rx="17" style="animation: rllm1 10s linear infinite" />
-  <rect class="ring o" x="507" y="359" width="154" height="76" rx="17" style="animation: rllm2 10s linear infinite" />
-  <rect class="ring o" x="507" y="359" width="154" height="76" rx="17" style="animation: rllm3 10s linear infinite" />
-  <rect class="ring t" x="669" y="359" width="154" height="76" rx="17" style="animation: rsql 10s linear infinite" />
-  <path class="wire" d="M260,450 V435" marker-end="url(#arrow)" />
-  <rect x="16" y="450" width="812" height="36" rx="18" fill="#f6f8fc" stroke="#e1e7f0" />
-  <text class="eyebrow" x="32" y="472">TURN EVENT LOG</text>
-  <rect class="evpill" x="156" y="457" width="54" height="22" rx="11" />
-  <text class="pilltext" x="183" y="472.3" text-anchor="middle">intent</text>
-  <g class="evlit" style="animation: ev1 10s linear infinite"><rect class="evon" x="156" y="457" width="54" height="22" rx="11" /><text class="evtext" x="183" y="472.3" text-anchor="middle">intent</text></g>
-  <rect class="evpill" x="220" y="457" width="70" height="22" rx="11" />
-  <text class="pilltext" x="255" y="472.3" text-anchor="middle">prefetch</text>
-  <g class="evlit" style="animation: ev2 10s linear infinite"><rect class="evon" x="220" y="457" width="70" height="22" rx="11" /><text class="evtext" x="255" y="472.3" text-anchor="middle">prefetch</text></g>
-  <rect class="evpill" x="300" y="457" width="62" height="22" rx="11" />
-  <text class="pilltext" x="331" y="472.3" text-anchor="middle">routing</text>
-  <g class="evlit" style="animation: ev3 10s linear infinite"><rect class="evon" x="300" y="457" width="62" height="22" rx="11" /><text class="evtext" x="331" y="472.3" text-anchor="middle">routing</text></g>
-  <rect class="evpill" x="372" y="457" width="86" height="22" rx="11" />
-  <text class="pilltext" x="415" y="472.3" text-anchor="middle">model calls</text>
-  <g class="evlit" style="animation: ev4 10s linear infinite"><rect class="evon" x="372" y="457" width="86" height="22" rx="11" /><text class="evtext" x="415" y="472.3" text-anchor="middle">model calls</text></g>
-  <rect class="evpill" x="468" y="457" width="72" height="22" rx="11" />
-  <text class="pilltext" x="504" y="472.3" text-anchor="middle">tool calls</text>
-  <g class="evlit" style="animation: ev5 10s linear infinite"><rect class="evon" x="468" y="457" width="72" height="22" rx="11" /><text class="evtext" x="504" y="472.3" text-anchor="middle">tool calls</text></g>
-  <rect class="evpill" x="550" y="457" width="54" height="22" rx="11" />
-  <text class="pilltext" x="577" y="472.3" text-anchor="middle">guard</text>
-  <g class="evlit" style="animation: ev6 10s linear infinite"><rect class="evon" x="550" y="457" width="54" height="22" rx="11" /><text class="evtext" x="577" y="472.3" text-anchor="middle">guard</text></g>
-  <rect class="evpill" x="614" y="457" width="62" height="22" rx="11" />
-  <text class="pilltext" x="645" y="472.3" text-anchor="middle">answer</text>
-  <g class="evlit" style="animation: ev7 10s linear infinite"><rect class="evon" x="614" y="457" width="62" height="22" rx="11" /><text class="evtext" x="645" y="472.3" text-anchor="middle">answer</text></g>
-  <rect class="evpill" x="686" y="457" width="66" height="22" rx="11" />
-  <text class="pilltext" x="719" y="472.3" text-anchor="middle">handoff</text>
-  <g class="evlit" style="animation: ev8 10s linear infinite"><rect class="evon" x="686" y="457" width="66" height="22" rx="11" /><text class="evtext" x="719" y="472.3" text-anchor="middle">handoff</text></g>
-  <path class="optwire" d="M790,486 V513" marker-end="url(#arrow)" />
-  <rect class="optstrip" x="560" y="516" width="268" height="48" rx="18" />
-  <rect class="ring b" x="557" y="513" width="274" height="54" rx="21" style="animation: rkafka 10s linear infinite" />
-  <rect class="opttag" x="576" y="509" width="116" height="14" rx="7" />
-  <text class="opttext" x="634" y="519.5" text-anchor="middle">COMPOSE OPT-IN</text>
-  <rect class="tagon" x="696" y="509" width="60" height="14" rx="7" />
-  <text class="tagontext" x="726" y="519.5" text-anchor="middle">K8S ON</text>
-  <text class="eyebrow" x="576" y="547.8">KAFKA</text>
-  <rect class="evpill" x="632" y="533" width="74" height="22" rx="11" />
-  <text class="pilltext" x="669" y="548.3" text-anchor="middle">projector</text>
-  <g class="evlit" style="animation: kc1 10s linear infinite"><rect class="evon" x="632" y="533" width="74" height="22" rx="11" /><text class="evtext" x="669" y="548.3" text-anchor="middle">projector</text></g>
-  <rect class="evpill" x="714" y="533" width="66" height="22" rx="11" />
-  <text class="pilltext" x="747" y="548.3" text-anchor="middle">sampler</text>
-  <g class="evlit" style="animation: kc2 10s linear infinite"><rect class="evon" x="714" y="533" width="66" height="22" rx="11" /><text class="evtext" x="747" y="548.3" text-anchor="middle">sampler</text></g>
-  <text class="eyebrow" x="32" y="528.5">PLATFORM</text>
-  <rect class="platpill" x="113" y="512" width="66" height="24" rx="12" />
-  <text class="pilltext" x="146" y="528.3" text-anchor="middle">FastAPI</text>
-  <rect class="platpill" x="187" y="512" width="90" height="24" rx="12" />
-  <text class="pilltext" x="232" y="528.3" text-anchor="middle">Python 3.12</text>
-  <rect class="platpill" x="285" y="512" width="52" height="24" rx="12" />
-  <text class="pilltext" x="311" y="528.3" text-anchor="middle">httpx</text>
-  <rect class="platpill" x="345" y="512" width="110" height="24" rx="12" />
-  <text class="pilltext" x="400" y="528.3" text-anchor="middle">OpenTelemetry</text>
-  <rect class="platpill" x="463" y="512" width="68" height="24" rx="12" />
-  <text class="pilltext" x="497" y="528.3" text-anchor="middle">Grafana</text>
-  <rect class="platpill" x="113" y="544" width="56" height="24" rx="12" />
-  <text class="pilltext" x="141" y="560.3" text-anchor="middle">Nginx</text>
-  <rect class="platpill" x="177" y="544" width="122" height="24" rx="12" />
-  <text class="pilltext" x="238" y="560.3" text-anchor="middle">Docker Compose</text>
-  <rect class="platpill" x="307" y="544" width="88" height="24" rx="12" />
-  <text class="pilltext" x="351" y="560.3" text-anchor="middle">Kubernetes</text>
-  <rect class="platpill" x="403" y="544" width="54" height="24" rx="12" />
-  <text class="pilltext" x="430" y="560.3" text-anchor="middle">KEDA</text>
-  <path class="tail b" pathLength="1" d="M40,80 V176" style="animation-delay: 0.0s" />
-  <path class="head b" pathLength="1" filter="url(#glow)" d="M40,80 V176" style="animation-delay: 0.0s" />
-  <path class="tail b" pathLength="1" d="M98,362 V302" style="animation-delay: 0.5s" />
-  <path class="head b" pathLength="1" filter="url(#glow)" d="M98,362 V302" style="animation-delay: 0.5s" />
-  <path class="tail long o" pathLength="1" d="M98,302 V340 H584 V362" style="animation-delay: 0.95s" />
-  <path class="head long o" pathLength="1" filter="url(#glow)" d="M98,302 V340 H584 V362" style="animation-delay: 0.95s" />
-  <path class="tail long o" pathLength="1" d="M98,302 V340 H422 V362" style="animation-delay: 0.95s" />
-  <path class="head long o" pathLength="1" filter="url(#glow)" d="M98,302 V340 H422 V362" style="animation-delay: 0.95s" />
-  <path class="tail b" pathLength="1" d="M260,302 V362" style="animation-delay: 1.95s" />
-  <path class="head b" pathLength="1" filter="url(#glow)" d="M260,302 V362" style="animation-delay: 1.95s" />
-  <path class="tail long t" pathLength="1" d="M260,302 V340 H746 V362" style="animation-delay: 1.95s" />
-  <path class="head long t" pathLength="1" filter="url(#glow)" d="M260,302 V340 H746 V362" style="animation-delay: 1.95s" />
-  <path class="tail long o" pathLength="1" d="M260,302 V340 H422 V362" style="animation-delay: 2.55s" />
-  <path class="head long o" pathLength="1" filter="url(#glow)" d="M260,302 V340 H422 V362" style="animation-delay: 2.55s" />
-  <path class="tail b" pathLength="1" d="M260,302 V362" style="animation-delay: 3.8s" />
-  <path class="head b" pathLength="1" filter="url(#glow)" d="M260,302 V362" style="animation-delay: 3.8s" />
-  <path class="tail long t" pathLength="1" d="M746,362 V340 H260 V302" style="animation-delay: 3.65s" />
-  <path class="head long t" pathLength="1" filter="url(#glow)" d="M746,362 V340 H260 V302" style="animation-delay: 3.65s" />
-  <path class="tail o" pathLength="1" d="M584,302 V362" style="animation-delay: 5.1s" />
-  <path class="head o" pathLength="1" filter="url(#glow)" d="M584,302 V362" style="animation-delay: 5.1s" />
-  <path class="tail o" pathLength="1" d="M584,302 V362" style="animation-delay: 5.28s" />
-  <path class="head o" pathLength="1" filter="url(#glow)" d="M584,302 V362" style="animation-delay: 5.28s" />
-  <path class="tail long b" pathLength="1" d="M584,302 V340 H260 V362" style="animation-delay: 5.7s" />
-  <path class="head long b" pathLength="1" filter="url(#glow)" d="M584,302 V340 H260 V362" style="animation-delay: 5.7s" />
-  <path class="tail long b" pathLength="1" d="M260,362 V340 H584 V302" style="animation-delay: 6.1s" />
-  <path class="head long b" pathLength="1" filter="url(#glow)" d="M260,362 V340 H584 V302" style="animation-delay: 6.1s" />
-  <path class="tail o" pathLength="1" d="M584,302 V362" style="animation-delay: 6.4s" />
-  <path class="head o" pathLength="1" filter="url(#glow)" d="M584,302 V362" style="animation-delay: 6.4s" />
-  <path class="tail long b" pathLength="1" d="M712,176 V108 H200 V80" style="animation-delay: 7.25s" />
-  <path class="head long b" pathLength="1" filter="url(#glow)" d="M712,176 V108 H200 V80" style="animation-delay: 7.25s" />
-  <path class="tail v" pathLength="1" d="M792,176 V80" style="animation-delay: 7.55s" />
-  <path class="head v" pathLength="1" filter="url(#glow)" d="M792,176 V80" style="animation-delay: 7.55s" />
-  <path class="tail b" pathLength="1" d="M98,302 V362" style="animation-delay: 7.75s" />
-  <path class="head b" pathLength="1" filter="url(#glow)" d="M98,302 V362" style="animation-delay: 7.75s" />
-  <path class="tail long b" pathLength="1" d="M32,450 H260 V435" style="animation-delay: 8.3s" />
-  <path class="head long b" pathLength="1" filter="url(#glow)" d="M32,450 H260 V435" style="animation-delay: 8.3s" />
-  <path class="tail long b" pathLength="1" d="M812,450 H260 V435" style="animation-delay: 8.3s" />
-  <path class="head long b" pathLength="1" filter="url(#glow)" d="M812,450 H260 V435" style="animation-delay: 8.3s" />
-  <path class="tail b" pathLength="1" d="M790,486 V513" style="animation-delay: 8.3s" />
-  <path class="head b" pathLength="1" filter="url(#glow)" d="M790,486 V513" style="animation-delay: 8.3s" />
+  <rect x="0.5" y="0.5" width="843" height="463" rx="16" class="bg"/>
+  <text x="24" y="44" class="eyebrow">CLIENTS</text>
+  <rect x="20" y="54" width="122" height="56" rx="12" class="card"/>
+  <text x="34" y="78" class="name" data-r="132">Staff console</text>
+  <text x="34" y="96" class="sub" data-r="132">React 18 · Vite</text>
+  <rect x="20" y="122" width="122" height="56" rx="12" class="card"/>
+  <text x="34" y="146" class="name" data-r="132">Customers</text>
+  <text x="34" y="164" class="sub" data-r="132">via Nginx</text>
+  <rect x="20" y="54" width="122" height="56" rx="12" class="ring" stroke="#0a7cff" style="animation-name:con"/>
+  <rect x="20" y="54" width="122" height="56" rx="12" class="ring" stroke="#0a7cff" style="animation-name:con2"/>
+  <text x="24" y="222" class="eyebrow">HANDOFF</text>
+  <rect x="20" y="232" width="122" height="56" rx="12" class="card"/>
+  <text x="34" y="256" class="name" data-r="132">Staff review</text>
+  <text x="34" y="274" class="sub" data-r="132">Cases · tickets</text>
+  <path d="M144 74 H177" class="wire" style="stroke:#0a7cff" marker-end="url(#ab)"/>
+  <path d="M182 92 H149" class="wire" style="stroke:#0a7cff" marker-end="url(#ab)"/>
+  <text x="163.0" y="66" class="edge" text-anchor="middle">POST</text>
+  <text x="163.0" y="107" class="edge" text-anchor="middle">SSE</text>
+  <path d="M149 150 H177" class="wire" style="stroke:#0a7cff" marker-start="url(#abr)" marker-end="url(#ab)"/>
+  <path d="M182 263.0 H149" class="wire" style="stroke:#8e8e93" marker-end="url(#ag)"/>
+  <text x="163.0" y="278.0" class="edge" text-anchor="middle">ticket</text>
+  <rect x="184" y="24" width="288" height="268" rx="16" class="card agent"/>
+  <text x="202" y="48" class="eyebrow" data-r="460">SUPPORT AGENT · backend/</text>
+  <text x="202" y="71" class="title" data-r="460">AI Helpdesk</text>
+  <text x="202" y="90" class="sub" data-r="460">FastAPI · Python 3.12 · asyncio</text>
+  <rect x="194" y="104" width="268" height="30" rx="9" class="row"/>
+  <rect x="194" y="104" width="268" height="30" rx="9" class="rowon b" style="animation-name:s0"/>
+  <circle cx="212" cy="119.0" r="9.5" class="badge"/>
+  <circle cx="212" cy="119.0" r="9.5" fill="#0a7cff" class="lit" style="animation-name:b0"/>
+  <text x="212" y="123.0" class="badgenum" text-anchor="middle">1</text>
+  <text x="230" y="124.0" class="name" data-r="312">Understand</text>
+  <text x="318" y="123.5" class="sub" data-r="454">intent vote · memory</text>
+  <rect x="194" y="140" width="268" height="30" rx="9" class="row"/>
+  <rect x="194" y="140" width="268" height="30" rx="9" class="rowon b" style="animation-name:s1"/>
+  <circle cx="212" cy="155.0" r="9.5" class="badge"/>
+  <circle cx="212" cy="155.0" r="9.5" fill="#0a7cff" class="lit" style="animation-name:b1"/>
+  <text x="212" y="159.0" class="badgenum" text-anchor="middle">2</text>
+  <text x="230" y="160.0" class="name" data-r="312">Gather</text>
+  <text x="318" y="159.5" class="sub" data-r="454">hybrid search · A2A</text>
+  <rect x="194" y="176" width="268" height="30" rx="9" class="row"/>
+  <rect x="194" y="176" width="268" height="30" rx="9" class="rowon b" style="animation-name:s2"/>
+  <circle cx="212" cy="191.0" r="9.5" class="badge"/>
+  <circle cx="212" cy="191.0" r="9.5" fill="#0a7cff" class="lit" style="animation-name:b2"/>
+  <text x="212" y="195.0" class="badgenum" text-anchor="middle">3</text>
+  <text x="230" y="196.0" class="name" data-r="312">Route</text>
+  <text x="318" y="195.5" class="sub" data-r="454">specialist agents</text>
+  <rect x="194" y="212" width="268" height="30" rx="9" class="row"/>
+  <rect x="194" y="212" width="268" height="30" rx="9" class="rowon b" style="animation-name:s3"/>
+  <circle cx="212" cy="227.0" r="9.5" class="badge"/>
+  <circle cx="212" cy="227.0" r="9.5" fill="#0a7cff" class="lit" style="animation-name:b3"/>
+  <text x="212" y="231.0" class="badgenum" text-anchor="middle">4</text>
+  <text x="230" y="232.0" class="name" data-r="312">Answer</text>
+  <text x="318" y="231.5" class="sub" data-r="454">bounded tool loop</text>
+  <rect x="194" y="248" width="268" height="30" rx="9" class="row"/>
+  <rect x="194" y="248" width="268" height="30" rx="9" class="rowon b" style="animation-name:s4"/>
+  <circle cx="212" cy="263.0" r="9.5" class="badge"/>
+  <circle cx="212" cy="263.0" r="9.5" fill="#0a7cff" class="lit" style="animation-name:b4"/>
+  <text x="212" y="267.0" class="badgenum" text-anchor="middle">5</text>
+  <text x="230" y="268.0" class="name" data-r="312">Verify</text>
+  <text x="318" y="267.5" class="sub" data-r="454">render from evidence</text>
+  <rect x="590" y="24" width="234" height="268" rx="16" class="card agent"/>
+  <text x="608" y="48" class="eyebrow" data-r="814">SQL AGENT · ai-sql-agent/</text>
+  <text x="608" y="71" class="title" data-r="812">AI SQL Agent</text>
+  <text x="608" y="90" class="sub" data-r="812">FastAPI · Python 3.11</text>
+  <rect x="600" y="104" width="214" height="30" rx="9" class="row"/>
+  <rect x="600" y="104" width="214" height="30" rx="9" class="rowon t" style="animation-name:q0"/>
+  <text x="612" y="124.0" class="name" data-r="686">Retrieve</text>
+  <text x="694" y="123.5" class="sub" data-r="808">BM25 + vectors</text>
+  <rect x="600" y="140" width="214" height="30" rx="9" class="row"/>
+  <rect x="600" y="140" width="214" height="30" rx="9" class="rowon t" style="animation-name:q1"/>
+  <text x="612" y="160.0" class="name" data-r="686">Plan</text>
+  <text x="694" y="159.5" class="sub" data-r="808">step per source</text>
+  <rect x="600" y="176" width="214" height="30" rx="9" class="row"/>
+  <rect x="600" y="176" width="214" height="30" rx="9" class="rowon t" style="animation-name:q2"/>
+  <text x="612" y="196.0" class="name" data-r="686">Write SQL</text>
+  <text x="694" y="195.5" class="sub" data-r="808">LLM</text>
+  <rect x="600" y="212" width="214" height="30" rx="9" class="row"/>
+  <rect x="600" y="212" width="214" height="30" rx="9" class="rowon t" style="animation-name:q3"/>
+  <text x="612" y="232.0" class="name" data-r="686">Gate</text>
+  <text x="694" y="231.5" class="sub" data-r="808">SQLGlot AST</text>
+  <rect x="600" y="248" width="214" height="30" rx="9" class="row"/>
+  <rect x="600" y="248" width="214" height="30" rx="9" class="rowon t" style="animation-name:q4"/>
+  <text x="612" y="268.0" class="name" data-r="686">Run</text>
+  <text x="694" y="267.5" class="sub" data-r="808">read-only · repair</text>
+  <text x="531.0" y="138" class="edge tealtext" text-anchor="middle" data-l="474" data-r="588">A2A · JSON-RPC</text>
+  <path d="M474 149 H583" class="wire" style="stroke:#0d9488" marker-end="url(#at)"/>
+  <path d="M588 163 H479" class="wire" style="stroke:#0d9488" marker-end="url(#at)"/>
+  <text x="531.0" y="180" class="edge tealtext" text-anchor="middle" data-l="474" data-r="588">evidence over SSE</text>
+  <path d="M472 226 H590" class="vdash"/>
+  <rect x="481.0" y="214" width="100" height="24" rx="12" class="vpill"/>
+  <text x="531.0" y="230" class="viotext" text-anchor="middle" data-l="487.0" data-r="575.0">contract v1.15</text>
+  <text x="531.0" y="255" class="edge" text-anchor="middle" data-l="474" data-r="588">schemas + fixtures</text>
+  <text x="531.0" y="270" class="edge" text-anchor="middle" data-l="474" data-r="588">both agents test it</text>
+  <path d="M328.0 292 V307" class="wire"/>
+  <path d="M95.6 322 V307 H573.1999999999999 V322" class="wire"/>
+  <path d="M258.79999999999995 307 V322" class="wire"/>
+  <path d="M422.0 307 V322" class="wire"/>
+  <path d="M748.4 292 V322" class="wire"/>
+  <path d="M650 292 V307 H597.1999999999999 V322" class="wire"/>
+  <rect x="20.0" y="322" width="151.2" height="60" rx="12" class="card"/>
+  <rect x="34.0" y="337" width="9" height="9" rx="2.5" fill="#0a7cff"/>
+  <text x="50.0" y="346" class="name" data-r="163.2">PostgreSQL 16</text>
+  <text x="34.0" y="366" class="sub" data-r="163.2">pgvector · tsvector</text>
+  <rect x="183.2" y="322" width="151.2" height="60" rx="12" class="card"/>
+  <rect x="197.2" y="337" width="9" height="9" rx="2.5" fill="#0a7cff"/>
+  <text x="213.2" y="346" class="name" data-r="326.4">Redis 7</text>
+  <text x="197.2" y="366" class="sub" data-r="326.4">memory · run queue</text>
+  <rect x="346.4" y="322" width="151.2" height="60" rx="12" class="card opt"/>
+  <rect x="360.4" y="337" width="9" height="9" rx="2.5" fill="#0a7cff"/>
+  <text x="376.4" y="346" class="name" data-r="489.6">Kafka</text>
+  <text x="360.4" y="366" class="sub" data-r="489.6">turn event log</text>
+  <rect x="435.6" y="333" width="52" height="17" rx="8.5" class="opttag"/>
+  <text x="461.6" y="345" class="opttext" text-anchor="middle">OPTIONAL</text>
+  <rect x="509.6" y="322" width="151.2" height="60" rx="12" class="card"/>
+  <rect x="523.6" y="337" width="9" height="9" rx="2.5" fill="#e5733f"/>
+  <text x="539.6" y="346" class="name" data-r="652.8">Model APIs</text>
+  <text x="523.6" y="366" class="sub" data-r="652.8">Anthropic · OpenAI</text>
+  <rect x="672.8" y="322" width="151.2" height="60" rx="12" class="card"/>
+  <rect x="686.8" y="337" width="9" height="9" rx="2.5" fill="#0d9488"/>
+  <text x="702.8" y="346" class="name" data-r="816.0">Business data</text>
+  <text x="686.8" y="366" class="sub" data-r="816.0">read-only SQL</text>
+  <rect x="183.2" y="322" width="151.2" height="60" rx="12" class="ring" stroke="#0a7cff" style="animation-name:ri1"/>
+  <rect x="20.0" y="322" width="151.2" height="60" rx="12" class="ring" stroke="#0a7cff" style="animation-name:ri0"/>
+  <rect x="509.6" y="322" width="151.2" height="60" rx="12" class="ring" stroke="#e5733f" style="animation-name:ri3a"/>
+  <rect x="672.8" y="322" width="151.2" height="60" rx="12" class="ring" stroke="#0d9488" style="animation-name:ri4"/>
+  <rect x="509.6" y="322" width="151.2" height="60" rx="12" class="ring" stroke="#e5733f" style="animation-name:ri3b"/>
+  <rect x="346.4" y="322" width="151.2" height="60" rx="12" class="ring" stroke="#0a7cff" style="animation-name:ri2"/>
+  <rect x="20" y="400" width="804" height="40" rx="12" class="strip"/>
+  <text x="36" y="424" class="eyebrow">PLATFORM</text>
+  <rect x="114" y="408" width="120" height="24" rx="12" class="pill"/>
+  <text x="174.0" y="424" class="pilltext" text-anchor="middle" data-l="120" data-r="228">Docker Compose</text>
+  <rect x="242" y="408" width="88" height="24" rx="12" class="pill"/>
+  <text x="286.0" y="424" class="pilltext" text-anchor="middle" data-l="248" data-r="324">Kubernetes</text>
+  <rect x="338" y="408" width="54" height="24" rx="12" class="pill"/>
+  <text x="365.0" y="424" class="pilltext" text-anchor="middle" data-l="344" data-r="386">KEDA</text>
+  <rect x="400" y="408" width="56" height="24" rx="12" class="pill"/>
+  <text x="428.0" y="424" class="pilltext" text-anchor="middle" data-l="406" data-r="450">Nginx</text>
+  <rect x="464" y="408" width="108" height="24" rx="12" class="pill"/>
+  <text x="518.0" y="424" class="pilltext" text-anchor="middle" data-l="470" data-r="566">OpenTelemetry</text>
+  <rect x="580" y="408" width="68" height="24" rx="12" class="pill"/>
+  <text x="614.0" y="424" class="pilltext" text-anchor="middle" data-l="586" data-r="642">Grafana</text>
+  <rect x="656" y="408" width="110" height="24" rx="12" class="pill"/>
+  <text x="711.0" y="424" class="pilltext" text-anchor="middle" data-l="662" data-r="760">GitHub Actions</text>
+  <path d="M144 74 H182" pathLength="1" class="tail" stroke="#0a7cff" style="animation-name:p1t"/>
+  <path d="M144 74 H182" pathLength="1" class="head" stroke="#0a7cff" style="animation-name:p1h"/>
+  <path d="M328.0 292 V307 H258.79999999999995 V322" pathLength="1" class="tail" stroke="#0a7cff" style="animation-name:p2t"/>
+  <path d="M328.0 292 V307 H258.79999999999995 V322" pathLength="1" class="head" stroke="#0a7cff" style="animation-name:p2h"/>
+  <path d="M328.0 292 V307 H95.6 V322" pathLength="1" class="tail" stroke="#0a7cff" style="animation-name:p3t"/>
+  <path d="M328.0 292 V307 H95.6 V322" pathLength="1" class="head" stroke="#0a7cff" style="animation-name:p3h"/>
+  <path d="M474 149 H588" pathLength="1" class="tail" stroke="#0d9488" style="animation-name:p4t"/>
+  <path d="M474 149 H588" pathLength="1" class="head" stroke="#0d9488" style="animation-name:p4h"/>
+  <path d="M650 292 V307 H597.1999999999999 V322" pathLength="1" class="tail" stroke="#e5733f" style="animation-name:p5t"/>
+  <path d="M650 292 V307 H597.1999999999999 V322" pathLength="1" class="head" stroke="#e5733f" style="animation-name:p5h"/>
+  <path d="M748.4 292 V322" pathLength="1" class="tail" stroke="#0d9488" style="animation-name:p6t"/>
+  <path d="M748.4 292 V322" pathLength="1" class="head" stroke="#0d9488" style="animation-name:p6h"/>
+  <path d="M588 163 H474" pathLength="1" class="tail" stroke="#0d9488" style="animation-name:p7t"/>
+  <path d="M588 163 H474" pathLength="1" class="head" stroke="#0d9488" style="animation-name:p7h"/>
+  <path d="M328.0 292 V307 H573.1999999999999 V322" pathLength="1" class="tail" stroke="#e5733f" style="animation-name:p8t"/>
+  <path d="M328.0 292 V307 H573.1999999999999 V322" pathLength="1" class="head" stroke="#e5733f" style="animation-name:p8h"/>
+  <path d="M328.0 292 V307 H422.0 V322" pathLength="1" class="tail" stroke="#0a7cff" style="animation-name:p9t"/>
+  <path d="M328.0 292 V307 H422.0 V322" pathLength="1" class="head" stroke="#0a7cff" style="animation-name:p9h"/>
+  <path d="M182 92 H144" pathLength="1" class="tail" stroke="#0a7cff" style="animation-name:p10t"/>
+  <path d="M182 92 H144" pathLength="1" class="head" stroke="#0a7cff" style="animation-name:p10h"/>
 </svg>
