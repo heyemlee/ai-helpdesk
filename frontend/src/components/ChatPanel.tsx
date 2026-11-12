@@ -7,7 +7,8 @@ import { Icon, type IconName } from './Icon'
 import type { ChatMaterials, ChatMessage } from '@/hooks/useChatStream'
 import type { Attachment, CaseSummary, HealthResponse, RoutingConfig } from '@/api/types'
 import { caseApi } from '@/api/client'
-import { AttachmentPicker, AttachmentView } from './Attachments'
+import { AttachmentView, useAttachmentUpload } from './Attachments'
+import './composer.css'
 import { useT } from '@/i18n'
 import type { Key } from '@/i18n/catalog'
 
@@ -87,6 +88,7 @@ export function ChatPanel({ messages, busy, onSend, onInspect, explain, restorin
   const [scopeOpen, setScopeOpen] = useState(false)
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [uploading, setUploading] = useState(false)
+  const files = useAttachmentUpload({ base: base || '/api', value: attachments, onChange: setAttachments, onBusy: setUploading })
   const [caseChoice, setCaseChoice] = useState(caseId || '')
   const [caseList, setCaseList] = useState<CaseSummary[]>([])
   const [issueType, setIssueType] = useState<CaseSummary['issue_type']>('general')
@@ -133,6 +135,8 @@ export function ChatPanel({ messages, busy, onSend, onInspect, explain, restorin
 
   // 发出去的是去掉首尾空白的那段，按它数
   const over = [...draft.trim()].length - MAX_MESSAGE_CHARS
+  const attachDisabled = busy || !!restoring || files.uploading || files.full
+  const scopeCount = (['product', 'region', 'audience', 'as_of'] as const).filter(key => policyScope[key]).length
 
   const submit = async () => {
     const text = draft.trim()
@@ -185,8 +189,25 @@ export function ChatPanel({ messages, busy, onSend, onInspect, explain, restorin
           setAwayFromBottom(false)
           listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' })
         }}>{t('cw.latest')} ↓</button>}
-        <details onToggle={e => setScopeOpen(e.currentTarget.open)}><summary>{en ? 'Policy scope' : '政策适用条件'}</summary>{scopeOpen && <ScopeFields value={policyScope} onChange={setPolicyScope} />}</details>
         <form className="composer" onSubmit={(e) => { e.preventDefault(); submit() }}>
+          {/* 图片预览和上传状态放在文本框上面，只在有内容时出现 */}
+          {(attachments.length > 0 || files.uploading || files.error) && (
+            <div className="composer-attachments">
+              {attachments.map(a => (
+                <div key={a.id} className="composer-attachment">
+                  <AttachmentView compact base={base || '/api'} id={a.id} name={a.filename} />
+                  <button type="button" className="composer-attachment-remove" disabled={busy || uploading}
+                    title={en ? 'Remove from message' : '从消息移除'} aria-label={en ? 'Remove from message' : '从消息移除'}
+                    onClick={() => files.remove(a.id)}><Icon name="close" size={12} /></button>
+                </div>
+              ))}
+              {files.uploading && <p role="status">{en ? 'Uploading…' : '正在上传…'}</p>}
+              {files.error && <p role="alert">{files.error}</p>}
+              {files.retryable && <button type="button" className="composer-tool" onClick={files.retryUpload}>{en ? 'Retry upload' : '重试上传'}</button>}
+              {attachments.length > 0 && !caseChoice && <p role="status" className="composer-attachments-ask">{en ? 'Choose a problem for these images.' : '请为图片选择已有问题或新建问题。'}</p>}
+              {attachments.length > 0 && <p className="composer-attachments-hint">{files.hint}</p>}
+            </div>
+          )}
           <label className="sr-only" htmlFor="draft">{t('cw.composeLabel')}</label>
           <textarea
             id="draft" ref={areaRef} rows={1} value={draft} disabled={restoring}
@@ -201,24 +222,47 @@ export function ChatPanel({ messages, busy, onSend, onInspect, explain, restorin
               if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit() }
             }}
           />
+          {/* 一行工具栏：左边是这条消息的附加选项，右边是发送。下拉框仍是原生 select，只换了外观 */}
           <div className="composer-bar">
+            <div className="composer-tools">
+              <label className={attachDisabled ? 'composer-tool composer-attach is-disabled' : 'composer-tool composer-attach'}
+                title={`${en ? 'Add order or delivery image' : '添加订单、标签或配送图片'} · ${files.hint}`}>
+                <Icon name="plus" size={16} />
+                <span className="composer-attach-label">{en ? 'Add image' : '添加图片'}</span>
+                <input className="sr-only" type="file" accept="image/png,image/jpeg,image/webp" disabled={attachDisabled} onChange={files.pick} />
+              </label>
+              <label className="composer-tool composer-select" title={en ? 'Link to problem' : '关联问题'}>
+                <span className="sr-only">{en ? 'Link to problem' : '关联问题'}</span>
+                <select value={caseChoice} disabled={busy || uploading} onChange={e => {
+                  setCaseChoice(e.target.value); if (e.target.value !== 'new') onCaseChange?.(e.target.value)
+                }}><option value="">{en ? 'Ordinary question' : '普通咨询'}</option><option value="new">{en ? 'New problem' : '新建问题'}</option>
+                  {caseId && !caseList.some(c => c.id === caseId) && <option value={caseId}>{caseId}</option>}
+                  {caseList.map(c => <option key={c.id} value={c.id}>{c.id} · {c.issue_type}</option>)}
+                </select>
+              </label>
+              {caseChoice === 'new' && <label className="composer-tool composer-select" title={en ? 'Issue type' : '问题类型'}>
+                <span className="sr-only">{en ? 'Issue type' : '问题类型'}</span>
+                <select value={issueType} onChange={e => setIssueType(e.target.value as typeof issueType)}>
+                  <option value="general">{en ? 'General' : '一般问题'}</option><option value="order">{en ? 'Order' : '订单问题'}</option>
+                  <option value="missing_parts">{en ? 'Missing parts' : '缺件'}</option><option value="wrong_item">{en ? 'Wrong item' : '错货'}</option>
+                </select>
+              </label>}
+              <button type="button" className="composer-tool" aria-expanded={scopeOpen} aria-controls="composer-scope"
+                onClick={() => setScopeOpen(open => !open)}>
+                <Icon name="settings" size={14} />{en ? 'Policy scope' : '政策适用条件'}
+                {scopeCount > 0 && <span className="composer-tool-count">{scopeCount}</span>}
+              </button>
+            </div>
             <span className="composer-keyboard">{busy ? t('cw.busy') : t('cw.keyboard')}</span>
             <button className="send" type="submit" disabled={busy || uploading || restoring || (!draft.trim() && !attachments.length) || (attachments.length > 0 && !caseChoice) || over > 0} aria-label={t('cw.send')}>
               <Icon name="send" size={18} />
             </button>
           </div>
-          <label>{en ? 'Link to problem' : '关联问题'}<select value={caseChoice} disabled={busy || uploading} onChange={e => {
-            setCaseChoice(e.target.value); if (e.target.value !== 'new') onCaseChange?.(e.target.value)
-          }}><option value="">{en ? 'Ordinary question' : '普通咨询'}</option><option value="new">{en ? 'New problem' : '新建问题'}</option>
-            {caseId && !caseList.some(c => c.id === caseId) && <option value={caseId}>{caseId}</option>}
-            {caseList.map(c => <option key={c.id} value={c.id}>{c.id} · {c.issue_type}</option>)}
-          </select></label>
-          {caseChoice === 'new' && <label>{en ? 'Issue type' : '问题类型'}<select value={issueType} onChange={e => setIssueType(e.target.value as typeof issueType)}>
-            <option value="general">{en ? 'General' : '一般问题'}</option><option value="order">{en ? 'Order' : '订单问题'}</option>
-            <option value="missing_parts">{en ? 'Missing parts' : '缺件'}</option><option value="wrong_item">{en ? 'Wrong item' : '错货'}</option>
-          </select></label>}
-          {attachments.length > 0 && !caseChoice && <p role="status">{en ? 'Choose a problem for these images.' : '请为图片选择已有问题或新建问题。'}</p>}
-          <AttachmentPicker base={base || '/api'} value={attachments} onChange={setAttachments} onBusy={setUploading} disabled={busy || restoring} />
+          {/* 这几个输入框在 form 里：拦住 Enter，否则填完一格回车就把消息发出去了 */}
+          {scopeOpen && <div id="composer-scope" className="composer-scope"
+            onKeyDown={e => { if (e.key === 'Enter') e.preventDefault() }}>
+            <ScopeFields value={policyScope} onChange={setPolicyScope} />
+          </div>}
         </form>
         {/* 放在输入框下面而不是按钮旁边：按钮旁那行快捷键提示在窄屏和开着检查器时是藏起来的 */}
         {over > 0 && (

@@ -138,4 +138,8 @@
 .login-page { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: var(--bg, #f6f5f1); }
 .login-card { width: min(100%, 420px); display: grid; gap: 20px; padding: 36px; border: 1px solid #ccc; border-radius: 16px; }
 .login-card label { display: grid; gap: 8px; }
-.employee-session { display: flex; align-items: center; justify-content: flex-end; gap: 16px; padding: 4px 24px; font-size: 12px; border-bottom: 1px solid #ccc; }
+.employee-session { display: flex; flex-shrink: 0; align-items: center; justify-content: flex-end; gap: 16px; padding: 4px 24px; font-size: 12px; border-bottom: 1px solid var(--color-border, #ccc); }
+/* 登录条在应用骨架上面：两者合起来占满一屏。骨架自己再占 100dvh 的话整页会多出登录条那么高，
+   输入区底部和下面那行提示就被挤到屏幕外了。 */
+#root { display: flex; flex-direction: column; height: 100dvh; }
+#root > .app { flex: 1 1 auto; height: auto; min-height: 0; }

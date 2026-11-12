@@ -8,5 +8,3 @@
 .image-review { overflow-x: auto; margin: 12px 0; }
 .image-review table { border-collapse: collapse; width: 100%; font-size: 13px; }
 .image-review th, .image-review td { text-align: left; padding: 8px; border-bottom: 1px solid var(--border, #cbd5e1); }
-.composer select { margin: 6px 10px; max-width: 80%; }
-.composer .attachment-grid { max-height: 240px; overflow-y: auto; }

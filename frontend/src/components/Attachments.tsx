@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { ApiError, attachmentApi } from '@/api/client'
 import type { Attachment, ImageReview } from '@/api/types'
 import { useT } from '@/i18n'
+import { Icon } from './Icon'
 import './attachments.css'
 
-export function AttachmentView({ base, id, name }: { base: string; id: string; name?: string }) {
+export function AttachmentView({ base, id, name, compact }: { base: string; id: string; name?: string; compact?: boolean }) {
   const { lang } = useT()
   const [url, setUrl] = useState('')
   const [error, setError] = useState('')
@@ -26,6 +27,16 @@ export function AttachmentView({ base, id, name }: { base: string; id: string; n
       setTimeout(() => URL.revokeObjectURL(source), 1000)
     } catch { setError(en ? 'Download denied or unavailable.' : '下载不可用或权限已失效。') }
   }
+  // The chat composer shows a thumbnail and the file name only; the full card belongs to the thread and the Case page.
+  if (compact) return <figure className="attachment-chip">
+    {url ? <img src={url} alt={name || (en ? 'Case image' : '工单图片')} width={40} height={40} /> : <span className="attachment-chip-blank" aria-hidden="true" />}
+    <figcaption>{name || id}</figcaption>
+    {error && <>
+      <p role="alert" className="sr-only">{error}</p>
+      <button type="button" className="attachment-chip-retry" title={error} aria-label={en ? 'Reload preview' : '重试预览'}
+        onClick={() => setAttempt(v => v + 1)}><Icon name="refresh" size={14} /></button>
+    </>}
+  </figure>
   return <figure className="attachment-card">
     {url && <img src={url} alt={name || (en ? 'Case image' : '工单图片')} />}
     <figcaption>{name || id}</figcaption>
@@ -35,8 +46,9 @@ export function AttachmentView({ base, id, name }: { base: string; id: string; n
   </figure>
 }
 
-export function AttachmentPicker({ base, value, onChange, disabled, onBusy }: {
-  base: string; value: Attachment[]; onChange: (files: Attachment[]) => void; disabled?: boolean; onBusy?: (busy: boolean) => void
+/** Upload state shared by the picker below and the chat composer, which lays the same controls out differently. */
+export function useAttachmentUpload({ base, value, onChange, onBusy }: {
+  base: string; value: Attachment[]; onChange: (files: Attachment[]) => void; onBusy?: (busy: boolean) => void
 }) {
   const { lang } = useT(), en = lang === 'en'
   const [error, setError] = useState(''), [uploading, setUploading] = useState(false)
@@ -55,20 +67,32 @@ export function AttachmentPicker({ base, value, onChange, disabled, onBusy }: {
         : (en ? 'Upload failed. Your file is retained for retry.' : '上传失败，文件已保留，可重试。'))
     } finally { setUploading(false); onBusy?.(false) }
   }
+  return {
+    error, uploading, full: value.length >= 4,
+    hint: en ? 'Up to 4 images per message. Image fields require database verification.' : '每条消息最多 4 张；图片字段需与业务记录核实。',
+    pick: (e: ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; e.target.value = ''; if (file) void upload(file, crypto.randomUUID()) },
+    remove: (id: string) => { onChange(value.filter(v => v.id !== id)); void attachmentApi.remove(base, id).catch(() => {}) },
+    retryable: !!retry.current && !uploading,
+    retryUpload: () => { if (retry.current) void upload(retry.current.file, retry.current.key) },
+  }
+}
+
+export function AttachmentPicker({ base, value, onChange, disabled, onBusy }: {
+  base: string; value: Attachment[]; onChange: (files: Attachment[]) => void; disabled?: boolean; onBusy?: (busy: boolean) => void
+}) {
+  const { lang } = useT(), en = lang === 'en'
+  const files = useAttachmentUpload({ base, value, onChange, onBusy })
   return <div className="attachment-picker">
     <label>{en ? 'Add order or delivery image' : '添加订单、标签或配送图片'}
-      <input type="file" accept="image/png,image/jpeg,image/webp" disabled={disabled || uploading || value.length >= 4}
-        onChange={e => { const file = e.target.files?.[0]; e.target.value = ''; if (file) void upload(file, crypto.randomUUID()) }} />
+      <input type="file" accept="image/png,image/jpeg,image/webp" disabled={disabled || files.uploading || files.full} onChange={files.pick} />
     </label>
-    <small>{en ? 'Up to 4 images per message. Image fields require database verification.' : '每条消息最多 4 张；图片字段需与业务记录核实。'}</small>
-    {uploading && <p role="status">{en ? 'Uploading…' : '正在上传…'}</p>}
-    {error && <p role="alert">{error}</p>}
-    {retry.current && !uploading && <button type="button" onClick={() => retry.current && upload(retry.current.file, retry.current.key)}>{en ? 'Retry upload' : '重试上传'}</button>}
+    <small>{files.hint}</small>
+    {files.uploading && <p role="status">{en ? 'Uploading…' : '正在上传…'}</p>}
+    {files.error && <p role="alert">{files.error}</p>}
+    {files.retryable && <button type="button" onClick={files.retryUpload}>{en ? 'Retry upload' : '重试上传'}</button>}
     <div className="attachment-grid">{value.map(a => <div key={a.id}>
       <AttachmentView base={base} id={a.id} name={a.filename} />
-      <button type="button" disabled={disabled || uploading} onClick={() => {
-        onChange(value.filter(v => v.id !== a.id)); void attachmentApi.remove(base, a.id).catch(() => {})
-      }}>{en ? 'Remove from message' : '从消息移除'}</button>
+      <button type="button" disabled={disabled || files.uploading} onClick={() => files.remove(a.id)}>{en ? 'Remove from message' : '从消息移除'}</button>
     </div>)}</div>
   </div>
 }
