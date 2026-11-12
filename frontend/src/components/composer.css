@@ -1,0 +1,99 @@
+/* 对话输入区的工具栏、图片预览和政策范围面板。
+   放在这里而不是 console.css：那份文件由 scripts/sync-console-css.mjs 从设计工程同步，手改会被覆盖。
+   控件沿用控制台已有的尺度（workspace.css 里的 8px 圆角芯片、12px 小字、细边框），不另起一套。 */
+
+.composer-bar { flex-wrap: nowrap; }
+.composer-tools { display: flex; flex: 1 1 auto; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.composer-keyboard { flex-shrink: 0; white-space: nowrap; }
+
+.composer-tool {
+  position: relative; display: inline-flex; align-items: center; gap: 6px;
+  height: 32px; padding: 0 10px;
+  border: 1px solid var(--color-border); border-radius: var(--radius-md);
+  background: var(--color-surface); color: var(--color-text-secondary);
+  font: inherit; font-size: var(--text-xs); line-height: 1; white-space: nowrap; cursor: pointer;
+  transition: background .12s ease, color .12s ease, border-color .12s ease;
+}
+.composer-tool:hover { background: var(--color-surface-secondary); color: var(--color-text); border-color: var(--color-border-strong); }
+.composer-tool:focus-visible, .composer-tool:has(:focus-visible) { outline: 2px solid var(--color-ring); outline-offset: 1px; }
+.composer-tool[aria-expanded="true"] { background: var(--color-surface-secondary); color: var(--color-text); border-color: var(--color-border-strong); }
+.composer-tool svg { flex-shrink: 0; }
+.composer-tool.is-disabled, .composer-tool:has(select:disabled) { opacity: .5; cursor: not-allowed; }
+.composer-tool-count {
+  display: grid; place-items: center; min-width: 16px; height: 16px; padding: 0 4px;
+  border-radius: var(--radius-full); background: var(--color-solid); color: var(--color-text-inverse);
+  font-size: 10px; font-variant-numeric: tabular-nums;
+}
+
+/* 「＋」平时只是一个图标，悬停或键盘聚焦时展开文字 */
+.composer-attach { gap: 0; padding: 0 7px; }
+.composer-attach-label { max-width: 0; overflow: hidden; opacity: 0; transition: max-width .2s ease, margin-left .2s ease, opacity .15s ease; }
+.composer-attach:not(.is-disabled):hover .composer-attach-label,
+.composer-attach:has(:focus-visible) .composer-attach-label { max-width: 96px; margin-left: 6px; opacity: 1; }
+
+/* 原生 select 保留（键盘、读屏、手机上的系统选单都照旧），外观换成和其它按钮一样的芯片 */
+.composer-select { padding: 0; }
+.composer-select select {
+  appearance: none; -webkit-appearance: none;
+  height: 100%; max-width: 220px; padding: 0 28px 0 10px;
+  border: 0; border-radius: inherit; background: transparent; color: inherit;
+  font: inherit; text-overflow: ellipsis; cursor: pointer; outline: none;
+  field-sizing: content;   /* 支持的浏览器里宽度跟着当前选项走；不支持的按最长选项算，也能用 */
+}
+.composer-select select:disabled { cursor: not-allowed; }
+.composer-select::after {
+  content: ""; position: absolute; right: 11px; top: 50%; width: 6px; height: 6px; margin-top: -5px;
+  border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg); pointer-events: none; opacity: .7;
+}
+
+/* 待发送的图片：缩略图 + 文件名，一张一个小卡片 */
+.composer-attachments {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  padding: 12px 18px 0; font-size: var(--text-xs); color: var(--color-text-secondary);
+}
+.composer-attachments p { margin: 0; }
+.composer-attachments p[role="alert"] { color: var(--color-text-danger); }
+.composer-attachments-ask { color: var(--color-text); }
+.composer-attachments-hint { flex-basis: 100%; font-size: var(--text-2xs); color: var(--color-text-tertiary); }
+.composer-attachment { position: relative; }
+.attachment-chip {
+  display: flex; align-items: center; gap: 8px; max-width: 240px; margin: 0; padding: 4px 32px 4px 4px;
+  border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface-secondary);
+}
+.attachment-chip img, .attachment-chip-blank { flex-shrink: 0; width: 40px; height: 40px; border-radius: var(--radius-sm); object-fit: cover; }
+.attachment-chip-blank { background: var(--alpha-08); }
+.attachment-chip figcaption { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text); }
+.attachment-chip-retry, .composer-attachment-remove {
+  display: grid; place-items: center; flex-shrink: 0; width: 22px; height: 22px; padding: 0;
+  border: 0; border-radius: var(--radius-full); background: transparent; color: var(--color-text-tertiary); cursor: pointer;
+}
+.attachment-chip-retry:hover, .composer-attachment-remove:hover:not(:disabled) { background: var(--alpha-08); color: var(--color-text); }
+.attachment-chip-retry:focus-visible, .composer-attachment-remove:focus-visible { outline: 2px solid var(--color-ring); outline-offset: 1px; }
+.composer-attachment-remove { position: absolute; top: 50%; right: 6px; margin-top: -11px; }
+.composer-attachment-remove:disabled { opacity: .4; cursor: not-allowed; }
+
+/* 政策适用条件：在卡片里向下展开，四个条件排成一行 */
+.composer-scope { padding: 14px 18px 16px; border-top: 1px solid var(--color-border); }
+.composer-scope fieldset {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 1.6fr); align-items: end; gap: 10px 12px;
+  min-width: 0; margin: 0; padding: 0; border: 0;
+}
+.composer-scope legend { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.composer-scope fieldset > p { grid-column: 1 / -1; margin: 0; font-size: var(--text-2xs); line-height: 1.6; color: var(--color-text-tertiary); }
+.composer-scope label { display: grid; gap: 4px; min-width: 0; font-size: var(--text-2xs); color: var(--color-text-secondary); }
+.composer-scope .field { font-size: var(--text-xs); }
+
+@media (prefers-reduced-motion: reduce) {
+  .composer-tool, .composer-attach-label { transition: none; }
+}
+/* 窄一些的窗口里工具栏要占满一行，快捷键提示让位 */
+@media (max-width: 1100px) {
+  .composer-keyboard { display: none; }
+}
+@media (max-width: 720px) {
+  .composer-attachments { padding: 10px 14px 0; }
+  .composer-scope { padding: 12px 14px 14px; }
+  .composer-scope fieldset { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .composer-tool { height: 36px; }
+}
